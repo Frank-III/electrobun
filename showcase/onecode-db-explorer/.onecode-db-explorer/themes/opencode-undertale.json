@@ -1,0 +1,49 @@
+{
+  "$schema": "https://opencode.ai/theme.json",
+  "defs": {
+    "black": "#0b0b10",
+    "white": "#f7f7fb",
+    "soulRed": "#ff2d2d",
+    "soulOrange": "#ff7f27",
+    "soulYellow": "#ffc90e",
+    "soulGreen": "#22c55e",
+    "soulAqua": "#38bdf8",
+    "soulBlue": "#3b82f6",
+    "soulPurple": "#a855f7",
+    "battleBg": "#0d0d1a",
+    "battlePanel": "#17172a",
+    "coreGray": "#3a3949",
+    "textGray": "#9090a0",
+    "borderSubtle": "#2a2a3a"
+  },
+  "theme": {
+    "primary": { "dark": "soulBlue", "light": "soulBlue" },
+    "secondary": { "dark": "soulYellow", "light": "soulYellow" },
+    "accent": { "dark": "soulAqua", "light": "soulAqua" },
+    "error": { "dark": "soulRed", "light": "soulRed" },
+    "warning": { "dark": "soulYellow", "light": "soulOrange" },
+    "success": { "dark": "soulGreen", "light": "soulGreen" },
+    "info": { "dark": "soulAqua", "light": "soulBlue" },
+
+    "text": { "dark": "white", "light": "#0b0b10" },
+    "textMuted": { "dark": "textGray", "light": "coreGray" },
+
+    "background": { "dark": "black", "light": "white" },
+    "backgroundPanel": { "dark": "battleBg", "light": "#f4f6fb" },
+    "backgroundElement": { "dark": "battlePanel", "light": "#eef2ff" },
+
+    "border": { "dark": "borderSubtle", "light": "#d6dbe8" },
+    "borderActive": { "dark": "soulBlue", "light": "soulBlue" },
+
+    "syntaxComment": { "dark": "textGray", "light": "coreGray" },
+    "syntaxKeyword": { "dark": "soulPurple", "light": "soulPurple" },
+    "syntaxFunction": { "dark": "soulAqua", "light": "soulBlue" },
+    "syntaxVariable": { "dark": "soulYellow", "light": "soulOrange" },
+    "syntaxString": { "dark": "soulGreen", "light": "soulGreen" },
+    "syntaxNumber": { "dark": "soulRed", "light": "soulRed" },
+    "syntaxType": { "dark": "soulAqua", "light": "soulBlue" },
+    "syntaxOperator": { "dark": "white", "light": "#0b0b10" },
+    "syntaxPunctuation": { "dark": "textGray", "light": "coreGray" }
+  }
+}
+

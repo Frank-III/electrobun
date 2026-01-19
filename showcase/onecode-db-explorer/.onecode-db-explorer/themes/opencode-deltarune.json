@@ -1,0 +1,50 @@
+{
+  "$schema": "https://opencode.ai/theme.json",
+  "defs": {
+    "darkWorldBg": "#0b0b3b",
+    "darkWorldDeep": "#070720",
+    "darkWorldPanel": "#151555",
+    "krisBlue": "#6a7bc4",
+    "krisCyan": "#75fbed",
+    "susiePurple": "#5b209d",
+    "susieMagenta": "#a017d0",
+    "ralseiGreen": "#33a56c",
+    "ralseiTeal": "#40e4d4",
+    "noelleRed": "#dc1510",
+    "gold": "#fbce3c",
+    "white": "#f7f7fb",
+    "black": "#0b0b10",
+    "textMuted": "#8888aa",
+    "borderSubtle": "#2b2b6b"
+  },
+  "theme": {
+    "primary": { "dark": "susieMagenta", "light": "susiePurple" },
+    "secondary": { "dark": "krisCyan", "light": "krisBlue" },
+    "accent": { "dark": "ralseiTeal", "light": "ralseiGreen" },
+    "error": { "dark": "noelleRed", "light": "noelleRed" },
+    "warning": { "dark": "gold", "light": "#f4a731" },
+    "success": { "dark": "ralseiTeal", "light": "ralseiGreen" },
+    "info": { "dark": "krisCyan", "light": "krisBlue" },
+
+    "text": { "dark": "white", "light": "#0b0b10" },
+    "textMuted": { "dark": "textMuted", "light": "#555577" },
+
+    "background": { "dark": "darkWorldBg", "light": "white" },
+    "backgroundPanel": { "dark": "darkWorldDeep", "light": "#f5f5fa" },
+    "backgroundElement": { "dark": "darkWorldPanel", "light": "#eef2ff" },
+
+    "border": { "dark": "borderSubtle", "light": "#c9c9e8" },
+    "borderActive": { "dark": "susieMagenta", "light": "susiePurple" },
+
+    "syntaxComment": { "dark": "textMuted", "light": "#666688" },
+    "syntaxKeyword": { "dark": "susieMagenta", "light": "susiePurple" },
+    "syntaxFunction": { "dark": "krisCyan", "light": "krisBlue" },
+    "syntaxVariable": { "dark": "gold", "light": "#f4a731" },
+    "syntaxString": { "dark": "ralseiTeal", "light": "ralseiGreen" },
+    "syntaxNumber": { "dark": "noelleRed", "light": "noelleRed" },
+    "syntaxType": { "dark": "krisCyan", "light": "krisBlue" },
+    "syntaxOperator": { "dark": "white", "light": "#0b0b10" },
+    "syntaxPunctuation": { "dark": "krisBlue", "light": "#555577" }
+  }
+}
+

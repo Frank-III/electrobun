@@ -1,5 +1,7 @@
 import { SQL } from "bun";
-import { BrowserView, BrowserWindow, Utils, type RPCSchema } from "electrobun/bun";
+import { ApplicationMenu, BrowserView, BrowserWindow, Utils, type RPCSchema } from "electrobun/bun";
+import fs from "node:fs";
+import path from "node:path";
 
 type Adapter = "sqlite" | "postgres" | "mysql";
 
@@ -87,6 +89,19 @@ export type TableInfo = {
   columns: ColumnInfo[];
 };
 
+export type ThemeVariant = {
+  dark: string;
+  light: string;
+};
+
+export type ThemeColorValue = string | number | ThemeVariant;
+
+export type ThemeJson = {
+  $schema?: string;
+  defs?: Record<string, string>;
+  theme: Record<string, ThemeColorValue>;
+};
+
 export type DbExplorerRPC = {
   bun: RPCSchema<{
     requests: {
@@ -132,6 +147,14 @@ export type DbExplorerRPC = {
       openDevtoolsWindow: {
         params: {};
         response: { ok: true; windowId: number } | { ok: false; error: string };
+      };
+      listThemes: {
+        params: {};
+        response: { ok: true; themes: string[] } | { ok: false; error: string };
+      };
+      getTheme: {
+        params: { name: string };
+        response: { ok: true; theme: ThemeJson } | { ok: false; error: string };
       };
       getSchemaGraph: {
         params: { connectionString: string };
@@ -992,7 +1015,7 @@ function clampNumber(value: number, min: number, max: number) {
 }
 
 function defaultWindowSize(mode: string | undefined) {
-  if (mode === "connections") return { width: 980, height: 720 };
+  if (mode === "connections") return { width: 720, height: 480 };
   if (mode === "devtools") return { width: 980, height: 720 };
   return { width: 1280, height: 820 };
 }
@@ -1032,6 +1055,66 @@ function broadcastLog(level: "info" | "error", message: string) {
   for (const win of windows.values()) {
     win.webview?.rpc?.send("log", { level, message });
   }
+}
+
+const THEME_FILE_GLOB = new Bun.Glob("*.json");
+
+function ancestorDirs(startDir: string) {
+  const result: string[] = [];
+  let current = path.resolve(startDir);
+  while (true) {
+    result.push(current);
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return result.reverse();
+}
+
+function getThemeSearchDirs() {
+  const dirs: string[] = [];
+
+  const home = Bun.env.HOME;
+  const xdgConfig = Bun.env.XDG_CONFIG_HOME ?? (home ? path.join(home, ".config") : null);
+  if (xdgConfig) {
+    // Native app themes (preferred location).
+    dirs.push(path.join(xdgConfig, "onecode-db-explorer", "themes"));
+
+    // Compatibility: allow reusing opencode’s theme packs out of the box.
+    dirs.push(path.join(xdgConfig, "opencode", "themes"));
+  }
+
+  for (const dir of ancestorDirs(process.cwd())) {
+    dirs.push(path.join(dir, ".onecode-db-explorer", "themes"));
+    dirs.push(path.join(dir, ".opencode", "themes"));
+  }
+
+  return dirs;
+}
+
+async function buildThemeIndex() {
+  const index: Record<string, string> = {};
+
+  for (const dir of getThemeSearchDirs()) {
+    try {
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+
+    for await (const filePath of THEME_FILE_GLOB.scan({
+      cwd: dir,
+      absolute: true,
+      followSymlinks: true,
+      dot: true,
+    })) {
+      const name = path.basename(filePath, ".json");
+      if (!name) continue;
+      index[name] = filePath;
+    }
+  }
+
+  return index;
 }
 
 function createAppWindow(
@@ -1147,6 +1230,29 @@ function createAppWindow(
               mode: "devtools",
             });
             return { ok: true, windowId: created.id };
+          } catch (error) {
+            return { ok: false, error: errorMessage(error) };
+          }
+        },
+        listThemes: async () => {
+          try {
+            const index = await buildThemeIndex();
+            const themes = ["default", ...Object.keys(index).sort((a, b) => a.localeCompare(b))];
+            return { ok: true, themes };
+          } catch (error) {
+            return { ok: false, error: errorMessage(error) };
+          }
+        },
+        getTheme: async ({ name }) => {
+          try {
+            if (!name || name === "default") return { ok: false, error: "Theme not found." };
+            const index = await buildThemeIndex();
+            const filePath = index[name];
+            if (!filePath) return { ok: false, error: "Theme not found." };
+
+            const json = await Bun.file(filePath).json();
+            if (!json || typeof json !== "object") return { ok: false, error: "Invalid theme file." };
+            return { ok: true, theme: json as ThemeJson };
           } catch (error) {
             return { ok: false, error: errorMessage(error) };
           }
@@ -1386,6 +1492,27 @@ function createAppWindow(
 
   return window!;
 }
+
+// Set up the application menu with standard Edit menu shortcuts (Cmd+C, Cmd+V, etc.)
+ApplicationMenu.setApplicationMenu([
+  {
+    submenu: [
+      { label: "Quit", role: "quit", accelerator: "q" },
+    ],
+  },
+  {
+    label: "Edit",
+    submenu: [
+      { role: "undo" },
+      { role: "redo" },
+      { type: "separator" },
+      { role: "cut" },
+      { role: "copy" },
+      { role: "paste" },
+      { role: "selectAll" },
+    ],
+  },
+]);
 
 createAppWindow();
 console.log("1Code DB Explorer app started!");

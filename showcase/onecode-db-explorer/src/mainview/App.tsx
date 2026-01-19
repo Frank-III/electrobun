@@ -14,7 +14,7 @@ import {
 } from "ag-grid-community";
 import Electrobun, { Electroview } from "electrobun/view";
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import type { ColumnInfo, DbExplorerRPC, RelationshipInfo, TableInfo } from "../bun/index";
+import type { ColumnInfo, DbExplorerRPC, RelationshipInfo, TableInfo, ThemeJson } from "../bun/index";
 import CommandPaletteDialog from "./components/CommandPaletteDialog";
 import EditCellDialog, { type CellEditMode, type CellEditorKind } from "./components/EditCellDialog";
 import EditConnectionDialog from "./components/EditConnectionDialog";
@@ -25,6 +25,7 @@ import TablesSidebar from "./components/TablesSidebar";
 import TypedColumnHeader from "./components/TypedColumnHeader";
 import TitleBar from "./components/TitleBar";
 import type { SqlEditorHandle } from "./components/SqlEditor";
+import { applyTheme, clearAppliedTheme, type ColorMode, type ColorModeSetting } from "./theme";
 import {
   buildSqlCompletionSchema,
   clampFloat,
@@ -108,10 +109,43 @@ const rpc = Electroview.defineRPC<DbExplorerRPC>({
 const electrobun = new Electrobun.Electroview<DbExplorerRPC>({ rpc });
 
 export default function App() {
-  const [theme, setTheme] = makePersisted(createSignal<"light" | "dark">("dark"), {
-    name: "onecodeDbExplorer.theme",
+  const getInitialColorMode = (): ColorModeSetting => {
+    if (typeof localStorage === "undefined") return "dark";
+
+    try {
+      const raw = localStorage.getItem("onecodeDbExplorer.colorMode");
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed === "dark" || parsed === "light" || parsed === "system") return parsed;
+    } catch {
+      // ignore
+    }
+
+    // Back-compat with older builds that only stored "onecodeDbExplorer.theme".
+    try {
+      const raw = localStorage.getItem("onecodeDbExplorer.theme");
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed === "dark" || parsed === "light") return parsed;
+    } catch {
+      // ignore
+    }
+
+    return "dark";
+  };
+
+  const [colorMode, setColorMode] = makePersisted(createSignal<ColorModeSetting>(getInitialColorMode()), {
+    name: "onecodeDbExplorer.colorMode",
     sync: storageSync,
   });
+
+  const [themeName, setThemeName] = makePersisted(createSignal<string>("default"), {
+    name: "onecodeDbExplorer.themeName",
+    sync: storageSync,
+  });
+
+  const [resolvedColorMode, setResolvedColorMode] = createSignal<ColorMode>("dark");
+  const [availableThemes, setAvailableThemes] = createSignal<string[]>(["default"]);
+  const [themesLoaded, setThemesLoaded] = createSignal(false);
+  const [activeTheme, setActiveTheme] = createSignal<ThemeJson | null>(null);
 
   const [profiles, setProfiles] = makePersisted(createSignal<ConnectionProfile[]>([]), {
     name: "onecodeDbExplorer.connectionProfiles",
@@ -260,7 +294,7 @@ export default function App() {
   let hasMounted = false;
 
   const gridThemeClass = createMemo(() =>
-    theme() === "dark" ? "ag-theme-quartz-dark" : "ag-theme-quartz"
+    resolvedColorMode() === "dark" ? "ag-theme-quartz-dark" : "ag-theme-quartz"
   );
 
   const isConnectionsWindow = createMemo(() => windowMode() === "connections");
@@ -2379,11 +2413,11 @@ export default function App() {
     },
     {
       id: "toggle-theme",
-      name: theme() === "dark" ? "Switch to Light Theme" : "Switch to Dark Theme",
-      description: "Toggle app theme",
+      name: resolvedColorMode() === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode",
+      description: "Toggle color mode (exits System mode)",
       run: () => {
         setPaletteOpen(false);
-        setTheme((t) => (t === "dark" ? "light" : "dark"));
+        setColorMode(resolvedColorMode() === "dark" ? "light" : "dark");
       },
     },
   ]);
@@ -2407,6 +2441,26 @@ export default function App() {
     scheduleMicrotask(() => {
       if (windowMode() === "boot") setWindowMode("main");
     });
+
+    void (async () => {
+      for (let attempt = 0; attempt < 80; attempt++) {
+        try {
+          const res = await electrobun.rpc?.request.listThemes({});
+          if (res && typeof res === "object" && "ok" in res && res.ok) {
+            const themes = Array.from(new Set(res.themes.filter((t) => typeof t === "string" && t.trim())));
+            setAvailableThemes(themes.length ? themes : ["default"]);
+            setThemesLoaded(true);
+            return;
+          }
+        } catch {
+          // ignore
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+
+      setThemesLoaded(true);
+    })();
 
     void (async () => {
       let requestedProfileId: string | null = null;
@@ -2609,10 +2663,81 @@ export default function App() {
   });
 
   createEffect(() => {
+    if (typeof window === "undefined") return;
+    const setting = colorMode();
+
+    if (setting !== "system") {
+      setResolvedColorMode(setting);
+      return;
+    }
+
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const update = () => setResolvedColorMode(media.matches ? "dark" : "light");
+    update();
+
+    media.addEventListener("change", update);
+    onCleanup(() => {
+      media.removeEventListener("change", update);
+    });
+  });
+
+  createEffect(() => {
+    // Back-compat for any older windows still reading "onecodeDbExplorer.theme".
+    if (typeof localStorage === "undefined") return;
+    try {
+      localStorage.setItem("onecodeDbExplorer.theme", JSON.stringify(resolvedColorMode()));
+    } catch {
+      // ignore
+    }
+  });
+
+  createEffect(() => {
+    if (!themesLoaded()) return;
+    const name = themeName();
+    if (name === "default") return;
+
+    const themes = availableThemes();
+    if (themes.includes(name)) return;
+    setThemeName("default");
+  });
+
+  createEffect(() => {
+    const name = themeName();
+    let cancelled = false;
+
+    void (async () => {
+      if (name === "default") {
+        if (!cancelled) setActiveTheme(null);
+        return;
+      }
+
+      const res = await electrobun.rpc?.request.getTheme({ name });
+      if (cancelled) return;
+      if (res && typeof res === "object" && "ok" in res && res.ok) {
+        setActiveTheme(res.theme);
+      } else {
+        setActiveTheme(null);
+      }
+    })();
+
+    onCleanup(() => {
+      cancelled = true;
+    });
+  });
+
+  createEffect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
-    if (theme() === "dark") root.classList.add("dark");
+    const mode = resolvedColorMode();
+
+    if (mode === "dark") root.classList.add("dark");
     else root.classList.remove("dark");
+
+    root.style.setProperty("color-scheme", mode);
+
+    clearAppliedTheme(root);
+    const t = activeTheme();
+    if (t) applyTheme(root, t, mode);
   });
 
   createEffect(() => {
@@ -2646,7 +2771,7 @@ export default function App() {
   createEffect(() => {
     if (!paletteOpen()) return;
     setPaletteFilter("");
-    queueMicrotask(() => paletteInputEl?.focus());
+    setTimeout(() => paletteInputEl?.focus(), 50);
   });
 
   createEffect(() => {
@@ -2757,7 +2882,7 @@ export default function App() {
 
   const devtoolsView = (
     <div class="app">
-      <div class="titlebar">
+      <div class="titlebar electrobun-webkit-app-region-drag">
         <div class="brand">
           <div class="brand-title">Devtools</div>
           <div class="brand-subtitle">Logs • Solid ({__SOLID_COMPILER__}) • Bun.SQL</div>
@@ -2766,8 +2891,8 @@ export default function App() {
           <button class="btn btn-secondary" onClick={() => setLogs([])}>
             Clear logs
           </button>
-          <button class="btn btn-ghost" onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}>
-            {theme() === "dark" ? "Light" : "Dark"}
+          <button class="btn btn-ghost" onClick={() => setColorMode(resolvedColorMode() === "dark" ? "light" : "dark")}>
+            {resolvedColorMode() === "dark" ? "Light" : "Dark"}
           </button>
         </div>
       </div>
@@ -2792,8 +2917,11 @@ export default function App() {
         onOpenDevtools={openDevtoolsWindow}
         onOpenWindow={handleOpenActiveProfileWindow}
         onOpenPalette={() => setPaletteOpen(true)}
-        onToggleTheme={() => setTheme((t: "light" | "dark") => (t === "dark" ? "light" : "dark"))}
-        theme={theme()}
+        themeName={themeName()}
+        themeNames={availableThemes()}
+        onThemeNameChange={setThemeName}
+        themeMode={colorMode()}
+        onThemeModeChange={setColorMode}
         onConnect={connectAndRefresh}
         isConnecting={isConnecting()}
         hasActiveProfile={Boolean(activeProfile())}

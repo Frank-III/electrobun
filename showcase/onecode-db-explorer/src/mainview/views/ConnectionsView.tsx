@@ -31,6 +31,7 @@ type ConnectionsViewProps = {
 export default function ConnectionsView(props: ConnectionsViewProps) {
   return (
     <div class="app connections-app">
+      <div class="connections-drag-region electrobun-webkit-app-region-drag" />
       <div class="connections-shell">
         <div class="connections-sidebar">
           <div class="connections-sidebar-top">
