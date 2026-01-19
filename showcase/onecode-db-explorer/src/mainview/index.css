@@ -2215,6 +2215,12 @@ code {
   background: hsl(var(--background));
 }
 
+.connections-drag-region {
+  height: 28px;
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+}
+
 .connections-shell {
   flex: 1;
   display: grid;
