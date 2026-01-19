@@ -11,7 +11,7 @@ const projectRoot = process.cwd();
 const distDir = join(projectRoot, "dist");
 
 plugin(solidTransformPlugin);
-const solidCompilerLabel = "babel (temporary)";
+const solidCompilerLabel = "solid-jsx-oxc";
 
 rmSync(distDir, { recursive: true, force: true });
 mkdirSync(distDir, { recursive: true });
