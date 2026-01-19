@@ -1,5 +1,6 @@
 import { For } from "solid-js";
 import type { ConnectionProfile } from "../types";
+import type { ColorModeSetting } from "../theme";
 
 type TitleBarProps = {
   title: string;
@@ -11,8 +12,11 @@ type TitleBarProps = {
   onOpenDevtools: () => void | Promise<void>;
   onOpenWindow: () => void | Promise<void>;
   onOpenPalette: () => void;
-  onToggleTheme: () => void;
-  theme: "light" | "dark";
+  themeName: string;
+  themeNames: string[];
+  onThemeNameChange: (next: string) => void;
+  themeMode: ColorModeSetting;
+  onThemeModeChange: (next: ColorModeSetting) => void;
   onConnect: () => void | Promise<void>;
   isConnecting: boolean;
   hasActiveProfile: boolean;
@@ -20,7 +24,7 @@ type TitleBarProps = {
 
 export default function TitleBar(props: TitleBarProps) {
   return (
-    <div class="titlebar">
+    <div class="titlebar electrobun-webkit-app-region-drag">
       <div class="brand">
         <div class="brand-title">{props.title}</div>
         <div class="brand-subtitle">{props.subtitle}</div>
@@ -62,9 +66,25 @@ export default function TitleBar(props: TitleBarProps) {
           Devtools
         </button>
 
-        <button class="btn btn-ghost" onClick={props.onToggleTheme} title="Toggle theme">
-          {props.theme === "dark" ? "Light" : "Dark"}
-        </button>
+        <select
+          class="select"
+          value={props.themeName}
+          onChange={(e) => props.onThemeNameChange(e.currentTarget.value)}
+          title="Theme"
+        >
+          <For each={props.themeNames}>{(name) => <option value={name}>{name}</option>}</For>
+        </select>
+
+        <select
+          class="select"
+          value={props.themeMode}
+          onChange={(e) => props.onThemeModeChange(e.currentTarget.value as ColorModeSetting)}
+          title="Color mode"
+        >
+          <option value="system">System</option>
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
 
         <button class="btn btn-primary" onClick={() => void props.onConnect()} disabled={props.isConnecting}>
           {props.isConnecting ? "Connecting…" : "Connect"}
