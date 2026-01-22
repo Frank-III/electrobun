@@ -14,7 +14,9 @@
   "exports": {
     ".": "./dist/api/bun/index.ts",
     "./bun": "./dist/api/bun/index.ts",
-    "./view": "./dist/api/browser/index.ts"
+    "./view": "./dist/api/browser/index.ts",
+    "./elysia": "./dist/integrations/elysia/index.ts",
+    "./elysia/client": "./dist/integrations/elysia/client-exports.ts"
   },
   "type": "module",
   "bin": {
@@ -57,5 +59,13 @@
     "archiver": "^7.0.1",
     "rpc-anywhere": "1.5.0",
     "tar": "^6.2.1"
+  },
+  "peerDependencies": {
+    "elysia": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "elysia": {
+      "optional": true
+    }
   }
 }
