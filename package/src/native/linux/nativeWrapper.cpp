@@ -33,6 +33,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <fstream>
+#include <set>
 
 // Shared cross-platform utilities
 #include "../shared/glob_match.h"
@@ -49,6 +50,22 @@ extern "C" {
 
 // Global ASAR archive handle (lazy-loaded)
 static AsarArchive* g_asarArchive = nullptr;
+
+// Global shutdown flag to prevent race conditions during cleanup
+static std::atomic<bool> g_shuttingDown{false};
+
+// Additional race condition protection  
+static std::atomic<int> g_activeOperations{0};
+static std::mutex g_cefBrowserMutex;
+
+// Lightweight operation guard - just check shutdown, don't track operations
+class OperationGuard {
+public:
+    OperationGuard() : valid_(!g_shuttingDown.load()) {}
+    bool isValid() const { return valid_; }
+private:
+    bool valid_;
+};
 
 // CEF includes - always include them even if it marginally increases binary size
 // we want a few binaries that will work whenever an electrobun developer
@@ -98,6 +115,7 @@ static void handleViewsURIScheme(WebKitURISchemeRequest* request, gpointer user_
 
 // Forward declaration for partition context management
 static WebKitWebContext* getContextForPartition(const char* partitionIdentifier);
+
 
 // Webview callback types
 typedef uint32_t (*DecideNavigationCallback)(uint32_t webviewId, const char* url);
@@ -319,6 +337,10 @@ struct X11Window {
 
     X11Window() : display(nullptr), window(0), windowId(0), x(0), y(0), width(800), height(600), focusCallback(nullptr), transparent(false) {}
 };
+
+// Forward declarations for icon management
+static void autoSetWindowIcon(void* window);
+static void setX11WindowIcon(X11Window* x11win, GdkPixbuf* pixbuf);
 
 // Forward declaration for X11 menu function
 void applyApplicationMenuToX11Window(X11Window* x11win);
@@ -1019,6 +1041,7 @@ private:
     GtkWidget* gtk_widget_;
     std::function<void()> positioning_callback_;
     std::function<void(CefRefPtr<CefBrowser>)> browser_created_callback_;
+    std::function<void()> browser_close_callback_;  // Callback to clear parent webview browser
     
     // OSR (Off-Screen Rendering) members for transparency
     Window x11_window_;
@@ -1071,6 +1094,10 @@ public:
     
     void SetBrowserCreatedCallback(std::function<void(CefRefPtr<CefBrowser>)> callback) {
         browser_created_callback_ = callback;
+    }
+    
+    void SetBrowserCloseCallback(std::function<void()> callback) {
+        browser_close_callback_ = callback;
     }
     
     void SetBrowserPreloadScript(int browserId, const std::string& script) {
@@ -1391,6 +1418,23 @@ public:
                 if (positioning_callback_) {
                     positioning_callback_();
                 }
+            }
+        }
+    }
+
+    // Critical: Handle browser cleanup to prevent use-after-free
+    void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
+        printf("CEF: OnBeforeClose called for browser %d\n", browser->GetIdentifier());
+        
+        // Clear browser reference to prevent use-after-free
+        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
+        if (browser_ && browser_->IsSame(browser)) {
+            browser_ = nullptr;
+            printf("CEF: Browser reference cleared in OnBeforeClose\n");
+            
+            // Notify parent webview to clear its browser reference too
+            if (browser_close_callback_) {
+                browser_close_callback_();
             }
         }
     }
@@ -3342,6 +3386,13 @@ public:
             }
         });
         
+        // Set up browser close callback to clear browser reference
+        client->SetBrowserCloseCallback([this]() {
+            std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
+            this->browser = nullptr;
+            printf("CEF: Browser reference cleared in CEFWebViewImpl\n");
+        });
+        
         // Add preload scripts to the client
         if (!electrobunPreloadScript.empty()) {
             client->AddPreloadScript(electrobunPreloadScript);
@@ -3366,14 +3417,17 @@ public:
     // Removed createCEFBrowserInX11Window and createCEFBrowserDeferred - functionality moved to createCEFBrowser
     
     void syncCEFPositionWithFrame(const GdkRectangle& frame) {
-        if (!browser) {
+        // Note: This may be called with or without g_cefBrowserMutex held
+        // So we need to be careful about browser access
+        CefRefPtr<CefBrowser> browserRef = browser;  // Atomic read
+        if (!browserRef) {
             printf("CEF: Cannot sync - no browser\n");
             return;
         }
         
         
         // Get the CEF browser's X11 window handle
-        CefWindowHandle cefWindow = browser->GetHost()->GetWindowHandle();
+        CefWindowHandle cefWindow = browserRef->GetHost()->GetWindowHandle();
         if (!cefWindow) {
             printf("CEF: No window handle available for positioning\n");
             return;
@@ -3396,7 +3450,7 @@ public:
         XFlush(display);
         
         // Also notify CEF about the resize
-        browser->GetHost()->WasResized();
+        browserRef->GetHost()->WasResized();
         
         // Check if the resize actually took effect
         XWindowAttributes newAttrs;
@@ -3474,13 +3528,21 @@ public:
     }
     
     void loadURL(const char* urlString) override {
+        OperationGuard guard;
+        if (!guard.isValid()) return;
+        
+        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
         if (browser) {
             browser->GetMainFrame()->LoadURL(CefString(urlString));
         }
     }
     
     void loadHTML(const char* htmlString) override {
-        if (browser && htmlString) {
+        OperationGuard guard;
+        if (!guard.isValid() || !htmlString) return;
+        
+        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
+        if (browser) {
             // Create a data URI for the HTML content
             std::string dataUri = "data:text/html;charset=utf-8,";
             dataUri += htmlString;
@@ -3489,27 +3551,44 @@ public:
     }
     
     void goBack() override {
+        OperationGuard guard;
+        if (!guard.isValid()) return;
+        
+        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
         if (browser) {
             browser->GoBack();
         }
     }
     
     void goForward() override {
+        OperationGuard guard;
+        if (!guard.isValid()) return;
+        
+        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
         if (browser) {
             browser->GoForward();
         }
     }
     
     void reload() override {
+        OperationGuard guard;
+        if (!guard.isValid()) return;
+        
+        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
         if (browser) {
             browser->Reload();
         }
     }
     
     void remove() override {
+        OperationGuard guard;
+        if (!guard.isValid()) return;
+        
+        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
         if (browser) {
+            // Don't nullify browser immediately - let CEF cleanup complete
             browser->GetHost()->CloseBrowser(true);
-            browser = nullptr;
+            // browser will be nullified in OnBeforeClose callback
         }
         if (widget) {
             gtk_widget_destroy(widget);
@@ -3518,26 +3597,43 @@ public:
     }
     
     bool canGoBack() override {
+        OperationGuard guard;
+        if (!guard.isValid()) return false;
+        
+        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
         return browser ? browser->CanGoBack() : false;
     }
     
     bool canGoForward() override {
+        OperationGuard guard;
+        if (!guard.isValid()) return false;
+        
+        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
         return browser ? browser->CanGoForward() : false;
     }
     
     void evaluateJavaScriptWithNoCompletion(const char* jsString) override {
-        if (!browser) {
+        OperationGuard guard;
+        if (!guard.isValid() || !jsString || strlen(jsString) == 0) {
+            if (jsString && strlen(jsString) == 0) {
+                printf("CEF: evaluateJavaScriptWithNoCompletion called with empty jsString\n");
+            }
+            return;
+        }
+        
+        // Get browser reference without holding lock for JS execution
+        CefRefPtr<CefBrowser> browserRef;
+        {
+            std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
+            browserRef = browser;
+        }
+        
+        if (!browserRef) {
             printf("CEF: evaluateJavaScriptWithNoCompletion called but browser is NULL\n");
             return;
         }
         
-        if (!jsString || strlen(jsString) == 0) {
-            printf("CEF: evaluateJavaScriptWithNoCompletion called with empty jsString\n");
-            return;
-        }
-        
-      
-        CefRefPtr<CefFrame> frame = browser->GetMainFrame();
+        CefRefPtr<CefFrame> frame = browserRef->GetMainFrame();
         if (!frame) {
             printf("CEF: evaluateJavaScriptWithNoCompletion - GetMainFrame returned NULL\n");
             return;
@@ -3566,7 +3662,10 @@ public:
     }
     
     void resize(const GdkRectangle& frame, const char* masksJson) override {
+        OperationGuard guard;
+        if (!guard.isValid()) return;
         
+        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
         if (browser) {
             
             // CEF webviews don't have GTK widgets (widget = nullptr)
@@ -4095,6 +4194,9 @@ static std::mutex g_x11WindowsMutex;
 
 // X11 event processing for OSR windows
 void processX11EventsForOSR(uint32_t windowId, CefRefPtr<ElectrobunClient> client) {
+    // Check if shutting down
+    if (g_shuttingDown.load()) return;
+    
     std::shared_ptr<X11Window> x11win;
     {
         std::lock_guard<std::mutex> lock(g_x11WindowsMutex);
@@ -4130,10 +4232,16 @@ void processX11EventsForOSR(uint32_t windowId, CefRefPtr<ElectrobunClient> clien
                 mouse_event.y = event.xbutton.y;
                 mouse_event.modifiers = 0; // TODO: Convert X11 modifiers
                 
-                // Forward to CEF
-                if (client && client->GetBrowser()) {
-                    auto browser = client->GetBrowser();
-                    auto host = browser->GetHost();
+                // Forward to CEF with proper protection
+                if (client) {
+                    CefRefPtr<CefBrowser> browser;
+                    {
+                        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
+                        browser = client->GetBrowser();
+                    }
+                    
+                    if (browser) {
+                        auto host = browser->GetHost();
                     
                     // Determine mouse button type
                     cef_mouse_button_type_t button_type = MBT_LEFT;
@@ -4150,6 +4258,7 @@ void processX11EventsForOSR(uint32_t windowId, CefRefPtr<ElectrobunClient> clien
                     if (event.type == ButtonPress) {
                         printf("CEF OSR: Click at (%d, %d)\n", event.xbutton.x, event.xbutton.y);
                     }
+                    }
                 }
                 break;
             }
@@ -4159,33 +4268,54 @@ void processX11EventsForOSR(uint32_t windowId, CefRefPtr<ElectrobunClient> clien
                 mouse_event.y = event.xmotion.y;
                 mouse_event.modifiers = 0;
                 
-                // Forward to CEF
-                if (client && client->GetBrowser()) {
-                    auto browser = client->GetBrowser();
-                    auto host = browser->GetHost();
-                    host->SendMouseMoveEvent(mouse_event, false);
+                // Forward to CEF with proper protection
+                if (client) {
+                    CefRefPtr<CefBrowser> browser;
+                    {
+                        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
+                        browser = client->GetBrowser();
+                    }
+                    
+                    if (browser) {
+                        auto host = browser->GetHost();
+                        host->SendMouseMoveEvent(mouse_event, false);
+                    }
                 }
                 break;
             }
             case FocusIn:
             case FocusOut: {
                 // Handle focus events for OSR windows
-                if (client && client->GetBrowser()) {
-                    auto browser = client->GetBrowser();
-                    auto host = browser->GetHost();
-                    host->SetFocus(event.type == FocusIn);
+                if (client) {
+                    CefRefPtr<CefBrowser> browser;
+                    {
+                        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
+                        browser = client->GetBrowser();
+                    }
+                    
+                    if (browser) {
+                        auto host = browser->GetHost();
+                        host->SetFocus(event.type == FocusIn);
+                    }
                 }
                 break;
             }
             case EnterNotify: {
                 // Focus window on mouse enter for better responsiveness
-                if (client && client->GetBrowser()) {
-                    auto browser = client->GetBrowser();
-                    auto host = browser->GetHost();
-                    host->SetFocus(true);
+                if (client) {
+                    CefRefPtr<CefBrowser> browser;
+                    {
+                        std::lock_guard<std::mutex> lock(g_cefBrowserMutex);
+                        browser = client->GetBrowser();
+                    }
                     
-                    // Also ensure the X11 window has focus
-                    XSetInputFocus(display, window, RevertToParent, CurrentTime);
+                    if (browser) {
+                        auto host = browser->GetHost();
+                        host->SetFocus(true);
+                        
+                        // Also ensure the X11 window has focus
+                        XSetInputFocus(display, window, RevertToParent, CurrentTime);
+                    }
                 }
                 break;
             }
@@ -4642,6 +4772,89 @@ dispatch_sync_main_void(Func&& func) {
 // Store for partition-specific contexts (for session storage synchronization)
 static std::map<std::string, WebKitWebContext*> g_partitionContexts;
 
+// Helper function to automatically set window icon from standard location
+static void autoSetWindowIcon(void* window) {
+    if (!window) return;
+    
+    // Standard icon location: Resources/appIcon.png
+    const char* iconPath = "Resources/appIcon.png";
+    
+    // Check if icon exists
+    struct stat buffer;
+    if (stat(iconPath, &buffer) != 0) {
+        // Icon doesn't exist, nothing to do
+        return;
+    }
+    
+    GError* error = nullptr;
+    GdkPixbuf* pixbuf = gdk_pixbuf_new_from_file(iconPath, &error);
+    
+    if (pixbuf) {
+        if (GTK_IS_WIDGET(window)) {
+            gtk_window_set_icon(GTK_WINDOW(window), pixbuf);
+        } else {
+            // For X11/CEF windows
+            X11Window* x11win = static_cast<X11Window*>(window);
+            if (x11win && x11win->display && x11win->window) {
+                setX11WindowIcon(x11win, pixbuf);
+            }
+        }
+        g_object_unref(pixbuf);
+    } else {
+        if (error) {
+            g_error_free(error);
+        }
+    }
+}
+
+// Helper function to set X11 window icon from GdkPixbuf
+static void setX11WindowIcon(X11Window* x11win, GdkPixbuf* pixbuf) {
+    if (!x11win || !x11win->display || !x11win->window || !pixbuf) return;
+    
+    // Get pixel data
+    int width = gdk_pixbuf_get_width(pixbuf);
+    int height = gdk_pixbuf_get_height(pixbuf);
+    int channels = gdk_pixbuf_get_n_channels(pixbuf);
+    guchar* pixels = gdk_pixbuf_get_pixels(pixbuf);
+    int rowstride = gdk_pixbuf_get_rowstride(pixbuf);
+    
+    // Convert to ARGB format for X11
+    std::vector<unsigned long> icon_data;
+    icon_data.push_back(width);
+    icon_data.push_back(height);
+    
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            guchar* pixel = pixels + y * rowstride + x * channels;
+            unsigned long argb = 0;
+            
+            if (channels == 4) {
+                // RGBA
+                argb = ((unsigned long)pixel[3] << 24) | // A
+                       ((unsigned long)pixel[0] << 16) | // R
+                       ((unsigned long)pixel[1] << 8)  | // G
+                       ((unsigned long)pixel[2]);        // B
+            } else if (channels == 3) {
+                // RGB (no alpha)
+                argb = (0xFFUL << 24) |                  // A (opaque)
+                       ((unsigned long)pixel[0] << 16) | // R
+                       ((unsigned long)pixel[1] << 8)  | // G
+                       ((unsigned long)pixel[2]);        // B
+            }
+            
+            icon_data.push_back(argb);
+        }
+    }
+    
+    // Set _NET_WM_ICON property
+    Atom net_wm_icon = XInternAtom(x11win->display, "_NET_WM_ICON", False);
+    XChangeProperty(x11win->display, x11win->window, net_wm_icon,
+                  XA_CARDINAL, 32, PropModeReplace,
+                  (unsigned char*)icon_data.data(), icon_data.size());
+    
+    XFlush(x11win->display);
+}
+
 // Get or create a WebKit context for a partition
 static WebKitWebContext* getContextForPartition(const char* partitionIdentifier) {
     std::string partition = partitionIdentifier ? partitionIdentifier : "";
@@ -4706,6 +4919,10 @@ void on_library_load() {
 
 // Timer callback to process CEF message loop
 gboolean cef_timer_callback(gpointer user_data) {
+    // Check if we're shutting down
+    if (g_shuttingDown.load()) {
+        return G_SOURCE_REMOVE;
+    }
 
     if (g_cefInitialized) {
         CefDoMessageLoopWork();
@@ -4720,6 +4937,8 @@ static std::map<uint32_t, std::pair<int, int>> g_lastResizeSize;
 
 // Auto-resize webviews in a specific window
 void resizeAutoSizingWebviewsInWindow(uint32_t windowId, int width, int height) {
+    OperationGuard guard;
+    if (!guard.isValid()) return;
     // Debounce rapid resize events (ignore events within 50ms of the same size)
     auto now = std::chrono::steady_clock::now();
     auto lastTime = g_lastResizeTime[windowId];
@@ -4747,25 +4966,34 @@ void resizeAutoSizingWebviewsInWindow(uint32_t windowId, int width, int height) 
     }
     
     // Find all webviews that belong to this window and have fullSize=true
+    std::vector<std::pair<uint32_t, std::shared_ptr<AbstractView>>> webviews_copy;
     {
         std::lock_guard<std::mutex> lock(g_webviewMapMutex);
+        // Create a copy of webviews to iterate safely
         for (auto& [webviewId, webview] : g_webviewMap) {
             if (webview && webview->fullSize) {
-                // Check if this webview belongs to the specified window
-                // For CEF webviews, we need to check their parent window
-                CEFWebViewImpl* cefView = dynamic_cast<CEFWebViewImpl*>(webview.get());
-                if (cefView && cefView->parentXWindow == x11WindowHandle) {
-                    // Check if the webview is already the right size to avoid infinite resize loops
-                    GdkRectangle currentBounds = webview->visualBounds;
-                    if (currentBounds.width == width && currentBounds.height == height) {
-                        continue;
-                    }
-                    
-                    
-                    // For auto-resize, typically want to fill the entire window starting from (0,0)
-                    GdkRectangle frame = { 0, 0, width, height };
-                    webview->resize(frame, "");
+                webviews_copy.push_back({webviewId, webview});
+            }
+        }
+    }
+    
+    // Process webviews outside the lock to avoid deadlock
+    for (auto& [webviewId, webview] : webviews_copy) {
+        if (webview && webview->fullSize) {
+            // Check if this webview belongs to the specified window
+            // For CEF webviews, we need to check their parent window
+            CEFWebViewImpl* cefView = dynamic_cast<CEFWebViewImpl*>(webview.get());
+            if (cefView && cefView->parentXWindow == x11WindowHandle) {
+                // Check if the webview is already the right size to avoid infinite resize loops
+                GdkRectangle currentBounds = webview->visualBounds;
+                if (currentBounds.width == width && currentBounds.height == height) {
+                    continue;
                 }
+                
+                
+                // For auto-resize, typically want to fill the entire window starting from (0,0)
+                GdkRectangle frame = { 0, 0, width, height };
+                webview->resize(frame, "");
             }
         }
     }
@@ -4773,78 +5001,98 @@ void resizeAutoSizingWebviewsInWindow(uint32_t windowId, int width, int height) 
 
 // X11 event processing function
 gboolean process_x11_events(gpointer data) {
-    // Process events for all X11 windows
-    for (auto& [windowId, x11win] : g_x11_windows) {
-        if (!x11win->display) continue;
+    OperationGuard guard;
+    if (!guard.isValid()) {
+        return G_SOURCE_REMOVE;
+    }
+    
+    // Collect windows to process with proper synchronization
+    std::vector<std::pair<uint32_t, std::shared_ptr<X11Window>>> windows_to_process;
+    
+    {
+        std::lock_guard<std::mutex> lock(g_x11WindowsMutex);
+        for (auto& [windowId, x11win] : g_x11_windows) {
+            if (x11win && x11win->display) {
+                windows_to_process.push_back({windowId, x11win});
+            }
+        }
+    }
+    
+    // Process events for all X11 windows safely
+    std::vector<uint32_t> windows_to_close;
+    
+    for (auto& [windowId, x11win] : windows_to_process) {
+        if (!x11win || !x11win->display) continue;
+        
+        // Check if we're still valid during processing
+        if (g_shuttingDown.load()) {
+            break;
+        }
         
         while (XPending(x11win->display)) {
             XEvent event;
             XNextEvent(x11win->display, &event);
             
-            // Find which window this event is for
-            auto it = g_x11_window_to_id.find(event.xany.window);
-            if (it == g_x11_window_to_id.end()) continue;
+            // Validate window still exists in maps
+            bool window_valid = false;
+            {
+                std::lock_guard<std::mutex> lock(g_x11WindowsMutex);
+                auto it = g_x11_window_to_id.find(event.xany.window);
+                if (it != g_x11_window_to_id.end() && it->second == windowId) {
+                    auto winIt = g_x11_windows.find(windowId);
+                    window_valid = (winIt != g_x11_windows.end() && winIt->second.get() == x11win.get());
+                }
+            }
             
-            uint32_t winId = it->second;
-            auto winIt = g_x11_windows.find(winId);
-            if (winIt == g_x11_windows.end()) continue;
-            
-            X11Window* targetWin = winIt->second.get();
-            
+            if (!window_valid) continue;
             
             // CRITICAL FIX: Only process events from actual main windows, not CEF child windows
             // CEF child windows should NEVER be in g_x11_window_to_id, but if they are, ignore them
-            if (event.xany.window != targetWin->window) {
+            if (event.xany.window != x11win->window) {
                 continue;
             }
             
             switch (event.type) {
                 case ClientMessage:
-                    if (event.xclient.data.l[0] == (long)XInternAtom(targetWin->display, "WM_DELETE_WINDOW", False)) {
-                        printf("DEBUG: X11 WM_DELETE_WINDOW received for window ID: %u\n", targetWin->windowId);
-                        if (targetWin->closeCallback) {
-                            printf("DEBUG: Calling close callback for X11 window ID: %u\n", targetWin->windowId);
-                            targetWin->closeCallback(targetWin->windowId);
+                    if (event.xclient.data.l[0] == (long)XInternAtom(x11win->display, "WM_DELETE_WINDOW", False)) {
+                        printf("DEBUG: X11 WM_DELETE_WINDOW received for window ID: %u\n", x11win->windowId);
+                        if (x11win->closeCallback) {
+                            printf("DEBUG: Calling close callback for X11 window ID: %u\n", x11win->windowId);
+                            x11win->closeCallback(x11win->windowId);
                         }
                         
-                        // Destroy the window after notifying Bun
-                        printf("DEBUG: Destroying X11 window ID: %u\n", targetWin->windowId);
-                        XDestroyWindow(targetWin->display, targetWin->window);
-                        XFlush(targetWin->display);
-                        
-                        // Remove from global maps
-                        g_x11_window_to_id.erase(targetWin->window);
-                        g_x11_windows.erase(targetWin->windowId);
+                        // Mark for safe cleanup after event processing
+                        windows_to_close.push_back(windowId);
                     }
                     break;
                     
                 case ConfigureNotify:
                     // Only process ConfigureNotify events for the actual main window, not CEF child windows
-                    if (event.xconfigure.window != targetWin->window) {
+                    if (event.xconfigure.window != x11win->window) {
                         break;
                     }
                     
-                    if (event.xconfigure.width != targetWin->width || event.xconfigure.height != targetWin->height ||
-                        event.xconfigure.x != targetWin->x || event.xconfigure.y != targetWin->y) {
+                    if (event.xconfigure.width != x11win->width || event.xconfigure.height != x11win->height ||
+                        event.xconfigure.x != x11win->x || event.xconfigure.y != x11win->y) {
                         
                         
-                        targetWin->x = event.xconfigure.x;
-                        targetWin->y = event.xconfigure.y;
-                        targetWin->width = event.xconfigure.width;
-                        targetWin->height = event.xconfigure.height;
+                        x11win->x = event.xconfigure.x;
+                        x11win->y = event.xconfigure.y;
+                        x11win->width = event.xconfigure.width;
+                        x11win->height = event.xconfigure.height;
                         
                         // Call move callback when position changes
-                        if (targetWin->moveCallback) {
-                            targetWin->moveCallback(targetWin->windowId, targetWin->x, targetWin->y);
+                        if (x11win->moveCallback) {
+                            x11win->moveCallback(x11win->windowId, x11win->x, x11win->y);
                         }
                         
-                        if (targetWin->resizeCallback) {
-                            targetWin->resizeCallback(targetWin->windowId, targetWin->x, targetWin->y, 
-                                                    targetWin->width, targetWin->height);
+                        if (x11win->resizeCallback) {
+                            x11win->resizeCallback(x11win->windowId, x11win->x, x11win->y, 
+                                                    x11win->width, x11win->height);
                         }
                         
                         // Auto-resize webviews in this window
-                        resizeAutoSizingWebviewsInWindow(targetWin->windowId, targetWin->width, targetWin->height);
+                        resizeAutoSizingWebviewsInWindow(x11win->windowId, x11win->width, x11win->height);
                     }
                     break;
                     
@@ -4854,10 +5102,28 @@ gboolean process_x11_events(gpointer data) {
 
                 case FocusIn:
                     // Window received focus
-                    if (targetWin->focusCallback) {
-                        targetWin->focusCallback(targetWin->windowId);
+                    if (x11win->focusCallback) {
+                        x11win->focusCallback(x11win->windowId);
                     }
                     break;
+            }
+        }
+    }
+    
+    // Safely clean up windows that requested closure
+    for (uint32_t windowId : windows_to_close) {
+        std::lock_guard<std::mutex> lock(g_x11WindowsMutex);
+        auto winIt = g_x11_windows.find(windowId);
+        if (winIt != g_x11_windows.end()) {
+            auto x11win = winIt->second;
+            if (x11win && x11win->display && x11win->window) {
+                printf("DEBUG: Destroying X11 window ID: %u\n", windowId);
+                XDestroyWindow(x11win->display, x11win->window);
+                XFlush(x11win->display);
+                
+                // Remove from global maps
+                g_x11_window_to_id.erase(x11win->window);
+                g_x11_windows.erase(windowId);
             }
         }
     }
@@ -4992,6 +5258,12 @@ void* createX11Window(uint32_t windowId, double x, double y, double width, doubl
             // Set window title
             XStoreName(display, x11_window, title);
             
+            // Set WM_CLASS for proper taskbar icon matching
+            XClassHint class_hint;
+            class_hint.res_name = (char*)"ElectrobunKitchenSink-dev";
+            class_hint.res_class = (char*)"ElectrobunKitchenSink-dev";
+            XSetClassHint(display, x11_window, &class_hint);
+            
             // Set window protocols for close button
             Atom wmDelete = XInternAtom(display, "WM_DELETE_WINDOW", False);
             XSetWMProtocols(display, x11_window, &wmDelete, 1);
@@ -5091,6 +5363,10 @@ ELECTROBUN_EXPORT void* createGTKWindow(uint32_t windowId, double x, double y, d
         GtkWidget* window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
        
         gtk_window_set_title(GTK_WINDOW(window), title);
+        
+        // Set WM_CLASS for proper taskbar icon matching
+        gtk_window_set_wmclass(GTK_WINDOW(window), "ElectrobunKitchenSink-dev", "ElectrobunKitchenSink-dev");
+        
         gtk_window_set_default_size(GTK_WINDOW(window), (int)width, (int)height);
        
         if (x >= 0 && y >= 0) {
@@ -5230,6 +5506,8 @@ void showX11Window(void* window) {
     dispatch_sync_main_void([&]() {
         X11Window* x11win = static_cast<X11Window*>(window);
         if (x11win && x11win->display && x11win->window) {
+            // Automatically set icon from standard location
+            autoSetWindowIcon(window);
             XMapWindow(x11win->display, x11win->window);
             
             // Raise the window to the front
@@ -5248,6 +5526,8 @@ void showX11Window(void* window) {
 
 void showGTKWindow(void* window) {
     dispatch_sync_main_void([&]() {
+        // Automatically set icon from standard location
+        autoSetWindowIcon(window);
         gtk_widget_show_all(GTK_WIDGET(window));
         
         // Bring the window to the front and give it focus
@@ -6663,13 +6943,24 @@ ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* channe
 }
 
 ELECTROBUN_EXPORT void killApp() {
+    // Set shutdown flag to prevent race conditions
+    g_shuttingDown.store(true);
+    printf("DEBUG: killApp called - immediate shutdown\n");
+    
     // Properly shutdown GTK and then exit
     gtk_main_quit();
     exit(0);
 }
 
 ELECTROBUN_EXPORT void shutdownApplication() {
-    // TODO: Implement graceful shutdown
+    // Set shutdown flag to prevent race conditions
+    g_shuttingDown.store(true);
+    printf("DEBUG: Application shutdown initiated\n");
+    
+    // Brief delay to allow ongoing operations to complete
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    
+    // Graceful shutdown
     gtk_main_quit();
 }
 
@@ -6681,6 +6972,25 @@ void* createNSRectWrapper(double x, double y, double width, double height) {
 
 // Helper function to clean up webviews when a window is closed
 void cleanupWebviewsForWindow(uint32_t windowId) {
+    // Check if we're shutting down to avoid cleanup races
+    if (g_shuttingDown.load()) {
+        printf("DEBUG: Skipping webview cleanup for window %u - shutting down\n", windowId);
+        return;
+    }
+    
+    // Prevent double cleanup for the same window
+    static std::set<uint32_t> s_cleaningWindows;
+    static std::mutex s_cleanupMutex;
+    
+    {
+        std::lock_guard<std::mutex> cleanup_lock(s_cleanupMutex);
+        if (s_cleaningWindows.count(windowId) > 0) {
+            printf("DEBUG: Already cleaning window %u, skipping\n", windowId);
+            return;
+        }
+        s_cleaningWindows.insert(windowId);
+    }
+    
     // Find and remove the container
     std::shared_ptr<ContainerView> container;
     {
@@ -6701,79 +7011,126 @@ void cleanupWebviewsForWindow(uint32_t windowId) {
             }
         }
     }
+    
+    // Mark cleanup as complete
+    {
+        std::lock_guard<std::mutex> cleanup_lock(s_cleanupMutex);
+        s_cleaningWindows.erase(windowId);
+    }
 }
 
 ELECTROBUN_EXPORT void closeWindow(void* window) {
-    if (window) {
-        dispatch_sync_main_void([&]() {
-            // Check if it's a GTK window first
-            if (GTK_IS_WIDGET(window)) {
-                GtkWidget* gtkWindow = static_cast<GtkWidget*>(window);
-                printf("DEBUG: closeWindow called for GTK window\n");
-                
-                // Find the container for this window to get the windowId and callback
-                uint32_t windowId = 0;
-                WindowCloseCallback closeCallback = nullptr;
-                {
-                    std::lock_guard<std::mutex> lock(g_containersMutex);
-                    for (auto& [id, container] : g_containers) {
-                        if (container->window == gtkWindow) {
-                            windowId = id;
-                            closeCallback = container->closeCallback;
-                            break;
-                        }
+    if (!window) return;
+    
+    // Check if we're shutting down
+    if (g_shuttingDown.load()) {
+        printf("DEBUG: Skipping window close %p - shutting down\n", window);
+        return;
+    }
+    
+    // Prevent double-close for the same window pointer
+    static std::set<void*> s_closingWindows;
+    static std::mutex s_closeWindowMutex;
+    
+    {
+        std::lock_guard<std::mutex> close_lock(s_closeWindowMutex);
+        if (s_closingWindows.count(window) > 0) {
+            printf("DEBUG: Already closing window %p, skipping\n", window);
+            return;
+        }
+        s_closingWindows.insert(window);
+    }
+    
+    dispatch_sync_main_void([&]() {
+        // Check if it's a GTK window first
+        if (GTK_IS_WIDGET(window)) {
+            GtkWidget* gtkWindow = static_cast<GtkWidget*>(window);
+            printf("DEBUG: closeWindow called for GTK window\n");
+            
+            // Find the container for this window to get the windowId and callback
+            uint32_t windowId = 0;
+            WindowCloseCallback closeCallback = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(g_containersMutex);
+                for (auto& [id, container] : g_containers) {
+                    if (container->window == gtkWindow) {
+                        windowId = id;
+                        closeCallback = container->closeCallback;
+                        break;
                     }
-                }
-                
-                // Clean up webviews first
-                if (windowId > 0) {
-                    cleanupWebviewsForWindow(windowId);
-                }
-                
-                // Call the close callback before destroying the window
-                if (closeCallback && windowId > 0) {
-                    printf("DEBUG: Calling close callback for GTK window ID: %u\n", windowId);
-                    closeCallback(windowId);
-                }
-                
-                printf("DEBUG: Destroying GTK window\n");
-                gtk_widget_destroy(gtkWindow);
-            } else {
-                // It's an X11 window
-                X11Window* x11win = static_cast<X11Window*>(window);
-                if (x11win && x11win->display && x11win->window) {
-                    printf("DEBUG: closeWindow called for X11 window ID: %u\n", x11win->windowId);
-                    
-                    // Store callback and window info before any cleanup
-                    auto callback = x11win->closeCallback;
-                    auto windowId = x11win->windowId;
-                    auto display = x11win->display;
-                    auto window = x11win->window;
-                    
-                    // Clean up webviews first
-                    cleanupWebviewsForWindow(windowId);
-                    
-                    // Remove from global maps first to prevent any access during callback
-                    {
-                        std::lock_guard<std::mutex> lock(g_x11WindowsMutex);
-                        g_x11_window_to_id.erase(window);
-                        g_x11_windows.erase(windowId);
-                    }
-                    
-                    // Call the close callback
-                    if (callback) {
-                        printf("DEBUG: Calling close callback for X11 window ID: %u\n", windowId);
-                        callback(windowId);
-                    }
-                    
-                    printf("DEBUG: Destroying X11 window\n");
-                    XDestroyWindow(display, window);
-                    XFlush(display);
-
-                    // Note: Don't close display here as it might be shared
                 }
             }
-        });
+            
+            // Clean up webviews first
+            if (windowId > 0) {
+                cleanupWebviewsForWindow(windowId);
+            }
+            
+            // Call the close callback before destroying the window
+            if (closeCallback && windowId > 0) {
+                printf("DEBUG: Calling close callback for GTK window ID: %u\n", windowId);
+                closeCallback(windowId);
+            }
+            
+            printf("DEBUG: Destroying GTK window\n");
+            gtk_widget_destroy(gtkWindow);
+        } else {
+            // It's an X11 window
+            X11Window* x11win = static_cast<X11Window*>(window);
+            
+            // Validate the X11 window pointer and check if it's still in our maps
+            bool window_valid = false;
+            uint32_t windowId = 0;
+            {
+                std::lock_guard<std::mutex> lock(g_x11WindowsMutex);
+                for (auto& [id, win] : g_x11_windows) {
+                    if (win.get() == x11win && x11win->display && x11win->window) {
+                        window_valid = true;
+                        windowId = id;
+                        break;
+                    }
+                }
+            }
+            
+            if (!window_valid) {
+                printf("DEBUG: X11 window %p already closed or invalid\n", window);
+            } else {
+                printf("DEBUG: closeWindow called for X11 window ID: %u\n", windowId);
+                
+                // Store callback and window info before any cleanup
+                auto callback = x11win->closeCallback;
+                auto display = x11win->display;
+                auto x11_window = x11win->window;
+                
+                // Clean up webviews first
+                cleanupWebviewsForWindow(windowId);
+                
+                // Remove from global maps first to prevent any access during callback
+                {
+                    std::lock_guard<std::mutex> lock(g_x11WindowsMutex);
+                    g_x11_window_to_id.erase(x11_window);
+                    g_x11_windows.erase(windowId);
+                }
+                
+                // Call the close callback
+                if (callback) {
+                    printf("DEBUG: Calling close callback for X11 window ID: %u\n", windowId);
+                    callback(windowId);
+                }
+                
+                printf("DEBUG: Destroying X11 window\n");
+                XDestroyWindow(display, x11_window);
+                XFlush(display);
+
+                // Note: Don't close display here as it might be shared
+            }
+        }
+    });
+    
+    // Mark close as complete
+    {
+        std::lock_guard<std::mutex> close_lock(s_closeWindowMutex);
+        s_closingWindows.erase(window);
     }
 }
 
@@ -7179,6 +7536,243 @@ ELECTROBUN_EXPORT bool isWindowAlwaysOnTop(void* window) {
         }
     });
     return result;
+}
+
+ELECTROBUN_EXPORT void setWindowPosition(void* window, double x, double y) {
+    if (!window) return;
+
+    dispatch_sync_main_void([=]() {
+        if (GTK_IS_WIDGET(window)) {
+            GtkWidget* gtkWindow = static_cast<GtkWidget*>(window);
+            if (GTK_IS_WINDOW(gtkWindow)) {
+                gtk_window_move(GTK_WINDOW(gtkWindow), (int)x, (int)y);
+            }
+        } else {
+            X11Window* x11win = static_cast<X11Window*>(window);
+            if (x11win && x11win->display && x11win->window) {
+                // Set window position, accounting for window manager
+                XMoveWindow(x11win->display, x11win->window, (int)x, (int)y);
+                
+                // Also send a ConfigureRequest event to ensure window manager compliance
+                XEvent event;
+                memset(&event, 0, sizeof(event));
+                event.xconfigure.type = ConfigureNotify;
+                event.xconfigure.window = x11win->window;
+                event.xconfigure.x = (int)x;
+                event.xconfigure.y = (int)y;
+                XSendEvent(x11win->display, x11win->window, False, StructureNotifyMask, &event);
+                
+                XFlush(x11win->display);
+            }
+        }
+    });
+}
+
+ELECTROBUN_EXPORT void setWindowSize(void* window, double width, double height) {
+    if (!window) return;
+
+    dispatch_sync_main_void([=]() {
+        if (GTK_IS_WIDGET(window)) {
+            GtkWidget* gtkWindow = static_cast<GtkWidget*>(window);
+            if (GTK_IS_WINDOW(gtkWindow)) {
+                gtk_window_resize(GTK_WINDOW(gtkWindow), (int)width, (int)height);
+            }
+        } else {
+            X11Window* x11win = static_cast<X11Window*>(window);
+            if (x11win && x11win->display && x11win->window) {
+                XResizeWindow(x11win->display, x11win->window, (unsigned int)width, (unsigned int)height);
+                XFlush(x11win->display);
+            }
+        }
+    });
+}
+
+ELECTROBUN_EXPORT void setWindowFrame(void* window, double x, double y, double width, double height) {
+    if (!window) return;
+
+    dispatch_sync_main_void([=]() {
+        if (GTK_IS_WIDGET(window)) {
+            GtkWidget* gtkWindow = static_cast<GtkWidget*>(window);
+            if (GTK_IS_WINDOW(gtkWindow)) {
+                gtk_window_move(GTK_WINDOW(gtkWindow), (int)x, (int)y);
+                gtk_window_resize(GTK_WINDOW(gtkWindow), (int)width, (int)height);
+            }
+        } else {
+            X11Window* x11win = static_cast<X11Window*>(window);
+            if (x11win && x11win->display && x11win->window) {
+                XMoveResizeWindow(x11win->display, x11win->window, (int)x, (int)y, (unsigned int)width, (unsigned int)height);
+                XFlush(x11win->display);
+            }
+        }
+    });
+}
+
+ELECTROBUN_EXPORT void getWindowFrame(void* window, double* outX, double* outY, double* outWidth, double* outHeight) {
+    if (!window) {
+        *outX = 0;
+        *outY = 0;
+        *outWidth = 0;
+        *outHeight = 0;
+        return;
+    }
+
+    dispatch_sync_main_void([&]() {
+        if (GTK_IS_WIDGET(window)) {
+            GtkWidget* gtkWindow = static_cast<GtkWidget*>(window);
+            if (GTK_IS_WINDOW(gtkWindow)) {
+                gint wx, wy, ww, wh;
+                gtk_window_get_position(GTK_WINDOW(gtkWindow), &wx, &wy);
+                gtk_window_get_size(GTK_WINDOW(gtkWindow), &ww, &wh);
+                *outX = (double)wx;
+                *outY = (double)wy;
+                *outWidth = (double)ww;
+                *outHeight = (double)wh;
+            }
+        } else {
+            X11Window* x11win = static_cast<X11Window*>(window);
+            if (x11win && x11win->display && x11win->window) {
+                XWindowAttributes attrs;
+                if (XGetWindowAttributes(x11win->display, x11win->window, &attrs)) {
+                    // Get the absolute position of the window
+                    int abs_x = 0, abs_y = 0;
+                    Window child;
+                    
+                    // Translate from window coordinates (0,0) to root window coordinates
+                    XTranslateCoordinates(x11win->display, x11win->window,
+                        DefaultRootWindow(x11win->display), 
+                        0, 0, &abs_x, &abs_y, &child);
+                    
+                    // For windows with decorations, we need to get the frame extents
+                    Atom actualType;
+                    int actualFormat;
+                    unsigned long nItems, bytesAfter;
+                    unsigned char* data = nullptr;
+                    
+                    Atom frameExtents = XInternAtom(x11win->display, "_NET_FRAME_EXTENTS", False);
+                    if (frameExtents != None) {
+                        if (XGetWindowProperty(x11win->display, x11win->window, frameExtents,
+                                             0, 4, False, XA_CARDINAL,
+                                             &actualType, &actualFormat, &nItems, &bytesAfter,
+                                             &data) == Success && data) {
+                            if (nItems == 4 && actualFormat == 32) {
+                                long* extents = (long*)data;
+                                // Adjust position by left and top frame extents
+                                abs_x -= extents[0]; // left
+                                abs_y -= extents[2]; // top
+                            }
+                            XFree(data);
+                        }
+                    }
+                    
+                    *outX = (double)abs_x;
+                    *outY = (double)abs_y;
+                    *outWidth = (double)attrs.width;
+                    *outHeight = (double)attrs.height;
+                } else {
+                    *outX = 0;
+                    *outY = 0;
+                    *outWidth = 0;
+                    *outHeight = 0;
+                }
+            }
+        }
+    });
+}
+
+ELECTROBUN_EXPORT void getWindowPosition(void* window, double* outX, double* outY) {
+    double width, height;
+    getWindowFrame(window, outX, outY, &width, &height);
+}
+
+ELECTROBUN_EXPORT void getWindowSize(void* window, double* outWidth, double* outHeight) {
+    double x, y;
+    getWindowFrame(window, &x, &y, outWidth, outHeight);
+}
+
+ELECTROBUN_EXPORT void setWindowIcon(void* window, const char* iconPath) {
+    if (!window || !iconPath) return;
+
+    dispatch_sync_main_void([=]() {
+        std::string actualPath(iconPath);
+        
+        // Handle views:// protocol
+        if (actualPath.substr(0, 8) == "views://") {
+            std::string viewPath = actualPath.substr(8);
+            
+            // Try to load from ASAR archive first if available
+            if (g_asarArchive) {
+                size_t fileSize = 0;
+                const uint8_t* fileData = asar_read_file(g_asarArchive, 
+                    ("views/" + viewPath).c_str(), &fileSize);
+                
+                if (fileData && fileSize > 0) {
+                    // Create pixbuf from memory
+                    GError* error = nullptr;
+                    GdkPixbufLoader* loader = gdk_pixbuf_loader_new();
+                    
+                    if (gdk_pixbuf_loader_write(loader, fileData, fileSize, &error)) {
+                        gdk_pixbuf_loader_close(loader, nullptr);
+                        GdkPixbuf* pixbuf = gdk_pixbuf_loader_get_pixbuf(loader);
+                        
+                        if (pixbuf) {
+                            g_object_ref(pixbuf); // Keep a reference
+                            
+                            if (GTK_IS_WIDGET(window)) {
+                                gtk_window_set_icon(GTK_WINDOW(window), pixbuf);
+                            } else {
+                                // Handle X11 window icon setting (moved to separate function)
+                                setX11WindowIcon(static_cast<X11Window*>(window), pixbuf);
+                            }
+                            
+                            g_object_unref(pixbuf);
+                        }
+                    }
+                    
+                    g_object_unref(loader);
+                    asar_free_buffer(fileData, fileSize);
+                    if (error) g_error_free(error);
+                    return;
+                }
+            }
+            
+            // Fallback to file system
+            actualPath = "Resources/app/views/" + viewPath;
+        }
+        
+        if (GTK_IS_WIDGET(window)) {
+            GtkWidget* gtkWindow = static_cast<GtkWidget*>(window);
+            if (GTK_IS_WINDOW(gtkWindow)) {
+                GError* error = nullptr;
+                
+                // Load icon from file
+                GdkPixbuf* pixbuf = gdk_pixbuf_new_from_file(actualPath.c_str(), &error);
+                if (pixbuf) {
+                    gtk_window_set_icon(GTK_WINDOW(gtkWindow), pixbuf);
+                    g_object_unref(pixbuf);
+                } else {
+                    fprintf(stderr, "Failed to load icon from %s: %s\n", actualPath.c_str(), 
+                            error ? error->message : "Unknown error");
+                    if (error) g_error_free(error);
+                }
+            }
+        } else {
+            // For X11/CEF windows
+            X11Window* x11win = static_cast<X11Window*>(window);
+            if (x11win && x11win->display && x11win->window) {
+                GError* error = nullptr;
+                GdkPixbuf* pixbuf = gdk_pixbuf_new_from_file(actualPath.c_str(), &error);
+                
+                if (pixbuf) {
+                    setX11WindowIcon(x11win, pixbuf);
+                    g_object_unref(pixbuf);
+                } else {
+                    fprintf(stderr, "Failed to load icon from %s: %s\n", actualPath.c_str(), 
+                            error ? error->message : "Unknown error");
+                    if (error) g_error_free(error);
+                }
+            }
+        }
+    });
 }
 
 /*
@@ -8171,6 +8765,23 @@ ELECTROBUN_EXPORT void sessionClearStorageData(const char* partitionIdentifier, 
 ELECTROBUN_EXPORT void setURLOpenHandler(void (*callback)(const char*)) {
     // Not supported on Linux - stub to prevent dlopen failure
     // Linux URL protocol handling is done via desktop file associations
+}
+
+// Graceful shutdown function to coordinate cleanup
+ELECTROBUN_EXPORT void shutdownNativeWrapper() {
+    printf("Starting graceful shutdown of native wrapper...\n");
+    
+    // Set shutdown flag to prevent new operations
+    g_shuttingDown.store(true);
+    
+    // CEF cleanup
+    if (g_cefInitialized) {
+        printf("Shutting down CEF...\n");
+        CefShutdown();
+        g_cefInitialized = false;
+    }
+    
+    printf("Native wrapper shutdown complete.\n");
 }
 
 }
