@@ -1,57 +1,62 @@
 /**
- * Elysia Adapter for Electrobun
+ * Elysia Integration for Electrobun
  *
- * This module provides integration between Elysia's type system and Electrobun,
- * enabling end-to-end type safety for RPC communication between Bun and webview.
+ * This module provides integration between Elysia and Electrobun,
+ * enabling type-safe communication between Bun and webview.
  *
  * ## Quick Example
  *
  * ```ts
  * // === Bun side ===
- * import { ElysiaElectrobun, t } from "electrobun/elysia";
+ * import { Elysia } from "elysia";
+ * import { electrobun, registerProcedure } from "electrobun/elysia";
  *
- * const app = new ElysiaElectrobun()
- *   .procedure("getUsers", {
- *     input: t.Object({}),
- *     handler: async () => ({ users: [{ id: 1, name: "Alice" }] }),
- *   })
- *   .procedure("createUser", {
- *     input: t.Object({ name: t.String(), email: t.String() }),
- *     handler: async ({ name, email }) => ({ success: true, id: 1 }),
- *   });
+ * // Create your Elysia app with electrobun plugin
+ * const app = new Elysia()
+ *   .use(electrobun())
+ *   .get("/users", () => [{ id: 1, name: "Alice" }])
+ *   .post("/users", ({ body }) => ({ success: true, id: 1 }));
  *
  * export type App = typeof app;
  *
- * const window = new BrowserWindow({
- *   url: "views://app",
- *   rpc: app.toRPC(),
+ * // For RPC-style procedures over encrypted WebSocket
+ * registerProcedure("getUser", async (params, ctx) => {
+ *   return { id: params.id, name: "Alice" };
  * });
  * ```
  *
  * ```tsx
  * // === Webview side ===
- * import { edenElectrobun } from "electrobun/elysia/client";
- * import type { App } from "../bun";
+ * import { createEdenClient, onMessage } from "electrobun/elysia/client";
  *
- * const api = edenElectrobun<App>(electroview);
+ * // For RPC procedures
+ * const rpc = createEdenClient<{
+ *   procedures: {
+ *     getUser: { input: { id: number }; output: { id: number; name: string } };
+ *   };
+ * }>();
  *
- * // Full type safety!
- * const { users } = await api.getUsers({});
- * const { success, id } = await api.createUser({ name: "Bob", email: "bob@example.com" });
+ * const user = await rpc.getUser({ id: 1 });
+ *
+ * // Subscribe to messages from Bun
+ * onMessage("notification", (payload) => {
+ *   console.log("Got notification:", payload);
+ * });
  * ```
  *
  * @module
  */
 
-// Server-side exports (Bun process)
-export { ElysiaElectrobun, t, type InferApp, type InferProcedureInput, type InferProcedureOutput } from "./server";
-
-// Re-export types
-export type {
-  ElectrobunAdapterConfig,
-  EdenClientOptions,
-  RPCRequest,
-  RPCResponse,
-  RPCMessage,
-  RPCPacket,
-} from "./types";
+// Re-export from core
+export {
+  electrobun,
+  Elysia,
+  t,
+  registerProcedure,
+  registerMessageHandler,
+  sendMessage,
+  broadcastMessage,
+  startServer,
+  getServerPort,
+  type InferProcedures,
+} from "../../bun/core/ElysiaRPC";

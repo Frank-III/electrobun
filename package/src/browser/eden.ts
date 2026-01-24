@@ -1,8 +1,12 @@
 /**
  * Eden-style Type-Safe Client for Electrobun
  *
- * Provides end-to-end type safety for calling procedures defined with ElysiaElectrobun.
+ * Provides end-to-end type safety for calling procedures defined with Elysia.
  * Works over encrypted WebSocket connection.
+ *
+ * For full Eden Treaty support, import from @elysiajs/eden and use the treaty client
+ * with the Electrobun server. This module provides utilities for encrypted WebSocket
+ * communication.
  */
 
 // ============================================================================
@@ -202,20 +206,27 @@ async function callProcedure<T>(
 // ============================================================================
 
 /**
- * Create a type-safe Eden client for calling Electrobun procedures.
+ * Create a type-safe client for calling Electrobun procedures.
+ *
+ * This is a simple RPC client that works over encrypted WebSocket.
+ * For full Eden Treaty support with HTTP routes, use @elysiajs/eden's treaty client.
  *
  * @example
  * ```tsx
  * import { createEdenClient, onMessage, sendMessage } from "electrobun/view";
- * import type { App } from "../bun";
  *
- * const api = createEdenClient<App>();
+ * // For RPC-style calls
+ * const rpc = createEdenClient<{
+ *   procedures: {
+ *     getUsers: { input: {}; output: { users: User[] } };
+ *     createUser: { input: { name: string }; output: { id: number; name: string } };
+ *   };
+ * }>();
  *
- * // Type-safe procedure calls!
- * const { users } = await api.getUsers({});
- * const { user } = await api.createUser({ name: "Alice" });
+ * const { users } = await rpc.getUsers({});
+ * const user = await rpc.createUser({ name: "Alice" });
  *
- * // Subscribe to messages
+ * // Subscribe to messages from Bun
  * onMessage<{ level: string }>("log", (payload) => {
  *   console.log(payload.level);
  * });
@@ -237,6 +248,22 @@ export function createEdenClient<
 
 /**
  * Subscribe to messages from the Bun process
+ *
+ * @example
+ * ```ts
+ * // Listen for specific message
+ * const unsubscribe = onMessage<{ count: number }>("update", (payload) => {
+ *   console.log("Count:", payload.count);
+ * });
+ *
+ * // Later: stop listening
+ * unsubscribe();
+ *
+ * // Listen to all messages
+ * onMessage("*", (event) => {
+ *   console.log("Message:", event.name, event.payload);
+ * });
+ * ```
  */
 export function onMessage<T = unknown>(
   name: string,
@@ -260,6 +287,11 @@ export function onMessage<T = unknown>(
 
 /**
  * Send a fire-and-forget message to the Bun process
+ *
+ * @example
+ * ```ts
+ * sendMessage("log", { level: "info", message: "Hello from webview" });
+ * ```
  */
 export function sendMessage(name: string, payload: unknown): void {
   const message: RPCMessage = {
@@ -273,12 +305,46 @@ export function sendMessage(name: string, payload: unknown): void {
   });
 }
 
+/**
+ * Get the WebSocket connection status
+ */
+export function isConnected(): boolean {
+  return socket?.readyState === WebSocket.OPEN;
+}
+
+/**
+ * Wait for the WebSocket connection to be ready
+ */
+export function waitForConnection(timeout: number = 5000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (socket?.readyState === WebSocket.OPEN) {
+      resolve();
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      reject(new Error("Connection timeout"));
+    }, timeout);
+
+    const checkConnection = () => {
+      if (socket?.readyState === WebSocket.OPEN) {
+        clearTimeout(timeoutId);
+        resolve();
+      } else {
+        setTimeout(checkConnection, 50);
+      }
+    };
+
+    checkConnection();
+  });
+}
+
 // ============================================================================
 // Type Helpers
 // ============================================================================
 
 /**
- * Type-safe client generated from ElysiaElectrobun procedures
+ * Type-safe client generated from procedure definitions
  */
 export type EdenClient<Procedures extends Record<string, { input: unknown; output: unknown }>> = {
   [K in keyof Procedures]: (

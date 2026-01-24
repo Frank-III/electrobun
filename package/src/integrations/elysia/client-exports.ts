@@ -5,24 +5,30 @@
  *
  * @example
  * ```tsx
- * import { edenElectrobun, onMessage, sendMessage } from "electrobun/elysia/client";
- * import type { App } from "../bun";
+ * import { createEdenClient, onMessage, sendMessage } from "electrobun/elysia/client";
  *
- * const api = edenElectrobun<App>(electroview);
+ * // Create type-safe client
+ * const rpc = createEdenClient<{
+ *   procedures: {
+ *     getUsers: { input: {}; output: { users: User[] } };
+ *   };
+ * }>();
  *
  * // Type-safe procedure calls
- * const result = await api.getUsers({});
+ * const result = await rpc.getUsers({});
+ *
+ * // Subscribe to messages
+ * onMessage("notification", (payload) => console.log(payload));
  * ```
  *
  * @module
  */
 
 export {
-  edenElectrobun,
+  createEdenClient,
   onMessage,
   sendMessage,
-  type EdenRPCClient,
-  type MessageClient,
-} from "./client";
-
-export type { EdenClientOptions } from "./types";
+  isConnected,
+  waitForConnection,
+  type EdenClient,
+} from "../../browser/eden";

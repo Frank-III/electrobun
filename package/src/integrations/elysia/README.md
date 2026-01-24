@@ -1,13 +1,13 @@
-# Elysia Adapter for Electrobun
+# Elysia Integration for Electrobun
 
-This adapter provides end-to-end type safety between your Bun process and webview using Elysia's TypeBox schema validation.
+This integration provides a seamless way to use [Elysia](https://elysiajs.com) with Electrobun for type-safe communication between your Bun process and webview.
 
 ## Features
 
-- **End-to-End Type Safety**: Full TypeScript inference from server procedures to client calls
-- **TypeBox Validation**: Runtime validation with automatic type inference
-- **RPC-Style API**: Familiar procedure-based pattern that matches Electrobun's design
-- **Fire-and-Forget Messages**: Bidirectional message passing support
+- **Elysia Plugin**: Use standard Elysia patterns with `.get()`, `.post()`, `.ws()` etc.
+- **Encrypted WebSocket**: Secure RPC over encrypted WebSocket
+- **Type-Safe Client**: Eden-style client for webview-side calls
+- **Message Passing**: Bidirectional message support
 
 ## Installation
 
@@ -17,156 +17,145 @@ bun add elysia
 
 ## Quick Start
 
-### 1. Define Procedures (Bun Side)
+### 1. Create Server with Elysia Plugin (Bun Side)
 
 ```typescript
 // src/bun/index.ts
+import { Elysia } from "elysia";
+import { electrobun, registerProcedure, broadcastMessage } from "electrobun/elysia";
 import { BrowserWindow } from "electrobun/bun";
-import { ElysiaElectrobun, t } from "electrobun/elysia";
 
-const app = new ElysiaElectrobun()
-  .procedure("getUsers", {
-    input: t.Object({}),
-    handler: async () => {
-      return { users: [{ id: 1, name: "Alice" }] };
-    },
-  })
-  .procedure("getUser", {
-    input: t.Object({ id: t.Number() }),
-    handler: async ({ id }) => {
-      return { user: { id, name: "Alice" } };
-    },
-  })
-  .procedure("createUser", {
-    input: t.Object({
-      name: t.String(),
-      email: t.String({ format: "email" }),
-    }),
-    handler: async ({ name, email }) => {
-      // Create user in database...
-      return { success: true, user: { id: 1, name, email } };
-    },
-  })
-  .onMessage("analytics", (payload, webviewId) => {
-    console.log(`[Analytics] webview=${webviewId}`, payload);
-  });
+// Create Elysia app with electrobun plugin
+const app = new Elysia()
+  .use(electrobun())
+  // Add your own routes - these work with Eden Treaty!
+  .get("/users", () => [{ id: 1, name: "Alice" }])
+  .post("/users", ({ body }) => ({ success: true, id: 1 }))
+  .get("/users/:id", ({ params }) => ({ id: params.id, name: "Alice" }));
 
-// Export the type for the webview to use
-export type App = typeof app;
+// For encrypted WebSocket RPC, register procedures
+registerProcedure("getData", async (params, ctx) => {
+  console.log(`Request from webview ${ctx.webviewId}`);
+  return { data: "Hello from Bun!" };
+});
 
-// Create window with the RPC
+// Create your window
 const window = new BrowserWindow({
   url: "views://app",
-  rpc: app.toRPC(),
 });
+
+// Send messages to webviews
+broadcastMessage("notification", { message: "Hello!" });
+
+export type App = typeof app;
 ```
 
-### 2. Use the Type-Safe Client (Webview Side)
+### 2. Use Type-Safe Client (Webview Side)
 
 ```tsx
 // src/mainview/App.tsx
-import Electrobun, { Electroview } from "electrobun/view";
-import { edenElectrobun, sendMessage, onMessage } from "electrobun/elysia/client";
-import type { App } from "../bun/index";
+import { createEdenClient, onMessage, sendMessage } from "electrobun/elysia/client";
 
-// Set up the RPC
-const rpc = Electroview.defineRPC<any>({
-  handlers: { requests: {}, messages: {} },
-});
-const electroview = new Electrobun.Electroview({ rpc });
+// Create RPC client for encrypted WebSocket procedures
+const rpc = createEdenClient<{
+  procedures: {
+    getData: { input: {}; output: { data: string } };
+  };
+}>();
 
-// Create the type-safe client
-const api = edenElectrobun<App>(electroview);
-
-// Now you have full type safety!
-async function loadData() {
-  // Hover over these in your IDE - types are inferred!
-  const { users } = await api.getUsers({});
-  const { user } = await api.getUser({ id: 1 });
-  const result = await api.createUser({
-    name: "Bob",
-    email: "bob@example.com"
-  });
-
-  // Send analytics event
-  sendMessage("analytics", { event: "page_load" });
+// Call procedures - fully type-safe!
+async function fetchData() {
+  const result = await rpc.getData({});
+  console.log(result.data); // "Hello from Bun!"
 }
 
 // Subscribe to messages from Bun
-onMessage<{ level: string; message: string }>("log", (payload) => {
-  console.log(`[${payload.level}] ${payload.message}`);
+onMessage<{ message: string }>("notification", (payload) => {
+  console.log("Got notification:", payload.message);
 });
+
+// Send messages to Bun
+sendMessage("analytics", { event: "page_load" });
 ```
 
 ## API Reference
 
 ### Server Side (`electrobun/elysia`)
 
-#### `ElysiaElectrobun`
+#### `electrobun()`
+
+Elysia plugin that adds internal Electrobun routes.
 
 ```typescript
-const app = new ElysiaElectrobun({
-  maxRequestTime: 60000, // Request timeout in ms (default: 60000)
+import { Elysia } from "elysia";
+import { electrobun } from "electrobun/elysia";
+
+const app = new Elysia()
+  .use(electrobun())
+  .get("/your-route", () => ({ ... }));
+```
+
+#### `registerProcedure(name, handler)`
+
+Register an RPC procedure for encrypted WebSocket calls.
+
+```typescript
+import { registerProcedure } from "electrobun/elysia";
+
+registerProcedure("methodName", async (params, ctx) => {
+  // ctx.webviewId - the calling webview's ID
+  return { result: "..." };
 });
 ```
 
-#### `.procedure(name, definition)`
+#### `registerMessageHandler(name, handler)`
 
-Define a typed procedure (RPC method).
+Handle fire-and-forget messages from webviews.
 
 ```typescript
-app.procedure("methodName", {
-  input: t.Object({ ... }),  // TypeBox schema for input
-  handler: async (params, ctx) => {
-    // params is typed based on input schema
-    // ctx.webviewId is the calling webview's ID
-    return { ... };  // Return type is inferred
-  },
+import { registerMessageHandler } from "electrobun/elysia";
+
+registerMessageHandler("analytics", (payload, webviewId) => {
+  console.log(`Event from webview ${webviewId}:`, payload);
 });
 ```
 
-#### `.onMessage(name, handler)`
+#### `sendMessage(webviewId, name, payload)`
 
-Register a message handler for fire-and-forget messages.
+Send a message to a specific webview.
 
 ```typescript
-app.onMessage("eventName", (payload, webviewId) => {
-  console.log(payload);
-});
+import { sendMessage } from "electrobun/elysia";
+
+sendMessage(webviewId, "notification", { text: "Hello!" });
 ```
 
-#### `.toRPC()`
+#### `broadcastMessage(name, payload)`
 
-Convert the app to an Electrobun RPC handler.
+Send a message to all connected webviews.
 
 ```typescript
-const window = new BrowserWindow({
-  url: "views://app",
-  rpc: app.toRPC(),
-});
+import { broadcastMessage } from "electrobun/elysia";
+
+broadcastMessage("update", { version: "1.0.1" });
 ```
 
 ### Client Side (`electrobun/elysia/client`)
 
-#### `edenElectrobun<App>(electroview, options?)`
+#### `createEdenClient<App>(options?)`
 
-Create a type-safe client.
-
-```typescript
-const api = edenElectrobun<App>(electroview, {
-  timeout: 60000, // Request timeout in ms
-});
-
-// Call procedures
-const result = await api.procedureName(params);
-```
-
-#### `sendMessage(name, payload)`
-
-Send a fire-and-forget message to Bun.
+Create a type-safe RPC client for encrypted WebSocket procedures.
 
 ```typescript
-sendMessage("analytics", { event: "click" });
+import { createEdenClient } from "electrobun/elysia/client";
+
+const rpc = createEdenClient<{
+  procedures: {
+    getData: { input: { id: number }; output: { data: string } };
+  };
+}>({ timeout: 60000 });
+
+const result = await rpc.getData({ id: 1 });
 ```
 
 #### `onMessage<T>(name, handler)`
@@ -174,105 +163,79 @@ sendMessage("analytics", { event: "click" });
 Subscribe to messages from Bun.
 
 ```typescript
-const unsubscribe = onMessage<{ level: string }>("log", (payload) => {
-  console.log(payload.level);
+import { onMessage } from "electrobun/elysia/client";
+
+const unsubscribe = onMessage<{ count: number }>("update", (payload) => {
+  console.log("Count:", payload.count);
 });
 
-// Later: unsubscribe();
+// Later: stop listening
+unsubscribe();
 ```
 
-## TypeBox Schema Examples
+#### `sendMessage(name, payload)`
+
+Send a fire-and-forget message to Bun.
 
 ```typescript
-import { t } from "electrobun/elysia";
+import { sendMessage } from "electrobun/elysia/client";
 
-// Basic types
-t.String()
-t.Number()
-t.Boolean()
-t.Null()
-
-// Objects
-t.Object({
-  name: t.String(),
-  age: t.Number(),
-  email: t.Optional(t.String()),
-})
-
-// Arrays
-t.Array(t.String())
-t.Array(t.Object({ id: t.Number() }))
-
-// Unions
-t.Union([
-  t.Object({ ok: t.Literal(true), data: t.String() }),
-  t.Object({ ok: t.Literal(false), error: t.String() }),
-])
-
-// With validation
-t.String({ minLength: 1, maxLength: 100 })
-t.Number({ minimum: 0, maximum: 100 })
-t.String({ format: "email" })
+sendMessage("log", { level: "info", message: "User clicked button" });
 ```
 
-## Comparison with Default Electrobun RPC
+#### `isConnected()`
 
-| Feature | Default `BrowserView.defineRPC` | `ElysiaElectrobun` |
-|---------|--------------------------------|-------------------|
-| Type Safety | Manual `RPCSchema` definition | Automatic inference |
-| Runtime Validation | Manual | TypeBox built-in |
-| API Style | `rpc.request.methodName(params)` | `api.methodName(params)` |
-| Schema Definition | Separate type definition | Inline with handlers |
-
-### When to Use Each
-
-**Use `ElysiaElectrobun` when:**
-- Starting a new project
-- You want TypeBox validation
-- You prefer co-located types and handlers
-- You want simpler client-side code
-
-**Use default `BrowserView.defineRPC` when:**
-- Existing codebase uses it
-- You need maximum control over the RPC schema
-- You prefer explicit type definitions
-
-## Migration from Default RPC
-
-If you have an existing app using `BrowserView.defineRPC`, you can migrate gradually:
+Check if the WebSocket connection is open.
 
 ```typescript
-// Before (default RPC)
-type MyRPC = {
-  bun: RPCSchema<{
-    requests: {
-      getUsers: {
-        params: {};
-        response: { users: User[] };
-      };
-    };
-    messages: {};
-  }>;
-  webview: RPCSchema<{ requests: {}; messages: {} }>;
-};
+import { isConnected } from "electrobun/elysia/client";
 
-const rpc = BrowserView.defineRPC<MyRPC>({
-  handlers: {
-    requests: {
-      getUsers: async () => ({ users: [...] }),
-    },
-  },
-});
+if (isConnected()) {
+  // Safe to send messages
+}
+```
 
-// After (Elysia adapter)
-const app = new ElysiaElectrobun()
-  .procedure("getUsers", {
-    input: t.Object({}),
-    handler: async () => ({ users: [...] }),
-  });
+#### `waitForConnection(timeout?)`
+
+Wait for the WebSocket connection to be ready.
+
+```typescript
+import { waitForConnection } from "electrobun/elysia/client";
+
+await waitForConnection(5000);
+// Connection is now ready
+```
+
+## Using with Eden Treaty
+
+For HTTP-style routes, you can use Elysia's Eden Treaty directly:
+
+```typescript
+// Server
+const app = new Elysia()
+  .use(electrobun())
+  .get("/api/users", () => [{ id: 1, name: "Alice" }])
+  .post("/api/users", ({ body }) => ({ id: 2, ...body }));
 
 export type App = typeof app;
 ```
+
+```typescript
+// Client (if using fetch to localhost)
+import { treaty } from "@elysiajs/eden";
+import type { App } from "../bun";
+
+const api = treaty<App>("localhost:50000");
+const { data } = await api.api.users.get();
+```
+
+## Internal Routes
+
+The electrobun plugin adds these internal routes:
+
+- `/_electrobun/health` - Health check endpoint
+- `/_electrobun/info` - Get info about connected webviews
+- `/socket` - Encrypted WebSocket for RPC
 
 ## License
 

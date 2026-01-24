@@ -23,6 +23,8 @@ import {
   createEdenClient,
   onMessage,
   sendMessage,
+  isConnected,
+  waitForConnection,
   type EdenClient,
 } from "./eden";
 
@@ -423,8 +425,8 @@ class Electroview<T> {
 // Legacy exports for backward compatibility
 export { type RPCSchema, createRPC, Electroview };
 
-// New Eden-style exports
-export { createEdenClient, onMessage, sendMessage, type EdenClient };
+// Eden-style exports
+export { createEdenClient, onMessage, sendMessage, isConnected, waitForConnection, type EdenClient };
 
 const Electrobun = {
   Electroview,

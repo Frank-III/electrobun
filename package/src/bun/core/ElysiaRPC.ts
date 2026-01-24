@@ -1,11 +1,11 @@
 /**
- * Elysia-based RPC Server for Electrobun
+ * Electrobun Elysia Server
  *
- * Replaces rpc-anywhere with Elysia's WebSocket support while maintaining
- * the existing AES-256-GCM encryption layer for secure IPC.
+ * Provides a base Elysia app with internal Electrobun routes.
+ * Users can extend this with their own routes using standard Elysia patterns.
  */
 
-import { Elysia, t, type Static } from "elysia";
+import { Elysia, t } from "elysia";
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 import { BrowserView } from "./BrowserView";
 
@@ -13,7 +13,7 @@ import { BrowserView } from "./BrowserView";
 export { t };
 
 // ============================================================================
-// Encryption Layer (kept from original Socket.ts)
+// Encryption Layer
 // ============================================================================
 
 function base64ToUint8Array(base64: string): Uint8Array {
@@ -51,15 +51,14 @@ export function decrypt(
 }
 
 // ============================================================================
-// Types
+// Socket Management
 // ============================================================================
 
-/** Encrypted packet format */
-export const EncryptedPacket = t.Object({
-  encryptedData: t.String(),
-  iv: t.String(),
-  tag: t.String(),
-});
+export const socketMap: Map<number, WebSocket> = new Map();
+
+// ============================================================================
+// Internal Message Types
+// ============================================================================
 
 /** RPC Request format (inside encrypted payload) */
 export interface RPCRequest {
@@ -86,108 +85,59 @@ export interface RPCMessage {
 
 export type RPCPacket = RPCRequest | RPCResponse | RPCMessage;
 
-/** WebSocket connection data */
-interface WSData {
-  webviewId: number;
-}
-
 // ============================================================================
-// Socket Management
+// Procedure & Message Registry
 // ============================================================================
 
-export const socketMap: Map<number, WebSocket> = new Map();
-
-// ============================================================================
-// Elysia RPC Server
-// ============================================================================
-
-let rpcServerInstance: ReturnType<typeof createElysiaRPCServer> | null = null;
-let rpcServerPort: number = 0;
-
-interface ProcedureDefinition {
+interface ProcedureHandler {
   handler: (params: unknown, ctx: { webviewId: number }) => unknown | Promise<unknown>;
 }
 
-const globalProcedures: Map<string, ProcedureDefinition> = new Map();
-const globalMessageHandlers: Map<string, (payload: unknown, webviewId: number) => void> = new Map();
+const procedures: Map<string, ProcedureHandler> = new Map();
+const messageHandlers: Map<string, Set<(payload: unknown, webviewId: number) => void>> = new Map();
 
 /**
- * Create the Elysia WebSocket server for RPC
+ * Register a procedure handler
  */
-function createElysiaRPCServer(port: number) {
-  const app = new Elysia()
-    .ws("/socket", {
-      query: t.Object({
-        webviewId: t.String(),
-      }),
-      body: t.String(), // Encrypted JSON string
-
-      open(ws) {
-        const webviewId = parseInt(ws.data.query.webviewId, 10);
-        if (!isNaN(webviewId)) {
-          socketMap.set(webviewId, ws.raw);
-          console.log(`[Elysia RPC] WebSocket opened for webview ${webviewId}`);
-        }
-      },
-
-      close(ws) {
-        const webviewId = parseInt(ws.data.query.webviewId, 10);
-        if (!isNaN(webviewId)) {
-          socketMap.delete(webviewId);
-          console.log(`[Elysia RPC] WebSocket closed for webview ${webviewId}`);
-        }
-      },
-
-      async message(ws, encryptedMessage) {
-        const webviewId = parseInt(ws.data.query.webviewId, 10);
-        if (isNaN(webviewId)) return;
-
-        const browserView = BrowserView.getById(webviewId);
-        if (!browserView) {
-          console.error(`[Elysia RPC] No BrowserView found for webview ${webviewId}`);
-          return;
-        }
-
-        try {
-          // Parse encrypted packet
-          const encryptedPacket = JSON.parse(encryptedMessage as string);
-
-          // Decrypt
-          const decrypted = decrypt(
-            browserView.secretKey,
-            base64ToUint8Array(encryptedPacket.encryptedData),
-            base64ToUint8Array(encryptedPacket.iv),
-            base64ToUint8Array(encryptedPacket.tag)
-          );
-
-          const packet: RPCPacket = JSON.parse(decrypted);
-
-          // Route based on packet type
-          if (packet.type === "request") {
-            await handleRequest(ws, browserView, packet);
-          } else if (packet.type === "message") {
-            handleMessage(packet, webviewId);
-          }
-        } catch (error) {
-          console.error("[Elysia RPC] Error handling message:", error);
-        }
-      },
-    })
-    .listen(port);
-
-  console.log(`[Elysia RPC] Server started on port ${port}`);
-  return app;
+export function registerProcedure(
+  name: string,
+  handler: (params: unknown, ctx: { webviewId: number }) => unknown | Promise<unknown>
+) {
+  procedures.set(name, { handler });
 }
 
 /**
- * Handle an RPC request
+ * Register a message handler
  */
+export function registerMessageHandler(
+  name: string,
+  handler: (payload: unknown, webviewId: number) => void
+): () => void {
+  if (!messageHandlers.has(name)) {
+    messageHandlers.set(name, new Set());
+  }
+  const handlers = messageHandlers.get(name)!;
+  handlers.add(handler);
+
+  // Return unsubscribe function
+  return () => {
+    handlers.delete(handler);
+    if (handlers.size === 0) {
+      messageHandlers.delete(name);
+    }
+  };
+}
+
+// ============================================================================
+// Packet Handling
+// ============================================================================
+
 async function handleRequest(
   ws: any,
   browserView: BrowserView<any>,
   request: RPCRequest
 ) {
-  const procedure = globalProcedures.get(request.method);
+  const procedure = procedures.get(request.method);
 
   let response: RPCResponse;
 
@@ -216,36 +166,37 @@ async function handleRequest(
     }
   }
 
-  // Encrypt and send response
   sendToWebview(browserView, response);
 }
 
-/**
- * Handle a fire-and-forget message
- */
 function handleMessage(message: RPCMessage, webviewId: number) {
-  const handler = globalMessageHandlers.get(message.name);
-  if (handler) {
-    try {
-      handler(message.payload, webviewId);
-    } catch (error) {
-      console.error(`[Elysia RPC] Message handler error for "${message.name}":`, error);
+  // Call specific handlers
+  const handlers = messageHandlers.get(message.name);
+  if (handlers) {
+    for (const handler of handlers) {
+      try {
+        handler(message.payload, webviewId);
+      } catch (error) {
+        console.error(`[Electrobun] Message handler error for "${message.name}":`, error);
+      }
     }
   }
 
-  // Also call wildcard handler if registered
-  const wildcardHandler = globalMessageHandlers.get("*");
-  if (wildcardHandler) {
-    try {
-      wildcardHandler({ name: message.name, payload: message.payload }, webviewId);
-    } catch (error) {
-      console.error("[Elysia RPC] Wildcard message handler error:", error);
+  // Call wildcard handlers
+  const wildcardHandlers = messageHandlers.get("*");
+  if (wildcardHandlers) {
+    for (const handler of wildcardHandlers) {
+      try {
+        handler({ name: message.name, payload: message.payload }, webviewId);
+      } catch (error) {
+        console.error("[Electrobun] Wildcard message handler error:", error);
+      }
     }
   }
 }
 
 /**
- * Send an encrypted message to a webview
+ * Send an encrypted packet to a webview
  */
 export function sendToWebview(browserView: BrowserView<any>, packet: RPCPacket): boolean {
   const socket = socketMap.get(browserView.id);
@@ -264,7 +215,7 @@ export function sendToWebview(browserView: BrowserView<any>, packet: RPCPacket):
       socket.send(JSON.stringify(encryptedPacket));
       return true;
     } catch (error) {
-      console.error("[Elysia RPC] Error sending to webview:", error);
+      console.error("[Electrobun] Error sending to webview:", error);
     }
   }
 
@@ -272,17 +223,152 @@ export function sendToWebview(browserView: BrowserView<any>, packet: RPCPacket):
 }
 
 /**
- * Start the RPC server (finds an available port)
+ * Send a message to a specific webview
  */
-export function startRPCServer(): { port: number } {
+export function sendMessage(webviewId: number, name: string, payload: unknown): boolean {
+  const browserView = BrowserView.getById(webviewId);
+  if (!browserView) {
+    console.error(`[Electrobun] No BrowserView found for webview ${webviewId}`);
+    return false;
+  }
+
+  const packet: RPCMessage = {
+    type: "message",
+    name,
+    payload,
+  };
+
+  return sendToWebview(browserView, packet);
+}
+
+/**
+ * Broadcast a message to all connected webviews
+ */
+export function broadcastMessage(name: string, payload: unknown): void {
+  for (const browserView of BrowserView.getAll()) {
+    sendMessage(browserView.id, name, payload);
+  }
+}
+
+// ============================================================================
+// Electrobun Elysia Plugin
+// ============================================================================
+
+/**
+ * Create the Electrobun Elysia plugin with internal routes.
+ *
+ * This provides:
+ * - WebSocket endpoint at /socket for encrypted RPC
+ * - Internal routes under /_electrobun/* for system operations
+ *
+ * @example
+ * ```ts
+ * import { Elysia } from "elysia";
+ * import { electrobun } from "electrobun/bun";
+ *
+ * const app = new Elysia()
+ *   .use(electrobun())
+ *   .get("/users", () => ({ users: [] }))
+ *   .post("/users", ({ body }) => ({ id: 1, ...body }))
+ *   .listen(0);
+ *
+ * export type App = typeof app;
+ * ```
+ */
+export function electrobun() {
+  return new Elysia({ name: "electrobun" })
+    // Internal WebSocket for encrypted RPC
+    .ws("/socket", {
+      query: t.Object({
+        webviewId: t.String(),
+      }),
+
+      open(ws) {
+        const webviewId = parseInt(ws.data.query.webviewId, 10);
+        if (!isNaN(webviewId)) {
+          socketMap.set(webviewId, ws.raw);
+          console.log(`[Electrobun] WebSocket opened for webview ${webviewId}`);
+        }
+      },
+
+      close(ws) {
+        const webviewId = parseInt(ws.data.query.webviewId, 10);
+        if (!isNaN(webviewId)) {
+          socketMap.delete(webviewId);
+          console.log(`[Electrobun] WebSocket closed for webview ${webviewId}`);
+        }
+      },
+
+      async message(ws, encryptedMessage) {
+        const webviewId = parseInt(ws.data.query.webviewId, 10);
+        if (isNaN(webviewId)) return;
+
+        const browserView = BrowserView.getById(webviewId);
+        if (!browserView) {
+          console.error(`[Electrobun] No BrowserView found for webview ${webviewId}`);
+          return;
+        }
+
+        try {
+          const encryptedPacket = JSON.parse(encryptedMessage as string);
+
+          const decrypted = decrypt(
+            browserView.secretKey,
+            base64ToUint8Array(encryptedPacket.encryptedData),
+            base64ToUint8Array(encryptedPacket.iv),
+            base64ToUint8Array(encryptedPacket.tag)
+          );
+
+          const packet: RPCPacket = JSON.parse(decrypted);
+
+          if (packet.type === "request") {
+            await handleRequest(ws, browserView, packet);
+          } else if (packet.type === "message") {
+            handleMessage(packet, webviewId);
+          }
+        } catch (error) {
+          console.error("[Electrobun] Error handling message:", error);
+        }
+      },
+    })
+
+    // Internal system routes
+    .group("/_electrobun", (app) =>
+      app
+        .get("/health", () => ({ status: "ok" }))
+        .get("/info", () => ({
+          webviews: BrowserView.getAll().map((v) => ({
+            id: v.id,
+            url: v.url,
+            connected: socketMap.has(v.id),
+          })),
+        }))
+    );
+}
+
+// ============================================================================
+// Server Management
+// ============================================================================
+
+let serverInstance: ReturnType<typeof Elysia.prototype.listen> | null = null;
+let serverPort: number = 0;
+
+/**
+ * Start the Electrobun server
+ */
+export function startServer(userApp?: Elysia<any, any, any, any, any, any, any, any>): { port: number; app: Elysia } {
   const startPort = 50000;
   const endPort = 65535;
 
+  const baseApp = new Elysia().use(electrobun());
+  const app = userApp ? baseApp.use(userApp) : baseApp;
+
   for (let port = startPort; port <= endPort; port++) {
     try {
-      rpcServerInstance = createElysiaRPCServer(port);
-      rpcServerPort = port;
-      return { port };
+      serverInstance = app.listen(port);
+      serverPort = port;
+      console.log(`[Electrobun] Server started on port ${port}`);
+      return { port, app };
     } catch (error: any) {
       if (error.code === "EADDRINUSE") {
         continue;
@@ -291,135 +377,30 @@ export function startRPCServer(): { port: number } {
     }
   }
 
-  throw new Error("No available ports for RPC server");
+  throw new Error("No available ports for Electrobun server");
 }
 
 /**
- * Get the RPC server port
+ * Get the server port
  */
-export function getRPCPort(): number {
-  return rpcServerPort;
+export function getServerPort(): number {
+  return serverPort;
 }
 
 // ============================================================================
-// ElysiaElectrobun - The main API for defining procedures
+// Type Helpers for Eden Treaty
 // ============================================================================
 
 /**
- * Define type-safe RPC procedures using Elysia's type system.
- *
- * @example
- * ```ts
- * import { ElysiaElectrobun, t } from "electrobun/bun";
- *
- * const app = new ElysiaElectrobun()
- *   .procedure("getUsers", {
- *     input: t.Object({}),
- *     handler: async () => ({ users: [] }),
- *   })
- *   .procedure("createUser", {
- *     input: t.Object({ name: t.String() }),
- *     handler: async ({ name }) => ({ id: 1, name }),
- *   });
- *
- * export type App = typeof app;
- * ```
+ * Helper type to extract procedures from an Elysia app for Eden client
  */
-export class ElysiaElectrobun<
-  Procedures extends Record<string, { input: unknown; output: unknown }> = {},
-  Messages extends Record<string, unknown> = {},
-> {
-  private _procedures: Map<string, ProcedureDefinition> = new Map();
-  private _messageHandlers: Map<string, (payload: unknown, webviewId: number) => void> = new Map();
+export type InferProcedures<T> = T extends Elysia<any, any, any, any, any, infer Routes, any, any>
+  ? Routes
+  : never;
 
-  constructor() {
-    // Ensure RPC server is started
-    if (!rpcServerInstance) {
-      startRPCServer();
-    }
-  }
+// Keep backward compatibility exports
+export { Elysia };
 
-  /**
-   * Define a typed procedure
-   */
-  procedure<
-    TName extends string,
-    TInput,
-    TOutput,
-  >(
-    name: TName,
-    definition: {
-      input?: TInput;
-      handler: (
-        params: TInput extends { static: infer S } ? S : TInput,
-        ctx: { webviewId: number }
-      ) => TOutput | Promise<TOutput>;
-    }
-  ): ElysiaElectrobun<
-    Procedures & { [K in TName]: { input: TInput; output: TOutput } },
-    Messages
-  > {
-    const procedureDef: ProcedureDefinition = {
-      handler: definition.handler as (params: unknown, ctx: { webviewId: number }) => unknown,
-    };
-
-    this._procedures.set(name, procedureDef);
-    globalProcedures.set(name, procedureDef);
-
-    return this as any;
-  }
-
-  /**
-   * Register a message handler
-   */
-  onMessage<TName extends string, TPayload = unknown>(
-    name: TName,
-    handler: (payload: TPayload, webviewId: number) => void
-  ): ElysiaElectrobun<Procedures, Messages & { [K in TName]: TPayload }> {
-    this._messageHandlers.set(name, handler as (payload: unknown, webviewId: number) => void);
-    globalMessageHandlers.set(name, handler as (payload: unknown, webviewId: number) => void);
-    return this as any;
-  }
-
-  /**
-   * Get the RPC port for this app
-   */
-  get port(): number {
-    return rpcServerPort;
-  }
-
-  /**
-   * Create a sender for a specific webview
-   */
-  createSender(webviewId: number) {
-    const browserView = BrowserView.getById(webviewId);
-    if (!browserView) {
-      throw new Error(`No BrowserView found for webview ${webviewId}`);
-    }
-
-    return {
-      send: (name: string, payload: unknown) => {
-        const packet: RPCMessage = {
-          type: "message",
-          name,
-          payload,
-        };
-        sendToWebview(browserView, packet);
-      },
-    };
-  }
-}
-
-// ============================================================================
-// Type Helpers
-// ============================================================================
-
-export type InferProcedures<T extends ElysiaElectrobun<any, any>> =
-  T extends ElysiaElectrobun<infer P, any> ? P : never;
-
-export type InferMessages<T extends ElysiaElectrobun<any, any>> =
-  T extends ElysiaElectrobun<any, infer M> ? M : never;
-
-// Auto-start the server on import
-const { port: _rpcPort } = startRPCServer();
-export const rpcPort = _rpcPort;
+// Auto-start basic server for backward compatibility with existing code
+const { port: _serverPort } = startServer();
+export const rpcPort = _serverPort;
