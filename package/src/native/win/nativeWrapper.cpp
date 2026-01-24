@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <shellapi.h>
 #include <commctrl.h>
+#include <mutex>
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/base.h>
 #include <shobjidl.h>  // For IFileOpenDialog
@@ -36,6 +37,12 @@
 
 // Shared cross-platform utilities
 #include "../shared/glob_match.h"
+#include "../shared/callbacks.h"
+#include "../shared/permissions.h"
+#include "../shared/mime_types.h"
+#include "../shared/config.h"
+
+using namespace electrobun;
 
 // Simple ASAR reader implementation for Windows (no external dependency)
 #include <fstream>
@@ -266,8 +273,9 @@ private:
     }
 };
 
-// Global ASAR archive handle (lazy-loaded)
+// Global ASAR archive handle (lazy-loaded) with thread-safe initialization
 static AsarArchive* g_asarArchive = nullptr;
+static std::once_flag g_asarArchiveInitFlag;
 
 // Export ASAR functions for launcher to use (compatible with libasar.dll API)
 extern "C" __declspec(dllexport) void* asar_open(const char* path) {
@@ -361,20 +369,12 @@ ELECTROBUN_EXPORT bool isCEFAvailable();
 // Type definitions to match macOS types
 typedef double CGFloat;
 
-// Function pointer type definitions
-typedef uint32_t (*DecideNavigationCallback)(uint32_t webviewId, const char* url);
-typedef void (*WebviewEventHandler)(uint32_t webviewId, const char* type, const char* url);
-typedef BOOL (*HandlePostMessage)(uint32_t webviewId, const char* message);
-typedef const char* (*HandlePostMessageWithReply)(uint32_t webviewId, const char* message);
+// Function pointer type definitions are in shared/callbacks.h
+// Platform-specific aliases
+typedef BOOL (*HandlePostMessageWin)(uint32_t webviewId, const char* message);
 typedef void (*callAsyncJavascriptCompletionHandler)(const char *messageId, uint32_t webviewId, uint32_t hostWebviewId, const char *responseJSON);
-typedef void (*WindowCloseHandler)(uint32_t windowId);
-typedef void (*WindowMoveHandler)(uint32_t windowId, double x, double y);
-typedef void (*WindowResizeHandler)(uint32_t windowId, double x, double y, double width, double height);
-typedef void (*WindowFocusHandler)(uint32_t windowId);
-typedef void (*ZigStatusItemHandler)(uint32_t trayId, const char *action);
-typedef void (*zigSnapshotCallback)(uint32_t hostId, uint32_t webviewId, const char * dataUrl);
-typedef const char* (*GetMimeType)(const char* filePath);
-typedef const char* (*GetHTMLForWebviewSync)(uint32_t webviewId);
+typedef SnapshotCallback zigSnapshotCallback;
+typedef StatusItemHandler ZigStatusItemHandler;
 
 // Global map to store container views by window handle
 static std::map<HWND, std::unique_ptr<ContainerView>> g_containerViews;
@@ -428,74 +428,8 @@ static std::map<HWND, std::string> g_pendingUrls;
 static ComPtr<ICoreWebView2Controller> g_controller;
 static ComPtr<ICoreWebView2> g_webview;
 
-// Permission cache for user media requests
-enum class PermissionType {
-    USER_MEDIA,
-    GEOLOCATION,
-    NOTIFICATIONS,
-    OTHER
-};
+// Permission cache types and functions are in shared/permissions.h
 
-enum class PermissionStatus {
-    UNKNOWN,
-    ALLOWED,
-    DENIED
-};
-
-struct PermissionCacheEntry {
-    PermissionStatus status;
-    std::chrono::system_clock::time_point expiry;
-};
-
-static std::map<std::pair<std::string, PermissionType>, PermissionCacheEntry> g_permissionCache;
-
-// Helper functions for permission management
-std::string getOriginFromUrl(const std::string& url) {
-    // For views:// scheme, use a constant origin since these are local files
-    if (url.find("views://") == 0) {
-        return "views://";
-    }
-    
-    // For other schemes, extract origin from URL
-    size_t protocolEnd = url.find("://");
-    if (protocolEnd == std::string::npos) return url;
-    
-    size_t domainStart = protocolEnd + 3;
-    size_t pathStart = url.find('/', domainStart);
-    
-    if (pathStart == std::string::npos) {
-        return url;
-    }
-    
-    return url.substr(0, pathStart);
-}
-
-PermissionStatus getPermissionFromCache(const std::string& origin, PermissionType type) {
-    auto key = std::make_pair(origin, type);
-    auto it = g_permissionCache.find(key);
-    
-    if (it != g_permissionCache.end()) {
-        // Check if permission hasn't expired
-        auto now = std::chrono::system_clock::now();
-        if (now < it->second.expiry) {
-            return it->second.status;
-        } else {
-            // Permission expired, remove from cache
-            g_permissionCache.erase(it);
-        }
-    }
-    
-    return PermissionStatus::UNKNOWN;
-}
-
-void cachePermission(const std::string& origin, PermissionType type, PermissionStatus status) {
-    auto key = std::make_pair(origin, type);
-    
-    // Cache permission for 24 hours
-    auto expiry = std::chrono::system_clock::now() + std::chrono::hours(24);
-    
-    g_permissionCache[key] = {status, expiry};
-}
 static ComPtr<ICoreWebView2Environment> g_environment;  // Add global environment
 static ComPtr<ICoreWebView2CustomSchemeRegistration> g_customScheme;
 static ComPtr<ICoreWebView2EnvironmentOptions> g_envOptions;
@@ -548,60 +482,33 @@ private:
     IMPLEMENT_REFCOUNTING(ElectrobunCefApp);
 };
 
+// Forward declaration for CEF client (needed for load handler)
+class ElectrobunCefClient;
+
 // CEF Load Handler for debugging navigation
 class ElectrobunLoadHandler : public CefLoadHandler {
 public:
     uint32_t webview_id_ = 0;
     WebviewEventHandler webview_event_handler_ = nullptr;
+    CefRefPtr<ElectrobunCefClient> client_ = nullptr;
 
     ElectrobunLoadHandler() {}
 
     void SetWebviewId(uint32_t id) { webview_id_ = id; }
     void SetWebviewEventHandler(WebviewEventHandler handler) { webview_event_handler_ = handler; }
+    void SetClient(CefRefPtr<ElectrobunCefClient> client) { client_ = client; }
 
-    void OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, TransitionType transition_type) override {
-        
-        // Execute preload scripts immediately at load start for main frame
-        if (frame->IsMain()) {
-            int browserId = browser->GetIdentifier();
-            auto scriptIt = g_preloadScripts.find(browserId);
-            if (scriptIt != g_preloadScripts.end() && !scriptIt->second.empty()) {
-                // Execute with very high priority and immediate execution
-                frame->ExecuteJavaScript(scriptIt->second, "", 0);
-            }
-        }
-    }
-    
-    void OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode) override {
-
-        // Also execute preload scripts at load end to ensure they're available
-        if (frame->IsMain()) {
-            int browserId = browser->GetIdentifier();
-            auto scriptIt = g_preloadScripts.find(browserId);
-            if (scriptIt != g_preloadScripts.end() && !scriptIt->second.empty()) {
-                frame->ExecuteJavaScript(scriptIt->second, "", 0);
-            }
-
-            // Fire did-navigate event
-            if (webview_event_handler_) {
-                std::string url = frame->GetURL().ToString();
-                webview_event_handler_(webview_id_, _strdup("did-navigate"), _strdup(url.c_str()));
-            }
-        }
-    }
-    
+    void OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, TransitionType transition_type) override;
+    void OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode) override;
     void OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, ErrorCode errorCode, const CefString& errorText, const CefString& failedUrl) override {
-        std::cout << "[CEF] LoadError: " << static_cast<int>(errorCode) 
-                  << " - " << errorText.ToString() 
+        std::cout << "[CEF] LoadError: " << static_cast<int>(errorCode)
+                  << " - " << errorText.ToString()
                   << " for URL: " << failedUrl.ToString() << std::endl;
     }
 
 private:
     IMPLEMENT_REFCOUNTING(ElectrobunLoadHandler);
 };
-
-// Forward declaration for CEF client (needed for global map)
-class ElectrobunCefClient;
 
 // Global map to store CEF clients for browser connection
 static std::map<HWND, CefRefPtr<ElectrobunCefClient>> g_cefClients;
@@ -757,12 +664,27 @@ public:
     void ProcessAccumulatedData() {
         // Process accumulated data and inject script
         processed_data_ = data_buffer_;
-        
-        // Look for </head> tag and inject script before it
-        size_t head_pos = processed_data_.find("</head>");
+
+        // Look for <head> tag and inject script right after it (as first element in head)
+        // This ensures preload script executes before any other scripts in the page
+        size_t head_pos = processed_data_.find("<head>");
         if (head_pos != std::string::npos && !script_.empty()) {
+            // Insert after the <head> tag (head_pos + 6 to skip past "<head>")
+            size_t insert_pos = head_pos + 6;
             std::string script_tag = "<script>" + script_ + "</script>";
-            processed_data_.insert(head_pos, script_tag);
+            processed_data_.insert(insert_pos, script_tag);
+        } else {
+            // Fallback: try case-insensitive search for <head with attributes
+            size_t head_start = processed_data_.find("<head");
+            if (head_start != std::string::npos && !script_.empty()) {
+                // Find the end of the opening <head...> tag
+                size_t head_end = processed_data_.find(">", head_start);
+                if (head_end != std::string::npos) {
+                    size_t insert_pos = head_end + 1;
+                    std::string script_tag = "<script>" + script_ + "</script>";
+                    processed_data_.insert(insert_pos, script_tag);
+                }
+            }
         }
     }
 
@@ -775,12 +697,34 @@ private:
     IMPLEMENT_REFCOUNTING(ElectrobunResponseFilter);
 };
 
+// Forward declaration for ElectrobunCefClient
+class ElectrobunCefClient;
+
+// CEF Resource Request Handler to inject preload scripts via response filter
+class ElectrobunResourceRequestHandler : public CefResourceRequestHandler {
+public:
+    CefRefPtr<ElectrobunCefClient> client_ = nullptr;
+
+    ElectrobunResourceRequestHandler(CefRefPtr<ElectrobunCefClient> client) : client_(client) {}
+
+    // Response filter to inject preload scripts into HTML before parsing
+    // This ensures scripts execute BEFORE any page JavaScript
+    CefRefPtr<CefResponseFilter> GetResourceResponseFilter(
+        CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        CefRefPtr<CefRequest> request,
+        CefRefPtr<CefResponse> response) override;
+
+    IMPLEMENT_REFCOUNTING(ElectrobunResourceRequestHandler);
+};
+
 // CEF Request Handler for views:// scheme support
 class ElectrobunRequestHandler : public CefRequestHandler {
 public:
     uint32_t webview_id_ = 0;
     WebviewEventHandler webview_event_handler_ = nullptr;
     AbstractView* abstract_view_ = nullptr;
+    CefRefPtr<ElectrobunCefClient> client_ = nullptr;
 
     // Static debounce timestamp for ctrl+click handling
     static double lastCtrlClickTime;
@@ -790,6 +734,23 @@ public:
     void SetWebviewId(uint32_t id) { webview_id_ = id; }
     void SetWebviewEventHandler(WebviewEventHandler handler) { webview_event_handler_ = handler; }
     void SetAbstractView(AbstractView* view) { abstract_view_ = view; }
+    void SetClient(CefRefPtr<ElectrobunCefClient> client) { client_ = client; }
+
+    // Return resource request handler to enable response filtering
+    CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(
+        CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        CefRefPtr<CefRequest> request,
+        bool is_navigation,
+        bool is_download,
+        const CefString& request_initiator,
+        bool& disable_default_handling) override {
+
+        if (client_) {
+            return new ElectrobunResourceRequestHandler(client_);
+        }
+        return nullptr;
+    }
 
     // Handle navigation requests with Ctrl+click detection
     bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser,
@@ -1560,9 +1521,11 @@ public:
           webview_tag_handler_(internalBridgeHandler),
           osr_enabled_(false) {
         m_loadHandler = new ElectrobunLoadHandler();
+        m_loadHandler->SetClient(this); // Set client reference for load handler
         m_lifeSpanHandler = new ElectrobunLifeSpanHandler();
         m_requestHandler = new ElectrobunRequestHandler();
         m_requestHandler->SetWebviewId(webviewId);
+        m_requestHandler->SetClient(this); // Set client reference for response filter
         m_contextMenuHandler = new ElectrobunContextMenuHandler();
         m_permissionHandler = new ElectrobunPermissionHandler();
         m_dialogHandler = new ElectrobunDialogHandler();
@@ -1731,6 +1694,51 @@ void SetBrowserOnClient(CefRefPtr<ElectrobunCefClient> client, CefRefPtr<CefBrow
             g_preloadScripts[browser->GetIdentifier()] = script;
         }
     }
+}
+
+// ElectrobunLoadHandler method implementations (defined after ElectrobunCefClient class)
+void ElectrobunLoadHandler::OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, TransitionType transition_type) {
+    // NOTE: OnLoadStart is now a fallback - primary injection happens via GetResourceResponseFilter
+    // This ensures preload scripts are in the HTML before parsing, guaranteeing execution order
+}
+
+void ElectrobunLoadHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode) {
+    // Fire did-navigate event
+    if (frame->IsMain() && webview_event_handler_) {
+        std::string url = frame->GetURL().ToString();
+        webview_event_handler_(webview_id_, _strdup("did-navigate"), _strdup(url.c_str()));
+    }
+}
+
+// ElectrobunResourceRequestHandler method implementations (defined after ElectrobunCefClient class)
+CefRefPtr<CefResponseFilter> ElectrobunResourceRequestHandler::GetResourceResponseFilter(
+    CefRefPtr<CefBrowser> browser,
+    CefRefPtr<CefFrame> frame,
+    CefRefPtr<CefRequest> request,
+    CefRefPtr<CefResponse> response) {
+
+    std::string url = request->GetURL().ToString();
+    std::string mimeType = response->GetMimeType().ToString();
+    bool isMain = frame->IsMain();
+    bool hasClient = client_ != nullptr;
+
+    std::cout << "[CEF] GetResourceResponseFilter called: url=" << url
+              << " mimeType=" << mimeType
+              << " isMain=" << isMain
+              << " hasClient=" << hasClient << std::endl;
+
+    // Only filter main frame HTML responses
+    if (isMain && hasClient && mimeType.find("html") != std::string::npos) {
+        std::string combinedScript = client_->GetCombinedScript();
+        std::cout << "[CEF] HTML response detected, scriptLength=" << combinedScript.length() << std::endl;
+
+        if (!combinedScript.empty()) {
+            std::cout << "[CEF] Installing response filter to inject preload scripts into HTML" << std::endl;
+            return new ElectrobunResponseFilter(combinedScript);
+        }
+    }
+
+    return nullptr;
 }
 
 // Runtime CEF availability detection - Windows equivalent of macOS isCEFAvailable()
@@ -4428,12 +4436,9 @@ ELECTROBUN_EXPORT bool initCEF() {
     if (localAppData) {
         std::string appIdentifier = !g_electrobunIdentifier.empty() ? g_electrobunIdentifier : "Electrobun";
         std::string appName = !g_electrobunName.empty() ? g_electrobunName : "App";
-        std::string appNameChannel = appName;
-        if (!g_electrobunChannel.empty()) {
-            appNameChannel += "-" + g_electrobunChannel;
-        }
-        userDataDir = std::string(localAppData) + "\\" + appIdentifier + "\\" + appNameChannel + "\\CEF";
-        std::cout << "[CEF] Using namespaced path: " << appIdentifier << "\\" << appNameChannel << std::endl;
+        // Note: g_electrobunName already includes the channel from version.json
+        userDataDir = std::string(localAppData) + "\\" + appIdentifier + "\\" + appName + "\\CEF";
+        std::cout << "[CEF] Using namespaced path: " << appIdentifier << "\\" << appName << std::endl;
     } else {
         // Fallback to executable directory if LOCALAPPDATA not available
         userDataDir = std::string(exePath) + "\\cef_cache";
@@ -5182,11 +5187,10 @@ static std::shared_ptr<WebView2View> createWebView2View(uint32_t webviewId,
             char* localAppData = getenv("LOCALAPPDATA");
             if (localAppData) {
                 std::string appIdentifier = !g_electrobunIdentifier.empty() ? g_electrobunIdentifier : "Electrobun";
-                if (!g_electrobunChannel.empty()) {
-                    appIdentifier += "-" + g_electrobunChannel;
-                }
+                std::string appName = !g_electrobunName.empty() ? g_electrobunName : "App";
+                // Note: g_electrobunName already includes the channel from version.json
 
-                std::string userDataPath = std::string(localAppData) + "\\" + appIdentifier + "\\WebView2";
+                std::string userDataPath = std::string(localAppData) + "\\" + appIdentifier + "\\" + appName + "\\WebView2";
 
                 // Handle partition-specific storage
                 if (!partitionStr.empty()) {
@@ -5270,13 +5274,10 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
                 // Structure: %LOCALAPPDATA%\{identifier}\{name-channel}\CEF\Partitions\{partitionName}
                 std::string appIdentifier = !g_electrobunIdentifier.empty() ? g_electrobunIdentifier : "Electrobun";
                 std::string appName = !g_electrobunName.empty() ? g_electrobunName : "App";
-                std::string appNameChannel = appName;
-                if (!g_electrobunChannel.empty()) {
-                    appNameChannel += "-" + g_electrobunChannel;
-                }
+                // Note: g_electrobunName already includes the channel from version.json
 
                 // Build cache path with namespacing: %LOCALAPPDATA%\{identifier}\{name-channel}\CEF\Partitions\{partitionName}
-                std::string cachePath = std::string(localAppData) + "\\" + appIdentifier + "\\" + appNameChannel + "\\CEF\\Partitions\\" + partitionName;
+                std::string cachePath = std::string(localAppData) + "\\" + appIdentifier + "\\" + appName + "\\CEF\\Partitions\\" + partitionName;
 
                 // Create directory if it doesn't exist
                 std::wstring wideCachePath(cachePath.begin(), cachePath.end());
@@ -5397,15 +5398,6 @@ static std::shared_ptr<CEFView> createCEFView(uint32_t webviewId,
         client->SetAbstractView(view.get());
 
         view->setClient(client);
-        
-        // Store preload scripts before browser creation so they're available during LoadStart
-        std::string combinedScript = client->GetCombinedScript();
-        if (!combinedScript.empty()) {
-            // We need to store by browser ID, but we don't have it yet
-            // Let's use a temporary approach - store by client pointer for now
-            static std::map<ElectrobunCefClient*, std::string> g_tempPreloadScripts;
-            g_tempPreloadScripts[client] = combinedScript;
-        }
 
         // Create request context for partition isolation
         CefRefPtr<CefRequestContext> requestContext = CreateRequestContextForPartition(
@@ -5414,11 +5406,14 @@ static std::shared_ptr<CEFView> createCEFView(uint32_t webviewId,
         );
 
         // Create browser synchronously (like Mac implementation)
+        // Note: OnLoadStart will fire during this call, but the load handler has a direct
+        // reference to the client, so preload scripts are available immediately without race condition
         CefRefPtr<CefBrowser> browser = CefBrowserHost::CreateBrowserSync(
             windowInfo, client, url ? url : "about:blank", browserSettings, nullptr, requestContext);
-        
+
         if (browser) {
-            // Now store the script with the actual browser ID
+            // Store preload script by browser ID for compatibility with other code paths
+            std::string combinedScript = client->GetCombinedScript();
             if (!combinedScript.empty()) {
                 g_preloadScripts[browser->GetIdentifier()] = combinedScript;
             }
@@ -7878,16 +7873,15 @@ std::string loadViewsFile(const std::string& path) {
     if (asarCheck.good()) {
         asarCheck.close();
 
-        // Lazy-load ASAR archive on first use
-        if (!g_asarArchive) {
+        // Thread-safe lazy-load ASAR archive on first use
+        std::call_once(g_asarArchiveInitFlag, [&asarPath]() {
             g_asarArchive = AsarArchive::open(asarPath);
             if (g_asarArchive) {
                 ::log("DEBUG loadViewsFile: Opened ASAR archive at " + asarPath);
             } else {
                 ::log("ERROR loadViewsFile: Failed to open ASAR archive at " + asarPath);
-                // Fall through to flat file reading
             }
-        }
+        });
 
         // If ASAR archive is loaded, try to read from it
         if (g_asarArchive) {

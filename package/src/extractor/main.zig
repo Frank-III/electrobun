@@ -22,127 +22,49 @@ const AppMetadata = struct {
 const ProgressIndicator = struct {
     child_process: ?std.process.Child,
     allocator: std.mem.Allocator,
-    
+    spinner_thread: ?std.Thread = null,
+    should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    app_name: []const u8 = "",
+
     fn init(allocator: std.mem.Allocator, metadata: AppMetadata) ProgressIndicator {
         var self = ProgressIndicator{
             .child_process = null,
             .allocator = allocator,
+            .app_name = metadata.name,
         };
 
         // Try to start a progress dialog
         self.startProgressDialog(metadata) catch {
             // Fallback to console output
-            std.debug.print("Extracting {s}...\n", .{metadata.name});
+            std.debug.print("Installing {s}...\n", .{metadata.name});
         };
 
         return self;
     }
 
+    fn spinnerThread(self: *ProgressIndicator) void {
+        const spinner_chars = [_]u8{ '|', '/', '-', '\\' };
+        var frame: usize = 0;
+
+        // Print initial message once
+        std.debug.print("Installing {s}... ", .{self.app_name});
+
+        while (!self.should_stop.load(.acquire)) {
+            // Print spinner character and backspace over it
+            std.debug.print("{c}\x08", .{spinner_chars[frame]});
+            frame = (frame + 1) % spinner_chars.len;
+            std.time.sleep(100 * std.time.ns_per_ms);
+        }
+
+        // Print final state
+        std.debug.print("Done!\n", .{});
+    }
+
     fn startProgressDialog(self: *ProgressIndicator, metadata: AppMetadata) !void {
+        // On Windows, start a spinner thread in the console
         if (builtin.os.tag == .windows) {
-            // For Windows, create an HTA (HTML Application) that shows a custom progress window
-            // HTA runs without showing a console window and gives us full control over the UI
-            const hta_content = try std.fmt.allocPrint(self.allocator,
-                \\<html>
-                \\<head>
-                \\<title>Electrobun Installer</title>
-                \\<HTA:APPLICATION
-                \\    BORDER="dialog"
-                \\    BORDERSTYLE="normal"
-                \\    CAPTION="yes"
-                \\    MAXIMIZEBUTTON="no"
-                \\    MINIMIZEBUTTON="no"
-                \\    SYSMENU="no"
-                \\    SCROLL="no"
-                \\    SINGLEINSTANCE="yes"
-                \\    SHOWINTASKBAR="yes"
-                \\/>
-                \\<style>
-                \\body {{
-                \\    font-family: 'Segoe UI', Tahoma, sans-serif;
-                \\    margin: 0;
-                \\    padding: 30px;
-                \\    background: white;
-                \\    text-align: center;
-                \\    overflow: hidden;
-                \\}}
-                \\h2 {{
-                \\    color: #333;
-                \\    margin: 0 0 15px 0;
-                \\    font-size: 16px;
-                \\    font-weight: 600;
-                \\}}
-                \\p {{
-                \\    color: #666;
-                \\    margin: 0;
-                \\    font-size: 13px;
-                \\}}
-                \\</style>
-                \\</head>
-                \\<body>
-                \\<h2>Extracting {s}...</h2>
-                \\<p>Please wait, this may take a moment.</p>
-                \\<script>
-                \\window.resizeTo(400, 150);
-                \\window.moveTo((screen.width - 400) / 2, (screen.height - 150) / 2);
-                \\// Bring window to front after it's fully loaded and positioned
-                \\var shell = new ActiveXObject("WScript.Shell");
-                \\setTimeout(function() {{
-                \\    shell.AppActivate("Electrobun Installer");
-                \\}}, 200);
-                \\</script>
-                \\</body>
-                \\</html>
-            , .{metadata.name});
-            defer self.allocator.free(hta_content);
-
-            // Create namespaced temp directory for HTA file
-            // Structure: %LOCALAPPDATA%/{identifier}/{name-channel}/installer-temp/
-            const app_data_dir = std.fs.getAppDataDir(self.allocator, "") catch {
-                return;
-            };
-            defer self.allocator.free(app_data_dir);
-
-            const app_name_channel = try std.fmt.allocPrint(self.allocator, "{s}-{s}", .{metadata.name, metadata.channel});
-            defer self.allocator.free(app_name_channel);
-
-            const app_base_dir = try std.fs.path.join(self.allocator, &.{ app_data_dir, metadata.identifier, app_name_channel });
-            defer self.allocator.free(app_base_dir);
-
-            const temp_dir = try std.fs.path.join(self.allocator, &.{ app_base_dir, "installer-temp" });
-            defer self.allocator.free(temp_dir);
-
-            // Create the full directory path (including all parent directories)
-            std.fs.cwd().makePath(temp_dir) catch {
-                return;
-            };
-
-            const hta_path = try std.fs.path.join(self.allocator, &[_][]const u8{ temp_dir, "progress.hta" });
-            defer self.allocator.free(hta_path);
-
-            const file = std.fs.createFileAbsolute(hta_path, .{}) catch {
-                return;
-            };
-            defer file.close();
-
-            file.writeAll(hta_content) catch {
-                return;
-            };
-
-            // Execute HTA file using mshta (no console window)
-            const args = [_][]const u8{ "mshta", hta_path };
-
-            var child = std.process.Child.init(&args, self.allocator);
-            child.stdin_behavior = .Ignore;
-            child.stdout_behavior = .Ignore;
-            child.stderr_behavior = .Ignore;
-
-            child.spawn() catch {
-                // If mshta fails, silently continue without progress dialog
-                return;
-            };
-
-            self.child_process = child;
+            // Start spinner thread
+            self.spinner_thread = try std.Thread.spawn(.{}, spinnerThread, .{self});
             return;
         }
 
@@ -194,16 +116,22 @@ const ProgressIndicator = struct {
     }
     
     fn deinit(self: *ProgressIndicator) void {
+        // Stop spinner thread if running
+        if (self.spinner_thread) |thread| {
+            self.should_stop.store(true, .release);
+            thread.join();
+        }
+
         if (self.child_process) |*child| {
             // Close stdin to signal completion for zenity
             if (child.stdin) |stdin| {
                 stdin.close();
                 child.stdin = null;
             }
-            
+
             // Wait a moment for the dialog to close gracefully
             std.time.sleep(500 * std.time.ns_per_ms);
-            
+
             // Terminate if still running
             _ = child.kill() catch {};
             _ = child.wait() catch {};
@@ -631,49 +559,33 @@ fn extractAndInstall(allocator: std.mem.Allocator, compressed_data: []const u8, 
     if (builtin.os.tag == .windows) {
         try createWindowsShortcut(allocator, app_dir, metadata);
     }
-    
-    // Save tar files for Updater API on Linux after everything else is done
-    if (builtin.os.tag == .linux) {
-        std.debug.print("\n✓ Saving tar files for Updater API...\n", .{});
+
+    // Save tar file for Updater API on Linux and Windows after everything else is done
+    if (builtin.os.tag == .linux or builtin.os.tag == .windows) {
+        std.debug.print("\n✓ Saving tar file for Updater API...\n", .{});
         // Make a defensive copy of the hash to prevent memory corruption
         const safe_hash = if (metadata.hash) |h| try allocator.dupe(u8, h) else null;
         defer if (safe_hash != null) allocator.free(safe_hash.?);
-        
-        // Save compressed tar.zst file with hash as filename (for Updater API compatibility)
-        const compressed_filename = if (safe_hash) |hash| 
-            try std.fmt.allocPrint(allocator, "{s}.tar.zst", .{hash})
-        else 
-            "current.tar.zst";
-        defer if (safe_hash != null) allocator.free(compressed_filename);
-        
-        const compressed_path = try std.fs.path.join(allocator, &.{ self_extraction_dir, compressed_filename });
-        defer allocator.free(compressed_path);
-        
-        // Ensure self-extraction directory exists
-        try std.fs.cwd().makePath(self_extraction_dir);
-        
-        std.debug.print("DEBUG: Creating compressed file at: {s}\n", .{compressed_path});
-        const compressed_file = try std.fs.cwd().createFile(compressed_path, .{});
-        defer compressed_file.close();
-        try compressed_file.writeAll(compressed_data);
-        std.debug.print("✓ Saved compressed tar.zst ({} bytes)\n", .{compressed_data.len});
-        
-        // Also save decompressed tar for immediate use
+
+        // Save decompressed tar with hash as filename (for Updater API patching)
         const tar_filename = if (safe_hash) |hash|
             try std.fmt.allocPrint(allocator, "{s}.tar", .{hash})
         else
             "current.tar";
         defer if (safe_hash != null) allocator.free(tar_filename);
-        
+
         const tar_path = try std.fs.path.join(allocator, &.{ self_extraction_dir, tar_filename });
         defer allocator.free(tar_path);
-        
+
+        // Ensure self-extraction directory exists
+        try std.fs.cwd().makePath(self_extraction_dir);
+
         std.debug.print("DEBUG: Creating tar file at: {s}\n", .{tar_path});
         const tar_file = try std.fs.cwd().createFile(tar_path, .{});
         defer tar_file.close();
         try tar_file.writeAll(decompressed_data.items);
-        std.debug.print("✓ Saved decompressed tar ({} bytes)\n", .{decompressed_data.items.len});
-        
+        std.debug.print("✓ Saved tar file ({} bytes)\n", .{decompressed_data.items.len});
+
         // List files to confirm they're saved
         std.debug.print("\nDEBUG: Final files in self-extraction dir:\n", .{});
         var dir = try std.fs.cwd().openDir(self_extraction_dir, .{ .iterate = true });
