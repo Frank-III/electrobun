@@ -1,3 +1,10 @@
+/**
+ * Electrobun Browser/Webview API
+ *
+ * This module provides the webview-side API for Electrobun applications,
+ * including the Eden-style type-safe RPC client.
+ */
+
 import {
   type RPCSchema,
   type RPCRequestHandler,
@@ -8,10 +15,16 @@ import {
   createRPC,
 } from "rpc-anywhere";
 import { ConfigureWebviewTags } from "./webviewtag";
-// todo: should this just be injected as a preload script?
 import { isAppRegionDrag } from "./stylesAndElements";
 import type { BuiltinBunToWebviewSchema, BuiltinWebviewToBunSchema } from "./builtinrpcSchema";
 import type { InternalWebviewHandlers, WebviewTagHandlers } from "./rpc/webview";
+import {
+  initEdenClient,
+  createEdenClient,
+  onMessage,
+  sendMessage,
+  type EdenClient,
+} from "./eden";
 
 interface ElectrobunWebviewRPCSChema {
   bun: RPCSchema;
@@ -22,7 +35,9 @@ const WEBVIEW_ID = window.__electrobunWebviewId;
 const WINDOW_ID = window.__electrobunWindowId;
 const RPC_SOCKET_PORT = window.__electrobunRpcSocketPort;
 
-
+/**
+ * Electroview - Main class for webview-side Electrobun integration
+ */
 class Electroview<T> {
   bunSocket?: WebSocket;
   // user's custom rpc browser <-> bun
@@ -31,7 +46,9 @@ class Electroview<T> {
   // electrobun rpc browser <-> bun
   internalRpc?: any;
   internalRpcHandler?: (msg: any) => void;
-  
+  // Eden client initialization flag
+  private _edenInitialized = false;
+
   constructor(config: { rpc: T }) {
     this.rpc = config.rpc;
     this.init();
@@ -60,9 +77,6 @@ class Electroview<T> {
   initInternalRpc() {
     this.internalRpc = createRPC<WebviewTagHandlers, InternalWebviewHandlers>({
       transport: this.createInternalTransport(),
-      // requestHandler: {
-
-      // },
       maxRequestTime: 1000,
     });
   }
@@ -76,7 +90,15 @@ class Electroview<T> {
     this.bunSocket = socket;
 
     socket.addEventListener("open", () => {
-      // this.bunSocket?.send("Hello from webview " + WEBVIEW_ID);
+      // Initialize Eden client when socket opens
+      if (!this._edenInitialized && window.__electrobun_encrypt && window.__electrobun_decrypt) {
+        initEdenClient({
+          socket,
+          encrypt: window.__electrobun_encrypt,
+          decrypt: window.__electrobun_decrypt,
+        });
+        this._edenInitialized = true;
+      }
     });
 
     socket.addEventListener("message", async (event) => {
@@ -113,9 +135,8 @@ class Electroview<T> {
 
   // This will be attached to the global object, bun can rpc reply by executingJavascript
   // of that global reference to the function
-  receiveInternalMessageFromBun(msg: any) {    
+  receiveInternalMessageFromBun(msg: any) {
     if (this.internalRpcHandler) {
-      
       this.internalRpcHandler(msg);
     }
   }
@@ -123,22 +144,22 @@ class Electroview<T> {
   // TODO: implement proper rpc-anywhere style rpc here
   // todo: this is duplicated in webviewtag.ts and should be DRYed up
   isProcessingQueue = false;
-  sendToInternalQueue = [];
-  sendToBunInternal(message: {}) {   
-    try {    
-      const strMessage = JSON.stringify(message);    
-      this.sendToInternalQueue.push(strMessage);    
+  sendToInternalQueue: string[] = [];
+
+  sendToBunInternal(message: {}) {
+    try {
+      const strMessage = JSON.stringify(message);
+      this.sendToInternalQueue.push(strMessage);
 
       this.processQueue();
     } catch (err) {
-      console.error('failed to send to bun internal', err);
+      console.error("failed to send to bun internal", err);
     }
   }
 
   processQueue() {
     const that = this;
     if (that.isProcessingQueue) {
-
       // This timeout is just to schedule a retry "later"
       setTimeout(() => {
         that.processQueue();
@@ -147,27 +168,26 @@ class Electroview<T> {
     }
 
     if (that.sendToInternalQueue.length === 0) {
-      // that.isProcessingQueue = false;
-      return;  
+      return;
     }
 
     that.isProcessingQueue = true;
-    
+
     const batchMessage = JSON.stringify(that.sendToInternalQueue);
     that.sendToInternalQueue = [];
     window.__electrobunInternalBridge?.postMessage(batchMessage);
-    
+
     // Note: The postmessage handler is routed via native code to a Bun JSCallback.
     // Currently JSCallbacks are somewhat experimental and were designed for a single invocation
     // But we have tons of resize events in this webview's thread that are sent, maybe to main thread
-    // and then the JSCallback is invoked on the Bun worker thread. JSCallbacks have a little virtual memory 
+    // and then the JSCallback is invoked on the Bun worker thread. JSCallbacks have a little virtual memory
     // or something that can segfault when called from a thread while the worker(bun) thread is still executing
     // a previous call. The segfaults were really only triggered with multiple <electrobun-webview>s on a page
     // all trying to resize at the same time.
-    // 
+    //
     // To work around this we batch high frequency postMessage calls here with a timeout. While not deterministic hopefully Bun
     // fixes the underlying FFI/JSCallback issue before we have to invest time in a more deterministic solution.
-    // 
+    //
     // On my m4 max a 1ms delay is not long enough to let it complete and can segfault, a 2ms delay is long enough
     // This may be different on slower hardware but not clear if it would need more or less time so leaving this for now
     setTimeout(() => {
@@ -191,8 +211,9 @@ class Electroview<T> {
 
   createTransport() {
     const that = this;
+
     return {
-      send(message) {
+      send(message: any) {
         try {
           const messageString = JSON.stringify(message);
           // console.log("sending message bunbridge", messageString);
@@ -201,27 +222,27 @@ class Electroview<T> {
           console.error("bun: failed to serialize message to webview", error);
         }
       },
-      registerHandler(handler) {
+      registerHandler(handler: any) {
         that.rpcHandler = handler;
       },
     };
   }
-  
+
   createInternalTransport(): RPCTransport {
-    const that = this;    
+    const that = this;
     return {
-      send(message) {                  
-        message.hostWebviewId = WEBVIEW_ID;        
-        that.sendToBunInternal(message);      
+      send(message: any) {
+        message.hostWebviewId = WEBVIEW_ID;
+        that.sendToBunInternal(message);
       },
-      registerHandler(handler) {        
+      registerHandler(handler: any) {
         that.internalRpcHandler = handler;
         // webview tag doesn't handle any messages from bun just yet
       },
     };
   }
 
-  async bunBridge(msg: string) {    
+  async bunBridge(msg: string) {
     if (this.bunSocket?.readyState === WebSocket.OPEN) {
       try {
         const { encryptedData, iv, tag } = await window.__electrobun_encrypt(
@@ -255,7 +276,7 @@ class Electroview<T> {
     // TEMP: disable the fallback for now. for some reason suddenly can't
     // repro now that other places are chunking messages and laptop restart
 
-    if (true || msg.length < 8 * 1024) {      
+    if (true || msg.length < 8 * 1024) {
       window.__electrobunBunBridge?.postMessage(msg);
     } else {
       var xhr = new XMLHttpRequest();
@@ -270,13 +291,14 @@ class Electroview<T> {
     }
   }
 
-  receiveMessageFromBun(msg) {
+  receiveMessageFromBun(msg: any) {
     // NOTE: in the webview messages are passed by executing ElectrobunView.receiveMessageFromBun(object)
     // so they're already parsed into an object here
     if (this.rpcHandler) {
       this.rpcHandler(msg);
     }
   }
+
   // todo (yoav): This is mostly just the reverse of the one in BrowserView.ts on the bun side. Should DRY this up.
   static defineRPC<
     Schema extends ElectrobunWebviewRPCSChema,
@@ -372,7 +394,7 @@ class Electroview<T> {
     } as RPCOptions<mixedBunSchema, mixedWebviewSchema>;
 
     const rpc = createRPC<mixedBunSchema, mixedWebviewSchema>(rpcOptions);
-    
+
     const messageHandlers = config.handlers.messages;
     if (messageHandlers) {
       // note: this can only be done once there is a transport
@@ -380,7 +402,7 @@ class Electroview<T> {
       // while types in here are borked, they resolve correctly/bubble up to the defineRPC call site.
       rpc.addMessageListener(
         "*",
-        (messageName: keyof WebviewSchema["messages"], payload) => {
+        (messageName: keyof WebviewSchema["messages"], payload: any) => {
           const globalHandler = messageHandlers["*"];
           if (globalHandler) {
             globalHandler(messageName, payload);
@@ -398,12 +420,14 @@ class Electroview<T> {
   }
 }
 
+// Legacy exports for backward compatibility
 export { type RPCSchema, createRPC, Electroview };
+
+// New Eden-style exports
+export { createEdenClient, onMessage, sendMessage, type EdenClient };
 
 const Electrobun = {
   Electroview,
 };
 
 export default Electrobun;
-
-

@@ -16,9 +16,29 @@ import { GlobalShortcut, Screen, Session } from "./proc/native";
 import type { Display, Rectangle, Point, Cookie, CookieFilter, StorageType } from "./proc/native";
 import { BuildConfig, type BuildConfigType } from "./core/BuildConfig";
 
+// New Elysia-based RPC
+import {
+  ElysiaElectrobun,
+  t,
+  rpcPort as elysiaRpcPort,
+  type InferProcedures,
+  type InferMessages,
+} from "./core/ElysiaRPC";
+
 // Named Exports
 export {
+  // Legacy rpc-anywhere (for backward compatibility)
   type RPCSchema,
+  createRPC,
+
+  // New Elysia-based RPC
+  ElysiaElectrobun,
+  t,
+  elysiaRpcPort,
+  type InferProcedures,
+  type InferMessages,
+
+  // Types
   type ElectrobunEvent,
   type ElectrobunConfig,
   type BuildConfigType,
@@ -30,7 +50,8 @@ export {
   type Cookie,
   type CookieFilter,
   type StorageType,
-  createRPC,
+
+  // Core
   BrowserWindow,
   BrowserView,
   Tray,
@@ -62,6 +83,9 @@ const Electrobun = {
   events: electobunEventEmmitter,
   PATHS,
   Socket,
+  // New Elysia RPC
+  ElysiaElectrobun,
+  t,
 };
 
 // Electrobun
