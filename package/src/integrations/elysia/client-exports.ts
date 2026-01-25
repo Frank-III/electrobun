@@ -1,34 +1,21 @@
 /**
- * Elysia Adapter for Electrobun - Client Exports
+ * Elysia Client for Electrobun
  *
- * Import this in your webview code for type-safe RPC calls.
+ * Use @elysiajs/eden's treaty client directly for type-safe API calls:
  *
- * @example
  * ```tsx
- * import { createEdenClient, onMessage, sendMessage } from "electrobun/elysia/client";
+ * import { treaty } from "@elysiajs/eden";
+ * import type { App } from "../bun";
  *
- * // Create type-safe client
- * const rpc = createEdenClient<{
- *   procedures: {
- *     getUsers: { input: {}; output: { users: User[] } };
- *   };
- * }>();
+ * const port = window.__electrobunRpcSocketPort;
+ * const api = treaty<App>(`localhost:${port}`);
  *
- * // Type-safe procedure calls
- * const result = await rpc.getUsers({});
- *
- * // Subscribe to messages
- * onMessage("notification", (payload) => console.log(payload));
+ * // Fully type-safe!
+ * const { data } = await api.users.get();
  * ```
  *
  * @module
  */
 
-export {
-  createEdenClient,
-  onMessage,
-  sendMessage,
-  isConnected,
-  waitForConnection,
-  type EdenClient,
-} from "../../browser/eden";
+// Users should import directly from @elysiajs/eden
+export {};

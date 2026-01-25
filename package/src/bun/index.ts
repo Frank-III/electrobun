@@ -16,19 +16,14 @@ import { GlobalShortcut, Screen, Session } from "./proc/native";
 import type { Display, Rectangle, Point, Cookie, CookieFilter, StorageType } from "./proc/native";
 import { BuildConfig, type BuildConfigType } from "./core/BuildConfig";
 
-// Elysia-based RPC
+// Elysia plugin
 import {
   electrobun as electrobunPlugin,
   Elysia,
   t,
   rpcPort as elysiaRpcPort,
-  registerProcedure,
-  registerMessageHandler,
-  sendMessage as sendElysiaMessage,
-  broadcastMessage,
   startServer,
   getServerPort,
-  type InferProcedures,
 } from "./core/ElysiaRPC";
 
 // Named Exports
@@ -37,18 +32,13 @@ export {
   type RPCSchema,
   createRPC,
 
-  // Elysia-based RPC
+  // Elysia plugin
   electrobunPlugin,
   Elysia,
   t,
   elysiaRpcPort,
-  registerProcedure,
-  registerMessageHandler,
-  sendElysiaMessage,
-  broadcastMessage,
   startServer,
   getServerPort,
-  type InferProcedures,
 
   // Types
   type ElectrobunEvent,
@@ -95,14 +85,10 @@ const Electrobun = {
   events: electobunEventEmmitter,
   PATHS,
   Socket,
-  // Elysia RPC
+  // Elysia
   electrobunPlugin,
   Elysia,
   t,
-  registerProcedure,
-  registerMessageHandler,
-  sendMessage: sendElysiaMessage,
-  broadcastMessage,
   startServer,
   getServerPort,
 };

@@ -1,8 +1,8 @@
 /**
  * Electrobun Browser/Webview API
  *
- * This module provides the webview-side API for Electrobun applications,
- * including the Eden-style type-safe RPC client.
+ * This module provides the webview-side API for Electrobun applications.
+ * For type-safe API calls, use @elysiajs/eden's treaty client directly.
  */
 
 import {
@@ -18,15 +18,6 @@ import { ConfigureWebviewTags } from "./webviewtag";
 import { isAppRegionDrag } from "./stylesAndElements";
 import type { BuiltinBunToWebviewSchema, BuiltinWebviewToBunSchema } from "./builtinrpcSchema";
 import type { InternalWebviewHandlers, WebviewTagHandlers } from "./rpc/webview";
-import {
-  initEdenClient,
-  createEdenClient,
-  onMessage,
-  sendMessage,
-  isConnected,
-  waitForConnection,
-  type EdenClient,
-} from "./eden";
 
 interface ElectrobunWebviewRPCSChema {
   bun: RPCSchema;
@@ -48,9 +39,6 @@ class Electroview<T> {
   // electrobun rpc browser <-> bun
   internalRpc?: any;
   internalRpcHandler?: (msg: any) => void;
-  // Eden client initialization flag
-  private _edenInitialized = false;
-
   constructor(config: { rpc: T }) {
     this.rpc = config.rpc;
     this.init();
@@ -92,15 +80,7 @@ class Electroview<T> {
     this.bunSocket = socket;
 
     socket.addEventListener("open", () => {
-      // Initialize Eden client when socket opens
-      if (!this._edenInitialized && window.__electrobun_encrypt && window.__electrobun_decrypt) {
-        initEdenClient({
-          socket,
-          encrypt: window.__electrobun_encrypt,
-          decrypt: window.__electrobun_decrypt,
-        });
-        this._edenInitialized = true;
-      }
+      // WebSocket connection established
     });
 
     socket.addEventListener("message", async (event) => {
@@ -422,11 +402,8 @@ class Electroview<T> {
   }
 }
 
-// Legacy exports for backward compatibility
+// Exports
 export { type RPCSchema, createRPC, Electroview };
-
-// Eden-style exports
-export { createEdenClient, onMessage, sendMessage, isConnected, waitForConnection, type EdenClient };
 
 const Electrobun = {
   Electroview,
