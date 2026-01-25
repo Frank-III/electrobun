@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@elysiajs/eden": "^1.2.0",
-    "electrobun": "latest",
+    "electrobun": "file:../../package",
     "elysia": "^1.2.0",
     "solid-js": "^1.9.0"
   },
