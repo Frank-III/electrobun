@@ -1,0 +1,25 @@
+{
+  "name": "elysia-solid-minimal",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Minimal Electrobun + Elysia + SolidJS example with Eden Treaty",
+  "scripts": {
+    "ui:build": "bun scripts/build-ui.ts",
+    "build": "bun run ui:build && electrobun build",
+    "dev": "bun run build && electrobun dev",
+    "start": "bun run dev"
+  },
+  "dependencies": {
+    "@elysiajs/eden": "^1.2.0",
+    "electrobun": "latest",
+    "elysia": "^1.2.0",
+    "solid-js": "^1.9.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/preset-typescript": "^7.26.0",
+    "@types/bun": "latest",
+    "babel-preset-solid": "^1.9.0",
+    "typescript": "^5.7.2"
+  }
+}
