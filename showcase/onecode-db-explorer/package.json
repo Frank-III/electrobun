@@ -25,12 +25,9 @@
     "solid-js": "^1.9.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.26.0",
-    "@babel/preset-typescript": "^7.26.0",
     "@types/bun": "latest",
-    "babel-preset-solid": "^1.9.0",
     "bun-plugin-tailwind": "^0.1.2",
-    "solid-jsx-oxc": "file:../../../../rs/solid-jsx-oxc/packages/solid-jsx-oxc",
+    "solid-jsx-oxc": "0.1.0-alpha.14",
     "tailwindcss": "3.4.17",
     "typescript": "^5.7.2"
   }

@@ -1,7 +1,7 @@
 export default {
   app: {
-    name: "onecode-db-explorer",
-    identifier: "onecodedbexplorer.electrobun.dev",
+    name: "panta-explorer",
+    identifier: "dev.panta.explorer",
     version: "0.1.0",
   },
   build: {
@@ -12,6 +12,7 @@ export default {
     },
     mac: {
       bundleCEF: false,
+      codesign: true,
     },
     linux: {
       bundleCEF: false,

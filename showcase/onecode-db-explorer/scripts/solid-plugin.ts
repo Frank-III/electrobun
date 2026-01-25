@@ -1,16 +1,11 @@
 import { join } from "path";
-// @ts-expect-error - Types not important for this temporary plugin.
-import { transformAsync } from "@babel/core";
-// @ts-expect-error - Types not important for this temporary plugin.
-import ts from "@babel/preset-typescript";
-// @ts-expect-error - Types not important for this temporary plugin.
-import solid from "babel-preset-solid";
 import type { BunPlugin } from "bun";
+import { transformJsx } from "solid-jsx-oxc";
 
 const projectRoot = process.cwd();
 
 const solidTransformPlugin: BunPlugin = {
-  name: "bun-plugin-solid (temporary)",
+  name: "bun-plugin-solid-oxc (electrobun)",
   setup: (build) => {
     // Electrobun's API packages are shipped as TS source; resolve explicitly so Bun.build can bundle them.
     build.onResolve({ filter: /^electrobun\/view$/ }, () => {
@@ -38,35 +33,37 @@ const solidTransformPlugin: BunPlugin = {
       return { contents: code, loader: "js" };
     });
 
+    // Transform JSX files with solid-jsx-oxc
     build.onLoad({ filter: /\.[jt]sx$/ }, async (args) => {
-      const isNodeModule = /[\\/]+node_modules[\\/]+/.test(args.path);
-      const isSolidNodeModule = /[\\/]+node_modules[\\/]+(?:@corvu[\\/]+|solid-)/.test(args.path);
-      if (isNodeModule && !isSolidNodeModule) return;
+      // Skip node_modules EXCEPT @corvu and solid- packages
+      const isNodeModule = /[\\/]node_modules[\\/]/.test(args.path);
+      const isSolidNodeModule = /[\\/]node_modules[\\/](?:@corvu[\\/]|solid-)/.test(args.path);
+      if (isNodeModule && !isSolidNodeModule) {
+        return undefined;
+      }
 
-      const code = await Bun.file(args.path).text();
-      const transforms = await transformAsync(code, {
-        filename: args.path,
-        sourceType: "module",
-        presets: [
-          [
-            solid,
-            {
-              moduleName: "solid-js/web",
-              generate: "dom",
-              hydratable: false,
-              delegateEvents: true,
-              wrapConditionals: true,
-              contextToCustomElements: true,
-            },
-          ],
-          [ts, { isTSX: true, allExtensions: true }],
-        ],
-      });
+      const source = await Bun.file(args.path).text();
 
-      return {
-        contents: transforms?.code ?? "",
-        loader: "js",
-      };
+      try {
+        const result = transformJsx(source, {
+          filename: args.path,
+          moduleName: "solid-js/web",
+          generate: "dom",
+          hydratable: false,
+          delegateEvents: true,
+          wrapConditionals: true,
+          contextToCustomElements: true,
+          sourceMap: false,
+        });
+
+        return {
+          contents: result.code,
+          loader: "ts",
+        };
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        throw new Error(`Failed to transform ${args.path}: ${message}`);
+      }
     });
   },
 };
