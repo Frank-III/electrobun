@@ -23,7 +23,6 @@ import {
   t,
   rpcPort as elysiaRpcPort,
   startServer,
-  getServerPort,
 } from "./core/ElysiaRPC";
 
 // Named Exports
@@ -38,7 +37,6 @@ export {
   t,
   elysiaRpcPort,
   startServer,
-  getServerPort,
 
   // Types
   type ElectrobunEvent,
@@ -90,7 +88,6 @@ const Electrobun = {
   Elysia,
   t,
   startServer,
-  getServerPort,
 };
 
 // Electrobun

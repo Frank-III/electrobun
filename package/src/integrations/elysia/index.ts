@@ -35,5 +35,4 @@ export {
   Elysia,
   t,
   startServer,
-  getServerPort,
 } from "../../bun/core/ElysiaRPC";

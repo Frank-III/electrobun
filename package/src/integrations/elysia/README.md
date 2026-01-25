@@ -68,10 +68,6 @@ Starts the Elysia server on an available port (50000-65535).
 const port = startServer(app);
 ```
 
-### `getServerPort()`
-
-Get the port after `startServer` was called.
-
 ## Type Safety
 
 Eden Treaty provides full end-to-end type inference:
