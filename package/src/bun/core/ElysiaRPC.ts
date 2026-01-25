@@ -1,59 +1,146 @@
 /**
- * Electrobun Elysia Plugin
+ * Electrobun Elysia Integration
  *
- * Provides internal routes and WebSocket for Electrobun's system operations.
- * Users extend with their own Elysia routes and use Eden Treaty for type-safe clients.
- *
- * @example
- * ```ts
- * import { Elysia } from "elysia";
- * import { electrobun } from "electrobun/bun";
- *
- * const app = new Elysia()
- *   .use(electrobun())
- *   .get("/users", () => [{ id: 1, name: "Alice" }])
- *   .post("/users", ({ body }) => ({ id: 1, ...body }))
- *   .listen(0);
- *
- * export type App = typeof app;
- * ```
- *
- * ```tsx
- * // Browser - use Eden Treaty directly
- * import { treaty } from "@elysiajs/eden";
- * import type { App } from "../bun";
- *
- * const api = treaty<App>(`localhost:${port}`);
- * const { data } = await api.users.get();
- * ```
+ * Single Elysia server handling:
+ * - WebSocket at /socket for encrypted RPC
+ * - Internal routes at /_electrobun/*
+ * - User's custom routes via Eden Treaty
  */
 
 import { Elysia, t } from "elysia";
+import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 import { BrowserView } from "./BrowserView";
 
-// Re-export Elysia and t for convenience
 export { Elysia, t };
 
 // ============================================================================
-// Electrobun Elysia Plugin
+// Encryption
+// ============================================================================
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  return new Uint8Array(
+    atob(base64)
+      .split("")
+      .map((char) => char.charCodeAt(0))
+  );
+}
+
+function encrypt(secretKey: Uint8Array, text: string) {
+  const iv = new Uint8Array(randomBytes(12));
+  const cipher = createCipheriv("aes-256-gcm", secretKey, iv);
+  const encrypted = Buffer.concat([
+    new Uint8Array(cipher.update(text, "utf8")),
+    new Uint8Array(cipher.final()),
+  ]).toString("base64");
+  const tag = cipher.getAuthTag().toString("base64");
+  return { encrypted, iv: Buffer.from(iv).toString("base64"), tag };
+}
+
+function decrypt(
+  secretKey: Uint8Array,
+  encryptedData: Uint8Array,
+  iv: Uint8Array,
+  tag: Uint8Array
+): string {
+  const decipher = createDecipheriv("aes-256-gcm", secretKey, iv);
+  decipher.setAuthTag(tag);
+  const decrypted = Buffer.concat([
+    new Uint8Array(decipher.update(encryptedData)),
+    new Uint8Array(decipher.final()),
+  ]);
+  return decrypted.toString("utf8");
+}
+
+// ============================================================================
+// Socket Management
+// ============================================================================
+
+type RawWebSocket = { send: (data: string) => void; readyState: number };
+
+export const socketMap: Map<number, RawWebSocket> = new Map();
+
+/**
+ * Send encrypted message to a webview via WebSocket
+ */
+export function sendMessageToWebviewViaSocket(webviewId: number, message: any): boolean {
+  const socket = socketMap.get(webviewId);
+  const browserView = BrowserView.getById(webviewId);
+
+  if (!browserView || !socket || socket.readyState !== 1) {
+    return false;
+  }
+
+  try {
+    const encrypted = encrypt(browserView.secretKey, JSON.stringify(message));
+    socket.send(
+      JSON.stringify({
+        encryptedData: encrypted.encrypted,
+        iv: encrypted.iv,
+        tag: encrypted.tag,
+      })
+    );
+    return true;
+  } catch (error) {
+    console.error("[Electrobun] Error sending to webview:", error);
+    return false;
+  }
+}
+
+// ============================================================================
+// Electrobun Plugin
 // ============================================================================
 
 /**
- * Electrobun Elysia plugin.
- *
- * Adds internal system routes for debugging/monitoring.
- * The internal WebSocket RPC is handled separately by Socket.ts.
- *
- * @example
- * ```ts
- * const app = new Elysia()
- *   .use(electrobun())
- *   .get("/your-routes", () => ...)
- * ```
+ * Electrobun Elysia plugin with WebSocket + internal routes.
  */
 export function electrobun() {
   return new Elysia({ name: "electrobun" })
-    // Internal system routes
+    // WebSocket for encrypted RPC
+    .ws("/socket", {
+      query: t.Object({
+        webviewId: t.String(),
+      }),
+
+      open(ws) {
+        const webviewId = parseInt(ws.data.query.webviewId, 10);
+        if (!isNaN(webviewId)) {
+          socketMap.set(webviewId, ws.raw as RawWebSocket);
+        }
+      },
+
+      close(ws) {
+        const webviewId = parseInt(ws.data.query.webviewId, 10);
+        if (!isNaN(webviewId)) {
+          socketMap.delete(webviewId);
+        }
+      },
+
+      message(ws, message) {
+        const webviewId = parseInt(ws.data.query.webviewId, 10);
+        if (isNaN(webviewId)) return;
+
+        const browserView = BrowserView.getById(webviewId);
+        if (!browserView) return;
+
+        try {
+          const encryptedPacket = JSON.parse(message as string);
+          const decrypted = decrypt(
+            browserView.secretKey,
+            base64ToUint8Array(encryptedPacket.encryptedData),
+            base64ToUint8Array(encryptedPacket.iv),
+            base64ToUint8Array(encryptedPacket.tag)
+          );
+
+          if (browserView.rpcHandler) {
+            browserView.rpcHandler(JSON.parse(decrypted));
+          }
+        } catch (error) {
+          console.error("[Electrobun] WebSocket error:", error);
+        }
+      },
+    })
+
+    // Internal routes
     .group("/_electrobun", (app) =>
       app
         .get("/health", () => ({ status: "ok" }))
@@ -61,46 +148,36 @@ export function electrobun() {
           webviews: BrowserView.getAll().map((v) => ({
             id: v.id,
             url: v.url,
+            connected: socketMap.has(v.id),
           })),
         }))
     );
 }
 
 // ============================================================================
-// Server Utilities
+// Server
 // ============================================================================
 
 /**
- * Start an Elysia server on an available port.
- *
- * @example
- * ```ts
- * const app = new Elysia()
- *   .use(electrobun())
- *   .get("/users", () => [...]);
- *
- * const port = startServer(app);
- * ```
+ * Start Elysia server on available port (50000-65535)
  */
 export function startServer(app: Elysia<any, any, any, any, any, any, any, any>): number {
-  const startPort = 50000;
-  const endPort = 65535;
-
-  for (let port = startPort; port <= endPort; port++) {
+  for (let port = 50000; port <= 65535; port++) {
     try {
       app.listen(port);
-      console.log(`[Electrobun] Elysia server started on port ${port}`);
+      console.log(`[Electrobun] Server on port ${port}`);
       return port;
     } catch (error: any) {
-      if (error.code === "EADDRINUSE") {
-        continue;
-      }
+      if (error.code === "EADDRINUSE") continue;
       throw error;
     }
   }
-
-  throw new Error("No available ports for Electrobun server");
+  throw new Error("No available ports");
 }
 
-// Re-export rpcPort from Socket.ts for backward compatibility
-export { rpcPort } from "./Socket";
+// ============================================================================
+// Auto-start
+// ============================================================================
+
+const baseApp = new Elysia().use(electrobun());
+export const rpcPort = startServer(baseApp);

@@ -13,7 +13,7 @@ import {
 import { Updater } from "./Updater";
 import { BuildConfig } from "./BuildConfig";
 import type { BuiltinBunToWebviewSchema,BuiltinWebviewToBunSchema } from "../../browser/builtinrpcSchema";
-import { rpcPort, sendMessageToWebviewViaSocket } from "./Socket";
+import { rpcPort, sendMessageToWebviewViaSocket } from "./ElysiaRPC";
 import { randomBytes } from "crypto";
 import {FFIType, type Pointer}  from 'bun:ffi';
 
