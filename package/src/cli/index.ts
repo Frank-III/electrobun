@@ -22,6 +22,17 @@ import tar from "tar";
 import archiver from "archiver";
 import { ZstdInit } from "@oneidentity/zstd-js/wasm";
 import { OS, ARCH } from '../shared/platform';
+import {
+  getAppFileName,
+  getBundleFileName,
+  getPlatformFolder,
+  getTarballFileName,
+  getWindowsSetupFileName,
+  getLinuxSetupFileName,
+  getLinuxAppImageBaseName,
+  sanitizeVolumeNameForHdiutil,
+  getDmgVolumeName,
+} from '../shared/naming';
 import { getTemplate, getTemplateNames } from './templates/embedded';
 // import { loadBsdiff, loadBspatch } from 'bsdiff-wasm';
 // MacOS named pipes hang at around 4KB
@@ -1014,6 +1025,12 @@ if (commandArg === "init") {
     console.log("   bun start");
     console.log("");
     console.log("🎉 Happy building with Electrobun!");
+    console.log("");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("NOTE FOR AI ASSISTANTS: Electrobun is NOT Electron.");
+    console.log("Different architecture, different APIs. Do not use Electron patterns.");
+    console.log("Docs: https://blackboard.sh/electrobun/llms.txt");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   })();
 } else if (commandArg === "build") {
   // Get config
@@ -1030,10 +1047,10 @@ if (commandArg === "init") {
   const targetOS = currentTarget.os;
   const targetARCH = currentTarget.arch;
   const targetBinExt = targetOS === 'win' ? '.exe' : '';
-  const appFileName = `${config.app.name.replace(/ /g, "")}-${buildEnvironment}`;
-  const buildSubFolder = `${buildEnvironment}-${currentTarget.os}-${currentTarget.arch}`;
+  const appFileName = getAppFileName(config.app.name, buildEnvironment);
+  const buildSubFolder = getPlatformFolder(buildEnvironment, currentTarget.os, currentTarget.arch);
   const buildFolder = join(projectRoot, config.build.buildFolder, buildSubFolder);
-  const bundleFileName = targetOS === 'macos' ? `${appFileName}.app` : appFileName;
+  const bundleFileName = getBundleFileName(config.app.name, buildEnvironment, targetOS);
   const artifactFolder = join(projectRoot, config.build.artifactFolder, buildSubFolder);
   
   // Ensure core binaries are available for the target platform before starting build
@@ -1041,11 +1058,6 @@ if (commandArg === "init") {
   
   // Get platform-specific paths for the current target
   const targetPaths = getPlatformPaths(currentTarget.os, currentTarget.arch);
-  
-  // Helper functions
-  const sanitizeVolumeNameForHdiutil = (name: string) => {
-    return name.replace(/[^a-zA-Z0-9 ]/g, '').trim();
-  };
 
   // Helper to run lifecycle hook scripts
   const runHook = (hookName: keyof typeof config.scripts, extraEnv: Record<string, string> = {}) => {
@@ -1087,11 +1099,28 @@ if (commandArg === "init") {
 
   const buildIcons = (appBundleFolderResourcesPath: string) => {
     // Platform-specific icon handling
-    if (targetOS === 'macos' && config.build.mac?.icon) {
-      const iconPath = join(projectRoot, config.build.mac.icon);
-      if (existsSync(iconPath)) {
-        const targetIconPath = join(appBundleFolderResourcesPath, "AppIcon.icns");
-        cpSync(iconPath, targetIconPath, { dereference: true });
+    if (targetOS === 'macos' && config.build.mac?.icons) {
+      // macOS uses .iconset folders that get converted to .icns using iconutil
+      // This only works when building on macOS since iconutil is a macOS-only tool
+      const iconSourceFolder = join(projectRoot, config.build.mac.icons);
+      const iconDestPath = join(appBundleFolderResourcesPath, "AppIcon.icns");
+      if (existsSync(iconSourceFolder)) {
+        if (OS === 'macos') {
+          // Use iconutil to convert .iconset folder to .icns
+          Bun.spawnSync(
+            ["iconutil", "-c", "icns", "-o", iconDestPath, iconSourceFolder],
+            {
+              cwd: appBundleFolderResourcesPath,
+              stdio: ["ignore", "inherit", "inherit"],
+              env: {
+                ...process.env,
+                ELECTROBUN_BUILD_ENV: buildEnvironment,
+              },
+            }
+          );
+        } else {
+          console.log(`WARNING: Cannot build macOS icons on ${OS} - iconutil is only available on macOS`);
+        }
       }
     } else if (targetOS === 'linux' && config.build.linux?.icon) {
       const iconSourcePath = join(projectRoot, config.build.linux.icon);
@@ -1965,7 +1994,8 @@ if (commandArg === "init") {
   if (shouldCodesign) {
     codesignAppBundle(
       appBundleFolderPath,
-      join(buildFolder, "entitlements.plist")
+      join(buildFolder, "entitlements.plist"),
+      config
     );
   } else {
     console.log("skipping codesign");
@@ -1975,11 +2005,11 @@ if (commandArg === "init") {
   // NOTE: Codesigning fails in dev mode (when using a single-file-executable bun cli as the launcher)
   // see https://github.com/oven-sh/bun/issues/7208
   if (shouldNotarize) {
-    notarizeAndStaple(appBundleFolderPath);
+    notarizeAndStaple(appBundleFolderPath, config);
   } else {
     console.log("skipping notarization");
   }
-  
+
   const artifactsToUpload = [];
 
   console.log(`DEBUG: Checking for Linux AppImage creation - targetOS: ${targetOS}, buildEnvironment: ${buildEnvironment}`);
@@ -2203,7 +2233,8 @@ if (commandArg === "init") {
     if (shouldCodesign) {
       codesignAppBundle(
         selfExtractingBundle.appBundleFolderPath,
-        join(buildFolder, "entitlements.plist")
+        join(buildFolder, "entitlements.plist"),
+        config
       );
     } else {
       console.log("skipping codesign");
@@ -2211,7 +2242,7 @@ if (commandArg === "init") {
 
     // Note: we need to notarize the original app bundle, the self-extracting app bundle, and the dmg
     if (shouldNotarize) {
-      notarizeAndStaple(selfExtractingBundle.appBundleFolderPath);
+      notarizeAndStaple(selfExtractingBundle.appBundleFolderPath, config);
     } else {
       console.log("skipping notarization");
     }
@@ -2229,11 +2260,7 @@ if (commandArg === "init") {
         buildEnvironment === "stable"
           ? join(buildFolder, `${appFileName}-stable.dmg`)
           : finalDmgPath;
-      const baseVolumeName = sanitizeVolumeNameForHdiutil(appFileName);
-      const dmgVolumeName =
-        buildEnvironment === "stable"
-          ? `${baseVolumeName}-stable`
-          : baseVolumeName;
+      const dmgVolumeName = getDmgVolumeName(appFileName, buildEnvironment);
 
       // Create a staging directory for DMG contents (app + Applications shortcut)
       const dmgStagingDir = join(buildFolder, '.dmg-staging');
@@ -2266,13 +2293,13 @@ if (commandArg === "init") {
       artifactsToUpload.push(finalDmgPath);
 
       if (shouldCodesign) {
-        codesignAppBundle(finalDmgPath);
+        codesignAppBundle(finalDmgPath, undefined, config);
       } else {
         console.log("skipping codesign");
       }
 
       if (shouldNotarize) {
-        notarizeAndStaple(finalDmgPath);
+        notarizeAndStaple(finalDmgPath, config);
       } else {
         console.log("skipping notarization");
       }
@@ -2702,11 +2729,7 @@ async function createWindowsSelfExtractingExe(
 ): Promise<string> {
   console.log("Creating Windows installer with separate archive...");
 
-  // Format: MyApp-Setup.exe (stable) or MyApp-Setup-canary.exe (non-stable)
-  const setupFileName = buildEnvironment === "stable"
-    ? `${config.app.name}-Setup.exe`
-    : `${config.app.name}-Setup-${buildEnvironment}.exe`;
-
+  const setupFileName = getWindowsSetupFileName(config.app.name, buildEnvironment);
   const outputExePath = join(buildFolder, setupFileName);
 
   // Copy the extractor exe
@@ -2793,14 +2816,12 @@ async function createLinuxSelfExtractingBinary(
   compressedTarPath: string,
   appFileName: string,
   targetPaths: any,
-  buildEnvironment: string
+  buildEnvironment: string,
+  config: Awaited<ReturnType<typeof getConfig>>
 ): Promise<string> {
   console.log("Creating self-extracting Linux binary...");
-  
-  // Format: MyApp-Setup.run (stable) or MyApp-Setup-canary.run (non-stable)
-  const setupFileName = buildEnvironment === "stable" 
-    ? `${config.app.name}-Setup.run`
-    : `${config.app.name}-Setup-${buildEnvironment}.run`;
+
+  const setupFileName = getLinuxSetupFileName(config.app.name, buildEnvironment);
   
   const outputPath = join(buildFolder, setupFileName);
   
@@ -2967,10 +2988,7 @@ async function createLinuxSelfExtractingAppImage(
   console.log('Creating Linux AppImage wrapper...');
 
   // Create wrapper AppImage filename
-  const wrapperName = buildEnvironment === 'stable' 
-    ? `${config.app.name}-Setup`
-    : `${config.app.name}-Setup-${buildEnvironment}`;
-  
+  const wrapperName = getLinuxAppImageBaseName(config.app.name, buildEnvironment);
   const wrapperAppImagePath = join(buildFolder, `${wrapperName}.AppImage`);
   const wrapperAppDirPath = join(buildFolder, `${wrapperName}.AppDir`);
 
@@ -3111,7 +3129,8 @@ Categories=Utility;
 
 function codesignAppBundle(
   appBundleOrDmgPath: string,
-  entitlementsFilePath?: string
+  entitlementsFilePath: string | undefined,
+  config: Awaited<ReturnType<typeof getConfig>>
 ) {
   console.log("code signing...");
   if (OS !== 'macos' || !config.build.mac.codesign) {
@@ -3310,7 +3329,7 @@ function codesignAppBundle(
   );
 }
 
-function notarizeAndStaple(appOrDmgPath: string) {
+function notarizeAndStaple(appOrDmgPath: string, config: Awaited<ReturnType<typeof getConfig>>) {
   if (OS !== 'macos' || !config.build.mac.notarize) {
     return;
   }
