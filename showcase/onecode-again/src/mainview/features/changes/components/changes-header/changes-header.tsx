@@ -1,14 +1,8 @@
 import { Button } from "../../../../components/ui/button";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "../../../../components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../../components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
-import { useEffect, useRef, useState } from "react";
-import { HiArrowPath } from "react-icons/hi2";
+import { createEffect, createSignal } from "solid-js";
+import { RefreshCw } from "lucide-solid";
 import { IconSpinner } from "../../../../icons";
 import { trpc } from "../../../../lib/trpc";
 import { PRIcon } from "../pr-icon";
@@ -16,23 +10,15 @@ import { usePRStatus } from "../../../../hooks/usePRStatus";
 import { useChangesStore } from "../../../../lib/stores/changes-store";
 import type { ChangesViewMode } from "../../types";
 import { ViewModeToggle } from "../view-mode-toggle";
-
 interface ChangesHeaderProps {
 	onRefresh: () => void;
 	viewMode: ChangesViewMode;
 	onViewModeChange: (mode: ChangesViewMode) => void;
 	worktreePath: string;
 }
-
-export function ChangesHeader({
-	onRefresh,
-	viewMode,
-	onViewModeChange,
-	worktreePath,
-}: ChangesHeaderProps) {
-	const [isManualRefresh, setIsManualRefresh] = useState(false);
-	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
+export function ChangesHeader({ onRefresh, viewMode, onViewModeChange, worktreePath }: ChangesHeaderProps) {
+	const [isManualRefresh, setIsManualRefresh] = createSignal(false);
+	const [timeoutRef, setTimeoutRef] = createSignal<NodeJS.Timeout | null>(null);
 	const handleRefresh = () => {
 		setIsManualRefresh(true);
 		onRefresh();
@@ -45,57 +31,42 @@ export function ChangesHeader({
 			setIsManualRefresh(false);
 		}, 600);
 	};
-
 	// Cleanup timeout on unmount
-	useEffect(() => {
+	createEffect(() => {
 		return () => {
 			if (timeoutRef.current) {
 				clearTimeout(timeoutRef.current);
 				timeoutRef.current = null;
 			}
 		};
-	}, []);
-
+	});
 	const { baseBranch, setBaseBranch } = useChangesStore();
-
-	const { data: branchData, isLoading } = trpc.changes.getBranches.useQuery(
-		{ worktreePath },
-		{ enabled: !!worktreePath },
-	);
-
+	const { data: branchData, isLoading } = trpc.changes.getBranches.useQuery({ worktreePath }, { enabled: !!worktreePath });
 	const { pr, isLoading: isPRLoading } = usePRStatus({
 		worktreePath,
-		refetchInterval: 10000,
+		refetchInterval: 1e4
 	});
-
 	const effectiveBaseBranch = baseBranch ?? branchData?.defaultBranch ?? "main";
 	const availableBranches = branchData?.remote ?? [];
-
 	const sortedBranches = [...availableBranches].sort((a, b) => {
 		if (a === branchData?.defaultBranch) return -1;
 		if (b === branchData?.defaultBranch) return 1;
 		return a.localeCompare(b);
 	});
-
 	const handleChange = (value: string) => {
 		if (value === branchData?.defaultBranch && baseBranch === null) {
 			return;
 		}
 		setBaseBranch(value);
 	};
-
-	return (
-		<div class="flex items-center justify-between gap-1.5 px-2 py-1.5">
+	return <div class="flex items-center justify-between gap-1.5 px-2 py-1.5">
 			<div class="flex items-center gap-1 min-w-0 flex-1">
 				<span class="text-[10px] text-muted-foreground shrink-0">
 					Base:
 				</span>
-				{isLoading || !branchData ? (
-					<span class="px-1.5 py-0.5 rounded bg-muted/50 text-foreground text-[10px] font-medium truncate">
+				{isLoading || !branchData ? <span class="px-1.5 py-0.5 rounded bg-muted/50 text-foreground text-[10px] font-medium truncate">
 						{effectiveBaseBranch}
-					</span>
-				) : (
-					<Tooltip>
+					</span> : <Tooltip>
 						<Select value={effectiveBaseBranch} onValueChange={handleChange}>
 							<TooltipTrigger asChild>
 								<SelectTrigger class="h-5 px-1.5 py-0 text-[10px] font-medium border-none bg-muted/50 hover:bg-muted text-foreground min-w-0 w-auto gap-0.5 rounded">
@@ -103,43 +74,25 @@ export function ChangesHeader({
 								</SelectTrigger>
 							</TooltipTrigger>
 							<SelectContent align="start">
-								{sortedBranches
-									.filter((branch) => branch)
-									.map((branch) => (
-										<SelectItem key={branch} value={branch} class="text-xs">
+								{sortedBranches.filter((branch) => branch).map((branch) => <SelectItem key={branch} value={branch} class="text-xs">
 											{branch}
-											{branch === branchData.defaultBranch && (
-												<span class="ml-1 text-muted-foreground">
+											{branch === branchData.defaultBranch && <span class="ml-1 text-muted-foreground">
 													(default)
-												</span>
-											)}
-										</SelectItem>
-									))}
+												</span>}
+										</SelectItem>)}
 							</SelectContent>
 						</Select>
 						<TooltipContent side="bottom" showArrow={false}>
 							Change base branch
 						</TooltipContent>
-					</Tooltip>
-				)}
+					</Tooltip>}
 			</div>
 			<div class="flex items-center shrink-0">
-				<ViewModeToggle
-					viewMode={viewMode}
-					onViewModeChange={onViewModeChange}
-				/>
+				<ViewModeToggle viewMode={viewMode} onViewModeChange={onViewModeChange} />
 				<Tooltip>
 					<TooltipTrigger asChild>
-						<Button
-							variant="ghost"
-							size="icon"
-							onClick={handleRefresh}
-							disabled={isManualRefresh}
-							class="size-6 p-0"
-						>
-							<HiArrowPath
-								class={`size-3.5 ${isManualRefresh ? "animate-spin" : ""}`}
-							/>
+						<Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isManualRefresh} class="size-6 p-0">
+							<RefreshCw class={`size-3.5 ${isManualRefresh ? "animate-spin" : ""}`} />
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent side="bottom" showArrow={false}>
@@ -147,18 +100,10 @@ export function ChangesHeader({
 					</TooltipContent>
 				</Tooltip>
 
-				{/* PR Status Icon */}
-				{isPRLoading ? (
-					<IconSpinner class="w-4 h-4 text-muted-foreground shrink-0" />
-				) : pr ? (
-					<Tooltip>
+				{	/* PR Status Icon */}
+				{isPRLoading ? <IconSpinner class="w-4 h-4 text-muted-foreground shrink-0" /> : pr ? <Tooltip>
 						<TooltipTrigger asChild>
-							<a
-								href={pr.url}
-								target="_blank"
-								rel="noopener noreferrer"
-								class="flex items-center gap-1 shrink-0 hover:opacity-80 transition-opacity"
-							>
+							<a href={pr.url} target="_blank" rel="noopener noreferrer" class="flex items-center gap-1 shrink-0 hover:opacity-80 transition-opacity">
 								<PRIcon state={pr.state} class="w-4 h-4" />
 								<span class="text-xs text-muted-foreground font-mono">
 									#{pr.number}
@@ -168,9 +113,7 @@ export function ChangesHeader({
 						<TooltipContent side="bottom" showArrow={false}>
 							View PR on GitHub
 						</TooltipContent>
-					</Tooltip>
-				) : null}
+					</Tooltip> : null}
 			</div>
-		</div>
-	);
-}
+		</div>;
+ }

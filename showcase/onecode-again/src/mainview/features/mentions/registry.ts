@@ -11,8 +11,7 @@
  * - Automatic lifecycle management (activate/deactivate)
  */
 
-import { atom, useAtomValue } from "jotai"
-import { useEffect, useState, useMemo } from "react"
+import { createEffect, createMemo, createSignal, onCleanup, type Accessor } from "solid-js"
 import type { MentionProvider, MentionProviderId } from "./types"
 
 /**
@@ -247,39 +246,37 @@ export const mentionRegistry = new MentionProviderRegistry()
  * Jotai atom for reactive provider list
  * Updates automatically when registry changes
  */
-export const mentionProvidersAtom = atom<MentionProvider[]>([])
+export const mentionProvidersAtom = createSignal<MentionProvider[]>([])
 
 /**
  * Internal atom to track registry version
  */
-const registryVersionAtom = atom(0)
+const registryVersionAtom = createSignal(0)
 
 /**
  * Writable atom that syncs with registry
  */
-export const syncedMentionProvidersAtom = atom(
-  (get) => {
-    // Subscribe to version changes
-    get(registryVersionAtom)
-    return mentionRegistry.getAll()
-  },
-  (_, set) => {
-    // Increment version to trigger re-read
-    set(registryVersionAtom, (v) => v + 1)
-  }
-)
+export const syncedMentionProvidersAtom = createMemo(() => {
+  registryVersionAtom[0]()
+  return mentionRegistry.getAll()
+})
+
+export function syncMentionProviders() {
+  registryVersionAtom[1]((v) => v + 1)
+}
 
 /**
  * Hook to get all providers (reactive)
  */
-export function useMentionProviders(): MentionProvider[] {
-  const [providers, setProviders] = useState(() => mentionRegistry.getAll())
+export function useMentionProviders(): Accessor<MentionProvider[]> {
+  const [providers, setProviders] = createSignal(mentionRegistry.getAll())
 
-  useEffect(() => {
-    return mentionRegistry.subscribe(() => {
+  createEffect(() => {
+    const unsubscribe = mentionRegistry.subscribe(() => {
       setProviders(mentionRegistry.getAll())
     })
-  }, [])
+    onCleanup(unsubscribe)
+  })
 
   return providers
 }
@@ -289,16 +286,15 @@ export function useMentionProviders(): MentionProvider[] {
  */
 export function useMentionProvidersByTrigger(
   trigger: string
-): MentionProvider[] {
-  const [providers, setProviders] = useState(() =>
-    mentionRegistry.getByTrigger(trigger)
-  )
+): Accessor<MentionProvider[]> {
+  const [providers, setProviders] = createSignal(mentionRegistry.getByTrigger(trigger))
 
-  useEffect(() => {
-    return mentionRegistry.subscribe(() => {
+  createEffect(() => {
+    const unsubscribe = mentionRegistry.subscribe(() => {
       setProviders(mentionRegistry.getByTrigger(trigger))
     })
-  }, [trigger])
+    onCleanup(unsubscribe)
+  })
 
   return providers
 }
@@ -309,29 +305,28 @@ export function useMentionProvidersByTrigger(
 export function useAvailableMentionProviders(context: {
   projectPath?: string
   sessionId?: string
-}): MentionProvider[] {
+}): Accessor<MentionProvider[]> {
   const providers = useMentionProviders()
 
-  return providers.filter((p) => p.isAvailable?.(context) ?? true)
+  return createMemo(() => providers().filter((p) => p.isAvailable?.(context) ?? true))
 }
 
 /**
  * Hook to get categories (reactive)
  */
-export function useMentionCategories(): Array<{
+export function useMentionCategories(): Accessor<Array<{
   id: string
   label: string
   priority: number
-}> {
-  const [categories, setCategories] = useState(() =>
-    mentionRegistry.getCategories()
-  )
+}>> {
+  const [categories, setCategories] = createSignal(mentionRegistry.getCategories())
 
-  useEffect(() => {
-    return mentionRegistry.subscribe(() => {
+  createEffect(() => {
+    const unsubscribe = mentionRegistry.subscribe(() => {
       setCategories(mentionRegistry.getCategories())
     })
-  }, [])
+    onCleanup(unsubscribe)
+  })
 
   return categories
 }
@@ -342,15 +337,9 @@ export function useMentionCategories(): Array<{
  */
 export function useMentionProvider(
   id: MentionProviderId
-): MentionProvider | undefined {
-  const derivedAtom = useMemo(
-    () =>
-      atom((get) => {
-        get(registryVersionAtom)
-        return mentionRegistry.get(id)
-      }),
-    [id]
-  )
-
-  return useAtomValue(derivedAtom)
+): Accessor<MentionProvider | undefined> {
+  return createMemo(() => {
+    registryVersionAtom[0]()
+    return mentionRegistry.get(id)
+  })
 }

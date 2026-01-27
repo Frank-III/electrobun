@@ -25,3 +25,5 @@
 - `/package/src/cli` - CLI implementation
 - `/package/src/extractor` - Self-extractor implementation (Zig)
 - `/package/src/native` - Native wrappers for each platform
+
+@.fp/FP_CLAUDE.md

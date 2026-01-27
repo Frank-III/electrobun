@@ -1,97 +1,63 @@
-import { useAtom } from "jotai"
-import { useEffect, useState } from "react"
-import {
-  analyticsOptOutAtom,
-  autoAdvanceTargetAtom,
-  ctrlTabTargetAtom,
-  defaultAgentModeAtom,
-  desktopNotificationsEnabledAtom,
-  extendedThinkingEnabledAtom,
-  soundNotificationsEnabledAtom,
-  type AgentMode,
-  type AutoAdvanceTarget,
-  type CtrlTabTarget,
-} from "../../../lib/atoms"
-import { Kbd } from "../../ui/kbd"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "../../ui/select"
-import { Switch } from "../../ui/switch"
-import { trpc } from "../../../lib/trpc"
-
+import { useAtom } from "../../../lib/state/jotai";
+import { createEffect, createSignal } from "solid-js";
+import { analyticsOptOutAtom, autoAdvanceTargetAtom, ctrlTabTargetAtom, defaultAgentModeAtom, desktopNotificationsEnabledAtom, extendedThinkingEnabledAtom, soundNotificationsEnabledAtom, type AgentMode, type AutoAdvanceTarget, type CtrlTabTarget } from "../../../lib/atoms";
+import { Kbd } from "../../ui/kbd";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "../../ui/select";
+import { Switch } from "../../ui/switch";
+import { trpc } from "../../../lib/trpc";
 // Hook to detect narrow screen
 function useIsNarrowScreen(): boolean {
-  const [isNarrow, setIsNarrow] = useState(false)
-
-  useEffect(() => {
-    const checkWidth = () => {
-      setIsNarrow(window.innerWidth <= 768)
-    }
-
-    checkWidth()
-    window.addEventListener("resize", checkWidth)
-    return () => window.removeEventListener("resize", checkWidth)
-  }, [])
-
-  return isNarrow
+	const [isNarrow, setIsNarrow] = createSignal(false);
+	createEffect(() => {
+		const checkWidth = () => {
+			setIsNarrow(window.innerWidth <= 768);
+		};
+		checkWidth();
+		window.addEventListener("resize", checkWidth);
+		return () => window.removeEventListener("resize", checkWidth);
+	});
+	return isNarrow;
 }
-
 export function AgentsPreferencesTab() {
-  const [thinkingEnabled, setThinkingEnabled] = useAtom(
-    extendedThinkingEnabledAtom,
-  )
-  const [soundEnabled, setSoundEnabled] = useAtom(soundNotificationsEnabledAtom)
-  const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useAtom(desktopNotificationsEnabledAtom)
-  const [analyticsOptOut, setAnalyticsOptOut] = useAtom(analyticsOptOutAtom)
-  const [ctrlTabTarget, setCtrlTabTarget] = useAtom(ctrlTabTargetAtom)
-  const [autoAdvanceTarget, setAutoAdvanceTarget] = useAtom(autoAdvanceTargetAtom)
-  const [defaultAgentMode, setDefaultAgentMode] = useAtom(defaultAgentModeAtom)
-  const isNarrowScreen = useIsNarrowScreen()
-
-  // Co-authored-by setting from Claude settings.json
-  const { data: includeCoAuthoredBy, refetch: refetchCoAuthoredBy } =
-    trpc.claudeSettings.getIncludeCoAuthoredBy.useQuery()
-  const setCoAuthoredByMutation =
-    trpc.claudeSettings.setIncludeCoAuthoredBy.useMutation({
-      onSuccess: () => {
-        refetchCoAuthoredBy()
-      },
-    })
-
-  const handleCoAuthoredByToggle = (enabled: boolean) => {
-    setCoAuthoredByMutation.mutate({ enabled })
-  }
-
-  // Sync opt-out status to main process
-  const handleAnalyticsToggle = async (optedOut: boolean) => {
-    setAnalyticsOptOut(optedOut)
-    // Notify main process
-    try {
-      await window.desktopApi?.setAnalyticsOptOut(optedOut)
-    } catch (error) {
-      console.error("Failed to sync analytics opt-out to main process:", error)
-    }
-  }
-
-  return (
-    <div class="p-6 space-y-6">
-      {/* Header - hidden on narrow screens since it's in the navigation bar */}
-      {!isNarrowScreen && (
-        <div class="flex flex-col space-y-1.5 text-center sm:text-left">
+	const [thinkingEnabled, setThinkingEnabled] = useAtom(extendedThinkingEnabledAtom);
+	const [soundEnabled, setSoundEnabled] = useAtom(soundNotificationsEnabledAtom);
+	const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useAtom(desktopNotificationsEnabledAtom);
+	const [analyticsOptOut, setAnalyticsOptOut] = useAtom(analyticsOptOutAtom);
+	const [ctrlTabTarget, setCtrlTabTarget] = useAtom(ctrlTabTargetAtom);
+	const [autoAdvanceTarget, setAutoAdvanceTarget] = useAtom(autoAdvanceTargetAtom);
+	const [defaultAgentMode, setDefaultAgentMode] = useAtom(defaultAgentModeAtom);
+	const isNarrowScreen = useIsNarrowScreen();
+	// Co-authored-by setting from Claude settings.json
+	const { data: includeCoAuthoredBy, refetch: refetchCoAuthoredBy } = trpc.claudeSettings.getIncludeCoAuthoredBy.useQuery();
+	const setCoAuthoredByMutation = trpc.claudeSettings.setIncludeCoAuthoredBy.useMutation({ onSuccess: () => {
+		refetchCoAuthoredBy();
+	} });
+	const handleCoAuthoredByToggle = (enabled: boolean) => {
+		setCoAuthoredByMutation.mutate({ enabled });
+	};
+	// Sync opt-out status to main process
+	const handleAnalyticsToggle = async (optedOut: boolean) => {
+		setAnalyticsOptOut(optedOut);
+		// Notify main process
+		try {
+			await window.desktopApi?.setAnalyticsOptOut(optedOut);
+		} catch (error) {
+			console.error("Failed to sync analytics opt-out to main process:", error);
+		}
+	};
+	return <div class="p-6 space-y-6">
+      {	/* Header - hidden on narrow screens since it's in the navigation bar */}
+      {!isNarrowScreen && <div class="flex flex-col space-y-1.5 text-center sm:text-left">
           <h3 class="text-sm font-semibold text-foreground">Preferences</h3>
           <p class="text-xs text-muted-foreground">
             Configure Claude's behavior and features
           </p>
-        </div>
-      )}
+        </div>}
 
-      {/* Features Section */}
+      { /* Features Section */}
       <div class="bg-background rounded-lg border border-border overflow-hidden">
         <div class="p-4 space-y-6">
-          {/* Extended Thinking Toggle */}
+          { /* Extended Thinking Toggle */}
           <div class="flex items-start justify-between">
             <div class="flex flex-col space-y-1">
               <span class="text-sm font-medium text-foreground">
@@ -103,13 +69,10 @@ export function AgentsPreferencesTab() {
                 <span class="text-foreground/70">Disables response streaming.</span>
               </span>
             </div>
-            <Switch
-              checked={thinkingEnabled}
-              onCheckedChange={setThinkingEnabled}
-            />
+            <Switch checked={thinkingEnabled} onCheckedChange={setThinkingEnabled} />
           </div>
 
-          {/* Desktop Notifications Toggle */}
+          { /* Desktop Notifications Toggle */}
           <div class="flex items-start justify-between">
             <div class="flex flex-col space-y-1">
               <span class="text-sm font-medium text-foreground">
@@ -122,7 +85,7 @@ export function AgentsPreferencesTab() {
             <Switch checked={desktopNotificationsEnabled} onCheckedChange={setDesktopNotificationsEnabled} />
           </div>
 
-          {/* Sound Notifications Toggle */}
+          { /* Sound Notifications Toggle */}
           <div class="flex items-start justify-between">
             <div class="flex flex-col space-y-1">
               <span class="text-sm font-medium text-foreground">
@@ -135,7 +98,7 @@ export function AgentsPreferencesTab() {
             <Switch checked={soundEnabled} onCheckedChange={setSoundEnabled} />
           </div>
 
-          {/* Co-Authored-By Toggle */}
+          { /* Co-Authored-By Toggle */}
           <div class="flex items-start justify-between">
             <div class="flex flex-col space-y-1">
               <span class="text-sm font-medium text-foreground">
@@ -145,14 +108,10 @@ export function AgentsPreferencesTab() {
                 Add "Co-authored-by: Claude" to git commits made by Claude
               </span>
             </div>
-            <Switch
-              checked={includeCoAuthoredBy ?? true}
-              onCheckedChange={handleCoAuthoredByToggle}
-              disabled={setCoAuthoredByMutation.isPending}
-            />
+            <Switch checked={includeCoAuthoredBy ?? true} onCheckedChange={handleCoAuthoredByToggle} disabled={setCoAuthoredByMutation.isPending} />
           </div>
 
-          {/* Quick Switch */}
+          { /* Quick Switch */}
           <div class="flex items-start justify-between">
             <div class="flex flex-col space-y-1">
               <span class="text-sm font-medium text-foreground">
@@ -162,10 +121,7 @@ export function AgentsPreferencesTab() {
                 What <Kbd>⌃Tab</Kbd> switches between
               </span>
             </div>
-            <Select
-              value={ctrlTabTarget}
-              onValueChange={(value: CtrlTabTarget) => setCtrlTabTarget(value)}
-            >
+            <Select value={ctrlTabTarget} onValueChange={(value: CtrlTabTarget) => setCtrlTabTarget(value)}>
               <SelectTrigger class="w-auto px-2">
                 <span class="text-xs">
                   {ctrlTabTarget === "workspaces" ? "Workspaces" : "Agents"}
@@ -178,7 +134,7 @@ export function AgentsPreferencesTab() {
             </Select>
           </div>
 
-          {/* Auto-advance */}
+          { /* Auto-advance */}
           <div class="flex items-start justify-between">
             <div class="flex flex-col space-y-1">
               <span class="text-sm font-medium text-foreground">
@@ -188,17 +144,10 @@ export function AgentsPreferencesTab() {
                 Where to go after archiving a workspace
               </span>
             </div>
-            <Select
-              value={autoAdvanceTarget}
-              onValueChange={(value: AutoAdvanceTarget) => setAutoAdvanceTarget(value)}
-            >
+            <Select value={autoAdvanceTarget} onValueChange={(value: AutoAdvanceTarget) => setAutoAdvanceTarget(value)}>
               <SelectTrigger class="w-auto px-2">
                 <span class="text-xs">
-                  {autoAdvanceTarget === "next"
-                    ? "Go to next workspace"
-                    : autoAdvanceTarget === "previous"
-                      ? "Go to previous workspace"
-                      : "Close workspace"}
+                  {autoAdvanceTarget === "next" ? "Go to next workspace" : autoAdvanceTarget === "previous" ? "Go to previous workspace" : "Close workspace"}
                 </span>
               </SelectTrigger>
               <SelectContent>
@@ -209,7 +158,7 @@ export function AgentsPreferencesTab() {
             </Select>
           </div>
 
-          {/* Default Mode */}
+          { /* Default Mode */}
           <div class="flex items-start justify-between">
             <div class="flex flex-col space-y-1">
               <span class="text-sm font-medium text-foreground">
@@ -219,10 +168,7 @@ export function AgentsPreferencesTab() {
                 Mode for new agents (Plan = read-only, Agent = can edit)
               </span>
             </div>
-            <Select
-              value={defaultAgentMode}
-              onValueChange={(value: AgentMode) => setDefaultAgentMode(value)}
-            >
+            <Select value={defaultAgentMode} onValueChange={(value: AgentMode) => setDefaultAgentMode(value)}>
               <SelectTrigger class="w-auto px-2">
                 <span class="text-xs">
                   {defaultAgentMode === "agent" ? "Agent" : "Plan"}
@@ -237,7 +183,7 @@ export function AgentsPreferencesTab() {
         </div>
       </div>
 
-      {/* Privacy Section */}
+      { /* Privacy Section */}
       <div class="space-y-2">
         <div class="pb-2">
           <h4 class="text-sm font-medium text-foreground">Privacy</h4>
@@ -248,7 +194,7 @@ export function AgentsPreferencesTab() {
 
         <div class="bg-background rounded-lg border border-border overflow-hidden">
           <div class="p-4">
-            {/* Share Usage Analytics */}
+            { /* Share Usage Analytics */}
             <div class="flex items-start justify-between">
               <div class="flex flex-col space-y-1">
                 <span class="text-sm font-medium text-foreground">
@@ -258,14 +204,10 @@ export function AgentsPreferencesTab() {
                   Help us improve Agents by sharing anonymous usage data. We only track feature usage and app performance–never your code, prompts, or messages. No AI training on your data.
                 </span>
               </div>
-              <Switch
-                checked={!analyticsOptOut}
-                onCheckedChange={(enabled) => handleAnalyticsToggle(!enabled)}
-              />
+              <Switch checked={!analyticsOptOut} onCheckedChange={(enabled) => handleAnalyticsToggle(!enabled)} />
             </div>
           </div>
         </div>
       </div>
-    </div>
-  )
-}
+    </div>;
+ }

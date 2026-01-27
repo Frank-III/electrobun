@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect, useRef, useCallback } from "react"
-import { useAtom } from "jotai"
-import { atomWithStorage } from "jotai/utils"
+import { useAtom } from "../../../lib/state/jotai"
+import { createStoredSignal } from "../../../lib/state/signal-storage"
 import { isDesktopApp } from "../../../lib/utils/platform"
 
 // Track pending notifications count for badge
-const pendingNotificationsAtom = atomWithStorage<number>(
+const pendingNotificationsAtom = createStoredSignal<number>(
   "desktop-pending-notifications",
   0,
 )

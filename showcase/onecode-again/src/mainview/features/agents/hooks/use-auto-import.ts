@@ -1,7 +1,7 @@
 import { useCallback } from "react"
 import { trpc } from "../../../lib/trpc"
 import { toast } from "solid-sonner"
-import { useSetAtom } from "jotai"
+import { useSetAtom } from "../../../lib/state/jotai"
 import { selectedAgentChatIdAtom } from "../atoms"
 import { chatSourceModeAtom } from "../../../lib/atoms"
 import type { RemoteChat } from "../../../lib/remote-api"

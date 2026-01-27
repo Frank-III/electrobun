@@ -975,8 +975,7 @@ export function createChatsHandlers() {
         subChatCount: chatSubChats.length,
       };
     },
-  };
-}
+
     chatsRollbackToMessage: async ({ subChatId, sdkMessageUuid }: { subChatId: string; sdkMessageUuid: string }) => {
       const db = await getDatabase();
 
@@ -1030,3 +1029,5 @@ export function createChatsHandlers() {
 
       return { success: true as const, messages: truncatedMessages };
     },
+  };
+}

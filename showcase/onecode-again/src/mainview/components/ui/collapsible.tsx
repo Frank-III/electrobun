@@ -1,9 +1,32 @@
-"use client"
+import type { ComponentProps, ValidComponent } from "solid-js";
+import { splitProps } from "solid-js";
+import { Collapsible as CollapsiblePrimitive } from "@kobalte/core/collapsible";
+import { cn } from "../../lib/utils";
 
-import * as CollapsiblePrimitive from "@radix-ui/react-collapsible"
+export type CollapsibleProps = ComponentProps<typeof CollapsiblePrimitive>;
 
-const Collapsible = CollapsiblePrimitive.Root
-const CollapsibleTrigger = CollapsiblePrimitive.CollapsibleTrigger
-const CollapsibleContent = CollapsiblePrimitive.CollapsibleContent
+export function Collapsible(props: CollapsibleProps) {
+	return <CollapsiblePrimitive data-slot="collapsible" {...props} />;
+}
 
-export { Collapsible, CollapsibleTrigger, CollapsibleContent }
+export type CollapsibleTriggerProps = ComponentProps<typeof CollapsiblePrimitive.Trigger>;
+
+export function CollapsibleTrigger(props: CollapsibleTriggerProps) {
+	return <CollapsiblePrimitive.Trigger data-slot="collapsible-trigger" {...props} />;
+}
+
+export type CollapsibleContentProps = ComponentProps<typeof CollapsiblePrimitive.Content>;
+
+export function CollapsibleContent(props: CollapsibleContentProps) {
+	const [local, rest] = splitProps(props, ["class"]);
+	return (
+		<CollapsiblePrimitive.Content
+			data-slot="collapsible-content"
+			class={cn(
+				"data-[closed]:animate-collapsible-up data-[expanded]:animate-collapsible-down overflow-hidden",
+				local.class
+			)}
+			{...rest}
+		/>
+	);
+}

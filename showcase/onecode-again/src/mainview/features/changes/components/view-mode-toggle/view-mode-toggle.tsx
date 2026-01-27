@@ -1,43 +1,23 @@
 import { Button } from "../../../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
-import { LuFolder, LuFolderTree } from "react-icons/lu";
+import { Folder, FolderTree } from "lucide-solid";
 import type { ChangesViewMode } from "../../types";
-
 interface ViewModeToggleProps {
 	viewMode: ChangesViewMode;
 	onViewModeChange: (mode: ChangesViewMode) => void;
 }
-
-export function ViewModeToggle({
-	viewMode,
-	onViewModeChange,
-}: ViewModeToggleProps) {
+export function ViewModeToggle({ viewMode, onViewModeChange }: ViewModeToggleProps) {
 	const handleToggle = () => {
 		onViewModeChange(viewMode === "grouped" ? "tree" : "grouped");
 	};
-
-	return (
-		<Tooltip>
+	return <Tooltip>
 			<TooltipTrigger asChild>
-				<Button
-					variant="ghost"
-					size="icon"
-					onClick={handleToggle}
-					class="size-6 p-0"
-					aria-label={viewMode === "grouped" ? "Grouped view" : "Tree view"}
-				>
-					{viewMode === "grouped" ? (
-						<LuFolder class="size-3.5" />
-					) : (
-						<LuFolderTree class="size-3.5" />
-					)}
+				<Button variant="ghost" size="icon" onClick={handleToggle} class="size-6 p-0" aria-label={viewMode === "grouped" ? "Grouped view" : "Tree view"}>
+					{viewMode === "grouped" ? <Folder class="size-3.5" /> : <FolderTree class="size-3.5" />}
 				</Button>
 			</TooltipTrigger>
 			<TooltipContent side="bottom" showArrow={false}>
-				{viewMode === "grouped"
-					? "Switch to tree view"
-					: "Switch to grouped view"}
+				{viewMode === "grouped" ? "Switch to tree view" : "Switch to grouped view"}
 			</TooltipContent>
-		</Tooltip>
-	);
+		</Tooltip>;
 }

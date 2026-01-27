@@ -1,0 +1,69 @@
+# Ralph Progress Log
+Started: 2026-01-28
+---
+
+## Codebase Patterns
+- Use `signal()` accessor syntax for all signal reads in SolidJS
+- SolidJS refs are direct values (`let ref: T | undefined`), not objects with `.current`
+- Use `<Show when={}>` instead of `{condition && <Component />}`
+- Use `<For each={}>` instead of `.map()` in JSX
+- Use `onInput` instead of `onChange` for text inputs
+- CSS properties in style objects use kebab-case: `"background-color"` not `backgroundColor`
+- Replace `React.SVGProps` with `JSX.SvgSVGAttributes`
+- Effects don't take dependency arrays - SolidJS auto-tracks
+- Replace `React.ReactNode` with `JSX.Element`
+- Replace `forwardRef` with props-based ref passing: `ref?: HTMLElement | ((el: HTMLElement) => void)`
+- Use `splitProps` for component props destructuring
+- Kobalte components (Tooltip, Popover) don't support `asChild` like Radix
+- Use `Portal` from solid-js/web, not `createPortal` (and wrap children, not pass to function)
+- Use `onCleanup()` in effects instead of returning a cleanup function
+- Use `import type { X }` for type-only imports (verbatimModuleSyntax)
+- tRPC still uses React Query wrapper - `isLoading` and `data` are not SolidJS signals yet
+
+---
+
+## 2026-01-28 - US-001
+Thread: https://ampcode.com/threads/T-019c05e8-91dc-77da-a374-e0ef84df50c0
+- Fixed signal accessor patterns in UI components
+- Files changed:
+  - src/mainview/components/ui/input.tsx - removed duplicate imports and exports
+  - src/mainview/components/ui/prompt-input.tsx - converted from React to SolidJS patterns
+  - src/mainview/components/ui/search-combobox.tsx - converted from React to SolidJS patterns
+- **Learnings for future iterations:**
+  - The core UI files (button, checkbox, select, dialog, alert-dialog) were already properly converted
+  - prompt-input.tsx and search-combobox.tsx had mixed React/SolidJS imports that needed full rewrite
+  - Kobalte's Tooltip/Popover don't support `asChild` prop like Radix does
+  - Use `let ref: T | undefined` pattern instead of `createSignal` for refs
+---
+
+## 2026-01-28 - US-002
+Thread: https://ampcode.com/threads/T-019c05ec-7d6b-715b-b976-dc80bf60e5ff
+- Converted React refs to SolidJS direct-value pattern in UI components
+- Files changed:
+  - src/mainview/components/ui/command.tsx - removed forwardRef, replaced useRef with let ref, converted to SolidJS context
+  - src/mainview/components/ui/resizable-sidebar.tsx - replaced signals-as-refs with let ref, fixed .current patterns
+  - src/mainview/components/ui/typewriter-text.tsx - removed memo wrapper, replaced signals-as-refs with let variables
+- **Learnings for future iterations:**
+  - Don't use `createSignal` for refs - use `let ref: T | undefined` pattern
+  - Remove all React.forwardRef - pass refs via props instead
+  - Remove all memo() wrappers - SolidJS doesn't need them
+  - Signal accessors from useAtom need to be called with () - sidebarWidth()
+  - Use onCleanup() instead of returning cleanup from createEffect
+  - Import Portal from solid-js/web, not createPortal
+---
+
+## 2026-01-28 - US-003
+Thread: https://ampcode.com/threads/T-019c05f2-5d5e-77dd-a3e9-d7bca63d6165
+- Fixed signal accessor patterns in settings dialog tabs
+- Files changed:
+  - src/mainview/components/dialogs/settings-tabs/agents-appearance-tab.tsx - added onCleanup import, replaced return cleanup with onCleanup()
+  - src/mainview/components/dialogs/settings-tabs/agents-beta-tab.tsx - added onCleanup import, separated Accessor type import, fixed cleanup
+  - src/mainview/components/dialogs/settings-tabs/agents-custom-agents-tab.tsx - added onCleanup import, fixed cleanup
+  - src/mainview/components/dialogs/settings-tabs/agents-skills-tab.tsx - added Skill interface for type safety
+- **Learnings for future iterations:**
+  - Many settings tabs already use correct signal() accessors for createSignal values
+  - The codebase uses @trpc/react-query which returns regular values (not SolidJS signals) - isLoading, data are not accessors
+  - agents-mcp-tab.tsx and agents-skills-tab.tsx already had proper onCleanup usage
+  - Type imports should use `import type { X }` for verbatimModuleSyntax compliance
+  - Remaining type errors are about Kobalte Select component props (different migration story)
+---

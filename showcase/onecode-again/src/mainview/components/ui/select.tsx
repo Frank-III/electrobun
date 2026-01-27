@@ -1,215 +1,159 @@
-"use client"
-
-import * as SelectPrimitive from "@radix-ui/react-select"
-import * as React from "react"
-
-import { cn } from "../../lib/utils"
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "@radix-ui/react-icons"
+import { type Component, type ComponentProps, type JSX, splitProps, Show } from "solid-js";
+import { Select as SelectPrimitive } from "@kobalte/core/select";
+import { cn } from "../../lib/utils";
 import {
-  overlayContentBase,
-  overlayMaxHeight,
-  overlayAnimation,
-  overlaySlideIn,
-  overlayItemBase,
-  overlayItemHover,
-  overlayItemFocus,
-  overlayItemDisabled,
-  overlayItemTransition,
-  overlayItemIndicator,
-  overlayLabel,
-  overlaySeparator,
-} from "../../lib/overlay-styles"
+	overlayContentBase,
+	overlayMaxHeight,
+	overlayAnimation,
+	overlaySlideIn,
+	overlayItemBase,
+	overlayItemHover,
+	overlayItemFocus,
+	overlayItemDisabled,
+	overlayItemTransition,
+	overlayItemIndicator,
+	overlayLabel,
+	overlaySeparator,
+} from "../../lib/overlay-styles";
 
-const Select = SelectPrimitive.Root
+const Select = SelectPrimitive;
+const SelectValue = SelectPrimitive.Value;
+const SelectDescription = SelectPrimitive.Description;
+const SelectErrorMessage = SelectPrimitive.ErrorMessage;
+const SelectHiddenSelect = SelectPrimitive.HiddenSelect;
 
-const SelectGroup = SelectPrimitive.Group
+const SelectTrigger: Component<ComponentProps<typeof SelectPrimitive.Trigger>> = (props) => {
+	const [local, rest] = splitProps(props, ["class", "children"]);
+	return (
+		<SelectPrimitive.Trigger
+			class={cn(
+				"flex h-9 w-full items-center justify-between gap-2 rounded-[10px] border border-input bg-background px-3 py-2 text-start text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-muted-foreground/70 [&>span]:min-w-0",
+				local.class
+			)}
+			{...rest}
+		>
+			{local.children}
+			<SelectPrimitive.Icon>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="16"
+					height="16"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					class="shrink-0 text-muted-foreground/80"
+				>
+					<path d="m6 9 6 6 6-6" />
+				</svg>
+			</SelectPrimitive.Icon>
+		</SelectPrimitive.Trigger>
+	);
+};
 
-const SelectValue = SelectPrimitive.Value
+type SelectContentProps = ComponentProps<typeof SelectPrimitive.Content> & {
+	position?: "popper" | "item-aligned";
+};
 
-const SelectTrigger = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Trigger
-    ref={ref}
-    class={cn(
-      "flex h-9 w-full items-center justify-between gap-2 rounded-[10px] border border-input bg-background px-3 py-2 text-start text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-muted-foreground/70 [&>span]:min-w-0",
-      className,
-    )}
-    {...props}
-  >
-    {children}
-    <SelectPrimitive.Icon asChild>
-      <ChevronDownIcon
-        width={16}
-        height={16}
-        strokeWidth={2}
-        class="shrink-0 text-muted-foreground/80"
-      />
-    </SelectPrimitive.Icon>
-  </SelectPrimitive.Trigger>
-))
-SelectTrigger.displayName = SelectPrimitive.Trigger.displayName
+const SelectContent: Component<SelectContentProps> = (props) => {
+	const [local, rest] = splitProps(props, ["class", "position"]);
+	const position = () => local.position ?? "popper";
+	return (
+		<SelectPrimitive.Portal>
+			<SelectPrimitive.Content
+				class={cn(
+					overlayContentBase,
+					overlayMaxHeight,
+					overlayAnimation,
+					overlaySlideIn,
+					"dark relative",
+					position() === "popper" &&
+						"min-w-[var(--kb-popper-anchor-width)] data-[expanded]:translate-y-1",
+					local.class
+				)}
+				{...rest}
+			>
+				<SelectPrimitive.Listbox class={cn("py-1 max-h-[inherit] overflow-y-auto")} />
+			</SelectPrimitive.Content>
+		</SelectPrimitive.Portal>
+	);
+};
 
-const SelectScrollUpButton = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.ScrollUpButton>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollUpButton>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.ScrollUpButton
-    ref={ref}
-    class={cn(
-      "absolute top-0 left-0 right-0 z-10 flex cursor-default items-center justify-center h-6 bg-gradient-to-b from-popover via-popover/80 to-transparent animate-in fade-in-0 duration-150",
-      className,
-    )}
-    {...props}
-  >
-    <ChevronUpIcon
-      width={16}
-      height={16}
-      strokeWidth={2}
-      class="shrink-0 text-muted-foreground/80"
-    />
-  </SelectPrimitive.ScrollUpButton>
-))
-SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName
+const SelectLabel: Component<ComponentProps<typeof SelectPrimitive.Label>> = (props) => {
+	const [local, rest] = splitProps(props, ["class"]);
+	return <SelectPrimitive.Label class={cn(overlayLabel, local.class)} {...rest} />;
+};
 
-const SelectScrollDownButton = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.ScrollDownButton>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollDownButton>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.ScrollDownButton
-    ref={ref}
-    class={cn(
-      "absolute bottom-0 left-0 right-0 z-10 flex cursor-default items-center justify-center h-6 bg-gradient-to-t from-popover via-popover/80 to-transparent animate-in fade-in-0 duration-150",
-      className,
-    )}
-    {...props}
-  >
-    <ChevronDownIcon
-      width={16}
-      height={16}
-      strokeWidth={2}
-      class="shrink-0 text-muted-foreground/80"
-    />
-  </SelectPrimitive.ScrollDownButton>
-))
-SelectScrollDownButton.displayName =
-  SelectPrimitive.ScrollDownButton.displayName
+type SelectItemProps = ComponentProps<typeof SelectPrimitive.Item> & {
+	hasDescription?: boolean;
+};
 
-const SelectContent = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = "popper", ...props }, ref) => (
-  <SelectPrimitive.Portal>
-    <SelectPrimitive.Content
-      ref={ref}
-      class={cn(
-        overlayContentBase,
-        overlayMaxHeight,
-        overlayAnimation,
-        overlaySlideIn,
-        "dark relative",
-        position === "popper" &&
-          "min-w-[var(--radix-select-trigger-width)] data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
-        className,
-      )}
-      position={position}
-      {...props}
-    >
-      <SelectScrollUpButton />
-      <SelectPrimitive.Viewport
-        class={cn(
-          "py-1 max-h-[inherit] overflow-y-auto",
-          position === "popper" && "h-[var(--radix-select-trigger-height)]",
-        )}
-      >
-        {children}
-      </SelectPrimitive.Viewport>
-      <SelectScrollDownButton />
-    </SelectPrimitive.Content>
-  </SelectPrimitive.Portal>
-))
-SelectContent.displayName = SelectPrimitive.Content.displayName
+const SelectItem: Component<SelectItemProps> = (props) => {
+	const [local, rest] = splitProps(props, ["class", "children", "hasDescription"]);
+	return (
+		<SelectPrimitive.Item
+			class={cn(
+				overlayItemBase,
+				overlayItemHover,
+				overlayItemFocus,
+				overlayItemDisabled,
+				overlayItemTransition,
+				"pl-7 pr-1.5",
+				local.hasDescription ? "min-h-auto py-2 items-start" : "items-center",
+				local.class
+			)}
+			{...rest}
+		>
+			<span class={cn(overlayItemIndicator, local.hasDescription && "mt-0.5")}>
+				<SelectPrimitive.ItemIndicator>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="16"
+						height="16"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						class="shrink-0 text-muted-foreground/80"
+					>
+						<path d="M20 6 9 17l-5-5" />
+					</svg>
+				</SelectPrimitive.ItemIndicator>
+			</span>
+			<SelectPrimitive.ItemLabel class="flex flex-col gap-0.5">
+				{local.children}
+			</SelectPrimitive.ItemLabel>
+		</SelectPrimitive.Item>
+	);
+};
 
-const SelectLabel = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Label>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.Label
-    ref={ref}
-    class={cn(overlayLabel, className)}
-    {...props}
-  />
-))
-SelectLabel.displayName = SelectPrimitive.Label.displayName
+const SelectItemDescription = SelectPrimitive.ItemDescription;
 
-const SelectItem = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => {
-  // Check if children contains a description (has data-desc attribute)
-  const hasDescription = React.Children.toArray(children).some(
-    (child) =>
-      React.isValidElement(child) &&
-      (child.props as Record<string, unknown>)?.["data-desc"] !== undefined,
-  )
+const SelectSection: Component<ComponentProps<typeof SelectPrimitive.Section>> = (props) => {
+	const [local, rest] = splitProps(props, ["class"]);
+	return <SelectPrimitive.Section class={cn("", local.class)} {...rest} />;
+};
 
-  return (
-    <SelectPrimitive.Item
-      ref={ref}
-      class={cn(
-        // Use shared overlay item styles with left padding for check indicator
-        overlayItemBase,
-        overlayItemHover,
-        overlayItemFocus,
-        overlayItemDisabled,
-        overlayItemTransition,
-        "pl-7 pr-1.5",
-        hasDescription ? "min-h-auto py-2 items-start" : "items-center",
-        className,
-      )}
-      {...props}
-    >
-      <span class={cn(overlayItemIndicator, hasDescription && "mt-0.5")}>
-        <SelectPrimitive.ItemIndicator>
-          <CheckIcon
-            width={16}
-            height={16}
-            strokeWidth={2}
-            class="shrink-0 text-muted-foreground/80"
-          />
-        </SelectPrimitive.ItemIndicator>
-      </span>
-
-      <SelectPrimitive.ItemText class="flex flex-col gap-0.5">
-        {children}
-      </SelectPrimitive.ItemText>
-    </SelectPrimitive.Item>
-  )
-})
-SelectItem.displayName = SelectPrimitive.Item.displayName
-
-const SelectSeparator = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.Separator
-    ref={ref}
-    class={cn(overlaySeparator, className)}
-    {...props}
-  />
-))
-SelectSeparator.displayName = SelectPrimitive.Separator.displayName
+const SelectSeparator: Component<ComponentProps<"hr">> = (props) => {
+	const [local, rest] = splitProps(props, ["class"]);
+	return <hr class={cn(overlaySeparator, local.class)} {...rest} />;
+};
 
 export {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectScrollDownButton,
-  SelectScrollUpButton,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-}
+	Select,
+	SelectContent,
+	SelectDescription,
+	SelectErrorMessage,
+	SelectHiddenSelect,
+	SelectItem,
+	SelectItemDescription,
+	SelectLabel,
+	SelectSection,
+	SelectSeparator,
+	SelectTrigger,
+	SelectValue,
+};

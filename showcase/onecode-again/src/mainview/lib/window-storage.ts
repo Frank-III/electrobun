@@ -1,4 +1,6 @@
-import { atomWithStorage, createJSONStorage } from "jotai/utils"
+import { createJSONStorage } from "./state/jotai-utils"
+import { createStoredSignal, type SignalPair } from "./state/signal-storage"
+import type { SyncStorage } from "@solid-primitives/storage"
 import { getWindowId } from "../contexts/WindowContext"
 
 /**
@@ -51,7 +53,7 @@ function migrateFromNumericWindowId(key: string, targetWindowKey: string): strin
  *
  * Migration is performed only once per key per session for performance.
  */
-function createWindowScopedStorage<T>() {
+export function createWindowScopedStorage<T>() {
   return createJSONStorage<T>(() => ({
     getItem: (key: string) => {
       const windowKey = `${getWindowId()}:${key}`
@@ -105,6 +107,55 @@ function createWindowScopedStorage<T>() {
   }))
 }
 
+function createWindowScopedRawStorage(): SyncStorage {
+  return {
+    getItem: (key: string) => {
+      const windowKey = `${getWindowId()}:${key}`
+      let value = localStorage.getItem(windowKey)
+
+      if (value === null && !migratedKeys.has(windowKey)) {
+        const migratedValue = migrateFromNumericWindowId(key, windowKey)
+        if (migratedValue !== null) {
+          try {
+            localStorage.setItem(windowKey, migratedValue)
+          } catch (e) {
+            console.warn(`[WindowStorage] Failed to save migrated value for ${windowKey}:`, e)
+          }
+          value = migratedValue
+        }
+
+        if (value === null) {
+          const legacyValue = localStorage.getItem(key)
+          if (legacyValue !== null) {
+            try {
+              localStorage.setItem(windowKey, legacyValue)
+              console.log(`[WindowStorage] Migrated ${key} to ${windowKey}`)
+            } catch (e) {
+              console.warn(`[WindowStorage] Failed to save migrated value for ${windowKey}:`, e)
+            }
+            value = legacyValue
+          }
+          migratedKeys.add(windowKey)
+        }
+      }
+
+      return value
+    },
+    setItem: (key: string, value: string) => {
+      const windowKey = `${getWindowId()}:${key}`
+      try {
+        localStorage.setItem(windowKey, value)
+      } catch (e) {
+        console.error(`[WindowStorage] Failed to save ${windowKey}:`, e)
+      }
+    },
+    removeItem: (key: string) => {
+      const windowKey = `${getWindowId()}:${key}`
+      localStorage.removeItem(windowKey)
+    },
+  }
+}
+
 /**
  * Atom with storage that is scoped to the current window.
  * Each Electron window has its own isolated storage namespace.
@@ -116,7 +167,7 @@ function createWindowScopedStorage<T>() {
  * - Terminal states
  *
  * For shared preferences (sidebar width, model settings, etc.),
- * use the regular atomWithStorage instead.
+ * use createStoredSignal instead.
  *
  * @example
  * export const selectedChatIdAtom = atomWithWindowStorage<string | null>(
@@ -128,12 +179,14 @@ function createWindowScopedStorage<T>() {
 export function atomWithWindowStorage<T>(
   key: string,
   initialValue: T,
-  options?: { getOnInit?: boolean }
+  _options?: { getOnInit?: boolean }
 ) {
-  return atomWithStorage<T>(
-    key,
-    initialValue,
-    createWindowScopedStorage<T>(),
-    options
-  )
+  return createWindowStoredSignal<T>(key, initialValue)
+}
+
+export function createWindowStoredSignal<T>(
+  key: string,
+  initialValue: T,
+): SignalPair<T> {
+  return createStoredSignal<T>(key, initialValue, createWindowScopedRawStorage())
 }

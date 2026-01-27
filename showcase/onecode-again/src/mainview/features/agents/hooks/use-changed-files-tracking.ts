@@ -1,4 +1,4 @@
-import { useSetAtom } from "jotai"
+import { useSetAtom } from "../../../lib/state/jotai"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { subChatFilesAtom, subChatToChatMapAtom, type SubChatFileChange } from "../atoms"
 // import { REPO_ROOT_PATH } from "@/lib/codesandbox-constants"

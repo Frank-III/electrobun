@@ -1,188 +1,132 @@
-import { AnimatePresence, motion } from "motion/react"
-import { useEffect, useState, useRef, useCallback } from "react"
-import { createPortal } from "react-dom"
-import { Button } from "./ui/button"
-import { Checkbox } from "./ui/checkbox"
+import { createEffect, createSignal, Show, onMount } from "solid-js";
+import { Portal } from "solid-js/web";
+import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 
 interface ConfirmArchiveDialogProps {
-  isOpen: boolean
-  onClose: () => void
-  onConfirm: (deleteWorktree: boolean) => void
-  activeProcessCount: number
-  hasWorktree: boolean
-  uncommittedCount: number
+	isOpen: boolean;
+	onClose: () => void;
+	onConfirm: (deleteWorktree: boolean) => void;
+	activeProcessCount: number;
+	hasWorktree: boolean;
+	uncommittedCount: number;
 }
 
-const EASING_CURVE = [0.55, 0.055, 0.675, 0.19] as const
-const INTERACTION_DELAY_MS = 250
+const INTERACTION_DELAY_MS = 250;
 
-export function ConfirmArchiveDialog({
-  isOpen,
-  onClose,
-  onConfirm,
-  activeProcessCount,
-  hasWorktree,
-  uncommittedCount,
-}: ConfirmArchiveDialogProps) {
-  const [mounted, setMounted] = useState(false)
-  const [deleteWorktree, setDeleteWorktree] = useState(false)
-  const openAtRef = useRef<number>(0)
-  const confirmButtonRef = useRef<HTMLButtonElement>(null)
-  // Use ref to avoid re-registering keydown listener when checkbox changes
-  const deleteWorktreeRef = useRef(deleteWorktree)
-  deleteWorktreeRef.current = deleteWorktree
+export function ConfirmArchiveDialog(props: ConfirmArchiveDialogProps) {
+	const [deleteWorktree, setDeleteWorktree] = createSignal(false);
+	let openAt = 0;
+	let confirmButtonRef: HTMLButtonElement | undefined;
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+	createEffect(() => {
+		if (props.isOpen) {
+			openAt = performance.now();
+			setDeleteWorktree(false);
+			setTimeout(() => confirmButtonRef?.focus(), 50);
+		}
+	});
 
-  useEffect(() => {
-    if (isOpen) {
-      openAtRef.current = performance.now()
-      // Reset checkbox when dialog opens
-      setDeleteWorktree(false)
-    }
-  }, [isOpen])
+	const handleClose = () => {
+		const canInteract = performance.now() - openAt > INTERACTION_DELAY_MS;
+		if (!canInteract) return;
+		props.onClose();
+	};
 
-  const handleAnimationComplete = useCallback(() => {
-    if (isOpen) {
-      confirmButtonRef.current?.focus()
-    }
-  }, [isOpen])
+	const handleConfirm = () => {
+		const canInteract = performance.now() - openAt > INTERACTION_DELAY_MS;
+		if (!canInteract) return;
+		props.onConfirm(deleteWorktree());
+		props.onClose();
+	};
 
-  const handleClose = useCallback(() => {
-    const canInteract = performance.now() - openAtRef.current > INTERACTION_DELAY_MS
-    if (!canInteract) return
-    onClose()
-  }, [onClose])
+	createEffect(() => {
+		if (!props.isOpen) return;
 
-  const handleConfirm = useCallback(() => {
-    const canInteract = performance.now() - openAtRef.current > INTERACTION_DELAY_MS
-    if (!canInteract) return
-    onConfirm(deleteWorktreeRef.current)
-    onClose()
-  }, [onConfirm, onClose])
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				handleClose();
+			}
+			if (event.key === "Enter") {
+				event.preventDefault();
+				handleConfirm();
+			}
+		};
 
-  useEffect(() => {
-    if (!isOpen) return
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	});
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault()
-        handleClose()
-      }
-      if (event.key === "Enter") {
-        event.preventDefault()
-        handleConfirm()
-      }
-    }
+	const hasProcesses = () => props.activeProcessCount > 0;
+	const showWarning = () => deleteWorktree() && props.uncommittedCount > 0;
 
-    document.addEventListener("keydown", handleKeyDown)
-    return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, handleClose, handleConfirm])
+	return (
+		<Show when={props.isOpen}>
+			<Portal>
+				{/* Overlay */}
+				<div
+					class="fixed inset-0 z-[45] bg-black/25 animate-in fade-in duration-150"
+					onClick={handleClose}
+					data-modal="confirm-archive-dialog"
+				/>
 
-  if (!mounted) return null
+				{/* Main Dialog */}
+				<div class="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] z-[46]">
+					<div
+						class="w-[90vw] max-w-[400px] animate-in zoom-in-95 fade-in duration-200"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<div class="bg-background rounded-2xl border shadow-2xl overflow-hidden" data-canvas-dialog>
+							<div class="p-6">
+								<h2 class="text-xl font-semibold mb-4">
+									Archive Workspace
+								</h2>
 
-  const portalTarget = typeof document !== "undefined" ? document.body : null
-  if (!portalTarget) return null
+								{/* Active processes warning */}
+								<Show when={hasProcesses()}>
+									<p class="text-sm text-muted-foreground mb-4">
+										{props.activeProcessCount} running {props.activeProcessCount === 1 ? "process" : "processes"} will be stopped.
+									</p>
+								</Show>
 
-  const hasProcesses = activeProcessCount > 0
-  const showWarning = deleteWorktree && uncommittedCount > 0
+								{/* Worktree checkbox */}
+								<Show when={props.hasWorktree}>
+									<div class="space-y-2">
+										<label class="flex items-start gap-3 cursor-pointer">
+											<Checkbox
+												checked={deleteWorktree()}
+												onChange={(checked) => setDeleteWorktree(checked)}
+												class="mt-0.5"
+											/>
+											<span class="text-sm select-none">
+												Delete worktree to free disk space
+											</span>
+										</label>
 
-  return createPortal(
-    <AnimatePresence mode="wait" initial={false}>
-      {isOpen && (
-        <>
-          {/* Overlay */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{
-              opacity: 1,
-              transition: { duration: 0.18, ease: EASING_CURVE },
-            }}
-            exit={{
-              opacity: 0,
-              pointerEvents: "none" as const,
-              transition: { duration: 0.15, ease: EASING_CURVE },
-            }}
-            class="fixed inset-0 z-[45] bg-black/25"
-            onClick={handleClose}
-            style={{ pointerEvents: "auto" }}
-            data-modal="confirm-archive-dialog"
-          />
+										{/* Uncommitted changes warning */}
+										<Show when={showWarning()}>
+											<p class="text-sm text-amber-600 dark:text-amber-500 ml-7">
+												{props.uncommittedCount} uncommitted {props.uncommittedCount === 1 ? "change" : "changes"} will be lost
+											</p>
+										</Show>
+									</div>
+								</Show>
+							</div>
 
-          {/* Main Dialog */}
-          <div class="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] z-[46] pointer-events-none">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ duration: 0.2, ease: EASING_CURVE }}
-              onAnimationComplete={handleAnimationComplete}
-              class="w-[90vw] max-w-[400px] pointer-events-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div class="bg-background rounded-2xl border shadow-2xl overflow-hidden" data-canvas-dialog>
-                <div class="p-6">
-                  <h2 class="text-xl font-semibold mb-4">
-                    Archive Workspace
-                  </h2>
-
-                  {/* Active processes warning */}
-                  {hasProcesses && (
-                    <p class="text-sm text-muted-foreground mb-4">
-                      {activeProcessCount} running {activeProcessCount === 1 ? "process" : "processes"} will be stopped.
-                    </p>
-                  )}
-
-                  {/* Worktree checkbox */}
-                  {hasWorktree && (
-                    <div class="space-y-2">
-                      <label class="flex items-start gap-3 cursor-pointer">
-                        <Checkbox
-                          checked={deleteWorktree}
-                          onCheckedChange={(checked) => setDeleteWorktree(checked === true)}
-                          class="mt-0.5"
-                        />
-                        <span class="text-sm select-none">
-                          Delete worktree to free disk space
-                        </span>
-                      </label>
-
-                      {/* Uncommitted changes warning */}
-                      {showWarning && (
-                        <p class="text-sm text-amber-600 dark:text-amber-500 ml-7">
-                          {uncommittedCount} uncommitted {uncommittedCount === 1 ? "change" : "changes"} will be lost
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer with buttons */}
-                <div class="bg-muted p-4 flex justify-between border-t border-border rounded-b-xl">
-                  <Button
-                    onClick={handleClose}
-                    variant="ghost"
-                    class="rounded-md"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    ref={confirmButtonRef}
-                    onClick={handleConfirm}
-                    variant="default"
-                    class="rounded-md"
-                  >
-                    Archive
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </>
-      )}
-    </AnimatePresence>,
-    portalTarget,
-  )
+							{/* Footer with buttons */}
+							<div class="bg-muted p-4 flex justify-between border-t border-border rounded-b-xl">
+								<Button onClick={handleClose} variant="ghost" class="rounded-md">
+									Cancel
+								</Button>
+								<Button ref={confirmButtonRef} onClick={handleConfirm} variant="default" class="rounded-md">
+									Archive
+								</Button>
+							</div>
+						</div>
+					</div>
+				</div>
+			</Portal>
+		</Show>
+	);
 }

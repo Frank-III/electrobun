@@ -481,7 +481,7 @@ export async function getWorktreeDiff(
     const diff = await runGit(
       [
         "diff",
-        `${baseRef}...HEAD",
+        `${baseRef}...HEAD`,
         "--no-color",
         "--",
         ":!*.lock",

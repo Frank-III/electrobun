@@ -1,178 +1,136 @@
-import { AnimatePresence, motion } from "motion/react"
-import { useEffect, useState, useRef } from "react"
-import { createPortal } from "react-dom"
-import { Button } from "./ui/button"
-import { Input } from "./ui/input"
+import { createEffect, createSignal, Show, onCleanup } from "solid-js";
+import { Portal } from "solid-js/web";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
 interface RenameDialogProps {
-  isOpen: boolean
-  onClose: () => void
-  onSave: (name: string) => Promise<void>
-  currentName: string
-  isLoading?: boolean
-  title?: string
-  placeholder?: string
+	isOpen: boolean;
+	onClose: () => void;
+	onSave: (name: string) => Promise<void>;
+	currentName: string;
+	isLoading?: boolean;
+	title?: string;
+	placeholder?: string;
 }
 
-const EASING_CURVE = [0.55, 0.055, 0.675, 0.19] as const
-const INTERACTION_DELAY_MS = 250
+const INTERACTION_DELAY_MS = 250;
 
-export function RenameDialog({
-  isOpen,
-  onClose,
-  onSave,
-  currentName,
-  isLoading = false,
-  title = "Rename",
-  placeholder = "Name",
-}: RenameDialogProps) {
-  const [mounted, setMounted] = useState(false)
-  const [name, setName] = useState(currentName)
-  const [isSaving, setIsSaving] = useState(false)
-  const openAtRef = useRef<number>(0)
-  const inputRef = useRef<HTMLInputElement>(null)
+export function RenameDialog(props: RenameDialogProps) {
+	const [name, setName] = createSignal(props.currentName);
+	const [isSaving, setIsSaving] = createSignal(false);
+	const [openAtRef, setOpenAtRef] = createSignal<number>(0);
+	let inputRef: HTMLInputElement | undefined;
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+	createEffect(() => {
+		if (props.isOpen) {
+			setOpenAtRef(performance.now());
+			setName(props.currentName);
+			setTimeout(() => {
+				inputRef?.focus();
+				inputRef?.select();
+			}, 200);
+		}
+	});
 
-  useEffect(() => {
-    if (isOpen) {
-      openAtRef.current = performance.now()
-      setName(currentName)
-    }
-  }, [isOpen, currentName])
+	createEffect(() => {
+		if (!props.isOpen) return;
 
-  const handleAnimationComplete = () => {
-    // Focus and select input after animation completes (only if still open)
-    if (isOpen) {
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    }
-  }
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				handleClose();
+			}
+			if (event.key === "Enter" && !event.shiftKey) {
+				event.preventDefault();
+				handleSave();
+			}
+		};
 
-  useEffect(() => {
-    if (!isOpen) return
+		document.addEventListener("keydown", handleKeyDown);
+		onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
+	});
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault()
-        handleClose()
-      }
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault()
-        handleSave()
-      }
-    }
+	const handleClose = () => {
+		const canInteract = performance.now() - openAtRef() > INTERACTION_DELAY_MS;
+		if (!canInteract || isSaving()) return;
+		props.onClose();
+	};
 
-    document.addEventListener("keydown", handleKeyDown)
-    return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, name])
+	const handleSave = async () => {
+		const trimmedName = name().trim();
+		if (!trimmedName || trimmedName === props.currentName) {
+			handleClose();
+			return;
+		}
 
-  const handleClose = () => {
-    const canInteract = performance.now() - openAtRef.current > INTERACTION_DELAY_MS
-    if (!canInteract || isSaving) return
-    onClose()
-  }
+		setIsSaving(true);
+		try {
+			await props.onSave(trimmedName);
+			handleClose();
+		} catch {} finally {
+			setIsSaving(false);
+		}
+	};
 
-  const handleSave = async () => {
-    const trimmedName = name.trim()
-    if (!trimmedName || trimmedName === currentName) {
-      handleClose()
-      return
-    }
+	const isLoading = () => props.isLoading ?? false;
 
-    setIsSaving(true)
-    try {
-      await onSave(trimmedName)
-      handleClose()
-    } catch {
-      // Error is already handled by parent (toast), keep dialog open
-    } finally {
-      setIsSaving(false)
-    }
-  }
+	return (
+		<Show when={props.isOpen}>
+			<Portal>
+				{/* Overlay */}
+				<div
+					class="fixed inset-0 z-[45] bg-black/25 animate-fade-in"
+					onClick={handleClose}
+					style={{ "pointer-events": "auto" }}
+					data-modal="rename-dialog"
+				/>
 
-  if (!mounted) return null
+				{/* Main Dialog */}
+				<div class="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] z-[46]">
+					<div
+						class="w-[90vw] max-w-[400px] animate-scale-in"
+						onClick={(e: MouseEvent) => e.stopPropagation()}
+					>
+						<div class="bg-background rounded-2xl border shadow-2xl overflow-hidden" data-canvas-dialog>
+							<div class="p-6">
+								<h2 class="text-xl font-semibold mb-4">
+									{props.title ?? "Rename"}
+								</h2>
 
-  const portalTarget = typeof document !== "undefined" ? document.body : null
-  if (!portalTarget) return null
+								{/* Input */}
+								<Input
+									ref={inputRef}
+									value={name()}
+									onInput={(e: InputEvent) => setName((e.target as HTMLInputElement).value)}
+									placeholder={props.placeholder ?? "Name"}
+									class="w-full h-11 text-sm"
+									disabled={isSaving() || isLoading()}
+								/>
+							</div>
 
-  return createPortal(
-    <AnimatePresence mode="wait" initial={false}>
-      {isOpen && (
-        <>
-          {/* Overlay */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{
-              opacity: 1,
-              transition: { duration: 0.18, ease: EASING_CURVE },
-            }}
-            exit={{
-              opacity: 0,
-              pointerEvents: "none" as const,
-              transition: { duration: 0.15, ease: EASING_CURVE },
-            }}
-            class="fixed inset-0 z-[45] bg-black/25"
-            onClick={handleClose}
-            style={{ pointerEvents: "auto" }}
-            data-modal="rename-dialog"
-          />
-
-          {/* Main Dialog */}
-          <div class="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] z-[46] pointer-events-none">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ duration: 0.2, ease: EASING_CURVE }}
-              onAnimationComplete={handleAnimationComplete}
-              class="w-[90vw] max-w-[400px] pointer-events-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div class="bg-background rounded-2xl border shadow-2xl overflow-hidden" data-canvas-dialog>
-                <div class="p-6">
-                  <h2 class="text-xl font-semibold mb-4">
-                    {title}
-                  </h2>
-
-                  {/* Input */}
-                  <Input
-                    ref={inputRef}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder={placeholder}
-                    class="w-full h-11 text-sm"
-                    disabled={isSaving || isLoading}
-                  />
-                </div>
-
-                {/* Footer with buttons */}
-                <div class="bg-muted p-4 flex justify-between border-t border-border rounded-b-xl">
-                  <Button
-                    onClick={handleClose}
-                    variant="ghost"
-                    disabled={isSaving || isLoading}
-                    class="rounded-md"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleSave}
-                    variant="default"
-                    disabled={!name.trim() || name.trim() === currentName || isSaving || isLoading}
-                    class="rounded-md"
-                  >
-                    {isSaving || isLoading ? "Saving..." : "Save"}
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </>
-      )}
-    </AnimatePresence>,
-    portalTarget,
-  )
+							{/* Footer with buttons */}
+							<div class="bg-muted p-4 flex justify-between border-t border-border rounded-b-xl">
+								<Button
+									onClick={handleClose}
+									variant="ghost"
+									disabled={isSaving() || isLoading()}
+									class="rounded-md"
+								>
+									Cancel
+								</Button>
+								<Button
+									onClick={handleSave}
+									variant="default"
+									disabled={!name().trim() || name().trim() === props.currentName || isSaving() || isLoading()}
+									class="rounded-md"
+								>
+									{isSaving() || isLoading() ? "Saving..." : "Save"}
+								</Button>
+							</div>
+						</div>
+					</div>
+				</div>
+			</Portal>
+		</Show>
+	);
 }

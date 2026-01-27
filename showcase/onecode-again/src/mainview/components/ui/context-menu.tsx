@@ -1,183 +1,167 @@
-"use client"
-
-import * as React from "react"
-import * as ContextMenuPrimitive from "@radix-ui/react-context-menu"
-import { cn } from "../../lib/utils"
-import { CheckIcon, DotFilledIcon } from "@radix-ui/react-icons"
-import { CaretRightIcon } from "./icons"
+import { type Component, type ComponentProps, type JSX, splitProps } from "solid-js";
+import { ContextMenu as ContextMenuPrimitive } from "@kobalte/core/context-menu";
+import { cn } from "../../lib/utils";
+import { CaretRightIcon } from "./icons";
 import {
-  overlayContent,
-  overlayItemWithIcon,
-  overlaySubTrigger,
-  overlayCheckableItem,
-  overlayItemIndicator,
-  overlaySeparator,
-  overlayLabel,
-  overlayShortcut,
-  overlayChevron,
-} from "../../lib/overlay-styles"
+	overlayContent,
+	overlayItemWithIcon,
+	overlaySubTrigger,
+	overlayCheckableItem,
+	overlayItemIndicator,
+	overlaySeparator,
+	overlayLabel,
+	overlayShortcut,
+	overlayChevron,
+} from "../../lib/overlay-styles";
 
-const ContextMenu = ContextMenuPrimitive.Root
+const ContextMenu = ContextMenuPrimitive;
+const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
+const ContextMenuGroup = ContextMenuPrimitive.Group;
+const ContextMenuPortal = ContextMenuPrimitive.Portal;
+const ContextMenuSub = ContextMenuPrimitive.Sub;
+const ContextMenuRadioGroup = ContextMenuPrimitive.RadioGroup;
 
-const ContextMenuTrigger = ContextMenuPrimitive.Trigger
+type ContextMenuSubTriggerProps = ComponentProps<typeof ContextMenuPrimitive.SubTrigger> & {
+	inset?: boolean;
+};
 
-const ContextMenuGroup = ContextMenuPrimitive.Group
+const ContextMenuSubTrigger: Component<ContextMenuSubTriggerProps> = (props) => {
+	const [local, rest] = splitProps(props, ["class", "inset", "children"]);
+	return (
+		<ContextMenuPrimitive.SubTrigger
+			class={cn(overlaySubTrigger, local.inset && "pl-8", local.class)}
+			{...rest}
+		>
+			<span class="flex-1 inline-flex items-center gap-1.5">{local.children}</span>
+			<CaretRightIcon class={overlayChevron} />
+		</ContextMenuPrimitive.SubTrigger>
+	);
+};
 
-const ContextMenuPortal = ContextMenuPrimitive.Portal
+const ContextMenuSubContent: Component<ComponentProps<typeof ContextMenuPrimitive.SubContent>> = (props) => {
+	const [local, rest] = splitProps(props, ["class"]);
+	return (
+		<ContextMenuPrimitive.SubContent
+			class={cn(overlayContent, "min-w-[200px] py-1 dark", local.class)}
+			{...rest}
+		/>
+	);
+};
 
-const ContextMenuSub = ContextMenuPrimitive.Sub
+const ContextMenuContent: Component<ComponentProps<typeof ContextMenuPrimitive.Content>> = (props) => {
+	const [local, rest] = splitProps(props, ["class"]);
+	return (
+		<ContextMenuPrimitive.Portal>
+			<ContextMenuPrimitive.Content
+				class={cn(overlayContent, "min-w-[200px] py-1 dark", local.class)}
+				{...rest}
+			/>
+		</ContextMenuPrimitive.Portal>
+	);
+};
 
-const ContextMenuRadioGroup = ContextMenuPrimitive.RadioGroup
+type ContextMenuItemProps = ComponentProps<typeof ContextMenuPrimitive.Item> & {
+	inset?: boolean;
+};
 
-const ContextMenuSubTrigger = React.forwardRef<
-  React.ElementRef<typeof ContextMenuPrimitive.SubTrigger>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubTrigger> & {
-    inset?: boolean
-  }
->(({ className, inset, children, ...props }, ref) => (
-  <ContextMenuPrimitive.SubTrigger
-    ref={ref}
-    class={cn(overlaySubTrigger, inset && "pl-8", className)}
-    {...props}
-  >
-    <span class="flex-1 inline-flex items-center gap-1.5">{children}</span>
-    <CaretRightIcon class={overlayChevron} />
-  </ContextMenuPrimitive.SubTrigger>
-))
-ContextMenuSubTrigger.displayName = ContextMenuPrimitive.SubTrigger.displayName
+const ContextMenuItem: Component<ContextMenuItemProps> = (props) => {
+	const [local, rest] = splitProps(props, ["class", "inset"]);
+	return (
+		<ContextMenuPrimitive.Item
+			class={cn(overlayItemWithIcon, local.inset && "pl-8", local.class)}
+			{...rest}
+		/>
+	);
+};
 
-const ContextMenuSubContent = React.forwardRef<
-  React.ElementRef<typeof ContextMenuPrimitive.SubContent>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubContent>
->(({ className, ...props }, ref) => (
-  <ContextMenuPrimitive.SubContent
-    ref={ref}
-    class={cn(overlayContent, "min-w-[200px] py-1 dark", className)}
-    {...props}
-  />
-))
-ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName
+const ContextMenuCheckboxItem: Component<ComponentProps<typeof ContextMenuPrimitive.CheckboxItem>> = (props) => {
+	const [local, rest] = splitProps(props, ["class", "children"]);
+	return (
+		<ContextMenuPrimitive.CheckboxItem class={cn(overlayCheckableItem, local.class)} {...rest}>
+			<span class={overlayItemIndicator}>
+				<ContextMenuPrimitive.ItemIndicator>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="16"
+						height="16"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						class="h-4 w-4"
+					>
+						<path d="M20 6 9 17l-5-5" />
+					</svg>
+				</ContextMenuPrimitive.ItemIndicator>
+			</span>
+			{local.children}
+		</ContextMenuPrimitive.CheckboxItem>
+	);
+};
 
-const ContextMenuContent = React.forwardRef<
-  React.ElementRef<typeof ContextMenuPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>
->(({ className, ...props }, ref) => (
-  <ContextMenuPrimitive.Portal>
-    <ContextMenuPrimitive.Content
-      ref={ref}
-      class={cn(
-        overlayContent,
-        "min-w-[200px] py-1 dark",
-        className,
-      )}
-      {...props}
-    />
-  </ContextMenuPrimitive.Portal>
-))
-ContextMenuContent.displayName = ContextMenuPrimitive.Content.displayName
+const ContextMenuRadioItem: Component<ComponentProps<typeof ContextMenuPrimitive.RadioItem>> = (props) => {
+	const [local, rest] = splitProps(props, ["class", "children"]);
+	return (
+		<ContextMenuPrimitive.RadioItem class={cn(overlayCheckableItem, local.class)} {...rest}>
+			<span class={overlayItemIndicator}>
+				<ContextMenuPrimitive.ItemIndicator>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="8"
+						height="8"
+						viewBox="0 0 15 15"
+						fill="currentColor"
+						class="h-2 w-2 fill-current"
+					>
+						<circle cx="7.5" cy="7.5" r="7.5" />
+					</svg>
+				</ContextMenuPrimitive.ItemIndicator>
+			</span>
+			{local.children}
+		</ContextMenuPrimitive.RadioItem>
+	);
+};
 
-const ContextMenuItem = React.forwardRef<
-  React.ElementRef<typeof ContextMenuPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Item> & {
-    inset?: boolean
-  }
->(({ className, inset, ...props }, ref) => (
-  <ContextMenuPrimitive.Item
-    ref={ref}
-    class={cn(overlayItemWithIcon, inset && "pl-8", className)}
-    {...props}
-  />
-))
-ContextMenuItem.displayName = ContextMenuPrimitive.Item.displayName
+type ContextMenuLabelProps = ComponentProps<typeof ContextMenuPrimitive.GroupLabel> & {
+	inset?: boolean;
+};
 
-const ContextMenuCheckboxItem = React.forwardRef<
-  React.ElementRef<typeof ContextMenuPrimitive.CheckboxItem>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.CheckboxItem>
->(({ className, children, checked, ...props }, ref) => (
-  <ContextMenuPrimitive.CheckboxItem
-    ref={ref}
-    class={cn(overlayCheckableItem, className)}
-    checked={checked}
-    {...props}
-  >
-    <span class={overlayItemIndicator}>
-      <ContextMenuPrimitive.ItemIndicator>
-        <CheckIcon class="h-4 w-4" />
-      </ContextMenuPrimitive.ItemIndicator>
-    </span>
-    {children}
-  </ContextMenuPrimitive.CheckboxItem>
-))
-ContextMenuCheckboxItem.displayName =
-  ContextMenuPrimitive.CheckboxItem.displayName
+const ContextMenuLabel: Component<ContextMenuLabelProps> = (props) => {
+	const [local, rest] = splitProps(props, ["class", "inset"]);
+	return (
+		<ContextMenuPrimitive.GroupLabel
+			class={cn(overlayLabel, "font-semibold", local.inset && "pl-8", local.class)}
+			{...rest}
+		/>
+	);
+};
 
-const ContextMenuRadioItem = React.forwardRef<
-  React.ElementRef<typeof ContextMenuPrimitive.RadioItem>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.RadioItem>
->(({ className, children, ...props }, ref) => (
-  <ContextMenuPrimitive.RadioItem
-    ref={ref}
-    class={cn(overlayCheckableItem, className)}
-    {...props}
-  >
-    <span class={overlayItemIndicator}>
-      <ContextMenuPrimitive.ItemIndicator>
-        <DotFilledIcon class="h-2 w-2 fill-current" />
-      </ContextMenuPrimitive.ItemIndicator>
-    </span>
-    {children}
-  </ContextMenuPrimitive.RadioItem>
-))
-ContextMenuRadioItem.displayName = ContextMenuPrimitive.RadioItem.displayName
+const ContextMenuSeparator: Component<ComponentProps<typeof ContextMenuPrimitive.Separator>> = (props) => {
+	const [local, rest] = splitProps(props, ["class"]);
+	return <ContextMenuPrimitive.Separator class={cn(overlaySeparator, local.class)} {...rest} />;
+};
 
-const ContextMenuLabel = React.forwardRef<
-  React.ElementRef<typeof ContextMenuPrimitive.Label>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Label> & {
-    inset?: boolean
-  }
->(({ className, inset, ...props }, ref) => (
-  <ContextMenuPrimitive.Label
-    ref={ref}
-    class={cn(overlayLabel, "font-semibold", inset && "pl-8", className)}
-    {...props}
-  />
-))
-ContextMenuLabel.displayName = ContextMenuPrimitive.Label.displayName
-
-const ContextMenuSeparator = React.forwardRef<
-  React.ElementRef<typeof ContextMenuPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Separator>
->(({ className, ...props }, ref) => (
-  <ContextMenuPrimitive.Separator
-    ref={ref}
-    class={cn(overlaySeparator, className)}
-    {...props}
-  />
-))
-ContextMenuSeparator.displayName = ContextMenuPrimitive.Separator.displayName
-
-const ContextMenuShortcut = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLSpanElement>) => {
-  return <span class={cn(overlayShortcut, className)} {...props} />
-}
-ContextMenuShortcut.displayName = "ContextMenuShortcut"
+const ContextMenuShortcut: Component<JSX.HTMLAttributes<HTMLSpanElement>> = (props) => {
+	const [local, rest] = splitProps(props, ["class"]);
+	return <span class={cn(overlayShortcut, local.class)} {...rest} />;
+};
 
 export {
-  ContextMenu,
-  ContextMenuTrigger,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuCheckboxItem,
-  ContextMenuRadioItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuShortcut,
-  ContextMenuGroup,
-  ContextMenuPortal,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuRadioGroup,
-}
+	ContextMenu,
+	ContextMenuTrigger,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuCheckboxItem,
+	ContextMenuRadioItem,
+	ContextMenuLabel,
+	ContextMenuSeparator,
+	ContextMenuShortcut,
+	ContextMenuGroup,
+	ContextMenuPortal,
+	ContextMenuSub,
+	ContextMenuSubContent,
+	ContextMenuSubTrigger,
+	ContextMenuRadioGroup,
+};

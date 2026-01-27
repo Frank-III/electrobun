@@ -1,5 +1,4 @@
-// Stub atoms for agents settings dialog
-import { atom } from "jotai"
+import { createSignal } from "solid-js"
 
-export const agentsSettingsDialogOpenAtom = atom(false)
-export const agentsSettingsDialogActiveTabAtom = atom<string | null>(null)
+export const agentsSettingsDialogOpenAtom = createSignal(false)
+export const agentsSettingsDialogActiveTabAtom = createSignal<string | null>(null)

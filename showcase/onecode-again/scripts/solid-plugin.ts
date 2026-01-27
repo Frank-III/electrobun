@@ -15,8 +15,8 @@ const baseConfig = {
 
 const resolveSolidBrowser = (input: string) => {
   if (input.endsWith("/web/dist/server.js")) return input.replace("/web/dist/server.js", "/web/dist/web.js");
-  if (input.endsWith("/dist/server.js")) return input.replace("/dist/server.js", "/dist/solid.js");
   if (input.endsWith("/store/dist/server.js")) return input.replace("/store/dist/server.js", "/store/dist/store.js");
+  if (input.endsWith("/dist/server.js")) return input.replace("/dist/server.js", "/dist/solid.js");
   return input;
 };
 

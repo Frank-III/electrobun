@@ -1,5 +1,4 @@
-import { atom } from "jotai"
-import { atomFamily } from "jotai/utils"
+import { createMemo, createSignal, type Accessor } from "solid-js"
 
 // ============================================================================
 // TYPES
@@ -26,35 +25,35 @@ export interface HighlightRange {
 // ============================================================================
 
 // Search panel open state
-export const chatSearchOpenAtom = atom<boolean>(false)
+export const chatSearchOpenAtom = createSignal<boolean>(false)
 
 // Raw input value (updates immediately for responsive UI)
-export const chatSearchInputAtom = atom<string>("")
+export const chatSearchInputAtom = createSignal<string>("")
 
 // Debounced search query (for actual searching)
-export const chatSearchQueryAtom = atom<string>("")
+export const chatSearchQueryAtom = createSignal<string>("")
 
 // All matches found
-export const chatSearchMatchesAtom = atom<SearchMatch[]>([])
+export const chatSearchMatchesAtom = createSignal<SearchMatch[]>([])
 
 // Current match index (0-based)
-export const chatSearchCurrentIndexAtom = atom<number>(0)
+export const chatSearchCurrentIndexAtom = createSignal<number>(0)
 
 // ============================================================================
 // DERIVED ATOMS
 // ============================================================================
 
 // Current match for scroll-to
-export const chatSearchCurrentMatchAtom = atom((get) => {
-  const matches = get(chatSearchMatchesAtom)
-  const index = get(chatSearchCurrentIndexAtom)
+export const chatSearchCurrentMatchAtom = createMemo(() => {
+  const matches = chatSearchMatchesAtom[0]()
+  const index = chatSearchCurrentIndexAtom[0]()
   return matches[index] ?? null
 })
 
 // Match count info for display
-export const chatSearchCountInfoAtom = atom((get) => {
-  const matches = get(chatSearchMatchesAtom)
-  const index = get(chatSearchCurrentIndexAtom)
+export const chatSearchCountInfoAtom = createMemo(() => {
+  const matches = chatSearchMatchesAtom[0]()
+  const index = chatSearchCurrentIndexAtom[0]()
   return {
     current: matches.length > 0 ? index + 1 : 0,
     total: matches.length,
@@ -69,106 +68,112 @@ export const chatSearchCountInfoAtom = atom((get) => {
 // Key format: `${messageId}:${partIndex}:${partType}`
 const highlightRangesCache = new Map<string, HighlightRange[]>()
 
-// Atom family for getting highlight ranges for a specific message part
-export const highlightRangesAtomFamily = atomFamily(
-  (key: string) =>
-    atom((get) => {
-      const matches = get(chatSearchMatchesAtom)
-      const currentMatch = get(chatSearchCurrentMatchAtom)
+// Accessor factory for highlight ranges per message/part
+const highlightRangesAccessors = new Map<string, Accessor<HighlightRange[]>>()
 
-      // Parse key
-      const [messageId, partIndexStr, partType] = key.split(":")
-      const partIndex = parseInt(partIndexStr, 10)
+export const highlightRangesAtomFamily = (key: string) => {
+  if (!highlightRangesAccessors.has(key)) {
+    highlightRangesAccessors.set(
+      key,
+      createMemo(() => {
+        const matches = chatSearchMatchesAtom[0]()
+        const currentMatch = chatSearchCurrentMatchAtom()
 
-      // Filter matches for this message/part
-      const relevantMatches = matches.filter(
-        (m) =>
-          m.messageId === messageId &&
-          m.partIndex === partIndex &&
-          m.partType === partType
-      )
+        // Parse key
+        const [messageId, partIndexStr, partType] = key.split(":")
+        const partIndex = parseInt(partIndexStr, 10)
 
-      if (relevantMatches.length === 0) {
-        return []
-      }
-
-      // Convert to highlight ranges
-      const ranges: HighlightRange[] = relevantMatches.map((m, idx) => ({
-        offset: m.offset,
-        length: m.length,
-        isCurrent: currentMatch?.id === m.id,
-        indexInPart: idx,
-      }))
-
-      // Check cache for stable reference
-      const cacheKey = key
-      const cached = highlightRangesCache.get(cacheKey)
-      if (
-        cached &&
-        cached.length === ranges.length &&
-        cached.every(
-          (r, i) =>
-            r.offset === ranges[i].offset &&
-            r.length === ranges[i].length &&
-            r.isCurrent === ranges[i].isCurrent
+        // Filter matches for this message/part
+        const relevantMatches = matches.filter(
+          (m) =>
+            m.messageId === messageId &&
+            m.partIndex === partIndex &&
+            m.partType === partType
         )
-      ) {
-        return cached
-      }
 
-      highlightRangesCache.set(cacheKey, ranges)
-      return ranges
-    }),
-  (a, b) => a === b
-)
+        if (relevantMatches.length === 0) {
+          return []
+        }
+
+        // Convert to highlight ranges
+        const ranges: HighlightRange[] = relevantMatches.map((m, idx) => ({
+          offset: m.offset,
+          length: m.length,
+          isCurrent: currentMatch?.id === m.id,
+          indexInPart: idx,
+        }))
+
+        // Check cache for stable reference
+        const cached = highlightRangesCache.get(key)
+        if (
+          cached &&
+          cached.length === ranges.length &&
+          cached.every(
+            (r, i) =>
+              r.offset === ranges[i].offset &&
+              r.length === ranges[i].length &&
+              r.isCurrent === ranges[i].isCurrent
+          )
+        ) {
+          return cached
+        }
+
+        highlightRangesCache.set(key, ranges)
+        return ranges
+      })
+    )
+  }
+
+  return highlightRangesAccessors.get(key)!
+}
 
 // ============================================================================
 // ACTIONS
 // ============================================================================
 
 // Navigate to next match
-export const goToNextMatchAtom = atom(null, (get, set) => {
-  const matches = get(chatSearchMatchesAtom)
-  const currentIndex = get(chatSearchCurrentIndexAtom)
+export function goToNextMatchAtom() {
+  const matches = chatSearchMatchesAtom[0]()
+  const currentIndex = chatSearchCurrentIndexAtom[0]()
   if (matches.length === 0) return
   const newIndex = (currentIndex + 1) % matches.length
-  set(chatSearchCurrentIndexAtom, newIndex)
-})
+  chatSearchCurrentIndexAtom[1](newIndex)
+}
 
 // Navigate to previous match
-export const goToPrevMatchAtom = atom(null, (get, set) => {
-  const matches = get(chatSearchMatchesAtom)
-  const currentIndex = get(chatSearchCurrentIndexAtom)
+export function goToPrevMatchAtom() {
+  const matches = chatSearchMatchesAtom[0]()
+  const currentIndex = chatSearchCurrentIndexAtom[0]()
   if (matches.length === 0) return
   const newIndex = currentIndex === 0 ? matches.length - 1 : currentIndex - 1
-  set(chatSearchCurrentIndexAtom, newIndex)
-})
+  chatSearchCurrentIndexAtom[1](newIndex)
+}
 
 // Close search and clear state
-export const closeSearchAtom = atom(null, (_get, set) => {
-  set(chatSearchOpenAtom, false)
-  set(chatSearchInputAtom, "")
-  set(chatSearchQueryAtom, "")
-  set(chatSearchMatchesAtom, [])
-  set(chatSearchCurrentIndexAtom, 0)
+export function closeSearchAtom() {
+  chatSearchOpenAtom[1](false)
+  chatSearchInputAtom[1]("")
+  chatSearchQueryAtom[1]("")
+  chatSearchMatchesAtom[1]([])
+  chatSearchCurrentIndexAtom[1](0)
   highlightRangesCache.clear()
-})
+}
 
 // Open search
-export const openSearchAtom = atom(null, (_get, set) => {
-  set(chatSearchOpenAtom, true)
-})
+export function openSearchAtom() {
+  chatSearchOpenAtom[1](true)
+}
 
 /**
  * Toggle search - if already open, select all text instead of closing
  * This allows users to press Cmd+F again to quickly start a new search
  */
-export const toggleSearchAtom = atom(null, (get, set) => {
-  const isOpen = get(chatSearchOpenAtom)
+export function toggleSearchAtom() {
+  const isOpen = chatSearchOpenAtom[0]()
   if (isOpen) {
     // Dispatch custom event to select all text in search input
     window.dispatchEvent(new CustomEvent("chat-search-select-all"))
   } else {
-    set(openSearchAtom)
+    openSearchAtom()
   }
-})
+}

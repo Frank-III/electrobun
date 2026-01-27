@@ -3,7 +3,6 @@ import type { ChangesViewMode } from "../../types";
 import { formatRelativeDate } from "../../utils";
 import { CollapsibleRow } from "../collapsible-row";
 import { FileList } from "../file-list";
-
 interface CommitItemProps {
 	commit: CommitInfo;
 	isExpanded: boolean;
@@ -18,18 +17,12 @@ interface CommitItemProps {
 	/** Worktree path for constructing absolute paths */
 	worktreePath?: string;
 }
-
-function CommitHeader({
-	shortHash,
-	message,
-	date,
-}: {
+function CommitHeader({ shortHash, message, date }: {
 	shortHash: string;
 	message: string;
 	date: Date;
 }) {
-	return (
-		<>
+	return <>
 			<span class="text-[10px] font-mono text-muted-foreground shrink-0">
 				{shortHash}
 			</span>
@@ -37,58 +30,18 @@ function CommitHeader({
 			<span class="text-[10px] text-muted-foreground shrink-0">
 				{formatRelativeDate(date)}
 			</span>
-		</>
-	);
+		</>;
 }
-
-export function CommitItem({
-	commit,
-	isExpanded,
-	onToggle,
-	selectedFile,
-	selectedCommitHash,
-	onFileSelect,
-	onFileDoubleClick,
-	viewMode,
-	worktreePath,
-}: CommitItemProps) {
+export function CommitItem({ commit, isExpanded, onToggle, selectedFile, selectedCommitHash, onFileSelect, onFileDoubleClick, viewMode, worktreePath }: CommitItemProps) {
 	const hasFiles = commit.files.length > 0;
-
 	const handleFileSelect = (file: ChangedFile) => {
 		onFileSelect(file, commit.hash);
 	};
-
 	const handleFileDoubleClick = (file: ChangedFile) => {
 		onFileDoubleClick?.(file, commit.hash);
 	};
-
 	const isCommitSelected = selectedCommitHash === commit.hash;
-
-	return (
-		<CollapsibleRow
-			isExpanded={isExpanded}
-			onToggle={() => onToggle()}
-			triggerClassName="mx-0.5"
-			contentClassName="ml-4 pl-1.5 border-l border-border mt-0.5 mb-0.5"
-			header={
-				<CommitHeader
-					shortHash={commit.shortHash}
-					message={commit.message}
-					date={commit.date}
-				/>
-			}
-		>
-			{hasFiles && (
-				<FileList
-					files={commit.files}
-					viewMode={viewMode}
-					selectedFile={isCommitSelected ? selectedFile : null}
-					selectedCommitHash={selectedCommitHash}
-					onFileSelect={handleFileSelect}
-					onFileDoubleClick={handleFileDoubleClick}
-					worktreePath={worktreePath}
-				/>
-			)}
-		</CollapsibleRow>
-	);
+	return <CollapsibleRow isExpanded={isExpanded} onToggle={() => onToggle()} triggerClassName="mx-0.5" contentClassName="ml-4 pl-1.5 border-l border-border mt-0.5 mb-0.5" header={<CommitHeader shortHash={commit.shortHash} message={commit.message} date={commit.date} />}>
+			{hasFiles && <FileList files={commit.files} viewMode={viewMode} selectedFile={isCommitSelected ? selectedFile : null} selectedCommitHash={selectedCommitHash} onFileSelect={handleFileSelect} onFileDoubleClick={handleFileDoubleClick} worktreePath={worktreePath} />}
+		</CollapsibleRow>;
 }

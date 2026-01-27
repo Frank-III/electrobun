@@ -1,0 +1,233 @@
+"use strict";
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
+};
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __generator = (this && this.__generator) || function (thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
+    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (g && (g = 0, op[0] && (_ = 0)), _) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
+};
+var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createTerminalHandlers = createTerminalHandlers;
+exports.destroyAll = destroyAll;
+var bun_1 = require("electrobun/bun");
+var ghostty_ffi_1 = require("./ghostty-ffi");
+var terminals = new Map();
+function detectShell() {
+    var env = process.env;
+    if (env.SHELL) {
+        return { shell: env.SHELL, args: ["--login"] };
+    }
+    if (process.platform === "win32") {
+        var pwsh7 = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
+        try {
+            Bun.spawnSync(["test", "-f", pwsh7]);
+            return { shell: pwsh7, args: [] };
+        }
+        catch (_a) {
+            return { shell: env.COMSPEC || "cmd.exe", args: [] };
+        }
+    }
+    return { shell: "/bin/sh", args: [] };
+}
+function buildEnv(userEnv) {
+    return __assign(__assign(__assign({}, process.env), { TERM: "xterm-256color", COLORTERM: "truecolor", LANG: process.env.LANG || "en_US.UTF-8", TERM_PROGRAM: "electrobun" }), userEnv);
+}
+function createTerminalHandlers(sendData, sendExit, sendTitle, sendBell) {
+    var _this = this;
+    return {
+        create: function (_a) {
+            var id = _a.id, cols = _a.cols, rows = _a.rows, cwd = _a.cwd, shellOverride = _a.shell, userEnv = _a.env;
+            if (terminals.has(id)) {
+                throw new Error("Terminal ".concat(id, " already exists"));
+            }
+            var detected = detectShell();
+            var shellPath = shellOverride || detected.shell;
+            var shellArgs = detected.args;
+            var resolvedCwd = cwd || process.env.HOME || "/";
+            var vt = new ghostty_ffi_1.GhosttyTerminal(cols, rows);
+            var proc = Bun.spawn(__spreadArray([shellPath], shellArgs, true), {
+                cwd: resolvedCwd,
+                env: buildEnv(userEnv),
+                terminal: {
+                    cols: cols,
+                    rows: rows,
+                    data: function (_terminal, rawData) {
+                        var str = typeof rawData === "string"
+                            ? rawData
+                            : new TextDecoder().decode(rawData);
+                        var oscMatch = str.match(/\x1b\](?:0|2);([^\x07]*)\x07/);
+                        if (oscMatch) {
+                            var t = terminals.get(id);
+                            if (t) {
+                                t.title = oscMatch[1];
+                                sendTitle(id, oscMatch[1]);
+                            }
+                        }
+                        if (str.includes("\x07")) {
+                            sendBell(id);
+                        }
+                        vt.feed(rawData);
+                        sendData(id, str);
+                    },
+                },
+            });
+            var managed = {
+                proc: proc,
+                terminal: proc.terminal,
+                vt: vt,
+                cols: cols,
+                rows: rows,
+                shell: shellPath,
+                cwd: resolvedCwd,
+                title: shellPath.split("/").pop() || "terminal",
+            };
+            terminals.set(id, managed);
+            proc.exited.then(function (exitCode) {
+                sendExit(id, exitCode !== null && exitCode !== void 0 ? exitCode : 0);
+                vt.destroy();
+                terminals.delete(id);
+            });
+            return { pid: proc.pid, shell: shellPath };
+        },
+        write: function (_a) {
+            var id = _a.id, data = _a.data;
+            var t = terminals.get(id);
+            if (!t)
+                throw new Error("Terminal ".concat(id, " not found"));
+            t.terminal.write(data);
+        },
+        resize: function (_a) {
+            var id = _a.id, cols = _a.cols, rows = _a.rows;
+            var t = terminals.get(id);
+            if (!t)
+                return;
+            t.terminal.resize(cols, rows);
+            t.vt.resize(cols, rows);
+            t.cols = cols;
+            t.rows = rows;
+        },
+        destroy: function (_a) {
+            var id = _a.id;
+            var t = terminals.get(id);
+            if (!t)
+                return;
+            t.proc.kill("SIGHUP");
+            t.terminal.close();
+            t.vt.destroy();
+            terminals.delete(id);
+        },
+        getDefaultShell: function () { return detectShell(); },
+        clipboardWrite: function (_a) {
+            var text = _a.text;
+            bun_1.Utils.clipboard.writeText(text);
+        },
+        clipboardRead: function () { return __awaiter(_this, void 0, void 0, function () {
+            var text;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0: return [4 /*yield*/, bun_1.Utils.clipboard.readText()];
+                    case 1:
+                        text = _a.sent();
+                        return [2 /*return*/, { text: text || "" }];
+                }
+            });
+        }); },
+        getScreenContent: function (_a) {
+            var id = _a.id, startRow = _a.startRow, endRow = _a.endRow;
+            var t = terminals.get(id);
+            if (!t)
+                throw new Error("Terminal ".concat(id, " not found"));
+            var lines = [];
+            var start = startRow !== null && startRow !== void 0 ? startRow : 0;
+            var end = endRow !== null && endRow !== void 0 ? endRow : t.rows;
+            for (var row = start; row < end; row += 1) {
+                lines.push(t.vt.getRowText(row));
+            }
+            return { lines: lines, cursorX: t.vt.cursorX, cursorY: t.vt.cursorY };
+        },
+        searchScrollback: function (_a) {
+            var id = _a.id, query = _a.query;
+            var t = terminals.get(id);
+            if (!t)
+                throw new Error("Terminal ".concat(id, " not found"));
+            var screen = t.vt.getScreenText();
+            var matches = [];
+            var lines = screen.split("\n");
+            for (var row = 0; row < lines.length; row += 1) {
+                var col = lines[row].indexOf(query);
+                while (col !== -1) {
+                    matches.push({ row: row, col: col, text: lines[row] });
+                    col = lines[row].indexOf(query, col + 1);
+                }
+            }
+            return { matches: matches };
+        },
+        getCurrentCommand: function (_a) {
+            var id = _a.id;
+            var t = terminals.get(id);
+            if (!t)
+                return null;
+            var line = t.vt.getRowText(t.vt.cursorY);
+            var match = line.match(/(?:\$|>|#|%)\s*(.*)$/);
+            return match ? { command: match[1], cwd: t.cwd } : null;
+        },
+    };
+}
+function destroyAll() {
+    for (var _i = 0, terminals_1 = terminals; _i < terminals_1.length; _i++) {
+        var _a = terminals_1[_i], t = _a[1];
+        t.proc.kill("SIGKILL");
+        t.terminal.close();
+        t.vt.destroy();
+    }
+    terminals.clear();
+}

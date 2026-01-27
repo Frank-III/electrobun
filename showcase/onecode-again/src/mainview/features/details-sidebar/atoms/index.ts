@@ -1,5 +1,6 @@
-import { atom } from "jotai"
-import { atomFamily, atomWithStorage } from "jotai/utils"
+import { createSignal } from "solid-js"
+import { createStoredSignal } from "../../../lib/state/signal-storage"
+import { createKeyedSignalFamily } from "../../../lib/state/signal-map"
 import { atomWithWindowStorage } from "../../../lib/window-storage"
 import type { LucideIcon } from "lucide-react"
 import { Box, FileText, Terminal, FileDiff, ListTodo } from "lucide-react"
@@ -38,50 +39,32 @@ const DEFAULT_WIDGET_ORDER: WidgetId[] = WIDGET_REGISTRY.map((w) => w.id)
 // Widget Visibility (per workspace)
 // ============================================================================
 
-const widgetVisibilityStorageAtom = atomWithStorage<Record<string, WidgetId[]>>(
+const widgetVisibilityStorageAtom = createStoredSignal<Record<string, WidgetId[]>>(
   "overview:widgetVisibility",
   {},
   undefined,
   { getOnInit: true },
 )
 
-export const widgetVisibilityAtomFamily = atomFamily((workspaceId: string) =>
-  atom(
-    (get) =>
-      get(widgetVisibilityStorageAtom)[workspaceId] ?? DEFAULT_VISIBLE_WIDGETS,
-    (get, set, visibleWidgets: WidgetId[]) => {
-      const current = get(widgetVisibilityStorageAtom)
-      set(widgetVisibilityStorageAtom, {
-        ...current,
-        [workspaceId]: visibleWidgets,
-      })
-    },
-  ),
+export const widgetVisibilityAtomFamily = createKeyedSignalFamily(
+  widgetVisibilityStorageAtom,
+  DEFAULT_VISIBLE_WIDGETS
 )
 
 // ============================================================================
 // Widget Order (per workspace) - controls display order of all widgets
 // ============================================================================
 
-const widgetOrderStorageAtom = atomWithStorage<Record<string, WidgetId[]>>(
+const widgetOrderStorageAtom = createStoredSignal<Record<string, WidgetId[]>>(
   "overview:widgetOrder",
   {},
   undefined,
   { getOnInit: true },
 )
 
-export const widgetOrderAtomFamily = atomFamily((workspaceId: string) =>
-  atom(
-    (get) =>
-      get(widgetOrderStorageAtom)[workspaceId] ?? DEFAULT_WIDGET_ORDER,
-    (get, set, widgetOrder: WidgetId[]) => {
-      const current = get(widgetOrderStorageAtom)
-      set(widgetOrderStorageAtom, {
-        ...current,
-        [workspaceId]: widgetOrder,
-      })
-    },
-  ),
+export const widgetOrderAtomFamily = createKeyedSignalFamily(
+  widgetOrderStorageAtom,
+  DEFAULT_WIDGET_ORDER
 )
 
 // ============================================================================
@@ -90,23 +73,15 @@ export const widgetOrderAtomFamily = atomFamily((workspaceId: string) =>
 
 // Which widget is currently expanded as a separate sidebar
 // null = no widget expanded
-const expandedWidgetStorageAtom = atom<Record<string, WidgetId | null>>({})
+const expandedWidgetStorageAtom = createSignal<Record<string, WidgetId | null>>({})
 
-export const expandedWidgetAtomFamily = atomFamily((workspaceId: string) =>
-  atom(
-    (get) => get(expandedWidgetStorageAtom)[workspaceId] ?? null,
-    (get, set, expandedWidget: WidgetId | null) => {
-      const current = get(expandedWidgetStorageAtom)
-      set(expandedWidgetStorageAtom, {
-        ...current,
-        [workspaceId]: expandedWidget,
-      })
-    },
-  ),
+export const expandedWidgetAtomFamily = createKeyedSignalFamily(
+  expandedWidgetStorageAtom,
+  null
 )
 
 // Expanded widget sidebar width
-export const expandedWidgetSidebarWidthAtom = atomWithStorage<number>(
+export const expandedWidgetSidebarWidthAtom = createStoredSignal<number>(
   "overview:expandedWidgetWidth",
   500,
   undefined,
@@ -118,7 +93,7 @@ export const expandedWidgetSidebarWidthAtom = atomWithStorage<number>(
 // ============================================================================
 
 // Feature flag for unified vs separate sidebars (for future toggle)
-export const unifiedSidebarEnabledAtom = atomWithStorage<boolean>(
+export const unifiedSidebarEnabledAtom = createStoredSignal<boolean>(
   "overview:unifiedEnabled",
   true, // Enable by default
   undefined,
@@ -139,26 +114,17 @@ export type OverviewSection = "info" | "plan" | "terminal" | "diff"
 const DEFAULT_EXPANDED_SECTIONS: OverviewSection[] = ["info", "plan", "terminal"]
 
 // Section expand states (per workspace) - stores array of expanded section IDs
-const sectionExpandStorageAtom = atomWithStorage<
+const sectionExpandStorageAtom = createStoredSignal<
   Record<string, OverviewSection[]>
 >("overview:expandedSections", {}, undefined, { getOnInit: true })
 
-export const expandedSectionsAtomFamily = atomFamily((workspaceId: string) =>
-  atom(
-    (get) =>
-      get(sectionExpandStorageAtom)[workspaceId] ?? DEFAULT_EXPANDED_SECTIONS,
-    (get, set, expandedSections: OverviewSection[]) => {
-      const current = get(sectionExpandStorageAtom)
-      set(sectionExpandStorageAtom, {
-        ...current,
-        [workspaceId]: expandedSections,
-      })
-    },
-  ),
+export const expandedSectionsAtomFamily = createKeyedSignalFamily(
+  sectionExpandStorageAtom,
+  DEFAULT_EXPANDED_SECTIONS
 )
 
 // Unified sidebar width (persisted)
-export const detailsSidebarWidthAtom = atomWithStorage<number>(
+export const detailsSidebarWidthAtom = createStoredSignal<number>(
   "overview:sidebarWidth",
   500,
   undefined,
@@ -167,7 +133,7 @@ export const detailsSidebarWidthAtom = atomWithStorage<number>(
 
 // Focused section for "focus mode" (when a section needs more space like Diff)
 // null = normal mode, section name = focused mode
-export const focusedSectionAtom = atom<OverviewSection | null>(null)
+export const focusedSectionAtom = createSignal<OverviewSection | null>(null)
 
 // ============================================================================
 // Plan Content Cache (per workspace) - prevents flashing loading states
@@ -181,17 +147,9 @@ export interface PlanContentCache {
 }
 
 // Runtime cache for plan content per workspace (not persisted)
-const planContentCacheStorageAtom = atom<Record<string, PlanContentCache | null>>({})
+const planContentCacheStorageAtom = createSignal<Record<string, PlanContentCache | null>>({})
 
-export const planContentCacheAtomFamily = atomFamily((chatId: string) =>
-  atom(
-    (get) => get(planContentCacheStorageAtom)[chatId] ?? null,
-    (get, set, cache: PlanContentCache | null) => {
-      const current = get(planContentCacheStorageAtom)
-      set(planContentCacheStorageAtom, {
-        ...current,
-        [chatId]: cache,
-      })
-    },
-  ),
+export const planContentCacheAtomFamily = createKeyedSignalFamily(
+  planContentCacheStorageAtom,
+  null
 )

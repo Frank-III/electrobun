@@ -1,0 +1,355 @@
+{
+  "project": "onecode-again",
+  "branchName": "ralph/react-to-solidjs-migration",
+  "description": "Complete React to SolidJS migration - fix remaining ~5500 type errors using idiomatic SolidJS patterns",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Fix signal accessor patterns in UI components",
+      "description": "As a developer, I need signal reads to use accessor syntax in src/mainview/components/ui/",
+      "acceptanceCriteria": [
+        "All signal.property patterns converted to signal().property",
+        "All signal === value comparisons converted to signal() === value",
+        "All signal.method() calls converted to signal().method()",
+        "Files: button.tsx, input.tsx, checkbox.tsx, select.tsx, dialog.tsx, alert-dialog.tsx"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Fixed input.tsx duplicate imports, fixed prompt-input.tsx and search-combobox.tsx React imports. Core files were already clean."
+    },
+    {
+      "id": "US-002",
+      "title": "Convert React refs to SolidJS refs in UI components",
+      "description": "As a developer, I need refs to use SolidJS direct-value pattern in UI components.",
+      "acceptanceCriteria": [
+        "All ref.current patterns converted to direct ref access",
+        "All useRef(null) patterns converted to let ref: HTMLElement | undefined",
+        "Ref assignments use ref={el => ref = el} or direct ref={ref}",
+        "Files in src/mainview/components/ui/"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Converted command.tsx (forwardRef removed, useRef->let ref), resizable-sidebar.tsx (.current->direct access, signals->let ref), typewriter-text.tsx (memo removed, signals for refs->let ref)"
+    },
+    {
+      "id": "US-003",
+      "title": "Fix signal accessors in settings dialog tabs",
+      "description": "As a developer, I need signal accessors fixed in all settings tab components.",
+      "acceptanceCriteria": [
+        "agents-appearance-tab.tsx uses signal() for all reads",
+        "agents-beta-tab.tsx uses signal() for all reads",
+        "agents-custom-agents-tab.tsx uses signal() for all reads",
+        "agents-mcp-tab.tsx uses signal() for all reads",
+        "agents-skills-tab.tsx uses signal() for all reads"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Fixed onCleanup usage in useIsNarrowScreen hooks (3 files), separated Accessor type import, added Skill interface for type safety"
+    },
+    {
+      "id": "US-004",
+      "title": "Convert refs in settings dialog tabs",
+      "description": "As a developer, I need React ref patterns fixed in settings tabs.",
+      "acceptanceCriteria": [
+        "All .current patterns removed from settings tab files",
+        "Refs use SolidJS let ref: T | undefined pattern",
+        "Timeout refs use let timeoutRef: ReturnType<typeof setTimeout> | undefined"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Fix signal accessors in terminal components",
+      "description": "As a developer, I need signal accessors fixed in terminal feature.",
+      "acceptanceCriteria": [
+        "terminal.tsx uses signal() for all reads",
+        "terminal-tabs.tsx uses signal() for all reads",
+        "terminal-sidebar.tsx uses signal() for all reads",
+        "TerminalSearch.tsx uses signal() for all reads"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Convert refs in terminal components",
+      "description": "As a developer, I need React ref patterns fixed in terminal feature.",
+      "acceptanceCriteria": [
+        "All .current patterns removed from terminal files",
+        "Refs use SolidJS direct-value pattern",
+        "Complex refs (Terminal instance, ResizeObserver) properly typed"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Fix signal accessors in agent UI components",
+      "description": "As a developer, I need signal accessors fixed in src/mainview/features/agents/ui/.",
+      "acceptanceCriteria": [
+        "inline-edit.tsx uses signal() for all reads",
+        "agent-diff-view.tsx uses signal() for all reads",
+        "sub-chat-selector.tsx uses signal() for all reads",
+        "chat-title-editor.tsx uses signal() for all reads",
+        "quick-comment-input.tsx uses signal() for all reads"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Convert refs in agent UI components",
+      "description": "As a developer, I need React ref patterns fixed in agent UI.",
+      "acceptanceCriteria": [
+        "All .current patterns removed from agent UI files",
+        "Editor refs properly typed for SolidJS",
+        "Scroll container refs use direct-value pattern"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Fix signal accessors in sidebar components",
+      "description": "As a developer, I need signal accessors fixed in sidebar features.",
+      "acceptanceCriteria": [
+        "agents-sidebar.tsx uses signal() for all reads",
+        "agents-subchats-sidebar.tsx uses signal() for all reads",
+        "All conditional checks use signal()"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Convert refs in sidebar components",
+      "description": "As a developer, I need React ref patterns fixed in sidebars.",
+      "acceptanceCriteria": [
+        "All .current patterns removed from sidebar files",
+        "Scroll refs use SolidJS pattern"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Fix signal accessors in changes feature",
+      "description": "As a developer, I need signal accessors fixed in changes view.",
+      "acceptanceCriteria": [
+        "changes-view.tsx uses signal() for all reads",
+        "changes-panel-header.tsx uses signal() for all reads",
+        "diff-sidebar-header.tsx uses signal() for all reads",
+        "changes-header.tsx uses signal() for all reads"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Convert refs in changes feature",
+      "description": "As a developer, I need React ref patterns fixed in changes view.",
+      "acceptanceCriteria": [
+        "All .current patterns removed from changes files",
+        "Diff viewer refs properly typed"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Remove all memo() wrapper calls",
+      "description": "As a developer, I need React.memo removed since SolidJS doesn't need it.",
+      "acceptanceCriteria": [
+        "All memo() wrapper calls removed from codebase",
+        "All React.memo patterns removed",
+        "Components are plain functions"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Remove forwardRef patterns",
+      "description": "As a developer, I need forwardRef converted to props-based ref passing.",
+      "acceptanceCriteria": [
+        "All forwardRef() calls removed",
+        "Refs passed via props instead",
+        "Component signatures simplified"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Fix React namespace references",
+      "description": "As a developer, I need React.* types replaced with SolidJS equivalents.",
+      "acceptanceCriteria": [
+        "React.FC replaced with Component from solid-js",
+        "React.ComponentType replaced with Component",
+        "React.ReactNode replaced with JSX.Element or children prop",
+        "No React namespace references remain"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Fix event handler types",
+      "description": "As a developer, I need React event types replaced with native DOM types.",
+      "acceptanceCriteria": [
+        "React.ChangeEvent replaced with Event & { currentTarget: T }",
+        "React.KeyboardEvent replaced with KeyboardEvent",
+        "React.MouseEvent replaced with MouseEvent",
+        "onChange replaced with onInput for text inputs"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Convert conditional rendering to Show components",
+      "description": "As a developer, I need && conditionals converted to Show.",
+      "acceptanceCriteria": [
+        "All {condition && <Component />} patterns use <Show when={}>",
+        "All ternaries use <Show when={} fallback={}>",
+        "Show components properly import from solid-js"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Convert list rendering to For components",
+      "description": "As a developer, I need .map() calls converted to For.",
+      "acceptanceCriteria": [
+        "All .map() in JSX converted to <For each={}>",
+        "All key props removed",
+        "Primitive arrays use <Index> where appropriate"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Replace motion/react with solid-motionone",
+      "description": "As a developer, I need Framer Motion replaced with solid-motionone.",
+      "acceptanceCriteria": [
+        "All motion/react imports removed",
+        "AnimatePresence replaced with Show + CSS or Motion from solid-motionone",
+        "motion.div replaced with Motion component or plain div + CSS",
+        "solid-motionone added as dependency"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Fix Portal usage",
+      "description": "As a developer, I need React portals converted to SolidJS Portal.",
+      "acceptanceCriteria": [
+        "createPortal imports replaced with Portal from solid-js/web",
+        "createPortal(children, container) replaced with <Portal mount={container}>",
+        "All portal patterns working correctly"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Fix SVG and JSX attribute types",
+      "description": "As a developer, I need SVG props to use SolidJS JSX types.",
+      "acceptanceCriteria": [
+        "React.SVGProps replaced with JSX.SvgSVGAttributes",
+        "React.HTMLAttributes replaced with JSX.HTMLAttributes",
+        "canvas-icons.tsx fully typed for SolidJS"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Fix CSS property names in style objects",
+      "description": "As a developer, I need inline styles using SolidJS format.",
+      "acceptanceCriteria": [
+        "camelCase CSS properties converted to kebab-case",
+        "backgroundColor becomes 'background-color'",
+        "WebkitAppRegion and vendor prefixes handled"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Add desktopApi type declarations",
+      "description": "As a developer, I need window.desktopApi properly typed.",
+      "acceptanceCriteria": [
+        "Create global.d.ts with desktopApi interface based on Electrobun types",
+        "All (window as any).desktopApi casts can be removed",
+        "Full type safety for RPC calls"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Replace jotai with SolidJS signals",
+      "description": "As a developer, I need jotai atoms replaced with native SolidJS state.",
+      "acceptanceCriteria": [
+        "useAtom replaced with createSignal or createStore",
+        "useAtomValue replaced with signal accessors",
+        "useSetAtom replaced with signal setters",
+        "Shared state uses context or module-level signals"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Fix effect dependency arrays",
+      "description": "As a developer, I need React effect patterns converted to SolidJS.",
+      "acceptanceCriteria": [
+        "All dependency arrays removed from createEffect",
+        "Effects rely on SolidJS auto-tracking",
+        "Cleanup functions use onCleanup() helper"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Build verification",
+      "description": "As a developer, I need the app to build and run successfully.",
+      "acceptanceCriteria": [
+        "bun run ui:build completes without errors",
+        "bun run dev launches the app",
+        "Core features work: navigation, settings dialogs, terminal"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

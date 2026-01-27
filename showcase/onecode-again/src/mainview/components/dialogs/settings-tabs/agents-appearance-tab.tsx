@@ -1,390 +1,246 @@
-import { useTheme } from "../../../lib/hooks/use-theme"
-import { useState, useEffect, useCallback, useMemo } from "react"
-import { IconSpinner } from "../../../icons"
-import { useAtom, useSetAtom } from "jotai"
-import { motion, AnimatePresence } from "motion/react"
-import { cn } from "../../../lib/utils"
-import {
-  selectedFullThemeIdAtom,
-  fullThemeDataAtom,
-  systemLightThemeIdAtom,
-  systemDarkThemeIdAtom,
-  showWorkspaceIconAtom,
-  alwaysExpandTodoListAtom,
-  importedThemesAtom,
-  type VSCodeFullTheme,
-} from "../../../lib/atoms"
-import {
-  BUILTIN_THEMES,
-  getBuiltinThemeById,
-  BUILTIN_THEME_NAMES,
-} from "../../../lib/themes/builtin-themes"
-import {
-  generateCSSVariables,
-  applyCSSVariables,
-  removeCSSVariables,
-  getThemeTypeFromColors,
-} from "../../../lib/themes/vscode-to-css-mapping"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectSeparator,
-  SelectLabel,
-  SelectGroup,
-} from "../../../components/ui/select"
-import { Switch } from "../../../components/ui/switch"
-
+import { useTheme } from "../../../lib/hooks/use-theme";
+import { createSignal, createEffect, createMemo, Show, For, onCleanup } from "solid-js";
+import { IconSpinner } from "../../../icons";
+import { useAtom, useSetAtom } from "../../../lib/state/jotai";
+import { cn } from "../../../lib/utils";
+import { selectedFullThemeIdAtom, fullThemeDataAtom, systemLightThemeIdAtom, systemDarkThemeIdAtom, showWorkspaceIconAtom, alwaysExpandTodoListAtom, importedThemesAtom, type VSCodeFullTheme } from "../../../lib/atoms";
+import { BUILTIN_THEMES, getBuiltinThemeById, BUILTIN_THEME_NAMES } from "../../../lib/themes/builtin-themes";
+import { generateCSSVariables, applyCSSVariables, removeCSSVariables, getThemeTypeFromColors } from "../../../lib/themes/vscode-to-css-mapping";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectSeparator, SelectLabel, SelectSection } from "../../../components/ui/select";
+import { Switch } from "../../../components/ui/switch";
 // Hook to detect narrow screen
-function useIsNarrowScreen(): boolean {
-  const [isNarrow, setIsNarrow] = useState(false)
-
-  useEffect(() => {
-    const checkWidth = () => {
-      setIsNarrow(window.innerWidth <= 768)
-    }
-
-    checkWidth()
-    window.addEventListener("resize", checkWidth)
-    return () => window.removeEventListener("resize", checkWidth)
-  }, [])
-
-  return isNarrow
+function useIsNarrowScreen() {
+	const [isNarrow, setIsNarrow] = createSignal(false);
+	createEffect(() => {
+		const checkWidth = () => {
+			setIsNarrow(window.innerWidth <= 768);
+		};
+		checkWidth();
+		window.addEventListener("resize", checkWidth);
+		onCleanup(() => window.removeEventListener("resize", checkWidth));
+	});
+	return isNarrow;
 }
-
 // Check if a hex color is visible (not too transparent)
 function isVisibleColor(hex: string | undefined): boolean {
-  if (!hex) return false
-  // Remove # if present
-  const cleanHex = hex.replace(/^#/, "")
-  // If 8 characters, check alpha
-  if (cleanHex.length === 8) {
-    const alpha = parseInt(cleanHex.slice(6, 8), 16)
-    // Consider colors with less than 50% opacity as "not visible" for accent purposes
-    return alpha >= 128
-  }
-  return true
+	if (!hex) return false;
+	// Remove # if present
+	const cleanHex = hex.replace(/^#/, "");
+	// If 8 characters, check alpha
+	if (cleanHex.length === 8) {
+		const alpha = parseInt(cleanHex.slice(6, 8), 16);
+		// Consider colors with less than 50% opacity as "not visible" for accent purposes
+		return alpha >= 128;
+	}
+	return true;
 }
-
 // Theme preview box with dot and "Aa" text
-function ThemePreviewBox({
-  theme,
-  size = "md",
-  className,
-}: {
-  theme: VSCodeFullTheme | null
-  size?: "sm" | "md"
-  className?: string
+function ThemePreviewBox({ theme, size = "md", className }: {
+	theme: VSCodeFullTheme | null;
+	size?: "sm" | "md";
+	className?: string;
 }) {
-  const bgColor = theme?.colors?.["editor.background"] || "#1a1a1a"
-  
-  // Get accent color, preferring button.background and skipping transparent colors
-  const getAccentColor = () => {
-    const candidates = [
-      theme?.colors?.["button.background"],
-      theme?.colors?.["textLink.foreground"],
-      theme?.colors?.["focusBorder"],
-      theme?.colors?.["activityBarBadge.background"],
-    ]
-    for (const color of candidates) {
-      if (isVisibleColor(color)) {
-        return color
-      }
-    }
-    return "#0034FF"
-  }
-  
-  const accentColor = getAccentColor()
-  const isDark = theme ? theme.type === "dark" : true
-
-  const sizeClasses =
-    size === "sm"
-      ? "w-7 h-5 text-[9px] gap-0.5 rounded-sm"
-      : "w-8 h-6 text-[10px] gap-1 rounded-sm"
-
-  const dotSize = size === "sm" ? "w-1 h-1" : "w-1.5 h-1.5"
-
-  return (
-    <div
-      class={cn(
-        "flex-shrink-0 flex items-center justify-center font-semibold",
-        sizeClasses,
-        className,
-      )}
-      style={{
-        backgroundColor: bgColor,
-        boxShadow: "inset 0 0 0 0.5px rgba(128, 128, 128, 0.3)",
-      }}
-    >
-      {/* Accent dot to the left of text */}
-      <div
-        class={cn("rounded-full flex-shrink-0", dotSize)}
-        style={{ backgroundColor: accentColor }}
-      />
-      <span style={{ color: isDark ? "#fff" : "#000", opacity: 0.9 }}>Aa</span>
-    </div>
-  )
+	const bgColor = theme?.colors?.["editor.background"] || "#1a1a1a";
+	// Get accent color, preferring button.background and skipping transparent colors
+	const getAccentColor = () => {
+		const candidates = [
+			theme?.colors?.["button.background"],
+			theme?.colors?.["textLink.foreground"],
+			theme?.colors?.["focusBorder"],
+			theme?.colors?.["activityBarBadge.background"]
+		];
+		for (const color of candidates) {
+			if (isVisibleColor(color)) {
+				return color;
+			}
+		}
+		return "#0034FF";
+	};
+	const accentColor = getAccentColor();
+	const isDark = theme ? theme.type === "dark" : true;
+	const sizeClasses = size === "sm" ? "w-7 h-5 text-[9px] gap-0.5 rounded-sm" : "w-8 h-6 text-[10px] gap-1 rounded-sm";
+	const dotSize = size === "sm" ? "w-1 h-1" : "w-1.5 h-1.5";
+	return <div class={cn("flex-shrink-0 flex items-center justify-center font-semibold", sizeClasses, className)} style={{
+		"background-color": bgColor,
+		"box-shadow": "inset 0 0 0 0.5px rgba(128, 128, 128, 0.3)"
+	}}>
+      {	/* Accent dot to the left of text */}
+      <div class={cn("rounded-full flex-shrink-0", dotSize)} style={{ "background-color": accentColor }} />
+      <span style={{
+ color: isDark ? "#fff" : "#000",
+		opacity: .9
+	}}>Aa</span>
+    </div>;
 }
-
 export function AgentsAppearanceTab() {
-  const { resolvedTheme, setTheme: setNextTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-  const isNarrowScreen = useIsNarrowScreen()
-
-  // Theme atoms
-  const [selectedThemeId, setSelectedThemeId] = useAtom(selectedFullThemeIdAtom)
-  const [systemLightThemeId, setSystemLightThemeId] = useAtom(
-    systemLightThemeIdAtom,
-  )
-  const [systemDarkThemeId, setSystemDarkThemeId] = useAtom(
-    systemDarkThemeIdAtom,
-  )
-  const setFullThemeData = useSetAtom(fullThemeDataAtom)
-  const [importedThemes, setImportedThemes] = useAtom(importedThemesAtom)
-
-  // Sidebar settings
-  const [showWorkspaceIcon, setShowWorkspaceIcon] = useAtom(showWorkspaceIconAtom)
-
-  // To-do list preference
-  const [alwaysExpandTodoList, setAlwaysExpandTodoList] = useAtom(alwaysExpandTodoListAtom)
-
-  // VS Code themes state
-  const [isScanning, setIsScanning] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  // Scan and load VS Code themes on mount
-  useEffect(() => {
-    if (!mounted) return
-    const api = window.desktopApi
-    if (typeof api?.scanVSCodeThemes !== "function") return
-    if (typeof api?.loadVSCodeTheme !== "function") return
-
-    const loadAllThemes = async () => {
-      setIsScanning(true)
-      try {
-        const discovered = await api.scanVSCodeThemes()
-        // Filter out themes that are already builtin
-        const newThemes = discovered.filter(
-          (t) => !BUILTIN_THEME_NAMES.has(t.name.toLowerCase())
-        )
-
-        // Load all themes in parallel
-        const loadedThemes = await Promise.all(
-          newThemes.map(async (theme) => {
-            try {
-              const fullTheme = await api.loadVSCodeTheme(theme.path)
-              return {
-                ...fullTheme,
-                id: theme.id,
-                source: "imported" as const,
-              } as VSCodeFullTheme
-            } catch (err) {
-              console.error("[appearance-tab] Failed to load theme:", theme.name, err)
-              return null
-            }
-          })
-        )
-
-        // Filter out failed loads and update imported themes
-        const validThemes = loadedThemes.filter((t): t is VSCodeFullTheme => t !== null)
-        setImportedThemes(validThemes)
-      } catch (error) {
-        console.error("Failed to load VS Code themes:", error)
-      } finally {
-        setIsScanning(false)
-      }
-    }
-
-    loadAllThemes()
-  }, [mounted, setImportedThemes])
-
-  // Group themes by type
-  const darkThemes = useMemo(
-    () => BUILTIN_THEMES.filter((t) => t.type === "dark"),
-    [],
-  )
-  const lightThemes = useMemo(
-    () => BUILTIN_THEMES.filter((t) => t.type === "light"),
-    [],
-  )
-
-  // Is system mode selected
-  const isSystemMode = selectedThemeId === null
-
-  // Get the current theme for display
-  const currentTheme = useMemo(() => {
-    if (selectedThemeId === null) {
-      return null // System mode
-    }
-    // Check in both builtin and imported themes
-    return BUILTIN_THEMES.find((t) => t.id === selectedThemeId) ||
-           importedThemes.find((t) => t.id === selectedThemeId) ||
-           null
-  }, [selectedThemeId, importedThemes])
-
-  // Get theme objects for system mode selectors
-  const systemLightTheme = useMemo(
-    () => getBuiltinThemeById(systemLightThemeId),
-    [systemLightThemeId],
-  )
-  const systemDarkTheme = useMemo(
-    () => getBuiltinThemeById(systemDarkThemeId),
-    [systemDarkThemeId],
-  )
-
-  // Apply theme based on current settings
-  const applyTheme = useCallback(
-    (themeId: string | null) => {
-      if (themeId === null) {
-        // System mode - apply theme based on system preference
-        removeCSSVariables()
-        setFullThemeData(null)
-        setNextTheme("system")
-
-        // Apply the appropriate system theme
-        const isDark = resolvedTheme() === "dark"
-        const systemTheme = isDark
-          ? getBuiltinThemeById(systemDarkThemeId)
-          : getBuiltinThemeById(systemLightThemeId)
-
-        if (systemTheme) {
-          const cssVars = generateCSSVariables(systemTheme.colors)
-          applyCSSVariables(cssVars)
-        }
-        return
-      }
-
-      // Check in both builtin and imported themes
-      const theme = BUILTIN_THEMES.find((t) => t.id === themeId) ||
-                    importedThemes.find((t) => t.id === themeId)
-      if (theme) {
-        setFullThemeData(theme)
-
-        // Apply CSS variables
-        const cssVars = generateCSSVariables(theme.colors)
-        applyCSSVariables(cssVars)
-
-        // Sync color mode with theme type
-        const themeType = getThemeTypeFromColors(theme.colors)
-        setNextTheme(themeType)
-      }
-    },
-    [
-      resolvedTheme,
-      systemLightThemeId,
-      systemDarkThemeId,
-      setFullThemeData,
-      setNextTheme,
-      importedThemes,
-    ],
-  )
-
-  // Handle main theme selection
-  const handleThemeChange = useCallback(
-    (value: string) => {
-      if (value === "system") {
-        setSelectedThemeId(null)
-        applyTheme(null)
-      } else {
-        setSelectedThemeId(value)
-        applyTheme(value)
-      }
-    },
-    [setSelectedThemeId, applyTheme],
-  )
-
-  // Handle system light theme change
-  const handleSystemLightThemeChange = useCallback(
-    (themeId: string) => {
-      setSystemLightThemeId(themeId)
-      // If currently in light mode, apply the new theme
-      if (resolvedTheme() === "light" && selectedThemeId === null) {
-        const theme = getBuiltinThemeById(themeId)
-        if (theme) {
-          const cssVars = generateCSSVariables(theme.colors)
-          applyCSSVariables(cssVars)
-        }
-      }
-    },
-    [setSystemLightThemeId, resolvedTheme, selectedThemeId],
-  )
-
-  // Handle system dark theme change
-  const handleSystemDarkThemeChange = useCallback(
-    (themeId: string) => {
-      setSystemDarkThemeId(themeId)
-      // If currently in dark mode, apply the new theme
-      if (resolvedTheme() === "dark" && selectedThemeId === null) {
-        const theme = getBuiltinThemeById(themeId)
-        if (theme) {
-          const cssVars = generateCSSVariables(theme.colors)
-          applyCSSVariables(cssVars)
-        }
-      }
-    },
-    [setSystemDarkThemeId, resolvedTheme, selectedThemeId],
-  )
-
-  // Group imported themes by type
-  const importedDarkThemes = useMemo(
-    () => importedThemes.filter((t) => t.type === "dark"),
-    [importedThemes],
-  )
-  const importedLightThemes = useMemo(
-    () => importedThemes.filter((t) => t.type === "light"),
-    [importedThemes],
-  )
-
-  // Re-apply theme when system preference changes
-  useEffect(() => {
-    if (selectedThemeId === null && mounted) {
-      const isDark = resolvedTheme() === "dark"
-      const systemTheme = isDark
-        ? getBuiltinThemeById(systemDarkThemeId)
-        : getBuiltinThemeById(systemLightThemeId)
-
-      if (systemTheme) {
-        const cssVars = generateCSSVariables(systemTheme.colors)
-        applyCSSVariables(cssVars)
-      }
-    }
-  }, [
-    resolvedTheme,
-    selectedThemeId,
-    systemLightThemeId,
-    systemDarkThemeId,
-    mounted,
-  ])
-
-  if (!mounted) {
-    return (
-      <div class="p-6 space-y-6">
+	const { resolvedTheme, setTheme: setNextTheme } = useTheme();
+	const [mounted, setMounted] = createSignal(false);
+	const isNarrowScreen = useIsNarrowScreen();
+	// Theme atoms
+	const [selectedThemeId, setSelectedThemeId] = useAtom(selectedFullThemeIdAtom);
+	const [systemLightThemeId, setSystemLightThemeId] = useAtom(systemLightThemeIdAtom);
+	const [systemDarkThemeId, setSystemDarkThemeId] = useAtom(systemDarkThemeIdAtom);
+	const setFullThemeData = useSetAtom(fullThemeDataAtom);
+	const [importedThemes, setImportedThemes] = useAtom(importedThemesAtom);
+	// Sidebar settings
+	const [showWorkspaceIcon, setShowWorkspaceIcon] = useAtom(showWorkspaceIconAtom);
+	// To-do list preference
+	const [alwaysExpandTodoList, setAlwaysExpandTodoList] = useAtom(alwaysExpandTodoListAtom);
+	// VS Code themes state
+	const [isScanning, setIsScanning] = createSignal(false);
+	createEffect(() => {
+		setMounted(true);
+	});
+	// Scan and load VS Code themes on mount
+	createEffect(() => {
+		if (!mounted()) return;
+		const api = (window as any).desktopApi;
+		if (typeof api?.scanVSCodeThemes !== "function") return;
+		if (typeof api?.loadVSCodeTheme !== "function") return;
+		const loadAllThemes = async () => {
+			setIsScanning(true);
+			try {
+				const discovered = await api.scanVSCodeThemes();
+				// Filter out themes that are already builtin
+				const newThemes = discovered.filter((t: { name: string; id: string; path: string }) => !BUILTIN_THEME_NAMES.has(t.name.toLowerCase()));
+				// Load all themes in parallel
+				const loadedThemes = await Promise.all(newThemes.map(async (theme: { name: string; id: string; path: string }) => {
+					try {
+						const fullTheme = await api.loadVSCodeTheme(theme.path);
+						return {
+							...fullTheme,
+							id: theme.id,
+							source: "imported" as const
+						} as VSCodeFullTheme;
+					} catch (err) {
+						console.error("[appearance-tab] Failed to load theme:", theme.name, err);
+						return null;
+					}
+				}));
+				// Filter out failed loads and update imported themes
+				const validThemes = loadedThemes.filter((t): t is VSCodeFullTheme => t !== null);
+				setImportedThemes(validThemes);
+			} catch (error) {
+				console.error("Failed to load VS Code themes:", error);
+			} finally {
+				setIsScanning(false);
+			}
+		};
+		loadAllThemes();
+	});
+	// Group themes by type
+	const darkThemes = createMemo(() => BUILTIN_THEMES.filter((t: VSCodeFullTheme) => t.type === "dark"));
+	const lightThemes = createMemo(() => BUILTIN_THEMES.filter((t: VSCodeFullTheme) => t.type === "light"));
+	// Is system mode selected
+	const isSystemMode = createMemo(() => selectedThemeId() === null);
+	// Get the current theme for display
+	const currentTheme = createMemo(() => {
+		if (selectedThemeId() === null) {
+			return null;
+		}
+		// Check in both builtin and imported themes
+		return BUILTIN_THEMES.find((t: VSCodeFullTheme) => t.id === selectedThemeId()) || importedThemes().find((t: VSCodeFullTheme) => t.id === selectedThemeId()) || null;
+	});
+	// Get theme objects for system mode selectors
+	const systemLightTheme = createMemo(() => getBuiltinThemeById(systemLightThemeId()));
+	const systemDarkTheme = createMemo(() => getBuiltinThemeById(systemDarkThemeId()));
+	// Apply theme based on current settings
+	const applyTheme = (themeId: string | null) => {
+		if (themeId === null) {
+			// System mode - apply theme based on system preference
+			removeCSSVariables();
+			setFullThemeData(null);
+			setNextTheme("system");
+			// Apply the appropriate system theme
+			const isDark = resolvedTheme() === "dark";
+			const systemTheme = isDark ? getBuiltinThemeById(systemDarkThemeId()) : getBuiltinThemeById(systemLightThemeId());
+			if (systemTheme) {
+				const cssVars = generateCSSVariables(systemTheme.colors);
+				applyCSSVariables(cssVars);
+			}
+			return;
+		}
+		// Check in both builtin and imported themes
+		const theme = BUILTIN_THEMES.find((t: VSCodeFullTheme) => t.id === themeId) || importedThemes().find((t: VSCodeFullTheme) => t.id === themeId);
+		if (theme) {
+			setFullThemeData(theme);
+			// Apply CSS variables
+			const cssVars = generateCSSVariables(theme.colors);
+			applyCSSVariables(cssVars);
+			// Sync color mode with theme type
+			const themeType = getThemeTypeFromColors(theme.colors);
+			setNextTheme(themeType);
+		}
+	};
+	// Handle main theme selection
+	const handleThemeChange = (value: string) => {
+		if (value === "system") {
+			setSelectedThemeId(null);
+			applyTheme(null);
+		} else {
+			setSelectedThemeId(value);
+			applyTheme(value);
+		}
+	};
+	// Handle system light theme change
+	const handleSystemLightThemeChange = (themeId: string) => {
+		setSystemLightThemeId(themeId);
+		// If currently in light mode, apply the new theme
+		if (resolvedTheme() === "light" && selectedThemeId() === null) {
+			const theme = getBuiltinThemeById(themeId);
+			if (theme) {
+				const cssVars = generateCSSVariables(theme.colors);
+				applyCSSVariables(cssVars);
+			}
+		}
+	};
+	// Handle system dark theme change
+	const handleSystemDarkThemeChange = (themeId: string) => {
+		setSystemDarkThemeId(themeId);
+		// If currently in dark mode, apply the new theme
+		if (resolvedTheme() === "dark" && selectedThemeId() === null) {
+			const theme = getBuiltinThemeById(themeId);
+			if (theme) {
+				const cssVars = generateCSSVariables(theme.colors);
+				applyCSSVariables(cssVars);
+			}
+		}
+	};
+	// Group imported themes by type
+	const importedDarkThemes = createMemo(() => importedThemes().filter((t: VSCodeFullTheme) => t.type === "dark"));
+	const importedLightThemes = createMemo(() => importedThemes().filter((t: VSCodeFullTheme) => t.type === "light"));
+	// Re-apply theme when system preference changes
+	createEffect(() => {
+		if (selectedThemeId() === null && mounted()) {
+			const isDark = resolvedTheme() === "dark";
+			const systemTheme = isDark ? getBuiltinThemeById(systemDarkThemeId()) : getBuiltinThemeById(systemLightThemeId());
+			if (systemTheme) {
+				const cssVars = generateCSSVariables(systemTheme.colors);
+				applyCSSVariables(cssVars);
+			}
+		}
+	});
+	if (!mounted()) {
+		return <div class="p-6 space-y-6">
         <div class="h-48 flex items-center justify-center">
           <IconSpinner class="h-8 w-8 text-foreground" />
         </div>
-      </div>
-    )
-  }
-
-  return (
-    <div class="p-6 space-y-6 flex-1 overflow-y-auto">
-      {/* Header - hidden on narrow screens since it's in the navigation bar */}
-      {!isNarrowScreen && (
+      </div>;
+	}
+	return <div class="p-6 space-y-6 flex-1 overflow-y-auto">
+      {	/* Header - hidden on narrow screens since it's in the navigation bar */}
+      <Show when={!isNarrowScreen()}>
         <div class="flex flex-col space-y-1.5 text-center sm:text-left">
           <h3 class="text-sm font-semibold text-foreground">Appearance</h3>
           <p class="text-xs text-muted-foreground">
             Customize the look and feel of the interface
           </p>
         </div>
-      )}
+      </Show>
 
-      {/* Interface Theme Section */}
+      { /* Interface Theme Section */}
       <div class="bg-background rounded-lg border border-border overflow-hidden">
-        {/* Main theme selector */}
+        { /* Main theme selector */}
         <div class="flex items-center justify-between p-4">
           <div class="flex flex-col space-y-1">
             <span class="text-sm font-medium text-foreground">
@@ -395,117 +251,77 @@ export function AgentsAppearanceTab() {
             </span>
           </div>
 
-          <Select
-            value={selectedThemeId ?? "system"}
-            onValueChange={handleThemeChange}
-          >
+          <Select value={selectedThemeId() ?? "system"} onValueChange={handleThemeChange}>
             <SelectTrigger class="w-auto px-2">
               <div class="flex items-center gap-2 min-w-0 -ml-[3px]">
-                {isSystemMode ? (
-                  <>
-                    <ThemePreviewBox
-                      theme={
-                        resolvedTheme() === "dark"
-                          ? (systemDarkTheme ?? null)
-                          : (systemLightTheme ?? null)
-                      }
-                    />
-                    <span class="text-xs truncate">System preference</span>
-                  </>
-                ) : (
-                  <>
-                    <ThemePreviewBox theme={currentTheme} />
+                <Show when={isSystemMode()} fallback={<>
+                    <ThemePreviewBox theme={currentTheme()} />
                     <span class="text-xs truncate">
-                      {currentTheme?.name || "Select"}
+                      {currentTheme()?.name || "Select"}
                     </span>
-                  </>
-                )}
+                  </>}>
+                  <ThemePreviewBox theme={resolvedTheme() === "dark" ? systemDarkTheme() ?? null : systemLightTheme() ?? null} />
+                  <span class="text-xs truncate">System preference</span>
+                </Show>
               </div>
             </SelectTrigger>
             <SelectContent class="max-h-[300px]">
-              {/* System preference option */}
+              { /* System preference option */}
               <SelectItem value="system">
                 <div class="flex items-center gap-2">
-                  <ThemePreviewBox
-                    theme={
-                      resolvedTheme() === "dark"
-                        ? (systemDarkTheme ?? null)
-                        : (systemLightTheme ?? null)
-                    }
-                    size="sm"
-                  />
+                  <ThemePreviewBox theme={resolvedTheme() === "dark" ? systemDarkTheme() ?? null : systemLightTheme() ?? null} size="sm" />
                   <span class="truncate">System preference</span>
                 </div>
               </SelectItem>
 
-              {/* Light themes */}
-              {lightThemes.map((theme) => (
-                <SelectItem key={theme.id} value={theme.id}>
+              { /* Light themes */}
+              <For each={lightThemes()}>{(theme) => <SelectItem value={theme.id}>
                   <div class="flex items-center gap-2">
                     <ThemePreviewBox theme={theme} size="sm" />
                     <span class="truncate">{theme.name}</span>
                   </div>
-                </SelectItem>
-              ))}
+                </SelectItem>}</For>
 
-              {/* Dark themes */}
-              {darkThemes.map((theme) => (
-                <SelectItem key={theme.id} value={theme.id}>
+              { /* Dark themes */}
+              <For each={darkThemes()}>{(theme) => <SelectItem value={theme.id}>
                   <div class="flex items-center gap-2">
                     <ThemePreviewBox theme={theme} size="sm" />
                     <span class="truncate">{theme.name}</span>
                   </div>
-                </SelectItem>
-              ))}
+                </SelectItem>}</For>
 
-              {/* Imported themes from VS Code / Cursor / Windsurf */}
-              {importedThemes.length > 0 && (
-                <>
+              { /* Imported themes from VS Code / Cursor / Windsurf */}
+              <Show when={importedThemes().length > 0}>
                   <SelectSeparator />
-                  <SelectGroup>
+                  <SelectSection>
                     <SelectLabel class="text-xs text-muted-foreground px-2">
                       From editors
                     </SelectLabel>
-                    {importedThemes.map((theme) => (
-                      <SelectItem key={theme.id} value={theme.id}>
+                    <For each={importedThemes()}>{(theme) => <SelectItem value={theme.id}>
                         <div class="flex items-center gap-2">
                           <ThemePreviewBox theme={theme} size="sm" />
                           <span class="truncate">{theme.name}</span>
                         </div>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </>
-              )}
+                      </SelectItem>}</For>
+                  </SelectSection>
+              </Show>
 
-              {/* Loading indicator */}
-              {isScanning && (
-                <>
+              { /* Loading indicator */}
+              <Show when={isScanning()}>
                   <SelectSeparator />
                   <div class="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
                     <IconSpinner class="h-3 w-3" />
                     <span>Loading themes from editors...</span>
                   </div>
-                </>
-              )}
+              </Show>
             </SelectContent>
           </Select>
         </div>
 
-        {/* Animated Light/Dark theme selectors for system mode */}
-        <AnimatePresence initial={false}>
-          {isSystemMode && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{
-                height: { type: "spring", stiffness: 300, damping: 30 },
-                opacity: { duration: 0.2 },
-              }}
-              class="overflow-hidden"
-            >
-              {/* Light theme selector */}
+        { /* Light/Dark theme selectors for system mode */}
+        <Show when={isSystemMode()}>
+          <div class="overflow-hidden">
+              {	/* Light theme selector */}
               <div class="flex items-center justify-between p-4 border-t border-border">
                 <div class="flex flex-col space-y-1">
                   <span class="text-sm font-medium text-foreground">
@@ -516,32 +332,27 @@ export function AgentsAppearanceTab() {
                   </span>
                 </div>
 
-                <Select
-                  value={systemLightThemeId}
-                  onValueChange={handleSystemLightThemeChange}
-                >
+                <Select value={systemLightThemeId()} onValueChange={handleSystemLightThemeChange}>
                   <SelectTrigger class="w-auto px-2">
                     <div class="flex items-center gap-2 min-w-0 -ml-[3px]">
-                      <ThemePreviewBox theme={systemLightTheme || null} />
+                      <ThemePreviewBox theme={systemLightTheme() || null} />
                       <span class="text-xs truncate">
-                        {systemLightTheme?.name || "Select"}
+                        {systemLightTheme()?.name || "Select"}
                       </span>
                     </div>
                   </SelectTrigger>
                   <SelectContent>
-                    {lightThemes.map((theme) => (
-                      <SelectItem key={theme.id} value={theme.id}>
+                    <For each={lightThemes()}>{(theme) => <SelectItem value={theme.id}>
                         <div class="flex items-center gap-2">
                           <ThemePreviewBox theme={theme} size="sm" />
                           <span class="truncate">{theme.name}</span>
                         </div>
-                      </SelectItem>
-                    ))}
+                      </SelectItem>}</For>
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Dark theme selector */}
+              { /* Dark theme selector */}
               <div class="flex items-center justify-between p-4 border-t border-border">
                 <div class="flex flex-col space-y-1">
                   <span class="text-sm font-medium text-foreground">
@@ -552,37 +363,31 @@ export function AgentsAppearanceTab() {
                   </span>
                 </div>
 
-                <Select
-                  value={systemDarkThemeId}
-                  onValueChange={handleSystemDarkThemeChange}
-                >
+                <Select value={systemDarkThemeId()} onValueChange={handleSystemDarkThemeChange}>
                   <SelectTrigger class="w-auto px-2">
                     <div class="flex items-center gap-2 min-w-0 -ml-[3px]">
-                      <ThemePreviewBox theme={systemDarkTheme || null} />
+                      <ThemePreviewBox theme={systemDarkTheme() || null} />
                       <span class="text-xs truncate">
-                        {systemDarkTheme?.name || "Select"}
+                        {systemDarkTheme()?.name || "Select"}
                       </span>
                     </div>
                   </SelectTrigger>
                   <SelectContent>
-                    {darkThemes.map((theme) => (
-                      <SelectItem key={theme.id} value={theme.id}>
+                    <For each={darkThemes()}>{(theme) => <SelectItem value={theme.id}>
                         <div class="flex items-center gap-2">
                           <ThemePreviewBox theme={theme} size="sm" />
                           <span class="truncate">{theme.name}</span>
                         </div>
-                      </SelectItem>
-                    ))}
+                      </SelectItem>}</For>
                   </SelectContent>
                 </Select>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </div>
+        </Show>
       </div>
 
 
-      {/* Display Options Section */}
+      { /* Display Options Section */}
       <div class="bg-background rounded-lg border border-border overflow-hidden">
         <div class="flex items-center justify-between p-4">
           <div class="flex flex-col space-y-1">
@@ -593,10 +398,7 @@ export function AgentsAppearanceTab() {
               Show project icon in the sidebar workspace list
             </span>
           </div>
-          <Switch
-            checked={showWorkspaceIcon}
-            onCheckedChange={setShowWorkspaceIcon}
-          />
+          <Switch checked={showWorkspaceIcon()} onCheckedChange={setShowWorkspaceIcon} />
         </div>
         <div class="flex items-center justify-between p-4 border-t border-border">
           <div class="flex flex-col space-y-1">
@@ -607,12 +409,8 @@ export function AgentsAppearanceTab() {
               Show the full to-do list instead of compact view
             </span>
           </div>
-          <Switch
-            checked={alwaysExpandTodoList}
-            onCheckedChange={setAlwaysExpandTodoList}
-          />
+          <Switch checked={alwaysExpandTodoList()} onCheckedChange={setAlwaysExpandTodoList} />
         </div>
       </div>
-    </div>
-  )
-}
+    </div>;
+ }

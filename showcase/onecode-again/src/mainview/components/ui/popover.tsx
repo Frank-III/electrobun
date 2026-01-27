@@ -1,52 +1,45 @@
-import * as React from "react"
-import * as PopoverPrimitive from "@radix-ui/react-popover"
+import type { ComponentProps, ValidComponent } from "solid-js";
+import { mergeProps, splitProps } from "solid-js";
+import { Popover as PopoverPrimitive } from "@kobalte/core/popover";
+import { cn } from "../../lib/utils";
+import { overlayContentBase, overlayMaxHeight, overlayAnimation, overlaySlideIn } from "../../lib/overlay-styles";
 
-import { cn } from "../../lib/utils"
-import {
-  overlayContentBase,
-  overlayMaxHeight,
-  overlayAnimation,
-  overlaySlideIn,
-} from "../../lib/overlay-styles"
+export type PopoverProps = ComponentProps<typeof PopoverPrimitive>;
 
-const Popover = PopoverPrimitive.Root
+export function Popover(props: PopoverProps) {
+	const merged = mergeProps({ gutter: 4 }, props);
+	return <PopoverPrimitive {...merged} />;
+}
 
-const PopoverTrigger = PopoverPrimitive.Trigger
+export const PopoverTrigger = PopoverPrimitive.Trigger;
+export const PopoverAnchor = PopoverPrimitive.Anchor;
+export const PopoverClose = PopoverPrimitive.CloseButton;
+export const PopoverPortal = PopoverPrimitive.Portal;
 
-const PopoverAnchor = PopoverPrimitive.Anchor
+export type PopoverContentProps<T extends ValidComponent = "div"> = ComponentProps<typeof PopoverPrimitive.Content<T>> & {
+	forceDark?: boolean;
+};
 
-const PopoverContent = React.forwardRef<
-  React.ElementRef<typeof PopoverPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content> & {
-    forceDark?: boolean
-  }
->(
-  (
-    { className, align = "center", sideOffset = 4, forceDark = true, ...props },
-    ref,
-  ) => (
-    <PopoverPrimitive.Portal>
-      <PopoverPrimitive.Content
-        ref={ref}
-        align={align}
-        sideOffset={sideOffset}
-        class={cn(
-          overlayContentBase,
-          overlayMaxHeight,
-          overlayAnimation,
-          overlaySlideIn,
-          "min-w-[200px] py-1",
-          forceDark && "dark",
-          className,
-        )}
-        data-popover="true"
-        {...props}
-      />
-    </PopoverPrimitive.Portal>
-  ),
-)
-PopoverContent.displayName = PopoverPrimitive.Content.displayName
+export function PopoverContent<T extends ValidComponent = "div">(props: PopoverContentProps<T>) {
+	const [local, rest] = splitProps(props as PopoverContentProps, ["class", "forceDark"]);
+	const forceDark = local.forceDark ?? true;
 
-const PopoverClose = PopoverPrimitive.Close
-
-export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor, PopoverClose }
+	return (
+		<PopoverPrimitive.Portal>
+			<PopoverPrimitive.Content
+				data-popover="true"
+				class={cn(
+					overlayContentBase,
+					overlayMaxHeight,
+					overlayAnimation,
+					overlaySlideIn,
+					"min-w-[200px] py-1",
+					"origin-(--kb-popover-content-transform-origin)",
+					forceDark && "dark",
+					local.class
+				)}
+				{...rest}
+			/>
+		</PopoverPrimitive.Portal>
+	);
+}

@@ -1,4 +1,4 @@
-import { useAtomValue } from "jotai"
+import { useAtomValue } from "../state/jotai"
 import { useTheme } from "./use-theme"
 import {
   vscodeCodeThemeLightAtom,

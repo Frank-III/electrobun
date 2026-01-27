@@ -1,4 +1,4 @@
-import { useAtomValue } from "jotai"
+import { useAtomValue } from "../state/jotai"
 import { customHotkeysAtom } from "../atoms"
 import { getResolvedHotkey, hotkeyToDisplay, getShortcutAction, keysToDisplay, keysToHotkeyString } from "./shortcut-registry"
 import type { ShortcutActionId } from "./types"

@@ -1,61 +1,47 @@
-import { useState, useEffect } from "react"
-import { ChevronRight } from "lucide-react"
-import { motion, AnimatePresence } from "motion/react"
-import { trpc } from "../../../lib/trpc"
-import { cn } from "../../../lib/utils"
-import { AgentIcon } from "../../ui/icons"
-
+import { createSignal, createEffect, Show, For, onCleanup } from "solid-js";
+import { ChevronRight } from "lucide-solid";
+import { trpc } from "../../../lib/trpc";
+import { cn } from "../../../lib/utils";
+import { AgentIcon } from "../../ui/icons";
 // Hook to detect narrow screen
-function useIsNarrowScreen(): boolean {
-  const [isNarrow, setIsNarrow] = useState(false)
-
-  useEffect(() => {
-    const checkWidth = () => {
-      setIsNarrow(window.innerWidth <= 768)
-    }
-
-    checkWidth()
-    window.addEventListener("resize", checkWidth)
-    return () => window.removeEventListener("resize", checkWidth)
-  }, [])
-
-  return isNarrow
+function useIsNarrowScreen() {
+	const [isNarrow, setIsNarrow] = createSignal(false);
+	createEffect(() => {
+		const checkWidth = () => {
+			setIsNarrow(window.innerWidth <= 768);
+		};
+		checkWidth();
+		window.addEventListener("resize", checkWidth);
+		onCleanup(() => window.removeEventListener("resize", checkWidth));
+	});
+	return isNarrow;
 }
-
 interface FileAgent {
-  name: string
-  description: string
-  prompt: string
-  tools?: string[]
-  disallowedTools?: string[]
-  model?: "sonnet" | "opus" | "haiku" | "inherit"
-  source: "user" | "project"
-  path: string
+	name: string;
+	description: string;
+	prompt: string;
+	tools?: string[];
+	disallowedTools?: string[];
+	model?: "sonnet" | "opus" | "haiku" | "inherit";
+	source: "user" | "project";
+	path: string;
 }
-
 export function AgentsCustomAgentsTab() {
-  const isNarrowScreen = useIsNarrowScreen()
-  const [expandedAgentName, setExpandedAgentName] = useState<string | null>(null)
-
-  const { data: agents = [], isLoading } = trpc.agents.list.useQuery(undefined)
-
-  const openInFinderMutation = trpc.external.openInFinder.useMutation()
-
-  const userAgents = agents.filter((a) => a.source === "user")
-  const projectAgents = agents.filter((a) => a.source === "project")
-
-  const handleExpandAgent = (agentName: string) => {
-    setExpandedAgentName(expandedAgentName === agentName ? null : agentName)
-  }
-
-  const handleOpenInFinder = (path: string) => {
-    openInFinderMutation.mutate(path)
-  }
-
-  return (
-    <div class="p-6 space-y-6 overflow-y-auto max-h-[70vh]">
+	const isNarrowScreen = useIsNarrowScreen();
+	const [expandedAgentName, setExpandedAgentName] = createSignal<string | null>(null);
+	const { data: agents = [], isLoading } = trpc.agents.list.useQuery(undefined);
+	const openInFinderMutation = trpc.external.openInFinder.useMutation();
+	const userAgents = () => agents.filter((a: FileAgent) => a.source === "user");
+	const projectAgents = () => agents.filter((a: FileAgent) => a.source === "project");
+	const handleExpandAgent = (agentName: string) => {
+		setExpandedAgentName(expandedAgentName() === agentName ? null : agentName);
+	};
+	const handleOpenInFinder = (path: string) => {
+		openInFinderMutation.mutate(path);
+	};
+	return <div class="p-6 space-y-6 overflow-y-auto max-h-[70vh]">
       {/* Header - hidden on narrow screens */}
-      {!isNarrowScreen && (
+      <Show when={!isNarrowScreen()}>
         <div class="flex flex-col space-y-1.5 text-center sm:text-left">
           <div class="flex items-center gap-2">
             <h3 class="text-sm font-semibold text-foreground">Custom Agents</h3>
@@ -63,80 +49,63 @@ export function AgentsCustomAgentsTab() {
               Beta
             </span>
           </div>
-          <a
-            href="https://code.claude.com/docs/en/sub-agents"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
-          >
+          <a href="https://code.claude.com/docs/en/sub-agents" target="_blank" rel="noopener noreferrer" class="text-xs text-muted-foreground hover:text-foreground underline transition-colors">
             Documentation
           </a>
         </div>
-      )}
+      </Show>
 
       {/* Agents List */}
       <div class="space-y-4">
-        {isLoading ? (
+        <Show when={!isLoading} fallback={
           <div class="bg-background rounded-lg border border-border p-4 text-sm text-muted-foreground text-center">
             Loading agents...
           </div>
-        ) : agents.length === 0 ? (
-          <div class="bg-background rounded-lg border border-border p-6 text-center">
-            <AgentIcon class="h-8 w-8 text-muted-foreground/50 mx-auto mb-3" />
-            <p class="text-sm text-muted-foreground mb-2">
-              No custom agents found
-            </p>
-            <p class="text-xs text-muted-foreground">
-              Add .md files to <code class="px-1 py-0.5 bg-muted rounded">~/.claude/agents/</code>
-            </p>
-          </div>
-        ) : (
-          <>
+        }>
+          <Show when={agents.length > 0} fallback={
+            <div class="bg-background rounded-lg border border-border p-6 text-center">
+              <AgentIcon class="h-8 w-8 text-muted-foreground/50 mx-auto mb-3" />
+              <p class="text-sm text-muted-foreground mb-2">
+                No custom agents found
+              </p>
+              <p class="text-xs text-muted-foreground">
+                Add .md files to <code class="px-1 py-0.5 bg-muted rounded">~/.claude/agents/</code>
+              </p>
+            </div>
+          }>
             {/* User Agents */}
-            {userAgents.length > 0 && (
+            <Show when={userAgents().length > 0}>
               <div class="space-y-2">
                 <div class="text-xs text-muted-foreground">
                   ~/.claude/agents/
                 </div>
                 <div class="bg-background rounded-lg border border-border overflow-hidden">
                   <div class="divide-y divide-border">
-                    {userAgents.map((agent) => (
-                      <AgentRow
-                        key={agent.name}
-                        agent={agent}
-                        isExpanded={expandedAgentName === agent.name}
-                        onToggle={() => handleExpandAgent(agent.name)}
-                        onOpenInFinder={() => handleOpenInFinder(agent.path)}
-                      />
-                    ))}
+                    <For each={userAgents()}>
+                      {(agent) => <AgentRow agent={agent} isExpanded={expandedAgentName() === agent.name} onToggle={() => handleExpandAgent(agent.name)} onOpenInFinder={() => handleOpenInFinder(agent.path)} />}
+                    </For>
                   </div>
                 </div>
               </div>
-            )}
+            </Show>
 
             {/* Project Agents */}
-            {projectAgents.length > 0 && (
+            <Show when={projectAgents().length > 0}>
               <div class="space-y-2">
                 <div class="text-xs text-muted-foreground">
                   .claude/agents/
                 </div>
                 <div class="bg-background rounded-lg border border-border overflow-hidden">
                   <div class="divide-y divide-border">
-                    {projectAgents.map((agent) => (
-                      <AgentRow
-                        key={agent.name}
-                        agent={agent}
-                        isExpanded={expandedAgentName === agent.name}
-                        onToggle={() => handleExpandAgent(agent.name)}
-                        onOpenInFinder={() => handleOpenInFinder(agent.path)}
-                      />
-                    ))}
+                    <For each={projectAgents()}>
+                      {(agent) => <AgentRow agent={agent} isExpanded={expandedAgentName() === agent.name} onToggle={() => handleExpandAgent(agent.name)} onOpenInFinder={() => handleOpenInFinder(agent.path)} />}
+                    </For>
                   </div>
                 </div>
               </div>
-            )}
-          </>
-        )}
+            </Show>
+          </Show>
+        </Show>
       </div>
 
       {/* Info Section */}
@@ -167,116 +136,79 @@ export function AgentsCustomAgentsTab() {
         </div>
       </div>
 
-    </div>
-  )
-}
-
-function AgentRow({
-  agent,
-  isExpanded,
-  onToggle,
-  onOpenInFinder,
-}: {
-  agent: FileAgent
-  isExpanded: boolean
-  onToggle: () => void
-  onOpenInFinder: () => void
+    </div>;
+ }
+function AgentRow(props: {
+	agent: FileAgent;
+	isExpanded: boolean;
+	onToggle: () => void;
+	onOpenInFinder: () => void;
 }) {
-  return (
-    <div>
-      <button
-        onClick={onToggle}
-        class="w-full flex items-center gap-3 p-4 text-left hover:bg-muted/30 transition-colors"
-      >
-        <ChevronRight
-          class={cn(
-            "h-4 w-4 text-muted-foreground transition-transform flex-shrink-0",
-            isExpanded && "rotate-90",
-          )}
-        />
+	return <div>
+      <button onClick={props.onToggle} class="w-full flex items-center gap-3 p-4 text-left hover:bg-muted/30 transition-colors">
+        <ChevronRight class={cn("h-4 w-4 text-muted-foreground transition-transform flex-shrink-0", props.isExpanded && "rotate-90")} />
         <div class="flex flex-col space-y-0.5 min-w-0 flex-1">
           <span class="text-sm font-medium text-foreground truncate">
-            {agent.name}
+            {props.agent.name}
           </span>
-          {agent.description && (
+          <Show when={props.agent.description}>
             <span class="text-xs text-muted-foreground truncate">
-              {agent.description}
+              {props.agent.description}
             </span>
-          )}
+          </Show>
         </div>
-        {agent.model && agent.model !== "inherit" && (
+        <Show when={props.agent.model && props.agent.model !== "inherit"}>
           <span class="px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-muted-foreground flex-shrink-0">
-            {agent.model}
+            {props.agent.model}
           </span>
-        )}
+        </Show>
       </button>
 
-      <AnimatePresence initial={false}>
-        {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{
-              height: { type: "spring", stiffness: 300, damping: 30 },
-              opacity: { duration: 0.2 },
-            }}
-            class="overflow-hidden"
-          >
-            <div class="px-4 pb-4 pt-0 border-t border-border bg-muted/20">
-              <div class="pt-3 space-y-3">
-                {/* Path - clickable to open in Finder */}
-                <div>
-                  <span class="text-xs font-medium text-foreground">Path</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onOpenInFinder()
-                    }}
-                    class="block text-xs text-muted-foreground font-mono mt-0.5 break-all text-left hover:text-foreground hover:underline transition-colors cursor-pointer"
-                  >
-                    {agent.path}
-                  </button>
-                </div>
-
-                {/* Tools */}
-                {agent.tools && agent.tools.length > 0 && (
-                  <div>
-                    <span class="text-xs font-medium text-foreground">Allowed Tools</span>
-                    <div class="flex flex-wrap gap-1 mt-1">
-                      {agent.tools.map((tool) => (
-                        <span
-                          key={tool}
-                          class="px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-muted-foreground"
-                        >
-                          {tool}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Disallowed Tools */}
-                {agent.disallowedTools && agent.disallowedTools.length > 0 && (
-                  <div>
-                    <span class="text-xs font-medium text-foreground">Disallowed Tools</span>
-                    <div class="flex flex-wrap gap-1 mt-1">
-                      {agent.disallowedTools.map((tool) => (
-                        <span
-                          key={tool}
-                          class="px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-muted-foreground"
-                        >
-                          {tool}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
+      <Show when={props.isExpanded}>
+        <div class="overflow-hidden animate-expand">
+          <div class="px-4 pb-4 pt-0 border-t border-border bg-muted/20">
+            <div class="pt-3 space-y-3">
+              {/* Path - clickable to open in Finder */}
+              <div>
+                <span class="text-xs font-medium text-foreground">Path</span>
+                <button onClick={(e: MouseEvent) => {
+                  e.stopPropagation();
+                  props.onOpenInFinder();
+                }} class="block text-xs text-muted-foreground font-mono mt-0.5 break-all text-left hover:text-foreground hover:underline transition-colors cursor-pointer">
+                  {props.agent.path}
+                </button>
               </div>
+
+              {/* Tools */}
+              <Show when={props.agent.tools && props.agent.tools.length > 0}>
+                <div>
+                  <span class="text-xs font-medium text-foreground">Allowed Tools</span>
+                  <div class="flex flex-wrap gap-1 mt-1">
+                    <For each={props.agent.tools}>
+                      {(tool) => <span class="px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-muted-foreground">
+                        {tool}
+                      </span>}
+                    </For>
+                  </div>
+                </div>
+              </Show>
+
+              {/* Disallowed Tools */}
+              <Show when={props.agent.disallowedTools && props.agent.disallowedTools.length > 0}>
+                <div>
+                  <span class="text-xs font-medium text-foreground">Disallowed Tools</span>
+                  <div class="flex flex-wrap gap-1 mt-1">
+                    <For each={props.agent.disallowedTools}>
+                      {(tool) => <span class="px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-muted-foreground">
+                        {tool}
+                      </span>}
+                    </For>
+                  </div>
+                </div>
+              </Show>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
+          </div>
+        </div>
+      </Show>
+    </div>;
+ }

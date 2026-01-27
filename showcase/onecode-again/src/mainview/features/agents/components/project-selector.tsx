@@ -1,250 +1,159 @@
-import { useState, useMemo, useCallback } from "react"
-import { useAtom, useAtomValue } from "jotai"
-import { FolderOpen } from "lucide-react"
-import { showOfflineModeFeaturesAtom } from "../../../lib/atoms"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../../../components/ui/popover"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "../../../components/ui/command"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "../../../components/ui/dialog"
-import { Input } from "../../../components/ui/input"
-import { Button } from "../../../components/ui/button"
-import { IconChevronDown, CheckIcon, FolderPlusIcon, GitHubIcon } from "../../../components/ui/icons"
-import { trpc } from "../../../lib/trpc"
-import { selectedProjectAtom } from "../atoms"
-
+import { createSignal, createMemo } from "solid-js";
+import { useAtom, useAtomValue } from "../../../lib/state/jotai";
+import { FolderOpen } from "lucide-solid";
+import { showOfflineModeFeaturesAtom } from "../../../lib/atoms";
+import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../../../components/ui/command";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
+import { Input } from "../../../components/ui/input";
+import { Button } from "../../../components/ui/button";
+import { IconChevronDown, CheckIcon, FolderPlusIcon, GitHubIcon } from "../../../components/ui/icons";
+import { trpc } from "../../../lib/trpc";
+import { selectedProjectAtom } from "../atoms";
 // Helper component to render project icon (avatar or folder)
-function ProjectIcon({
-  gitOwner,
-  gitProvider,
-  className = "h-4 w-4",
-  isOffline = false,
-}: {
-  gitOwner?: string | null
-  gitProvider?: string | null
-  className?: string
-  isOffline?: boolean
+function ProjectIcon({ gitOwner, gitProvider, className = "h-4 w-4", isOffline = false }: {
+	gitOwner?: string | null;
+	gitProvider?: string | null;
+	className?: string;
+	isOffline?: boolean;
 }) {
-  const [isLoaded, setIsLoaded] = useState(false)
-  const [hasError, setHasError] = useState(false)
-
-  const handleLoad = useCallback(() => setIsLoaded(true), [])
-  const handleError = useCallback(() => setHasError(true), [])
-
-  // In offline mode or on error, don't try to load remote images
-  if (isOffline || hasError || !gitOwner || gitProvider !== "github") {
-    return (
-      <FolderOpen
-        class={`${className} text-muted-foreground flex-shrink-0`}
-      />
-    )
-  }
-
-  return (
-    <div class={`${className} relative flex-shrink-0`}>
-      {/* Placeholder background while loading */}
-      {!isLoaded && (
-        <div class="absolute inset-0 rounded-sm bg-muted" />
-      )}
-      <img
-        src={`https://github.com/${gitOwner}.png?size=64`}
-        alt={gitOwner}
-        class={`${className} rounded-sm flex-shrink-0 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-        onLoad={handleLoad}
-        onError={handleError}
-      />
-    </div>
-  )
-}
-
+	const [isLoaded, setIsLoaded] = createSignal(false);
+	const [hasError, setHasError] = createSignal(false);
+	const handleLoad = () => setIsLoaded(true);
+	const handleError = () => setHasError(true);
+	// In offline mode or on error, don't try to load remote images
+	if (isOffline || hasError || !gitOwner || gitProvider !== "github") {
+		return <FolderOpen class={`${className} text-muted-foreground flex-shrink-0`} />;
+	}
+	return <div class={`${className} relative flex-shrink-0`}>
+      {	/* Placeholder background while loading */}
+      {!isLoaded && <div class="absolute inset-0 rounded-sm bg-muted" />}
+      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={`${className} rounded-sm flex-shrink-0 ${isLoaded ? "opacity-100" : "opacity-0"}`} onLoad={handleLoad} onError={handleError} />
+    </div>;
+ }
 export function ProjectSelector() {
-  const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
-  const [open, setOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [githubDialogOpen, setGithubDialogOpen] = useState(false)
-  const [githubUrl, setGithubUrl] = useState("")
-
-  // Check if offline mode is enabled and if we're actually offline
-  const showOfflineFeatures = useAtomValue(showOfflineModeFeaturesAtom)
-  const { data: ollamaStatus } = trpc.ollama.getStatus.useQuery(undefined, {
-    enabled: showOfflineFeatures,
-  })
-  const isOffline = showOfflineFeatures && ollamaStatus ? !ollamaStatus.internet.online : false
-
-  // Fetch projects from DB
-  const { data: projects, isLoading: isLoadingProjects } = trpc.projects.list.useQuery()
-
-  // Filter projects by search query
-  const filteredProjects = useMemo(() => {
-    if (!projects) return []
-    if (!searchQuery.trim()) return projects
-    const query = searchQuery.toLowerCase()
-    return projects.filter(
-      (p) =>
-        p.name.toLowerCase().includes(query) ||
-        p.path.toLowerCase().includes(query),
-    )
-  }, [projects, searchQuery])
-
-  // Get tRPC utils for cache management
-  const utils = trpc.useUtils()
-
-  // Open folder mutation
-  const openFolder = trpc.projects.openFolder.useMutation({
-    onSuccess: (project) => {
-      if (project) {
-        // Optimistically update the projects list cache to prevent validation failures
-        utils.projects.list.setData(undefined, (oldData) => {
-          if (!oldData) return [project]
-          const exists = oldData.some((p) => p.id === project.id)
-          if (exists) {
-            return oldData.map((p) =>
-              p.id === project.id ? { ...p, updatedAt: project.updatedAt } : p,
-            )
-          }
-          return [project, ...oldData]
-        })
-
-        setSelectedProject({
-          id: project.id,
-          name: project.name,
-          path: project.path,
-          gitRemoteUrl: project.gitRemoteUrl,
-          gitProvider: project.gitProvider as
-            | "github"
-            | "gitlab"
-            | "bitbucket"
-            | null,
-          gitOwner: project.gitOwner,
-          gitRepo: project.gitRepo,
-        })
-      }
-    },
-  })
-
-  // Clone from GitHub mutation
-  const cloneFromGitHub = trpc.projects.cloneFromGitHub.useMutation({
-    onSuccess: (project) => {
-      if (project) {
-        utils.projects.list.setData(undefined, (oldData) => {
-          if (!oldData) return [project]
-          const exists = oldData.some((p) => p.id === project.id)
-          if (exists) {
-            return oldData.map((p) =>
-              p.id === project.id ? { ...p, updatedAt: project.updatedAt } : p,
-            )
-          }
-          return [project, ...oldData]
-        })
-
-        setSelectedProject({
-          id: project.id,
-          name: project.name,
-          path: project.path,
-          gitRemoteUrl: project.gitRemoteUrl,
-          gitProvider: project.gitProvider as
-            | "github"
-            | "gitlab"
-            | "bitbucket"
-            | null,
-          gitOwner: project.gitOwner,
-          gitRepo: project.gitRepo,
-        })
-        setGithubDialogOpen(false)
-        setGithubUrl("")
-      }
-    },
-  })
-
-  const handleOpenFolder = async () => {
-    setOpen(false)
-    await openFolder.mutateAsync()
-  }
-
-  const handleCloneFromGitHub = async () => {
-    if (!githubUrl.trim()) return
-    await cloneFromGitHub.mutateAsync({ repoUrl: githubUrl.trim() })
-  }
-
-  const handleSelectProject = (projectId: string) => {
-    const project = projects?.find((p) => p.id === projectId)
-    if (project) {
-      setSelectedProject({
-        id: project.id,
-        name: project.name,
-        path: project.path,
-        gitRemoteUrl: project.gitRemoteUrl,
-        gitProvider: project.gitProvider as
-          | "github"
-          | "gitlab"
-          | "bitbucket"
-          | null,
-        gitOwner: project.gitOwner,
-        gitRepo: project.gitRepo,
-      })
-      setOpen(false)
-    }
-  }
-
-  // Validate selected project still exists
-  // While loading, trust localStorage value to prevent showing "Select repo" on app restart
-  const validSelection = useMemo(() => {
-    if (!selectedProject) return null
-    // While loading, trust localStorage value
-    if (isLoadingProjects) return selectedProject
-    // After loading, validate against DB
-    if (!projects) return null
-    const exists = projects.some((p) => p.id === selectedProject.id)
-    return exists ? selectedProject : null
-  }, [selectedProject, projects, isLoadingProjects])
-
-  // If no projects exist and none selected - show direct "Add repository" button
-  if (!validSelection && (!projects || projects.length === 0) && !isLoadingProjects) {
-    return (
-      <button
-        onClick={handleOpenFolder}
-        disabled={openFolder.isPending}
-        class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70"
-      >
+	const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom);
+	const [open, setOpen] = createSignal(false);
+	const [searchQuery, setSearchQuery] = createSignal("");
+	const [githubDialogOpen, setGithubDialogOpen] = createSignal(false);
+	const [githubUrl, setGithubUrl] = createSignal("");
+	// Check if offline mode is enabled and if we're actually offline
+	const showOfflineFeatures = useAtomValue(showOfflineModeFeaturesAtom);
+	const { data: ollamaStatus } = trpc.ollama.getStatus.useQuery(undefined, { enabled: showOfflineFeatures });
+	const isOffline = showOfflineFeatures && ollamaStatus ? !ollamaStatus.internet.online : false;
+	// Fetch projects from DB
+	const { data: projects, isLoading: isLoadingProjects } = trpc.projects.list.useQuery();
+	// Filter projects by search query
+	const filteredProjects = createMemo(() => {
+		if (!projects) return [];
+		if (!searchQuery.trim()) return projects;
+		const query = searchQuery.toLowerCase();
+		return projects.filter((p) => p.name.toLowerCase().includes(query) || p.path.toLowerCase().includes(query));
+	});
+	// Get tRPC utils for cache management
+	const utils = trpc.useUtils();
+	// Open folder mutation
+	const openFolder = trpc.projects.openFolder.useMutation({ onSuccess: (project) => {
+		if (project) {
+			// Optimistically update the projects list cache to prevent validation failures
+			utils.projects.list.setData(undefined, (oldData) => {
+				if (!oldData) return [project];
+				const exists = oldData.some((p) => p.id === project.id);
+				if (exists) {
+					return oldData.map((p) => p.id === project.id ? {
+						...p,
+						updatedAt: project.updatedAt
+					} : p);
+				}
+				return [project, ...oldData];
+			});
+			setSelectedProject({
+				id: project.id,
+				name: project.name,
+				path: project.path,
+				gitRemoteUrl: project.gitRemoteUrl,
+				gitProvider: project.gitProvider as "github" | "gitlab" | "bitbucket" | null,
+				gitOwner: project.gitOwner,
+				gitRepo: project.gitRepo
+			});
+		}
+	} });
+	// Clone from GitHub mutation
+	const cloneFromGitHub = trpc.projects.cloneFromGitHub.useMutation({ onSuccess: (project) => {
+		if (project) {
+			utils.projects.list.setData(undefined, (oldData) => {
+				if (!oldData) return [project];
+				const exists = oldData.some((p) => p.id === project.id);
+				if (exists) {
+					return oldData.map((p) => p.id === project.id ? {
+						...p,
+						updatedAt: project.updatedAt
+					} : p);
+				}
+				return [project, ...oldData];
+			});
+			setSelectedProject({
+				id: project.id,
+				name: project.name,
+				path: project.path,
+				gitRemoteUrl: project.gitRemoteUrl,
+				gitProvider: project.gitProvider as "github" | "gitlab" | "bitbucket" | null,
+				gitOwner: project.gitOwner,
+				gitRepo: project.gitRepo
+			});
+			setGithubDialogOpen(false);
+			setGithubUrl("");
+		}
+	} });
+	const handleOpenFolder = async () => {
+		setOpen(false);
+		await openFolder.mutateAsync();
+	};
+	const handleCloneFromGitHub = async () => {
+		if (!githubUrl.trim()) return;
+		await cloneFromGitHub.mutateAsync({ repoUrl: githubUrl.trim() });
+	};
+	const handleSelectProject = (projectId: string) => {
+		const project = projects?.find((p) => p.id === projectId);
+		if (project) {
+			setSelectedProject({
+				id: project.id,
+				name: project.name,
+				path: project.path,
+				gitRemoteUrl: project.gitRemoteUrl,
+				gitProvider: project.gitProvider as "github" | "gitlab" | "bitbucket" | null,
+				gitOwner: project.gitOwner,
+				gitRepo: project.gitRepo
+			});
+			setOpen(false);
+		}
+	};
+	// Validate selected project still exists
+	// While loading, trust localStorage value to prevent showing "Select repo" on app restart
+	const validSelection = createMemo(() => {
+		if (!selectedProject) return null;
+		// While loading, trust localStorage value
+		if (isLoadingProjects) return selectedProject;
+		// After loading, validate against DB
+		if (!projects) return null;
+		const exists = projects.some((p) => p.id === selectedProject.id);
+		return exists ? selectedProject : null;
+	});
+	// If no projects exist and none selected - show direct "Add repository" button
+	if (!validSelection && (!projects || projects.length === 0) && !isLoadingProjects) {
+		return <button onClick={handleOpenFolder} disabled={openFolder.isPending} class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
         <FolderPlusIcon class="h-3.5 w-3.5" />
         <span>{openFolder.isPending ? "Adding..." : "Add repository"}</span>
-      </button>
-    )
-  }
-
-  return (
-    <>
-    <Popover
-      open={open}
-      onOpenChange={(isOpen) => {
-        setOpen(isOpen)
-        if (!isOpen) setSearchQuery("")
-      }}
-    >
+      </button>;
+	}
+	return <>
+    <Popover open={open} onOpenChange={(isOpen) => {
+		setOpen(isOpen);
+		if (!isOpen) setSearchQuery("");
+	}}>
       <PopoverTrigger asChild>
-        <button
-          class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70"
-          type="button"
-        >
-          <ProjectIcon
-            gitOwner={validSelection?.gitOwner}
-            gitProvider={validSelection?.gitProvider}
-            isOffline={isOffline}
-          />
+        <button class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" type="button">
+          <ProjectIcon gitOwner={validSelection?.gitOwner} gitProvider={validSelection?.gitProvider} isOffline={isOffline} />
           <span class="truncate max-w-[120px]">
             {validSelection?.name || "Select repo"}
           </span>
@@ -253,60 +162,30 @@ export function ProjectSelector() {
       </PopoverTrigger>
       <PopoverContent class="w-64 p-0" align="start">
         <Command shouldFilter={false}>
-          <CommandInput
-            placeholder="Search repos..."
-            value={searchQuery}
-            onValueChange={setSearchQuery}
-          />
+          <CommandInput placeholder="Search repos..." value={searchQuery} onValueChange={setSearchQuery} />
           <CommandList class="max-h-[300px] overflow-y-auto">
-            {isLoadingProjects ? (
-              <div class="px-2.5 py-4 text-center text-sm text-muted-foreground">
+            {isLoadingProjects ? <div class="px-2.5 py-4 text-center text-sm text-muted-foreground">
                 Loading...
-              </div>
-            ) : filteredProjects.length > 0 ? (
-              <CommandGroup>
+              </div> : filteredProjects.length > 0 ? <CommandGroup>
                 {filteredProjects.map((project) => {
-                  const isSelected = validSelection?.id === project.id
-                  return (
-                    <CommandItem
-                      key={project.id}
-                      value={`${project.name} ${project.path}`}
-                      onSelect={() => handleSelectProject(project.id)}
-                      class="gap-2"
-                    >
-                      <ProjectIcon
-                        gitOwner={project.gitOwner}
-                        gitProvider={project.gitProvider}
-                        isOffline={isOffline}
-                      />
+		const isSelected = validSelection?.id === project.id;
+		return <CommandItem key={project.id} value={`${project.name} ${project.path}`} onSelect={() => handleSelectProject(project.id)} class="gap-2">
+                      <ProjectIcon gitOwner={project.gitOwner} gitProvider={project.gitProvider} isOffline={isOffline} />
                       <span class="truncate flex-1">{project.name}</span>
-                      {isSelected && (
-                        <CheckIcon class="h-4 w-4 shrink-0" />
-                      )}
-                    </CommandItem>
-                  )
-                })}
-              </CommandGroup>
-            ) : (
-              <CommandEmpty>No projects found.</CommandEmpty>
-            )}
+                      {isSelected && <CheckIcon class="h-4 w-4 shrink-0" />}
+                    </CommandItem>;
+	})}
+              </CommandGroup> : <CommandEmpty>No projects found.</CommandEmpty>}
           </CommandList>
           <div class="border-t border-border/50 py-1">
-            <button
-              onClick={handleOpenFolder}
-              disabled={openFolder.isPending}
-              class="flex items-center gap-1.5 min-h-[32px] py-[5px] px-1.5 mx-1 w-[calc(100%-8px)] rounded-md text-sm cursor-default select-none outline-none dark:hover:bg-neutral-800 hover:text-foreground transition-colors"
-            >
+            <button onClick={handleOpenFolder} disabled={openFolder.isPending} class="flex items-center gap-1.5 min-h-[32px] py-[5px] px-1.5 mx-1 w-[calc(100%-8px)] rounded-md text-sm cursor-default select-none outline-none dark:hover:bg-neutral-800 hover:text-foreground transition-colors">
               <FolderPlusIcon class="h-4 w-4 text-muted-foreground" />
               <span>{openFolder.isPending ? "Adding..." : "Add repository"}</span>
             </button>
-            <button
-              onClick={() => {
-                setOpen(false)
-                setGithubDialogOpen(true)
-              }}
-              class="flex items-center gap-1.5 min-h-[32px] py-[5px] px-1.5 mx-1 w-[calc(100%-8px)] rounded-md text-sm cursor-default select-none outline-none dark:hover:bg-neutral-800 hover:text-foreground transition-colors"
-            >
+            <button onClick={() => {
+		setOpen(false);
+		setGithubDialogOpen(true);
+	}} class="flex items-center gap-1.5 min-h-[32px] py-[5px] px-1.5 mx-1 w-[calc(100%-8px)] rounded-md text-sm cursor-default select-none outline-none dark:hover:bg-neutral-800 hover:text-foreground transition-colors">
               <GitHubIcon class="h-4 w-4 text-muted-foreground" />
               <span>Add from GitHub</span>
             </button>
@@ -317,45 +196,26 @@ export function ProjectSelector() {
 
     <Dialog open={githubDialogOpen} onOpenChange={setGithubDialogOpen}>
       <DialogContent class="w-[400px] p-0 gap-0 overflow-hidden">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            handleCloneFromGitHub()
-          }}
-        >
+        <form onSubmit={(e) => {
+		e.preventDefault();
+		handleCloneFromGitHub();
+	}}>
           <div class="p-6">
             <h2 class="text-xl font-semibold mb-4">
               Clone from GitHub
             </h2>
-            <Input
-              placeholder="owner/repo or https://github.com/..."
-              value={githubUrl}
-              onChange={(e) => setGithubUrl(e.target.value)}
-              class="w-full h-11 text-sm"
-              autoFocus
-            />
+            <Input placeholder="owner/repo or https://github.com/..." value={githubUrl} onChange={(e) => setGithubUrl(e.target.value)} class="w-full h-11 text-sm" autoFocus />
           </div>
           <div class="bg-muted p-4 flex justify-between border-t border-border">
-            <Button
-              type="button"
-              onClick={() => setGithubDialogOpen(false)}
-              variant="ghost"
-              class="rounded-md"
-            >
+            <Button type="button" onClick={() => setGithubDialogOpen(false)} variant="ghost" class="rounded-md">
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={!githubUrl.trim() || cloneFromGitHub.isPending}
-              variant="default"
-              class="rounded-md"
-            >
+            <Button type="submit" disabled={!githubUrl.trim() || cloneFromGitHub.isPending} variant="default" class="rounded-md">
               {cloneFromGitHub.isPending ? "Cloning..." : "Clone"}
             </Button>
           </div>
         </form>
       </DialogContent>
     </Dialog>
-    </>
-  )
+    </>;
 }

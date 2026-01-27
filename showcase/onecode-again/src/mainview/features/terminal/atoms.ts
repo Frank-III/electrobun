@@ -1,5 +1,6 @@
-import { atom } from "jotai"
-import { atomFamily, atomWithStorage } from "jotai/utils"
+import { createSignal } from "solid-js"
+import { createStoredSignal } from "../../lib/state/signal-storage"
+import { createKeyedSignalFamily } from "../../lib/state/signal-map"
 import { atomWithWindowStorage } from "../../lib/window-storage"
 import type { TerminalInstance } from "./types"
 
@@ -11,21 +12,16 @@ const terminalSidebarOpenStorageAtom = atomWithWindowStorage<Record<string, bool
 )
 
 // Per-chat terminal sidebar open state (like diffSidebarOpenAtomFamily)
-export const terminalSidebarOpenAtomFamily = atomFamily((chatId: string) =>
-  atom(
-    (get) => get(terminalSidebarOpenStorageAtom)[chatId] ?? false,
-    (get, set, isOpen: boolean) => {
-      const current = get(terminalSidebarOpenStorageAtom)
-      set(terminalSidebarOpenStorageAtom, { ...current, [chatId]: isOpen })
-    },
-  ),
+export const terminalSidebarOpenAtomFamily = createKeyedSignalFamily(
+  terminalSidebarOpenStorageAtom,
+  false
 )
 
 // Deprecated: Keep for backwards compatibility, but should not be used
 // Use terminalSidebarOpenAtomFamily(chatId) instead
-export const terminalSidebarOpenAtom = atom(false)
+export const terminalSidebarOpenAtom = createSignal(false)
 
-export const terminalSidebarWidthAtom = atomWithStorage<number>(
+export const terminalSidebarWidthAtom = createStoredSignal<number>(
   "terminal-sidebar-width",
   500,
   undefined,
@@ -40,7 +36,7 @@ export const terminalCwdAtom = atomWithWindowStorage<Record<string, string>>(
 )
 
 // Terminal search open state - maps paneId to search visibility
-export const terminalSearchOpenAtom = atom<Record<string, boolean>>({})
+export const terminalSearchOpenAtom = createSignal<Record<string, boolean>>({})
 
 // ============================================================================
 // Multi-Terminal State Management

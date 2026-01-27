@@ -266,7 +266,7 @@ async function getBranchComparison(cwd: string, defaultBranch: string) {
 
   const logOutput = await runGit(cwd, [
     "log",
-    `${baseRef}..HEAD",
+    `${baseRef}..HEAD`,
     "--format=%H|%h|%s|%b|%an|%aI",
   ]);
 

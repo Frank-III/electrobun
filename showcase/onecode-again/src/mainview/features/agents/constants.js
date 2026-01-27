@@ -1,0 +1,33 @@
+"use strict";
+/**
+ * Agents feature constants
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AGENTS_PREVIEW_CONSTANTS = exports.SCALE_PRESETS = exports.DEVICE_PRESETS = void 0;
+exports.DEVICE_PRESETS = [
+    { name: "Custom", width: 397, height: 852 },
+    { name: "iPhone 16", width: 393, height: 852 },
+    { name: "iPhone 16 Pro", width: 393, height: 852 },
+    { name: "iPhone 16 Pro Max", width: 430, height: 932 },
+    { name: "iPhone 16 Plus", width: 430, height: 932 },
+    { name: "iPhone SE", width: 375, height: 667 },
+    { name: "iPad Mini", width: 744, height: 1133 },
+    { name: "iPad Air", width: 820, height: 1180 },
+    { name: "iPad Pro", width: 1024, height: 1366 },
+    { name: "Android Compact", width: 360, height: 640 },
+    { name: "Android Medium", width: 412, height: 915 },
+];
+// Scale presets for preview
+exports.SCALE_PRESETS = [50, 75, 100, 125, 150];
+exports.AGENTS_PREVIEW_CONSTANTS = {
+    DEVICE_PRESETS: exports.DEVICE_PRESETS,
+    SCALE_PRESETS: exports.SCALE_PRESETS,
+    DEFAULT_WIDTH: 397,
+    DEFAULT_HEIGHT: 852,
+    MIN_WIDTH: 100,
+    MAX_WIDTH: 2000,
+    MIN_HEIGHT: 320,
+    MAX_HEIGHT: 2000,
+    MIN_SCALE: 25,
+    MAX_SCALE: 200,
+};

@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useRef, useEffect } from "react"
-import { useAtomValue } from "jotai"
+import { useAtomValue } from "../../../lib/state/jotai"
 import { isDesktopApp } from "../../../lib/utils/platform"
 import { desktopNotificationsEnabledAtom } from "../../../lib/atoms"
 

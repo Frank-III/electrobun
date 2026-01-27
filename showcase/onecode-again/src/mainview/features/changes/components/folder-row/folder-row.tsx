@@ -1,7 +1,6 @@
 import { cn } from "../../../../lib/utils";
-import type { ReactNode } from "react";
+import type { JSX } from "solid-js";
 import { CollapsibleRow } from "../collapsible-row";
-
 interface FolderRowProps {
 	name: string;
 	isExpanded: boolean;
@@ -14,88 +13,35 @@ interface FolderRowProps {
 	/** Use compact styling (grouped view) or full styling (tree view) */
 	variant?: "tree" | "grouped";
 }
-
-function LevelIndicators({ level }: { level: number }) {
+function LevelIndicators({ level }: {
+	level: number;
+}) {
 	if (level === 0) return null;
-
-	return (
-		<div class="flex self-stretch shrink-0">
-			{Array.from({ length: level }).map((_, i) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: static visual dividers that never reorder
-				<div key={i} class="w-3 self-stretch border-r border-border/50" />
-			))}
-		</div>
-	);
+	return <div class="flex self-stretch shrink-0">
+			{Array.from({ length: level }).map((_, i) => <div key={i} class="w-3 self-stretch border-r border-border/50" />)}
+		</div>;
 }
-
-function FolderRowHeader({
-	name,
-	level,
-	fileCount,
-	isGrouped,
-}: {
+function FolderRowHeader({ name, level, fileCount, isGrouped }: {
 	name: string;
 	level: number;
 	fileCount?: number;
 	isGrouped: boolean;
 }) {
-	return (
-		<>
+	return <>
 			{!isGrouped && <LevelIndicators level={level} />}
 			<div class="flex items-center gap-1 flex-1 min-w-0">
-				<span
-					class={cn(
-						"truncate",
-						isGrouped
-							? "w-0 grow text-left"
-							: "flex-1 min-w-0 text-xs text-foreground",
-					)}
-					dir={isGrouped ? "rtl" : undefined}
-				>
+				<span class={cn("truncate", isGrouped ? "w-0 grow text-left" : "flex-1 min-w-0 text-xs text-foreground")} dir={isGrouped ? "rtl" : undefined}>
 					{name}
 				</span>
-				{fileCount !== undefined && (
-					<span class="text-[10px] text-muted-foreground shrink-0 tabular-nums">
+				{fileCount !== undefined && <span class="text-[10px] text-muted-foreground shrink-0 tabular-nums">
 						{fileCount}
-					</span>
-				)}
+					</span>}
 			</div>
-		</>
-	);
+		</>;
 }
-
-export function FolderRow({
-	name,
-	isExpanded,
-	onToggle,
-	children,
-	level = 0,
-	fileCount,
-	variant = "tree",
-}: FolderRowProps) {
+export function FolderRow({ name, isExpanded, onToggle, children, level = 0, fileCount, variant = "tree" }: FolderRowProps) {
 	const isGrouped = variant === "grouped";
-
-	return (
-		<CollapsibleRow
-			isExpanded={isExpanded}
-			onToggle={onToggle}
-			showChevron={!isGrouped}
-			class={cn(isGrouped && "overflow-hidden")}
-			triggerClassName={cn(
-				"text-xs items-stretch py-0.5",
-				isGrouped && "text-muted-foreground",
-			)}
-			contentClassName={cn(isGrouped && "ml-1.5 border-l border-border pl-0.5")}
-			header={
-				<FolderRowHeader
-					name={name}
-					level={level}
-					fileCount={fileCount}
-					isGrouped={isGrouped}
-				/>
-			}
-		>
+	return <CollapsibleRow isExpanded={isExpanded} onToggle={onToggle} showChevron={!isGrouped} class={cn(isGrouped && "overflow-hidden")} triggerClassName={cn("text-xs items-stretch py-0.5", isGrouped && "text-muted-foreground")} contentClassName={cn(isGrouped && "ml-1.5 border-l border-border pl-0.5")} header={<FolderRowHeader name={name} level={level} fileCount={fileCount} isGrouped={isGrouped} />}>
 			{children}
-		</CollapsibleRow>
-	);
+		</CollapsibleRow>;
 }

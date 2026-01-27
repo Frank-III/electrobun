@@ -1,7 +1,23 @@
 "use client"
 
-import { atom } from "jotai"
-import { atomFamily } from "jotai/utils"
+import { createMemo, createSignal } from "solid-js"
+import { createSignalMap, type SignalFamily } from "../../../lib/state/signal-map"
+
+type SignalPair<T> = readonly [() => T, (value: T | ((prev: T) => T)) => void]
+
+const noopSetter = () => {}
+
+function createDerivedSignalPair<T>(get: () => T): SignalPair<T> {
+  return [createMemo(get), noopSetter as SignalPair<T>[1]]
+}
+
+function createActionSignalPair<T>(action: (value: T) => void): SignalPair<T> {
+  return [(() => undefined as T), action as SignalPair<T>[1]]
+}
+
+function createDerivedSignalFamily<T>(derive: (key: string) => T): SignalFamily<T> {
+  return createSignalMap((key) => createDerivedSignalPair(() => derive(key)))
+}
 
 // Types
 export interface MessagePart {
@@ -44,36 +60,34 @@ export interface Message {
 
 // Per-message atom family - each message has its own INDEPENDENT atom
 // This is the key optimization: updating one message doesn't affect others
-export const messageAtomFamily = atomFamily((_messageId: string) =>
-  atom<Message | null>(null)
-)
+export const messageAtomFamily = createSignalMap(() => createSignal<Message | null>(null))
 
 // Track active message IDs per subChat for cleanup
 const activeMessageIdsByChat = new Map<string, Set<string>>()
 
 // Ordered list of message IDs (for rendering order)
-export const messageIdsAtom = atom<string[]>([])
+export const messageIdsAtom = createSignal<string[]>([])
 
 // Message roles cache - updated only when messages are added/removed
 // This avoids reading all message atoms just to check roles
-const messageRolesAtom = atom<Map<string, "user" | "assistant" | "system">>(new Map())
+const messageRolesAtom = createSignal<Map<string, "user" | "assistant" | "system">>(new Map())
 
 // Currently streaming message ID (null if not streaming)
-export const streamingMessageIdAtom = atom<string | null>(null)
+export const streamingMessageIdAtom = createSignal<string | null>(null)
 
 // Chat status atom
-export const chatStatusAtom = atom<string>("ready")
+export const chatStatusAtom = createSignal<string>("ready")
 
 // Rollback handler/state (optional) to avoid prop drilling
-export const rollbackHandlerAtom = atom<((msg: any) => void) | null>(null)
-export const isRollingBackAtom = atom<boolean>(false)
+export const rollbackHandlerAtom = createSignal<((msg: any) => void) | null>(null)
+export const isRollingBackAtom = createSignal<boolean>(false)
 
 // Current subChatId - used to isolate caches per chat
-export const currentSubChatIdAtom = atom<string>("default")
+export const currentSubChatIdAtom = createSignal<string>("default")
 
 // Last message ID - derived (uses stable messageIdsAtom)
-export const lastMessageIdAtom = atom((get) => {
-  const ids = get(messageIdsAtom)
+export const lastMessageIdAtom = createDerivedSignalPair(() => {
+  const ids = messageIdsAtom[0]()
   return ids.length > 0 ? ids[ids.length - 1] : null
 })
 
@@ -82,19 +96,16 @@ export const lastMessageIdAtom = atom((get) => {
 // ============================================================================
 
 // Check if a specific message is the last one
-export const isLastMessageAtomFamily = atomFamily((messageId: string) =>
-  atom((get) => get(lastMessageIdAtom) === messageId)
+export const isLastMessageAtomFamily = createDerivedSignalFamily(
+  (messageId) => lastMessageIdAtom[0]() === messageId
 )
 
 // Check if a specific message is currently streaming
-export const isMessageStreamingAtomFamily = atomFamily((messageId: string) =>
-  atom((get) => {
-    const streamingId = get(streamingMessageIdAtom)
-    const lastId = get(lastMessageIdAtom)
-    // A message is streaming if it's the last message and there's active streaming
-    return messageId === lastId && streamingId === messageId
-  })
-)
+export const isMessageStreamingAtomFamily = createDerivedSignalFamily((messageId) => {
+  const streamingId = streamingMessageIdAtom[0]()
+  const lastId = lastMessageIdAtom[0]()
+  return messageId === lastId && streamingId === messageId
+})
 
 // ============================================================================
 // TEXT PART ATOMS - For IsolatedTextPart optimization
@@ -109,26 +120,24 @@ export const isMessageStreamingAtomFamily = atomFamily((messageId: string) =>
 // Cache for text part content to return stable references
 const textPartCache = new Map<string, string>()
 
-export const textPartAtomFamily = atomFamily((key: string) => {
+export const textPartAtomFamily = createDerivedSignalFamily((key: string) => {
   // Key format: "messageId:partIndex"
   const [messageId, partIndexStr] = key.split(":")
   const partIndex = parseInt(partIndexStr!, 10)
 
-  return atom((get) => {
-    const message = get(messageAtomFamily(messageId!))
-    const parts = message?.parts || []
-    const part = parts[partIndex]
-    const text = part?.type === "text" ? (part.text || "") : ""
+  const message = messageAtomFamily(messageId!)[0]()
+  const parts = message?.parts || []
+  const part = parts[partIndex]
+  const text = part?.type === "text" ? (part.text || "") : ""
 
-    // Return cached value if text hasn't changed (stable reference)
-    const cached = textPartCache.get(key)
-    if (cached === text) {
-      return cached
-    }
+  // Return cached value if text hasn't changed (stable reference)
+  const cached = textPartCache.get(key)
+  if (cached === text) {
+    return cached
+  }
 
-    textPartCache.set(key, text)
-    return text
-  })
+  textPartCache.set(key, text)
+  return text
 })
 
 // ============================================================================
@@ -167,10 +176,9 @@ interface MessageStructure {
 // Cache for message structure
 const messageStructureCache = new Map<string, MessageStructure>()
 
-export const messageStructureAtomFamily = atomFamily((messageId: string) =>
-  atom((get) => {
-    const message = get(messageAtomFamily(messageId))
-    if (!message) return null
+export const messageStructureAtomFamily = createDerivedSignalFamily((messageId: string) => {
+  const message = messageAtomFamily(messageId)[0]()
+  if (!message) return null
 
     // Build structure without text content
     const partsStructure: PartStructure[] = (message.parts || []).map((part: any) => {
@@ -224,10 +232,9 @@ export const messageStructureAtomFamily = atomFamily((messageId: string) =>
       }
     }
 
-    messageStructureCache.set(messageId, newStructure)
-    return newStructure
-  })
-)
+  messageStructureCache.set(messageId, newStructure)
+  return newStructure
+})
 
 // ============================================================================
 // USER MESSAGE IDS - For IsolatedMessagesSection
@@ -236,10 +243,10 @@ export const messageStructureAtomFamily = atomFamily((messageId: string) =>
 // Cache is per-subChatId to avoid collisions between different chats
 
 const userMessageIdsCacheByChat = new Map<string, string[]>()
-export const userMessageIdsAtom = atom((get) => {
-  const ids = get(messageIdsAtom)
-  const roles = get(messageRolesAtom)
-  const subChatId = get(currentSubChatIdAtom)
+export const userMessageIdsAtom = createDerivedSignalPair(() => {
+  const ids = messageIdsAtom[0]()
+  const roles = messageRolesAtom[0]()
+  const subChatId = currentSubChatIdAtom[0]()
   const newUserIds = ids.filter((id) => roles.get(id) === "user")
 
   // Return cached array if content is the same
@@ -263,10 +270,10 @@ export const userMessageIdsAtom = atom((get) => {
 type MessageGroupType = { userMsgId: string; assistantMsgIds: string[] }
 const messageGroupsCacheByChat = new Map<string, MessageGroupType[]>()
 
-export const messageGroupsAtom = atom((get) => {
-  const ids = get(messageIdsAtom)
-  const roles = get(messageRolesAtom)
-  const subChatId = get(currentSubChatIdAtom)
+export const messageGroupsAtom = createDerivedSignalPair(() => {
+  const ids = messageIdsAtom[0]()
+  const roles = messageRolesAtom[0]()
+  const subChatId = currentSubChatIdAtom[0]()
 
   const groups: MessageGroupType[] = []
   let currentGroup: MessageGroupType | null = null
@@ -320,12 +327,11 @@ export const messageGroupsAtom = atom((get) => {
 
 // Key format: "subChatId:userMsgId" to isolate per chat
 const assistantIdsCacheByChat = new Map<string, string[]>()
-export const assistantIdsForUserMsgAtomFamily = atomFamily((userMsgId: string) =>
-  atom((get) => {
-    const groups = get(messageGroupsAtom)
-    const subChatId = get(currentSubChatIdAtom)
-    const group = groups.find((g) => g.userMsgId === userMsgId)
-    const newIds = group?.assistantMsgIds ?? []
+export const assistantIdsForUserMsgAtomFamily = createDerivedSignalFamily((userMsgId: string) => {
+  const groups = messageGroupsAtom[0]()
+  const subChatId = currentSubChatIdAtom[0]()
+  const group = groups.find((g) => g.userMsgId === userMsgId)
+  const newIds = group?.assistantMsgIds ?? []
 
     // Return cached array if content is the same
     const cacheKey = `${subChatId}:${userMsgId}`
@@ -339,30 +345,27 @@ export const assistantIdsForUserMsgAtomFamily = atomFamily((userMsgId: string) =
     }
 
     assistantIdsCacheByChat.set(cacheKey, newIds)
-    return newIds
-  })
-)
+  return newIds
+})
 
 // Is this user message the last one?
-export const isLastUserMessageAtomFamily = atomFamily((userMsgId: string) =>
-  atom((get) => {
-    const userIds = get(userMessageIdsAtom)
-    return userIds[userIds.length - 1] === userMsgId
-  })
-)
+export const isLastUserMessageAtomFamily = createDerivedSignalFamily((userMsgId: string) => {
+  const userIds = userMessageIdsAtom[0]()
+  return userIds[userIds.length - 1] === userMsgId
+})
 
 // ============================================================================
 // STREAMING STATUS
 // ============================================================================
 
-export const isStreamingAtom = atom((get) => {
-  const status = get(chatStatusAtom)
+export const isStreamingAtom = createDerivedSignalPair(() => {
+  const status = chatStatusAtom[0]()
   return status === "streaming" || status === "submitted"
 })
 
 // Has any messages
-export const hasMessagesAtom = atom((get) => {
-  const ids = get(messageIdsAtom)
+export const hasMessagesAtom = createDerivedSignalPair(() => {
+  const ids = messageIdsAtom[0]()
   return ids.length > 0
 })
 
@@ -374,10 +377,10 @@ export const hasMessagesAtom = atom((get) => {
 // Keyed by subChatId to isolate per chat
 const lastAssistantCacheByChat = new Map<string, { id: string | null; msg: Message | null }>()
 
-export const lastAssistantMessageAtom = atom((get) => {
-  const ids = get(messageIdsAtom)
-  const roles = get(messageRolesAtom)
-  const subChatId = get(currentSubChatIdAtom)
+export const lastAssistantMessageAtom = createDerivedSignalPair(() => {
+  const ids = messageIdsAtom[0]()
+  const roles = messageRolesAtom[0]()
+  const subChatId = currentSubChatIdAtom[0]()
 
   // Find the last assistant ID
   let lastAssistantId: string | null = null
@@ -398,7 +401,7 @@ export const lastAssistantMessageAtom = atom((get) => {
   // If same ID, return cached message
   if (lastAssistantId === cached?.id && cached.msg) {
     // But we need to get fresh message in case it changed during streaming
-    const freshMsg = get(messageAtomFamily(lastAssistantId))
+    const freshMsg = messageAtomFamily(lastAssistantId)[0]()
     if (freshMsg === cached.msg) {
       return cached.msg
     }
@@ -407,14 +410,14 @@ export const lastAssistantMessageAtom = atom((get) => {
   }
 
   // Different ID, get fresh message
-  const msg = get(messageAtomFamily(lastAssistantId))
+  const msg = messageAtomFamily(lastAssistantId)[0]()
   lastAssistantCacheByChat.set(subChatId, { id: lastAssistantId, msg })
   return msg
 })
 
 // Has unapproved plan (for approve button)
-export const hasUnapprovedPlanAtom = atom((get) => {
-  const lastAssistant = get(lastAssistantMessageAtom)
+export const hasUnapprovedPlanAtom = createDerivedSignalPair(() => {
+  const lastAssistant = lastAssistantMessageAtom[0]()
   if (!lastAssistant) return false
 
   const parts = lastAssistant.parts || []
@@ -445,13 +448,13 @@ type TokenData = {
 }
 const tokenDataCacheByChat = new Map<string, TokenData>()
 
-export const messageTokenDataAtom = atom((get) => {
-  const ids = get(messageIdsAtom)
-  const subChatId = get(currentSubChatIdAtom)
+export const messageTokenDataAtom = createDerivedSignalPair(() => {
+  const ids = messageIdsAtom[0]()
+  const subChatId = currentSubChatIdAtom[0]()
 
   // Get the last message to check if its tokens changed
   const lastId = ids[ids.length - 1]
-  const lastMsg = lastId ? get(messageAtomFamily(lastId)) : null
+  const lastMsg = lastId ? messageAtomFamily(lastId)[0]() : null
   // Note: metadata has flat structure (metadata.outputTokens), not nested (metadata.usage.outputTokens)
   const lastMsgOutputTokens = (lastMsg?.metadata as any)?.outputTokens || 0
 
@@ -476,7 +479,7 @@ export const messageTokenDataAtom = atom((get) => {
   let reasoningTokens = 0
 
   for (const id of ids) {
-    const msg = get(messageAtomFamily(id))
+    const msg = messageAtomFamily(id)[0]()
     const metadata = msg?.metadata as any
     // Note: metadata has flat structure from transform.ts (metadata.inputTokens, metadata.outputTokens)
     // Extended fields like cacheReadInputTokens are not currently in MessageMetadata type
@@ -562,28 +565,24 @@ function hasMessageChanged(subChatId: string, msgId: string, msg: Message): bool
   return changed
 }
 
-export const syncMessagesWithStatusAtom = atom(
-  null,
-  (get, set, payload: { messages: Message[]; status: string; subChatId?: string }) => {
-    const { messages, status, subChatId } = payload
-
-    // Update current subChatId if provided AND changed
-    // Avoid unnecessary set() calls - even though Jotai won't re-render for same primitive,
-    // this saves the overhead of the comparison check in subscribers
-    const prevSubChatId = get(currentSubChatIdAtom)
+export const syncMessagesWithStatusAtom = createActionSignalPair<{
+  messages: Message[]
+  status: string
+  subChatId?: string
+}>(({ messages, status, subChatId }) => {
+    const prevSubChatId = currentSubChatIdAtom[0]()
     if (subChatId && subChatId !== prevSubChatId) {
-      set(currentSubChatIdAtom, subChatId)
+      currentSubChatIdAtom[1](subChatId)
     }
     const currentSubChatId = subChatId ?? prevSubChatId
 
-    // Update status only if changed
-    const prevStatus = get(chatStatusAtom)
+    const prevStatus = chatStatusAtom[0]()
     if (status !== prevStatus) {
-      set(chatStatusAtom, status)
+      chatStatusAtom[1](status)
     }
 
-    const currentIds = get(messageIdsAtom)
-    const currentRoles = get(messageRolesAtom)
+    const currentIds = messageIdsAtom[0]()
+    const currentRoles = messageRolesAtom[0]()
 
     // Build new IDs list and roles map
     const newIds = messages.map((m) => m.id)
@@ -599,7 +598,7 @@ export const syncMessagesWithStatusAtom = atom(
       newIds.some((id, i) => id !== currentIds[i])
 
     if (idsChanged) {
-      set(messageIdsAtom, newIds)
+      messageIdsAtom[1](newIds)
     }
 
     // Check if roles changed
@@ -614,7 +613,7 @@ export const syncMessagesWithStatusAtom = atom(
     }
 
     if (rolesChanged) {
-      set(messageRolesAtom, newRoles)
+      messageRolesAtom[1](newRoles)
     }
 
     // Update individual message atoms ONLY if they changed
@@ -626,7 +625,7 @@ export const syncMessagesWithStatusAtom = atom(
     // 2. msg.parts array is mutated in-place
     // 3. Individual part objects inside parts are mutated in-place
     for (const msg of messages) {
-      const currentAtomValue = get(messageAtomFamily(msg.id))
+      const currentAtomValue = messageAtomFamily(msg.id)[0]()
       const msgChanged = hasMessageChanged(currentSubChatId, msg.id, msg)
 
       // CRITICAL FIX: Also update if atom is null (not yet populated)
@@ -636,7 +635,7 @@ export const syncMessagesWithStatusAtom = atom(
           ...msg,
           parts: msg.parts?.map((part: any) => ({ ...part, input: part.input ? { ...part.input } : undefined })),
         }
-        set(messageAtomFamily(msg.id), clonedMsg)
+        messageAtomFamily(msg.id)[1](clonedMsg)
       }
     }
 
@@ -647,7 +646,7 @@ export const syncMessagesWithStatusAtom = atom(
     for (const oldId of previousIds) {
       if (!newIdsSet.has(oldId)) {
         // Message was removed - cleanup its atom and caches
-        messageAtomFamily.remove(oldId)
+        messageAtomFamily.delete(oldId)
         previousMessageState.delete(`${currentSubChatId}:${oldId}`)
         assistantIdsCacheByChat.delete(`${currentSubChatId}:${oldId}`)
       }
@@ -659,20 +658,16 @@ export const syncMessagesWithStatusAtom = atom(
     // Update streaming message ID
     if (status === "streaming" || status === "submitted") {
       const lastId = newIds[newIds.length - 1] ?? null
-      set(streamingMessageIdAtom, lastId)
+      streamingMessageIdAtom[1](lastId)
     } else {
-      set(streamingMessageIdAtom, null)
+      streamingMessageIdAtom[1](null)
     }
-  }
-)
+  })
 
 // Legacy sync atom (not used, but kept for compatibility)
-export const syncMessagesAtom = atom(
-  null,
-  (get, set, messages: Message[]) => {
-    set(syncMessagesWithStatusAtom, { messages, status: get(chatStatusAtom) })
-  }
-)
+export const syncMessagesAtom = createActionSignalPair<Message[]>((messages) => {
+  syncMessagesWithStatusAtom[1]({ messages, status: chatStatusAtom[0]() })
+})
 
 // ============================================================================
 // CLEANUP - For clearing store when switching chats
@@ -684,7 +679,7 @@ export function clearSubChatCaches(subChatId: string) {
   const activeIds = activeMessageIdsByChat.get(subChatId)
   if (activeIds) {
     for (const id of activeIds) {
-      messageAtomFamily.remove(id)
+      messageAtomFamily.delete(id)
       previousMessageState.delete(`${subChatId}:${id}`)
       assistantIdsCacheByChat.delete(`${subChatId}:${id}`)
     }
@@ -716,7 +711,7 @@ export const PLAYBACK_SPEEDS = [1, 2, 3] as const
 export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number]
 
 // Atom with localStorage persistence
-export const ttsPlaybackRateAtom = atom<PlaybackSpeed>(
+export const ttsPlaybackRateAtom = createSignal<PlaybackSpeed>(
   // Initial value from localStorage
   (() => {
     if (typeof window !== "undefined") {
@@ -730,12 +725,9 @@ export const ttsPlaybackRateAtom = atom<PlaybackSpeed>(
 )
 
 // Write atom that also persists to localStorage
-export const setTtsPlaybackRateAtom = atom(
-  null,
-  (_get, set, rate: PlaybackSpeed) => {
-    set(ttsPlaybackRateAtom, rate)
-    if (typeof window !== "undefined") {
-      localStorage.setItem("tts-playback-rate", String(rate))
-    }
+export const setTtsPlaybackRateAtom = createActionSignalPair<PlaybackSpeed>((rate) => {
+  ttsPlaybackRateAtom[1](rate)
+  if (typeof window !== "undefined") {
+    localStorage.setItem("tts-playback-rate", String(rate))
   }
-)
+})
