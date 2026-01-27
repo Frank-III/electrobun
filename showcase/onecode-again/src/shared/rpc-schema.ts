@@ -36,6 +36,19 @@ export type NetworkStatus = {
   checked: number;
 };
 
+export type AgentModel = "sonnet" | "opus" | "haiku" | "inherit";
+
+export type FileAgent = {
+  name: string;
+  description: string;
+  prompt: string;
+  tools?: string[];
+  disallowedTools?: string[];
+  model?: AgentModel;
+  source: "user" | "project";
+  path: string;
+};
+
 export interface AppRPC {
   bun: RPCSchema<{
     requests: TerminalRequests & {
@@ -92,6 +105,40 @@ export interface AppRPC {
       ollamaGenerateCommitMessage: {
         params: { diff: string; fileCount: number; additions: number; deletions: number; model?: string };
         response: { message: string | null };
+      };
+      agentsList: { params?: { cwd?: string }; response: FileAgent[] };
+      agentsListEnabled: { params?: { cwd?: string }; response: FileAgent[] };
+      agentsGet: { params: { name: string; cwd?: string }; response: FileAgent | null };
+      agentsCreate: {
+        params: {
+          name: string;
+          description: string;
+          prompt: string;
+          tools?: string[];
+          disallowedTools?: string[];
+          model?: AgentModel;
+          source: "user" | "project";
+          cwd?: string;
+        };
+        response: { name: string; path: string; source: "user" | "project" };
+      };
+      agentsUpdate: {
+        params: {
+          originalName: string;
+          name: string;
+          description: string;
+          prompt: string;
+          tools?: string[];
+          disallowedTools?: string[];
+          model?: AgentModel;
+          source: "user" | "project";
+          cwd?: string;
+        };
+        response: { name: string; path: string; source: "user" | "project" };
+      };
+      agentsDelete: {
+        params: { name: string; source: "user" | "project"; cwd?: string };
+        response: { deleted: true };
       };
     };
     messages: {};

@@ -1,5 +1,6 @@
 import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import type { AppRPC } from "../shared/rpc-schema";
+import { createAgentsHandlers } from "./agents";
 import { createCommandsHandlers } from "./commands";
 import { createExternalHandlers } from "./external";
 import { createFileHandlers } from "./files";
@@ -22,6 +23,7 @@ const externalHandlers = createExternalHandlers();
 const commandsHandlers = createCommandsHandlers();
 const ollamaHandlers = createOllamaHandlers();
 const skillsHandlers = createSkillsHandlers();
+const agentsHandlers = createAgentsHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
   handlers: {
@@ -82,6 +84,12 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       ollamaGetModels: ollamaHandlers.ollamaGetModels,
       ollamaGenerateChatName: ollamaHandlers.ollamaGenerateChatName,
       ollamaGenerateCommitMessage: ollamaHandlers.ollamaGenerateCommitMessage,
+      agentsList: agentsHandlers.agentsList,
+      agentsListEnabled: agentsHandlers.agentsListEnabled,
+      agentsGet: agentsHandlers.agentsGet,
+      agentsCreate: agentsHandlers.agentsCreate,
+      agentsUpdate: agentsHandlers.agentsUpdate,
+      agentsDelete: agentsHandlers.agentsDelete,
     },
     messages: {
       "*": (name, payload) => {
