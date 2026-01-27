@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@kobalte/core": "^0.13.11",
+    "drizzle-orm": "^0.33.0",
     "electrobun": "*",
     "solid-js": "^1.9.6",
     "solid-sonner": "^0.2.8"

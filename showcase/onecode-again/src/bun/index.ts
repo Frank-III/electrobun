@@ -3,6 +3,7 @@ import type { AppRPC } from "../shared/rpc-schema";
 import { createAgentsHandlers } from "./agents";
 import { createClaudeSettingsHandlers } from "./claude-settings";
 import { createCommandsHandlers } from "./commands";
+import { initDatabase } from "./db";
 import { createExternalHandlers } from "./external";
 import { createFileHandlers } from "./files";
 import { createOllamaHandlers } from "./ollama";
@@ -11,6 +12,8 @@ import { createTerminalHandlers, destroyAll } from "./terminal-manager";
 
 let mainWindow: BrowserWindow | null = null;
 let sendToWebview: BrowserView["rpc"] | null = null;
+
+await initDatabase();
 
 const terminalHandlers = createTerminalHandlers(
   (id, data) => sendToWebview?.send?.data({ id, data }),
