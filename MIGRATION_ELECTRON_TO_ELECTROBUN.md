@@ -1,6 +1,6 @@
 # Migrating from Electron + tRPC to Electrobun (Bun-Native)
 
-This guide covers migrating an Electron app that uses tRPC for IPC to Electrobun with fully Bun-native alternatives, including terminal emulation via `bun-pty` / `Bun.Terminal` and optionally libghostty.
+Everything backend: RPC, PTY, native terminal emulation via libghostty, window APIs, platform APIs, and Bun-native replacements. No UI framework code -- bring your own renderer.
 
 ---
 
@@ -14,6 +14,7 @@ This guide covers migrating an Electron app that uses tRPC for IPC to Electrobun
 | Bundling | Electron Forge / electron-builder | `electrobun build` (self-extracting ~12MB) |
 | Updates | electron-updater | Built-in `Updater` with bsdiff patches (~14KB) |
 | PTY/Terminal | `node-pty` | `Bun.Terminal` (built-in) or `bun-pty` |
+| Terminal emulation | xterm.js (webview) | libghostty-vt (native Zig) + any webview renderer |
 | Native code | N-API / node-addon | Bun FFI (`bun:ffi`) or Zig directly |
 
 ---
@@ -38,17 +39,17 @@ src/
 src/
   bun/            # Bun main process
     index.ts
-  mainview/       # Frontend (any framework)
+    terminal-manager.ts
+  shared/         # Shared types (RPC schemas)
+    rpc-schema.ts
+    terminal-rpc.ts
+  native/         # Zig native extensions (ghostty-vt, etc.)
+    terminal_vt.zig
+    build.zig
+    build.zig.zon
+  mainview/       # Frontend (any framework -- not covered here)
     index.html
-    App.tsx
 electrobun.config.ts
-```
-
-### Create the Electrobun project
-
-```bash
-npx electrobun init           # or start from a template
-bun add electrobun
 ```
 
 ### `electrobun.config.ts`
@@ -74,8 +75,6 @@ export default config;
 ---
 
 ## Step 2: Replace tRPC with Electrobun's Typed RPC
-
-This is the core migration. Electrobun's RPC is type-safe, bidirectional, and requires zero boilerplate compared to tRPC + Electron IPC adapters.
 
 ### Before: Electron + tRPC
 
@@ -145,7 +144,6 @@ import type { AppRPC } from "../shared/rpc-schema";
 const rpc = BrowserView.defineRPC<AppRPC>({
   handlers: {
     requests: {
-      // These handle requests FROM the webview
       getFiles: async ({ dir }) => {
         const glob = new Bun.Glob("*");
         return Array.from(glob.scanSync(dir));
@@ -166,40 +164,10 @@ const mainWindow = new BrowserWindow({
   rpc,
 });
 
-// Send messages TO the webview
+// Push messages to webview
 mainWindow.webview.on("dom-ready", () => {
   mainWindow.webview.rpc?.send.notify({ message: "App loaded" });
 });
-```
-
-**3. Webview side (browser):**
-
-```typescript
-// src/mainview/index.ts
-import { Electroview } from "electrobun/view";
-import type { AppRPC } from "../shared/rpc-schema";
-
-const rpc = Electroview.defineRPC<AppRPC>({
-  handlers: {
-    requests: {
-      confirmSave: async ({ path }) => {
-        return confirm(`Save changes to ${path}?`);
-      },
-    },
-    messages: {
-      notify: ({ message }) => {
-        console.log("Notification:", message);
-      },
-      fileChanged: ({ path }) => {
-        console.log("File changed:", path);
-      },
-    },
-  },
-});
-
-// Call the Bun main process (replaces tRPC client calls)
-const files = await rpc.request.getFiles({ dir: "/tmp" });
-const result = await rpc.request.saveFile({ path: "/tmp/test.txt", content: "hello" });
 ```
 
 ### Migration cheat sheet
@@ -212,92 +180,72 @@ const result = await rpc.request.saveFile({ path: "/tmp/test.txt", content: "hel
 | `trpc.foo.query(input)` | `rpc.request.foo(input)` |
 | `trpc.foo.mutate(input)` | `rpc.request.foo(input)` |
 | `trpc.foo.subscribe()` | Define in `messages`, listen in webview handler |
-| Zod validation | TypeScript types (validate manually if needed) |
-| tRPC context | Just use closures / module scope in the bun handler |
-| tRPC middleware | Wrap handler functions, or use before/after logic in handlers |
+| Zod validation | TypeScript types (validate manually at boundaries if needed) |
+| tRPC context | Closures / module scope in the bun handler |
+| tRPC middleware | Wrap handler functions directly |
 
 ---
 
-## Step 3: Build a Fully Fledged Terminal
+## Step 3: Terminal Backend -- PTY Manager
 
-This section builds a complete, production-quality embedded terminal -- multi-instance, resizable, with clipboard, selection, themes, ligatures, and shell integration. It replaces `node-pty` + Electron IPC entirely.
+This section covers the bun-side terminal infrastructure only. Your webview renderer (xterm.js, ghostty-web, or custom canvas) connects to this via the RPC schema. The architecture is intentionally renderer-agnostic.
 
-### File layout
-
-```
-src/
-  shared/
-    terminal-rpc.ts        # Typed RPC schema for terminal
-  bun/
-    index.ts               # Main process entry
-    terminal-manager.ts    # PTY lifecycle, multiplexing, shell detection
-  terminal-view/
-    index.html             # Terminal webview
-    terminal.ts            # xterm.js setup, input handling, theming
-    styles.css             # Terminal chrome
-```
-
-### 3.1 RPC Schema -- fully typed terminal contract
+### 3.1 RPC Schema
 
 ```typescript
 // src/shared/terminal-rpc.ts
 import type { RPCSchema } from "electrobun/bun";
 
 export interface TerminalRPC {
-  /** Bun (main process) handles these */
   bun: RPCSchema<{
     requests: {
       create: {
-        params: { id: string; cols: number; rows: number; cwd?: string; shell?: string; env?: Record<string, string> };
+        params: {
+          id: string;
+          cols: number;
+          rows: number;
+          cwd?: string;
+          shell?: string;
+          env?: Record<string, string>;
+        };
         response: { pid: number; shell: string };
       };
-      write: {
-        params: { id: string; data: string };
-        response: void;
+      write: { params: { id: string; data: string }; response: void };
+      resize: { params: { id: string; cols: number; rows: number }; response: void };
+      destroy: { params: { id: string }; response: void };
+      getDefaultShell: { params: {}; response: { shell: string; args: string[] } };
+      clipboardWrite: { params: { text: string }; response: void };
+      clipboardRead: { params: {}; response: { text: string } };
+      /** Query terminal state from ghostty-vt (see Step 4) */
+      getScreenContent: {
+        params: { id: string; startRow?: number; endRow?: number };
+        response: { lines: string[]; cursorX: number; cursorY: number };
       };
-      resize: {
-        params: { id: string; cols: number; rows: number };
-        response: void;
+      searchScrollback: {
+        params: { id: string; query: string };
+        response: { matches: Array<{ row: number; col: number; text: string }> };
       };
-      destroy: {
+      getCurrentCommand: {
         params: { id: string };
-        response: void;
-      };
-      getDefaultShell: {
-        params: {};
-        response: { shell: string; args: string[] };
-      };
-      /** Write to the clipboard from the main process (webview may be sandboxed) */
-      clipboardWrite: {
-        params: { text: string };
-        response: void;
-      };
-      clipboardRead: {
-        params: {};
-        response: { text: string };
+        response: { command: string; cwd: string } | null;
       };
     };
     messages: {};
   }>;
 
-  /** Webview handles these (bun pushes data/events here) */
   webview: RPCSchema<{
     requests: {};
     messages: {
-      /** Raw PTY output -- binary-safe, base64-encoded for large payloads */
       data: { id: string; data: string };
-      /** Process exited */
       exit: { id: string; exitCode: number; signal?: number };
-      /** Title changed (via OSC escape sequence or CWD detection) */
       titleChanged: { id: string; title: string };
-      /** Bell character received */
       bell: { id: string };
     };
   }>;
 }
 ```
 
-### 3.2 Terminal manager -- Bun main process
+### 3.2 Terminal manager
 
 ```typescript
 // src/bun/terminal-manager.ts
@@ -305,7 +253,7 @@ import { Utils } from "electrobun/bun";
 
 interface ManagedTerminal {
   proc: ReturnType<typeof Bun.spawn>;
-  terminal: any; // Bun.Terminal instance
+  terminal: any; // Bun.Terminal handle
   shell: string;
   cwd: string;
   title: string;
@@ -317,12 +265,10 @@ const terminals = new Map<string, ManagedTerminal>();
 function detectShell(): { shell: string; args: string[] } {
   const env = process.env;
 
-  // Respect $SHELL on POSIX
   if (env.SHELL) {
     return { shell: env.SHELL, args: ["--login"] };
   }
 
-  // Windows: prefer PowerShell 7, fall back to pwsh, then cmd
   if (process.platform === "win32") {
     const pwsh7 = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
     try {
@@ -336,10 +282,7 @@ function detectShell(): { shell: string; args: string[] } {
   return { shell: "/bin/sh", args: [] };
 }
 
-/**
- * Build the environment for a terminal session.
- * Sets TERM, COLORTERM, LANG, and merges user-provided env.
- */
+/** Build environment for a terminal session */
 function buildEnv(userEnv?: Record<string, string>): Record<string, string> {
   return {
     ...process.env,
@@ -378,7 +321,9 @@ export function createTerminalHandlers(
           cols,
           rows,
           data(_terminal: any, rawData: string | Uint8Array) {
-            const str = typeof rawData === "string" ? rawData : new TextDecoder().decode(rawData);
+            const str = typeof rawData === "string"
+              ? rawData
+              : new TextDecoder().decode(rawData);
 
             // Detect OSC title sequences: \x1b]0;title\x07 or \x1b]2;title\x07
             const oscMatch = str.match(/\x1b\](?:0|2);([^\x07]*)\x07/);
@@ -390,11 +335,11 @@ export function createTerminalHandlers(
               }
             }
 
-            // Detect bell
             if (str.includes("\x07")) {
               sendBell(id);
             }
 
+            // Forward raw bytes to webview renderer AND ghostty-vt (see Step 4)
             sendData(id, str);
           },
         },
@@ -410,7 +355,6 @@ export function createTerminalHandlers(
 
       terminals.set(id, managed);
 
-      // Handle exit
       proc.exited.then((exitCode) => {
         sendExit(id, exitCode ?? 0);
         terminals.delete(id);
@@ -434,7 +378,7 @@ export function createTerminalHandlers(
     destroy: ({ id }: { id: string }) => {
       const t = terminals.get(id);
       if (!t) return;
-      t.proc.kill("SIGHUP"); // graceful: SIGHUP like closing a terminal window
+      t.proc.kill("SIGHUP");
       t.terminal.close();
       terminals.delete(id);
     },
@@ -454,7 +398,7 @@ export function createTerminalHandlers(
 
 /** Kill all remaining terminals on app quit */
 export function destroyAll() {
-  for (const [id, t] of terminals) {
+  for (const [, t] of terminals) {
     t.proc.kill("SIGKILL");
     t.terminal.close();
   }
@@ -462,17 +406,13 @@ export function destroyAll() {
 }
 ```
 
-### 3.3 Wire it up in the main process
+### 3.3 Wire into the main process
 
 ```typescript
 // src/bun/index.ts
 import { BrowserWindow, BrowserView, ApplicationMenu, Utils } from "electrobun/bun";
 import type { TerminalRPC } from "../shared/terminal-rpc";
 import { createTerminalHandlers, destroyAll } from "./terminal-manager";
-
-// We need a reference to the window's RPC to push messages.
-// Electrobun's defineRPC returns a value we attach to the window,
-// then we get the send handle from window.webview.rpc after creation.
 
 let sendToWebview: BrowserView["rpc"] | null = null;
 
@@ -494,24 +434,14 @@ const rpc = BrowserView.defineRPC<TerminalRPC>({
       getDefaultShell: handlers.getDefaultShell,
       clipboardWrite: handlers.clipboardWrite,
       clipboardRead: handlers.clipboardRead,
+      // ghostty-vt backed queries -- see Step 4
+      getScreenContent: async ({ id, startRow, endRow }) => { /* Step 4 */ },
+      searchScrollback: async ({ id, query }) => { /* Step 4 */ },
+      getCurrentCommand: async ({ id }) => { /* Step 4 */ },
     },
     messages: {},
   },
 });
-
-ApplicationMenu.setApplicationMenu([
-  {
-    submenu: [{ label: "Quit", role: "quit", accelerator: "q" }],
-  },
-  {
-    label: "Edit",
-    submenu: [
-      { role: "copy" },
-      { role: "paste" },
-      { role: "selectAll" },
-    ],
-  },
-]);
 
 const win = new BrowserWindow({
   title: "Terminal",
@@ -530,347 +460,16 @@ win.on("close", () => {
 });
 ```
 
-### 3.4 Webview -- full xterm.js terminal with all the trimmings
+### 3.4 Alternative PTY backend: `bun-pty`
 
-Install in your view's package context:
-
-```bash
-bun add @xterm/xterm @xterm/addon-fit @xterm/addon-webgl @xterm/addon-web-links @xterm/addon-unicode11 @xterm/addon-image @xterm/addon-clipboard @xterm/addon-ligatures
-```
-
-```html
-<!-- src/terminal-view/index.html -->
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Terminal</title>
-  <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <div id="terminal-tabs"></div>
-  <div id="terminal-container"></div>
-  <script type="module" src="terminal.ts"></script>
-</body>
-</html>
-```
-
-```css
-/* src/terminal-view/styles.css */
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { height: 100%; background: #1e1e2e; overflow: hidden; }
-
-#terminal-tabs {
-  display: flex;
-  height: 36px;
-  background: #181825;
-  align-items: center;
-  padding: 0 8px;
-  gap: 4px;
-  -webkit-app-region: drag;       /* draggable title bar area */
-}
-.tab {
-  -webkit-app-region: no-drag;
-  padding: 4px 12px;
-  border-radius: 6px 6px 0 0;
-  background: #313244;
-  color: #cdd6f4;
-  font: 12px/1 system-ui, sans-serif;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.tab.active { background: #1e1e2e; }
-.tab .close { opacity: 0.5; cursor: pointer; font-size: 14px; }
-.tab .close:hover { opacity: 1; }
-.tab-add {
-  -webkit-app-region: no-drag;
-  color: #a6adc8;
-  cursor: pointer;
-  padding: 4px 8px;
-  font-size: 16px;
-}
-
-#terminal-container {
-  height: calc(100% - 36px);
-  width: 100%;
-}
-```
-
-```typescript
-// src/terminal-view/terminal.ts
-import { Electroview } from "electrobun/view";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
-import { WebLinksAddon } from "@xterm/addon-web-links";
-import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { LigaturesAddon } from "@xterm/addon-ligatures";
-import type { TerminalRPC } from "../shared/terminal-rpc";
-
-// ── Theme (Catppuccin Mocha -- swap to any xterm ITheme) ──────────────
-const THEME = {
-  background: "#1e1e2e",
-  foreground: "#cdd6f4",
-  cursor: "#f5e0dc",
-  cursorAccent: "#1e1e2e",
-  selectionBackground: "#585b7066",
-  selectionForeground: "#cdd6f4",
-  black: "#45475a",   red: "#f38ba8",
-  green: "#a6e3a1",   yellow: "#f9e2af",
-  blue: "#89b4fa",    magenta: "#f5c2e7",
-  cyan: "#94e2d5",    white: "#bac2de",
-  brightBlack: "#585b70",  brightRed: "#f38ba8",
-  brightGreen: "#a6e3a1",  brightYellow: "#f9e2af",
-  brightBlue: "#89b4fa",   brightMagenta: "#f5c2e7",
-  brightCyan: "#94e2d5",   brightWhite: "#a6adc8",
-};
-
-// ── State ─────────────────────────────────────────────────────────────
-interface Tab {
-  id: string;
-  xterm: Terminal;
-  fit: FitAddon;
-  title: string;
-  el: HTMLElement;
-}
-
-const tabs: Tab[] = [];
-let activeTab: Tab | null = null;
-let tabCounter = 0;
-
-const container = document.getElementById("terminal-container")!;
-const tabBar = document.getElementById("terminal-tabs")!;
-
-// ── RPC ───────────────────────────────────────────────────────────────
-const rpc = Electroview.defineRPC<TerminalRPC>({
-  handlers: {
-    requests: {},
-    messages: {
-      data: ({ id, data }) => {
-        const tab = tabs.find((t) => t.id === id);
-        tab?.xterm.write(data);
-      },
-
-      exit: ({ id, exitCode }) => {
-        const tab = tabs.find((t) => t.id === id);
-        if (tab) {
-          tab.xterm.writeln(`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m`);
-          // Auto-close tab after a short delay, or leave it for the user
-          setTimeout(() => closeTab(id), 2000);
-        }
-      },
-
-      titleChanged: ({ id, title }) => {
-        const tab = tabs.find((t) => t.id === id);
-        if (tab) {
-          tab.title = title;
-          const span = tab.el.querySelector(".tab-title");
-          if (span) span.textContent = title;
-        }
-      },
-
-      bell: ({ id }) => {
-        // Visual bell: briefly flash the tab if it's not active
-        const tab = tabs.find((t) => t.id === id);
-        if (tab && tab !== activeTab) {
-          tab.el.classList.add("bell");
-          setTimeout(() => tab.el.classList.remove("bell"), 300);
-        }
-      },
-    },
-  },
-});
-
-// ── Tab management ────────────────────────────────────────────────────
-async function createTab() {
-  const id = `term-${++tabCounter}`;
-
-  const xterm = new Terminal({
-    theme: THEME,
-    fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
-    fontSize: 14,
-    lineHeight: 1.2,
-    cursorBlink: true,
-    cursorStyle: "bar",
-    scrollback: 10000,
-    allowProposedApi: true,          // needed for some addons
-    macOptionIsMeta: true,           // Alt as Meta on macOS
-    macOptionClickForcesSelection: true,
-    drawBoldTextInBrightColors: false,
-  });
-
-  const fit = new FitAddon();
-  xterm.loadAddon(fit);
-  xterm.loadAddon(new WebLinksAddon());
-  xterm.loadAddon(new Unicode11Addon());
-
-  // Ligatures (font must support them)
-  try { xterm.loadAddon(new LigaturesAddon()); } catch { /* optional */ }
-
-  // Tab element
-  const el = document.createElement("div");
-  el.className = "tab";
-  el.innerHTML = `<span class="tab-title">terminal</span><span class="close">×</span>`;
-  el.addEventListener("click", () => activateTab(id));
-  el.querySelector(".close")!.addEventListener("click", (e) => {
-    e.stopPropagation();
-    closeTab(id);
-  });
-  tabBar.insertBefore(el, tabBar.querySelector(".tab-add"));
-
-  const tab: Tab = { id, xterm, fit, title: "terminal", el };
-  tabs.push(tab);
-
-  activateTab(id);
-
-  // Open xterm into the container
-  xterm.open(container);
-
-  // WebGL renderer for GPU-accelerated drawing
-  try { xterm.loadAddon(new WebglAddon()); } catch { /* falls back to canvas */ }
-
-  fit.fit();
-
-  // ── Keyboard input → PTY ───────────────────────────────────────────
-  xterm.onData((data) => {
-    rpc.request.write({ id, data });
-  });
-
-  // Binary data (for things like bracketed paste with binary content)
-  xterm.onBinary((data) => {
-    rpc.request.write({ id, data });
-  });
-
-  // ── Clipboard: Ctrl+Shift+C / Ctrl+Shift+V (or Cmd+C/V on macOS) ──
-  xterm.attachCustomKeyEventHandler((ev) => {
-    const mod = ev.metaKey || ev.ctrlKey;
-    if (mod && ev.key === "c" && xterm.hasSelection()) {
-      rpc.request.clipboardWrite({ text: xterm.getSelection() });
-      return false; // prevent sending ^C
-    }
-    if (mod && ev.key === "v") {
-      rpc.request.clipboardRead().then(({ text }) => {
-        rpc.request.write({ id, data: text });
-      });
-      return false;
-    }
-    // Ctrl+Shift+T = new tab
-    if (ev.ctrlKey && ev.shiftKey && ev.key === "T") {
-      createTab();
-      return false;
-    }
-    // Ctrl+Shift+W = close tab
-    if (ev.ctrlKey && ev.shiftKey && ev.key === "W") {
-      closeTab(id);
-      return false;
-    }
-    return true;
-  });
-
-  // ── Spawn the PTY on the bun side ──────────────────────────────────
-  const { pid, shell } = await rpc.request.create({
-    id,
-    cols: xterm.cols,
-    rows: xterm.rows,
-  });
-  tab.title = shell.split("/").pop() || "terminal";
-  el.querySelector(".tab-title")!.textContent = tab.title;
-
-  xterm.focus();
-}
-
-function activateTab(id: string) {
-  activeTab?.xterm.element?.style.setProperty("display", "none");
-  activeTab?.el.classList.remove("active");
-
-  const tab = tabs.find((t) => t.id === id);
-  if (!tab) return;
-
-  tab.xterm.element?.style.setProperty("display", "");
-  tab.el.classList.add("active");
-  activeTab = tab;
-
-  // Re-fit in case the window resized while this tab was hidden
-  requestAnimationFrame(() => {
-    tab.fit.fit();
-    tab.xterm.focus();
-  });
-}
-
-function closeTab(id: string) {
-  const idx = tabs.findIndex((t) => t.id === id);
-  if (idx === -1) return;
-
-  const tab = tabs[idx];
-  rpc.request.destroy({ id }).catch(() => {});
-  tab.xterm.dispose();
-  tab.el.remove();
-  tabs.splice(idx, 1);
-
-  if (activeTab?.id === id) {
-    activeTab = null;
-    if (tabs.length > 0) {
-      activateTab(tabs[Math.max(0, idx - 1)].id);
-    }
-  }
-
-  // If no tabs left, create a new one (or you could quit the app)
-  if (tabs.length === 0) {
-    createTab();
-  }
-}
-
-// ── Resize handling ───────────────────────────────────────────────────
-const resizeObserver = new ResizeObserver(() => {
-  if (!activeTab) return;
-  activeTab.fit.fit();
-  rpc.request.resize({
-    id: activeTab.id,
-    cols: activeTab.xterm.cols,
-    rows: activeTab.xterm.rows,
-  });
-});
-resizeObserver.observe(container);
-
-// ── "New tab" button ──────────────────────────────────────────────────
-const addBtn = document.createElement("div");
-addBtn.className = "tab-add";
-addBtn.textContent = "+";
-addBtn.addEventListener("click", () => createTab());
-tabBar.appendChild(addBtn);
-
-// ── Boot ──────────────────────────────────────────────────────────────
-createTab();
-```
-
-### 3.5 What this gives you
-
-- **Multiple terminal tabs** with Ctrl+Shift+T / Ctrl+Shift+W
-- **GPU-accelerated rendering** via WebGL (canvas fallback automatic)
-- **Proper resize** -- ResizeObserver on the container triggers `fit.fit()` and sends new dimensions to the PTY
-- **Clipboard integration** via Electrobun's native `Utils.clipboard` (works even in sandboxed webviews)
-- **Ligatures** (JetBrains Mono, Fira Code, etc.)
-- **Full Unicode 11** (CJK, emoji, wide chars)
-- **Web links** -- Cmd/Ctrl+click opens URLs via `Utils.openExternal`
-- **OSC title detection** -- tab titles update when the shell sets them (e.g., showing CWD)
-- **Visual bell** -- inactive tabs flash on bell character
-- **Truecolor** -- `COLORTERM=truecolor` and `TERM=xterm-256color` are set
-- **Login shell** -- `--login` flag so `.bash_profile` / `.zprofile` are sourced
-- **Graceful shutdown** -- SIGHUP on close, SIGKILL on app quit
-
-### 3.6 Using `bun-pty` instead of `Bun.Terminal`
-
-If you need Windows support before Bun.Terminal supports it, swap the PTY backend:
+If you need Windows support before Bun.Terminal supports it:
 
 ```bash
 bun add @zenyr/bun-pty
 ```
 
 ```typescript
-// In terminal-manager.ts, replace the Bun.spawn terminal block:
+// In terminal-manager.ts, swap the Bun.spawn terminal block:
 import { spawn as spawnPty } from "@zenyr/bun-pty";
 
 // Inside create():
@@ -888,95 +487,540 @@ pty.onExit(({ exitCode, signal }) => {
   terminals.delete(id);
 });
 
-terminals.set(id, { pty, shell: shellPath, cwd: resolvedCwd, title: "terminal" });
-
-// write/resize/destroy use pty.write(), pty.resize(), pty.kill()
+// write/resize/destroy → pty.write(), pty.resize(), pty.kill()
 ```
-
-The webview code stays identical -- it doesn't know or care which PTY backend is used.
 
 ---
 
-## Step 4: Aggressive Option -- libghostty for Terminal Rendering
+## Step 4: Native Terminal Emulation with libghostty-vt
 
-If you want to go beyond xterm.js and use Ghostty's battle-tested VT parser or eventually its GPU renderer, here are the paths available today.
+This is the key section for running Claude Code or any tool that outputs complex VT sequences. Instead of relying on a webview-side JS terminal emulator, we integrate Ghostty's VT parser natively via Zig -- the same language Electrobun already uses for native code. This gives you:
 
-### Current status (Jan 2026)
+- **Server-side terminal state**: query cursor position, cell content, scrollback from Bun without round-tripping through the webview
+- **Correct VT handling**: Ghostty's parser is battle-tested against every escape sequence Claude Code emits (alternate screen, cursor save/restore, bracketed paste, OSC hyperlinks, DCS passthrough, etc.)
+- **AI-assisted terminal**: inspect the terminal buffer from Bun to detect commands, extract output, search scrollback
+- **Headless mode**: run terminals without a webview for automation/testing
 
-| Component | Status | Usable today? |
-|-----------|--------|---------------|
-| `libghostty-vt` (Zig module) | Merged, API unstable | Yes (Zig projects) |
-| `ghostty-web` (WASM) | Available from Coder | Yes (any webview) |
-| Public C API | Planned, not shipped | No |
-| `libghostty-render` (Metal/OpenGL) | Roadmap | No |
-| `libghostty-input` | Roadmap | No |
+### 4.1 Architecture
 
-### Path A: ghostty-web -- replace xterm.js with Ghostty's WASM parser
-
-`ghostty-web` (by Coder, `github.com/coder/ghostty-web`) compiles Ghostty's VT parser to WebAssembly and wraps it with an xterm.js-compatible API. This gives you Ghostty's correct, SIMD-optimized terminal emulation inside a standard webview.
-
-```bash
-# Check the actual published package name -- it may be under @anthropic or @coder
-bun add ghostty-web
+```
+                    ┌──────────────────────────────────────┐
+                    │            Webview (any renderer)     │
+                    │  xterm.js / ghostty-web / canvas      │
+                    │                                      │
+                    │  Receives raw PTY data via RPC        │
+                    │  Sends keystrokes via RPC             │
+                    └──────────────┬───────────────────────┘
+                                   │ Electrobun RPC
+                    ┌──────────────┴───────────────────────┐
+                    │          Bun Main Process             │
+                    │                                      │
+                    │  terminal-manager.ts                  │
+                    │    ├── Bun.Terminal (PTY)             │
+                    │    └── ghostty-vt (via FFI)           │
+                    │          ├── Stream ← raw PTY bytes   │
+                    │          ├── Terminal state machine    │
+                    │          ├── Screen (cells, cursor)   │
+                    │          └── PageList (scrollback)    │
+                    └──────────────────────────────────────┘
 ```
 
-```typescript
-// src/terminal-view/terminal.ts -- swap the import
-// Before:
-import { Terminal } from "@xterm/xterm";
-// After:
-import { Terminal } from "ghostty-web";
+Every byte from the PTY flows to both:
+1. The webview (for rendering)
+2. The ghostty-vt `Stream` (for state tracking)
 
-// The rest of the code (FitAddon, onData, etc.) stays the same --
-// ghostty-web is API-compatible with xterm.js.
-```
+This means the Bun process always knows the terminal state -- it can answer "what text is on screen?" without asking the webview.
 
-Why you'd do this:
-- Ghostty's parser handles edge cases that xterm.js gets wrong (complex grapheme clusters, certain OSC sequences, DCS passthrough)
-- SIMD-optimized UTF-8 scanning in WASM
-- Same webview code, just a different `Terminal` import
+### 4.2 Building ghostty-vt as a shared library
 
-### Path B: libghostty-vt via Zig in Electrobun's native layer
-
-Since Electrobun's native code is already Zig + C++, you can add `ghostty-vt` as a Zig dependency and use it for server-side terminal state. This is useful if you want to do things like:
-- Semantic terminal state inspection from the main process (e.g., "what's the current command?", "where is the cursor?")
-- Search through terminal scrollback from Bun
-- Headless terminal capture for testing/automation
+Ghostty's `lib-vt` module is a Zig library. We compile it to a shared library that Bun can load via `bun:ffi`.
 
 ```zig
-// In Electrobun's build.zig.zon, add ghostty as a dependency:
-// .dependencies = .{
-//     .ghostty = .{ .url = "https://github.com/ghostty-org/ghostty/archive/main.tar.gz", ... },
-// },
-
-// In your Zig code:
-const vt = @import("ghostty-vt");
-
-var terminal = try vt.Terminal.init(allocator, .{ .cols = 80, .rows = 24 });
-defer terminal.deinit();
-
-// Feed raw PTY bytes through the terminal state machine
-terminal.feed(pty_output_bytes);
-
-// Query terminal state
-const cell = terminal.getCell(row, col);
-const cursor = terminal.getCursor();
-const selection = terminal.getSelectedText();
+// src/native/build.zig.zon
+.{
+    .name = "electrobun-terminal",
+    .version = "0.1.0",
+    .dependencies = .{
+        .ghostty = .{
+            .url = "https://github.com/ghostty-org/ghostty/archive/main.tar.gz",
+            .hash = "...", // pin to a specific commit
+        },
+    },
+    .paths = .{"."},
+}
 ```
 
-Then expose these to Bun via FFI for features like AI-assisted terminal, command detection, etc.
+```zig
+// src/native/build.zig
+const std = @import("std");
 
-### Path C: Full native rendering (future)
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
 
-When `libghostty-render` ships with Metal/OpenGL surfaces, you could render a terminal natively inside an Electrobun window alongside (or instead of) a webview. This would give you the same rendering quality as the Ghostty terminal app itself -- GPU-accelerated text, perfect font rendering, zero DOM overhead.
+    const ghostty_dep = b.dependency("ghostty", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
-This isn't available yet. When it is, the integration point would be Electrobun's native C++/Zig layer, creating a native view alongside the CEF/WebKit webview.
+    const lib = b.addSharedLibrary(.{
+        .name = "electrobun_vt",
+        .root_source_file = b.path("terminal_vt.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
-**Recommendation for today:** Use xterm.js (proven, full-featured) or ghostty-web (better parser). Move to Path C when the rendering library ships.
+    lib.root_module.addImport("ghostty-vt", ghostty_dep.module("ghostty-vt"));
+    b.installArtifact(lib);
+}
+```
+
+### 4.3 Zig wrapper -- C-ABI exports for FFI
+
+This wraps ghostty-vt's Zig API into `extern "C"` functions that Bun can call via `dlopen`.
+
+```zig
+// src/native/terminal_vt.zig
+const std = @import("std");
+const ghostty = @import("ghostty-vt");
+
+const Allocator = std.mem.Allocator;
+
+/// Opaque handle for a terminal instance
+const TerminalHandle = *TerminalState;
+
+const TerminalState = struct {
+    terminal: ghostty.Terminal,
+    stream: ghostty.Stream(*ghostty.Terminal),
+    alloc: Allocator,
+};
+
+// ─── Lifecycle ───────────────────────────────────────────────────────
+
+/// Create a new terminal instance. Returns opaque handle.
+export fn vt_create(cols: u16, rows: u16, max_scrollback: u32) callconv(.C) ?*anyopaque {
+    const alloc = std.heap.c_allocator;
+    const state = alloc.create(TerminalState) catch return null;
+
+    state.terminal = ghostty.Terminal.init(alloc, .{
+        .cols = cols,
+        .rows = rows,
+        .max_scrollback = max_scrollback,
+    }) catch {
+        alloc.destroy(state);
+        return null;
+    };
+
+    state.stream = ghostty.Stream(*ghostty.Terminal).init(&state.terminal);
+    state.alloc = alloc;
+    return @ptrCast(state);
+}
+
+/// Destroy a terminal instance and free all memory.
+export fn vt_destroy(handle: ?*anyopaque) callconv(.C) void {
+    const state = unwrap(handle) orelse return;
+    state.terminal.deinit(state.alloc);
+    state.alloc.destroy(state);
+}
+
+// ─── Input ───────────────────────────────────────────────────────────
+
+/// Feed raw PTY output bytes through the VT parser.
+/// Call this with every chunk of data from Bun.Terminal's data callback.
+export fn vt_feed(handle: ?*anyopaque, data: [*]const u8, len: u32) callconv(.C) void {
+    const state = unwrap(handle) orelse return;
+    state.stream.nextSlice(data[0..len]) catch {};
+}
+
+/// Resize the terminal. Also resizes the internal screen with reflow.
+export fn vt_resize(handle: ?*anyopaque, cols: u16, rows: u16) callconv(.C) void {
+    const state = unwrap(handle) orelse return;
+    state.terminal.resize(state.alloc, cols, rows) catch {};
+}
+
+// ─── Cursor ──────────────────────────────────────────────────────────
+
+export fn vt_cursor_x(handle: ?*anyopaque) callconv(.C) u16 {
+    const state = unwrap(handle) orelse return 0;
+    return state.terminal.screen.cursor.x;
+}
+
+export fn vt_cursor_y(handle: ?*anyopaque) callconv(.C) u16 {
+    const state = unwrap(handle) orelse return 0;
+    return state.terminal.screen.cursor.y;
+}
+
+// ─── Screen content ──────────────────────────────────────────────────
+
+/// Extract plain text for a single row (0-indexed from top of active area).
+/// Writes into caller-provided buffer, returns bytes written.
+export fn vt_get_row_text(
+    handle: ?*anyopaque,
+    row: u16,
+    buf: [*]u8,
+    buf_len: u32,
+) callconv(.C) u32 {
+    const state = unwrap(handle) orelse return 0;
+    const t = &state.terminal;
+
+    // Use plainString for the whole screen, then extract the row.
+    // For production, iterate cells directly for better performance.
+    const full = t.plainString(state.alloc) catch return 0;
+    defer state.alloc.free(full);
+
+    var line_start: usize = 0;
+    var current_row: u16 = 0;
+    for (full, 0..) |c, i| {
+        if (c == '\n') {
+            if (current_row == row) {
+                const line = full[line_start..i];
+                const copy_len = @min(line.len, buf_len);
+                @memcpy(buf[0..copy_len], line[0..copy_len]);
+                return @intCast(copy_len);
+            }
+            current_row += 1;
+            line_start = i + 1;
+        }
+    }
+    // Last line (no trailing newline)
+    if (current_row == row) {
+        const line = full[line_start..];
+        const copy_len = @min(line.len, buf_len);
+        @memcpy(buf[0..copy_len], line[0..copy_len]);
+        return @intCast(copy_len);
+    }
+    return 0;
+}
+
+/// Extract the entire visible screen as plain text.
+/// Returns a malloc'd C string (caller must free with vt_free_string).
+export fn vt_get_screen_text(handle: ?*anyopaque) callconv(.C) ?[*:0]u8 {
+    const state = unwrap(handle) orelse return null;
+    const text = state.terminal.plainString(state.alloc) catch return null;
+    defer state.alloc.free(text);
+
+    // Copy to a C-compatible null-terminated string via malloc
+    const c_str = std.heap.c_allocator.allocSentinel(u8, text.len, 0) catch return null;
+    @memcpy(c_str[0..text.len], text);
+    return c_str;
+}
+
+export fn vt_free_string(ptr: ?[*:0]u8) callconv(.C) void {
+    if (ptr) |p| {
+        // Find length by scanning for null terminator
+        var len: usize = 0;
+        while (p[len] != 0) : (len += 1) {}
+        std.heap.c_allocator.free(p[0 .. len + 1]);
+    }
+}
+
+// ─── Cell inspection ─────────────────────────────────────────────────
+
+/// Get the codepoint at (row, col) in the active area. Returns 0 for empty cells.
+export fn vt_get_cell_codepoint(handle: ?*anyopaque, row: u16, col: u16) callconv(.C) u21 {
+    const state = unwrap(handle) orelse return 0;
+    const result = state.terminal.screen.pages.getCell(.{
+        .active = .{ .x = col, .y = row },
+    }) orelse return 0;
+    return result.cell.codepoint();
+}
+
+/// Get the SGR style flags for a cell. Returns a packed u16:
+/// bit 0: bold, bit 1: italic, bit 2: faint, bit 3: blink,
+/// bit 4: inverse, bit 5: invisible, bit 6: strikethrough, bit 7: overline
+export fn vt_get_cell_flags(handle: ?*anyopaque, row: u16, col: u16) callconv(.C) u16 {
+    const state = unwrap(handle) orelse return 0;
+    const result = state.terminal.screen.pages.getCell(.{
+        .active = .{ .x = col, .y = row },
+    }) orelse return 0;
+    _ = result; // Style lookup requires page-level style table access
+    // In production: resolve result.cell.style_id via the page's style table
+    return 0;
+}
+
+// ─── Scrollback ──────────────────────────────────────────────────────
+
+/// Scroll the viewport. delta > 0 scrolls up, delta < 0 scrolls down.
+export fn vt_scroll(handle: ?*anyopaque, delta: i32) callconv(.C) void {
+    const state = unwrap(handle) orelse return;
+    state.terminal.screen.scroll(.{ .delta_row = delta });
+}
+
+/// Jump viewport to bottom (active area).
+export fn vt_scroll_to_bottom(handle: ?*anyopaque) callconv(.C) void {
+    const state = unwrap(handle) orelse return;
+    state.terminal.screen.scroll(.active);
+}
+
+/// Check if viewport is at the bottom.
+export fn vt_is_at_bottom(handle: ?*anyopaque) callconv(.C) bool {
+    const state = unwrap(handle) orelse return true;
+    return state.terminal.screen.viewportIsBottom();
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+fn unwrap(handle: ?*anyopaque) ?*TerminalState {
+    const ptr = handle orelse return null;
+    return @ptrCast(@alignCast(ptr));
+}
+```
+
+Build it:
+
+```bash
+cd src/native && zig build -Doptimize=ReleaseFast
+# Output: zig-out/lib/libelectrobun_vt.{so,dylib,dll}
+```
+
+### 4.4 FFI bridge -- load ghostty-vt from Bun
+
+Following Electrobun's own pattern in `package/src/bun/proc/native.ts`:
+
+```typescript
+// src/bun/ghostty-ffi.ts
+import { dlopen, FFIType, suffix, CString, ptr, toBuffer } from "bun:ffi";
+import { join } from "path";
+
+const lib = dlopen(join(process.cwd(), `libelectrobun_vt.${suffix}`), {
+  vt_create: {
+    args: [FFIType.u16, FFIType.u16, FFIType.u32],
+    returns: FFIType.ptr,
+  },
+  vt_destroy: {
+    args: [FFIType.ptr],
+    returns: FFIType.void,
+  },
+  vt_feed: {
+    args: [FFIType.ptr, FFIType.ptr, FFIType.u32],
+    returns: FFIType.void,
+  },
+  vt_resize: {
+    args: [FFIType.ptr, FFIType.u16, FFIType.u16],
+    returns: FFIType.void,
+  },
+  vt_cursor_x: {
+    args: [FFIType.ptr],
+    returns: FFIType.u16,
+  },
+  vt_cursor_y: {
+    args: [FFIType.ptr],
+    returns: FFIType.u16,
+  },
+  vt_get_screen_text: {
+    args: [FFIType.ptr],
+    returns: FFIType.ptr,
+  },
+  vt_free_string: {
+    args: [FFIType.ptr],
+    returns: FFIType.void,
+  },
+  vt_get_row_text: {
+    args: [FFIType.ptr, FFIType.u16, FFIType.ptr, FFIType.u32],
+    returns: FFIType.u32,
+  },
+  vt_get_cell_codepoint: {
+    args: [FFIType.ptr, FFIType.u16, FFIType.u16],
+    returns: FFIType.u32, // u21 promoted to u32
+  },
+  vt_scroll: {
+    args: [FFIType.ptr, FFIType.i32],
+    returns: FFIType.void,
+  },
+  vt_scroll_to_bottom: {
+    args: [FFIType.ptr],
+    returns: FFIType.void,
+  },
+  vt_is_at_bottom: {
+    args: [FFIType.ptr],
+    returns: FFIType.bool,
+  },
+});
+
+const { symbols } = lib;
+
+/**
+ * Managed ghostty-vt terminal instance.
+ * Mirrors the PTY state -- feed it the same bytes the webview sees.
+ */
+export class GhosttyTerminal {
+  private handle: ReturnType<typeof symbols.vt_create>;
+
+  constructor(cols: number, rows: number, maxScrollback = 10_000) {
+    this.handle = symbols.vt_create(cols, rows, maxScrollback);
+    if (!this.handle) throw new Error("Failed to create ghostty-vt terminal");
+  }
+
+  /** Feed raw PTY output bytes. Call from Bun.Terminal's data callback. */
+  feed(data: string | Uint8Array) {
+    const buf = typeof data === "string" ? Buffer.from(data) : data;
+    symbols.vt_feed(this.handle, ptr(buf), buf.length);
+  }
+
+  resize(cols: number, rows: number) {
+    symbols.vt_resize(this.handle, cols, rows);
+  }
+
+  get cursorX(): number {
+    return symbols.vt_cursor_x(this.handle);
+  }
+
+  get cursorY(): number {
+    return symbols.vt_cursor_y(this.handle);
+  }
+
+  /** Extract the entire visible screen as plain text. */
+  getScreenText(): string {
+    const cstr = symbols.vt_get_screen_text(this.handle);
+    if (!cstr) return "";
+    const result = new CString(cstr).toString();
+    symbols.vt_free_string(cstr);
+    return result;
+  }
+
+  /** Extract a single row as plain text. */
+  getRowText(row: number): string {
+    const buf = new Uint8Array(4096);
+    const len = symbols.vt_get_row_text(this.handle, row, ptr(buf), buf.length);
+    return new TextDecoder().decode(buf.subarray(0, len));
+  }
+
+  /** Get the Unicode codepoint at (row, col). 0 = empty. */
+  getCellCodepoint(row: number, col: number): number {
+    return symbols.vt_get_cell_codepoint(this.handle, row, col);
+  }
+
+  scroll(delta: number) {
+    symbols.vt_scroll(this.handle, delta);
+  }
+
+  scrollToBottom() {
+    symbols.vt_scroll_to_bottom(this.handle);
+  }
+
+  get isAtBottom(): boolean {
+    return symbols.vt_is_at_bottom(this.handle);
+  }
+
+  destroy() {
+    symbols.vt_destroy(this.handle);
+  }
+}
+```
+
+### 4.5 Integrate with terminal-manager
+
+Modify the terminal manager to maintain a ghostty-vt shadow for each PTY:
+
+```typescript
+// In terminal-manager.ts, add to ManagedTerminal:
+import { GhosttyTerminal } from "./ghostty-ffi";
+
+interface ManagedTerminal {
+  proc: ReturnType<typeof Bun.spawn>;
+  terminal: any;
+  vt: GhosttyTerminal; // ghostty-vt shadow state
+  shell: string;
+  cwd: string;
+  title: string;
+}
+
+// In create(), after Bun.spawn:
+const vt = new GhosttyTerminal(cols, rows);
+
+// In the data callback:
+data(_terminal: any, rawData: string | Uint8Array) {
+  // ...existing OSC/bell detection...
+
+  // Feed raw bytes to ghostty-vt for state tracking
+  vt.feed(rawData);
+
+  sendData(id, str);
+}
+
+// In resize():
+managed.vt.resize(cols, rows);
+
+// In destroy():
+managed.vt.destroy();
+
+// New RPC handlers:
+getScreenContent: ({ id, startRow, endRow }) => {
+  const t = terminals.get(id);
+  if (!t) throw new Error(`Terminal ${id} not found`);
+  const lines: string[] = [];
+  const start = startRow ?? 0;
+  const end = endRow ?? (/* t.vt rows */ 24);
+  for (let row = start; row < end; row++) {
+    lines.push(t.vt.getRowText(row));
+  }
+  return { lines, cursorX: t.vt.cursorX, cursorY: t.vt.cursorY };
+},
+
+searchScrollback: ({ id, query }) => {
+  const t = terminals.get(id);
+  if (!t) throw new Error(`Terminal ${id} not found`);
+  const screen = t.vt.getScreenText();
+  const matches: Array<{ row: number; col: number; text: string }> = [];
+  const lines = screen.split("\n");
+  for (let row = 0; row < lines.length; row++) {
+    let col = lines[row].indexOf(query);
+    while (col !== -1) {
+      matches.push({ row, col, text: lines[row] });
+      col = lines[row].indexOf(query, col + 1);
+    }
+  }
+  return { matches };
+},
+
+getCurrentCommand: ({ id }) => {
+  const t = terminals.get(id);
+  if (!t) return null;
+  // Heuristic: read the line at cursorY, extract text after the prompt
+  const line = t.vt.getRowText(t.vt.cursorY);
+  // Simple heuristic -- strip common prompt patterns
+  const match = line.match(/(?:\$|>|#|%)\s*(.*)$/);
+  return match ? { command: match[1], cwd: t.cwd } : null;
+},
+```
+
+### 4.6 What this enables
+
+With ghostty-vt running as a shadow state machine:
+
+**Running Claude Code in the terminal:**
+- Claude Code uses alternate screen, cursor positioning, ANSI colors, bracketed paste -- ghostty-vt handles all of it correctly
+- You can query the terminal state from Bun at any point to see what Claude Code is displaying
+- No dependency on the webview renderer being correct
+
+**AI-assisted features:**
+```typescript
+// From any Bun code, not just RPC handlers:
+const t = terminals.get("term-1");
+const screen = t.vt.getScreenText();
+// Send screen content to an LLM for analysis
+const analysis = await askClaude(`What command just ran? Output:\n${screen}`);
+```
+
+**Headless terminal (no webview needed):**
+```typescript
+// Useful for testing, automation, CI
+const vt = new GhosttyTerminal(80, 24);
+const proc = Bun.spawn(["bun", "test"], {
+  terminal: {
+    cols: 80, rows: 24,
+    data(_, data) { vt.feed(data); },
+  },
+});
+await proc.exited;
+const output = vt.getScreenText();
+console.log("Test output:", output);
+vt.destroy();
+```
 
 ---
 
-## Step 5: Replace Remaining Electron APIs
+## Step 5: Window APIs
 
 ### Window management
 
@@ -987,22 +1031,46 @@ win.loadURL('file://...');
 win.on('closed', () => { /* cleanup */ });
 
 // Electrobun
+import { BrowserWindow, Utils } from "electrobun/bun";
+
 const win = new BrowserWindow({
   title: "My App",
   url: "views://mainview/index.html",   // bundled views
   frame: { width: 800, height: 600, x: 100, y: 100 },
-  rpc: myRPC,                            // attach RPC directly
+  renderer: "cef",                       // "cef" or "native" (system webview)
+  titleBarStyle: "hiddenInset",          // "default" | "hidden" | "hiddenInset"
+  transparent: false,
+  rpc: myRPC,                            // attach RPC directly -- no preload scripts
 });
-win.on("close", () => Utils.quit());
+
+// Window methods
+win.setTitle("New Title");
+win.minimize();
+win.maximize();
+win.setFullScreen(true);
+win.setAlwaysOnTop(true);
+win.setPosition(100, 200);
+win.setSize(1024, 768);
+win.setFrame(100, 200, 1024, 768);
+const { x, y, width, height } = win.getFrame();
+
+// Events
+win.on("close", () => { destroyAll(); Utils.quit(); });
+win.on("resize", (e) => console.log("Resized:", e));
+win.on("move", (e) => console.log("Moved:", e));
+win.on("focus", () => console.log("Focused"));
+win.on("blur", () => console.log("Blurred"));
 ```
 
-### Menus
+### Application menus
 
 ```typescript
 // Electron
 Menu.setApplicationMenu(Menu.buildFromTemplate([...]));
 
 // Electrobun
+import Electrobun, { ApplicationMenu } from "electrobun/bun";
+
 ApplicationMenu.setApplicationMenu([
   {
     submenu: [
@@ -1014,9 +1082,39 @@ ApplicationMenu.setApplicationMenu([
     submenu: [
       { role: "undo" }, { role: "redo" },
       { type: "separator" },
-      { role: "cut" }, { role: "copy" }, { role: "paste" },
+      { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "selectAll" },
     ],
   },
+  {
+    label: "Terminal",
+    submenu: [
+      { label: "New Tab", action: "new-tab", accelerator: "CommandOrControl+T" },
+      { label: "Close Tab", action: "close-tab", accelerator: "CommandOrControl+W" },
+    ],
+  },
+]);
+
+Electrobun.events.on("application-menu-clicked", (e) => {
+  if (e.data.action === "new-tab") { /* ... */ }
+  if (e.data.action === "close-tab") { /* ... */ }
+});
+```
+
+### Context menus
+
+```typescript
+// Electron
+const menu = new Menu();
+menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+menu.popup();
+
+// Electrobun
+import { ContextMenu } from "electrobun/bun";
+ContextMenu.show([
+  { label: "Copy", role: "copy" },
+  { label: "Paste", role: "paste" },
+  { type: "separator" },
+  { label: "Clear", action: "clear-terminal" },
 ]);
 ```
 
@@ -1024,17 +1122,27 @@ ApplicationMenu.setApplicationMenu([
 
 ```typescript
 // Electron
-const { dialog, shell, clipboard, Notification } = require('electron');
 dialog.showOpenDialog({ properties: ['openFile'] });
 shell.openExternal('https://...');
 clipboard.writeText('hello');
 new Notification({ title: '...', body: '...' }).show();
 
 // Electrobun
+import { Utils } from "electrobun/bun";
+
 await Utils.openFileDialog({ directory: false, multiple: false });
 Utils.openExternal("https://...");
-Utils.clipboard.writeText("hello");
+Utils.openPath("/path/to/file");
+Utils.showItemInFolder("/path/to/file");
+Utils.moveToTrash("/path/to/file");
 Utils.showNotification({ title: "...", body: "..." });
+await Utils.showMessageBox({ title: "Confirm", message: "Are you sure?" });
+
+// Clipboard
+Utils.clipboard.writeText("hello");
+const text = await Utils.clipboard.readText();
+const imageData = await Utils.clipboard.readImage();
+Utils.clipboard.writeImage(buffer);
 ```
 
 ### Global shortcuts
@@ -1048,7 +1156,7 @@ import { GlobalShortcut } from "electrobun/bun";
 GlobalShortcut.register("CommandOrControl+Shift+I", () => { /* ... */ });
 ```
 
-### Tray
+### System tray
 
 ```typescript
 // Electron
@@ -1060,24 +1168,85 @@ import { Tray } from "electrobun/bun";
 const tray = new Tray({ icon: "/path/to/icon.png", menu: [...] });
 ```
 
+### Screen / display info
+
+```typescript
+import { Screen } from "electrobun/bun";
+
+const primary = Screen.getPrimaryDisplay();  // { width, height, scaleFactor, ... }
+const all = Screen.getAllDisplays();
+const cursor = Screen.getCursorScreenPoint();  // { x, y }
+```
+
+### Session & storage
+
+```typescript
+import { Session } from "electrobun/bun";
+
+const session = Session.fromPartition("persist:my-app");
+// or: Session.defaultSession
+
+const cookies = await session.cookies.get({ domain: "example.com" });
+await session.cookies.set({ url: "https://example.com", name: "key", value: "val" });
+await session.clearStorageData(["cookies", "localStorage"]);
+```
+
+### Webview events
+
+```typescript
+win.webview.on("dom-ready", () => { /* webview DOM loaded */ });
+win.webview.on("did-navigate", (e) => console.log("Navigated to:", e.url));
+win.webview.on("did-fail-load", (e) => console.log("Load failed:", e));
+
+// Execute arbitrary JS in the webview
+win.webview.executeJavascript('document.title');
+const result = await win.webview.rpc?.request.evaluateJavascriptWithResponse({
+  script: 'return document.title',
+});
+```
+
 ---
 
-## Step 6: Replace Node.js APIs with Bun-Native Equivalents
+## Step 6: Node.js → Bun Replacements
 
 | Node.js / Electron | Bun equivalent |
 |---|---|
-| `fs.readFile` | `Bun.file(path).text()` / `.arrayBuffer()` |
+| `fs.readFile` | `Bun.file(path).text()` / `.arrayBuffer()` / `.json()` |
 | `fs.writeFile` | `Bun.write(path, data)` |
+| `fs.watch` | `fs.watch(path)` (Bun supports this) |
 | `child_process.spawn` | `Bun.spawn(cmd, opts)` |
 | `child_process.exec` | `Bun.spawn(["sh", "-c", cmd])` |
+| `child_process.fork` + IPC | `Bun.spawn(["bun", "child.ts"], { ipc(msg) { ... } })` |
 | `crypto.randomBytes` | `crypto.getRandomValues(new Uint8Array(n))` |
 | `http.createServer` | `Bun.serve({ fetch(req) { ... } })` |
+| `ws` (WebSocket server) | `Bun.serve({ websocket: { message(ws, msg) { ... } } })` |
 | `path.join` | `import { join } from "path"` (works in Bun) |
 | `require('module')` | `import x from "module"` (ESM native) |
-| `node-fetch` | `fetch()` (built-in) |
-| `node-pty` | `Bun.Terminal` or `bun-pty` |
-| `better-sqlite3` | `bun:sqlite` (built-in) |
-| `ws` (WebSocket) | `Bun.serve` with `websocket` handler (built-in) |
+| `node-fetch` / `axios` | `fetch()` (built-in, Web standard) |
+| `node-pty` | `Bun.Terminal` (built-in) or `@zenyr/bun-pty` |
+| `better-sqlite3` | `import { Database } from "bun:sqlite"` (built-in) |
+| `dotenv` | Bun loads `.env` automatically |
+| `jest` / `vitest` | `bun test` (built-in test runner) |
+| `tsx` / `ts-node` | Not needed -- Bun runs TypeScript natively |
+| `nodemon` | `bun --watch` |
+
+### Bun IPC between processes
+
+```typescript
+// parent.ts
+const child = Bun.spawn(["bun", "child.ts"], {
+  ipc(message) {
+    console.log("From child:", message);
+  },
+  serialization: "advanced", // structuredClone-compatible (ArrayBuffer, Map, Set, etc.)
+});
+child.send({ command: "start", config: { ... } });
+
+// child.ts
+process.on("message", (msg) => {
+  process.send({ status: "done", result: { ... } });
+});
+```
 
 ---
 
@@ -1091,15 +1260,14 @@ cd package && bun dev
 electrobun build
 
 # The output is a self-extracting bundle (~12MB)
-# Updates use bsdiff patches (~14KB)
+# Updates use bsdiff patches (as small as ~14KB)
 ```
 
-### Update mechanism
+### Auto-updates
 
 ```typescript
 import { Updater } from "electrobun/bun";
 
-// Built-in updater with bsdiff -- replaces electron-updater entirely
 const updater = new Updater({
   url: "https://updates.myapp.com",
 });
@@ -1114,28 +1282,31 @@ await updater.checkForUpdates();
 - [ ] Initialize Electrobun project with `electrobun.config.ts`
 - [ ] Define RPC schemas to replace all tRPC routers
 - [ ] Implement bun-side RPC handlers (replaces tRPC procedures)
-- [ ] Update webview code to use `Electroview.defineRPC` instead of tRPC client
-- [ ] Replace `node-pty` with `Bun.Terminal` or `bun-pty`
-- [ ] Keep xterm.js frontend, update transport to use Electrobun RPC
-- [ ] (Optional) Replace xterm.js with ghostty-web for WASM-based rendering
-- [ ] Replace `BrowserWindow` / preload script with Electrobun equivalents
-- [ ] Replace Electron menus, dialogs, tray, shortcuts with Electrobun APIs
+- [ ] Set up terminal manager with `Bun.Terminal` PTY backend
+- [ ] Build `libelectrobun_vt` from ghostty-vt Zig module
+- [ ] Wire FFI bridge (`ghostty-ffi.ts`) for native terminal state
+- [ ] Feed PTY output to both webview (via RPC) and ghostty-vt (via FFI)
+- [ ] Implement `getScreenContent` / `searchScrollback` / `getCurrentCommand` RPC handlers
+- [ ] Replace `BrowserWindow` / preload script with Electrobun window APIs
+- [ ] Replace Electron menus, dialogs, tray, shortcuts with Electrobun equivalents
 - [ ] Replace Node.js APIs with Bun built-ins (`Bun.file`, `Bun.serve`, `bun:sqlite`, etc.)
-- [ ] Remove all Electron and tRPC dependencies from `package.json`
+- [ ] Remove all Electron, tRPC, and Zod dependencies
 - [ ] Test with `bun dev`, build with `electrobun build`
 
 ---
 
-## Key Differences to Keep in Mind
+## Key Differences
 
-1. **No preload scripts needed.** Electrobun's RPC is the bridge -- no `contextBridge` or `ipcRenderer` required.
+1. **No preload scripts.** Electrobun's RPC is the bridge. No `contextBridge`, no `ipcRenderer`.
 
-2. **No Zod needed for IPC.** The RPC schema is TypeScript-typed end-to-end. Add runtime validation only if you need it.
+2. **No Zod for IPC.** RPC schema is TypeScript-typed end-to-end.
 
-3. **Views are bundled.** Use `views://viewname/index.html` URLs instead of `file://` paths. Configure views in `electrobun.config.ts`.
+3. **Views are bundled.** Use `views://viewname/index.html` URLs. Configure in `electrobun.config.ts`.
 
-4. **RPC is bidirectional by default.** Both bun and webview can send requests and messages to each other -- no separate "main-to-renderer" vs "renderer-to-main" channel setup.
+4. **RPC is bidirectional by default.** Both bun and webview can send requests and messages.
 
-5. **Bun.Terminal is built-in.** No native addon compilation, no `node-gyp`, no `prebuild`. It just works.
+5. **Terminal state lives natively.** With ghostty-vt, the Bun process always knows what's on screen -- no round-trip to the webview to read terminal content.
 
-6. **Encrypted IPC.** Electrobun encrypts all RPC traffic between bun and webviews with AES-256-GCM automatically. No configuration needed.
+6. **Encrypted IPC.** AES-256-GCM between bun and webviews, automatic, zero config.
+
+7. **Zig-native extension path.** Electrobun already uses Zig -- adding ghostty-vt is a natural dependency, not a foreign build system.
