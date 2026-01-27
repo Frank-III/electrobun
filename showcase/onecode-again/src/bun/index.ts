@@ -3,6 +3,7 @@ import type { AppRPC } from "../shared/rpc-schema";
 import { createCommandsHandlers } from "./commands";
 import { createExternalHandlers } from "./external";
 import { createFileHandlers } from "./files";
+import { createOllamaHandlers } from "./ollama";
 import { createSkillsHandlers } from "./skills";
 import { createTerminalHandlers, destroyAll } from "./terminal-manager";
 
@@ -19,6 +20,7 @@ const terminalHandlers = createTerminalHandlers(
 const fileHandlers = createFileHandlers();
 const externalHandlers = createExternalHandlers();
 const commandsHandlers = createCommandsHandlers();
+const ollamaHandlers = createOllamaHandlers();
 const skillsHandlers = createSkillsHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
@@ -75,6 +77,11 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       commandsGetContent: commandsHandlers.commandsGetContent,
       skillsList: skillsHandlers.skillsList,
       skillsListEnabled: skillsHandlers.skillsListEnabled,
+      ollamaGetStatus: ollamaHandlers.ollamaGetStatus,
+      ollamaIsOfflineModeAvailable: ollamaHandlers.ollamaIsOfflineModeAvailable,
+      ollamaGetModels: ollamaHandlers.ollamaGetModels,
+      ollamaGenerateChatName: ollamaHandlers.ollamaGenerateChatName,
+      ollamaGenerateCommitMessage: ollamaHandlers.ollamaGenerateCommitMessage,
     },
     messages: {
       "*": (name, payload) => {

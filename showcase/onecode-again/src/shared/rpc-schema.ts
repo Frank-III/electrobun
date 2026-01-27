@@ -24,6 +24,18 @@ export type FileSkill = {
   path: string;
 };
 
+export type OllamaStatus = {
+  available: boolean;
+  version?: string;
+  models: string[];
+  recommendedModel?: string;
+};
+
+export type NetworkStatus = {
+  online: boolean;
+  checked: number;
+};
+
 export interface AppRPC {
   bun: RPCSchema<{
     requests: TerminalRequests & {
@@ -61,6 +73,26 @@ export interface AppRPC {
       commandsGetContent: { params: { path: string }; response: { content: string } };
       skillsList: { params?: { cwd?: string }; response: FileSkill[] };
       skillsListEnabled: { params?: { cwd?: string }; response: FileSkill[] };
+      ollamaGetStatus: {
+        params: {};
+        response: { ollama: OllamaStatus; internet: NetworkStatus };
+      };
+      ollamaIsOfflineModeAvailable: {
+        params: {};
+        response: { available: boolean; model?: string };
+      };
+      ollamaGetModels: {
+        params: {};
+        response: { available: boolean; models: string[]; recommendedModel?: string };
+      };
+      ollamaGenerateChatName: {
+        params: { userMessage: string; model?: string };
+        response: { name: string | null };
+      };
+      ollamaGenerateCommitMessage: {
+        params: { diff: string; fileCount: number; additions: number; deletions: number; model?: string };
+        response: { message: string | null };
+      };
     };
     messages: {};
   }>;
