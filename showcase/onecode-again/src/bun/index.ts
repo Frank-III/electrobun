@@ -1,6 +1,7 @@
 import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import type { AppRPC } from "../shared/rpc-schema";
 import { createAgentsHandlers } from "./agents";
+import { createClaudeSettingsHandlers } from "./claude-settings";
 import { createCommandsHandlers } from "./commands";
 import { createExternalHandlers } from "./external";
 import { createFileHandlers } from "./files";
@@ -24,6 +25,7 @@ const commandsHandlers = createCommandsHandlers();
 const ollamaHandlers = createOllamaHandlers();
 const skillsHandlers = createSkillsHandlers();
 const agentsHandlers = createAgentsHandlers();
+const claudeSettingsHandlers = createClaudeSettingsHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
   handlers: {
@@ -90,6 +92,8 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       agentsCreate: agentsHandlers.agentsCreate,
       agentsUpdate: agentsHandlers.agentsUpdate,
       agentsDelete: agentsHandlers.agentsDelete,
+      claudeSettingsGetIncludeCoAuthoredBy: claudeSettingsHandlers.claudeSettingsGetIncludeCoAuthoredBy,
+      claudeSettingsSetIncludeCoAuthoredBy: claudeSettingsHandlers.claudeSettingsSetIncludeCoAuthoredBy,
     },
     messages: {
       "*": (name, payload) => {

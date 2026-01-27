@@ -140,6 +140,8 @@ export interface AppRPC {
         params: { name: string; source: "user" | "project"; cwd?: string };
         response: { deleted: true };
       };
+      claudeSettingsGetIncludeCoAuthoredBy: { params: {}; response: boolean };
+      claudeSettingsSetIncludeCoAuthoredBy: { params: { enabled: boolean }; response: { success: true } };
     };
     messages: {};
   }>;
