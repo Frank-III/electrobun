@@ -2,6 +2,7 @@ import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import type { AppRPC } from "../shared/rpc-schema";
 import { createAgentsHandlers } from "./agents";
 import { createClaudeSettingsHandlers } from "./claude-settings";
+import { createChatsHandlers } from "./chats";
 import { parseLaunchDirectory } from "./cli";
 import { createCommandsHandlers } from "./commands";
 import { initDatabase } from "./db";
@@ -37,6 +38,7 @@ const claudeSettingsHandlers = createClaudeSettingsHandlers();
 const projectsHandlers = createProjectsHandlers();
 const debugHandlers = createDebugHandlers();
 const worktreeConfigHandlers = createWorktreeConfigHandlers();
+const chatsHandlers = createChatsHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
   handlers: {
@@ -127,6 +129,35 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       worktreeConfigGet: worktreeConfigHandlers.worktreeConfigGet,
       worktreeConfigSave: worktreeConfigHandlers.worktreeConfigSave,
       worktreeConfigGetAvailablePaths: worktreeConfigHandlers.worktreeConfigGetAvailablePaths,
+      chatsList: chatsHandlers.chatsList,
+      chatsListArchived: chatsHandlers.chatsListArchived,
+      chatsGet: chatsHandlers.chatsGet,
+      chatsCreate: chatsHandlers.chatsCreate,
+      chatsRename: chatsHandlers.chatsRename,
+      chatsArchive: chatsHandlers.chatsArchive,
+      chatsArchiveBatch: chatsHandlers.chatsArchiveBatch,
+      chatsRestore: chatsHandlers.chatsRestore,
+      chatsDelete: chatsHandlers.chatsDelete,
+      chatsGetSubChat: chatsHandlers.chatsGetSubChat,
+      chatsCreateSubChat: chatsHandlers.chatsCreateSubChat,
+      chatsUpdateSubChatMessages: chatsHandlers.chatsUpdateSubChatMessages,
+      chatsUpdateSubChatSession: chatsHandlers.chatsUpdateSubChatSession,
+      chatsUpdateSubChatMode: chatsHandlers.chatsUpdateSubChatMode,
+      chatsRenameSubChat: chatsHandlers.chatsRenameSubChat,
+      chatsDeleteSubChat: chatsHandlers.chatsDeleteSubChat,
+      chatsGenerateSubChatName: chatsHandlers.chatsGenerateSubChatName,
+      chatsGenerateCommitMessage: chatsHandlers.chatsGenerateCommitMessage,
+      chatsGetDiff: chatsHandlers.chatsGetDiff,
+      chatsGetParsedDiff: chatsHandlers.chatsGetParsedDiff,
+      chatsGetPrContext: chatsHandlers.chatsGetPrContext,
+      chatsUpdatePrInfo: chatsHandlers.chatsUpdatePrInfo,
+      chatsGetPrStatus: chatsHandlers.chatsGetPrStatus,
+      chatsMergePr: chatsHandlers.chatsMergePr,
+      chatsGetFileStats: chatsHandlers.chatsGetFileStats,
+      chatsGetPendingPlanApprovals: chatsHandlers.chatsGetPendingPlanApprovals,
+      chatsGetWorktreeStatus: chatsHandlers.chatsGetWorktreeStatus,
+      chatsExportChat: chatsHandlers.chatsExportChat,
+      chatsGetChatStats: chatsHandlers.chatsGetChatStats,
     },
     messages: {
       "*": (name, payload) => {

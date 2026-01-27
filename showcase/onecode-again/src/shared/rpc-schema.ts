@@ -61,6 +61,37 @@ export type Project = {
   gitRepo?: string | null;
 };
 
+export type Chat = {
+  id: string;
+  name: string | null;
+  projectId: string;
+  createdAt: Date | string | number;
+  updatedAt: Date | string | number;
+  archivedAt?: Date | string | number | null;
+  worktreePath?: string | null;
+  branch?: string | null;
+  baseBranch?: string | null;
+  prUrl?: string | null;
+  prNumber?: number | null;
+};
+
+export type SubChat = {
+  id: string;
+  name: string | null;
+  chatId: string;
+  sessionId?: string | null;
+  streamId?: string | null;
+  mode: "plan" | "agent";
+  messages: string;
+  createdAt: Date | string | number;
+  updatedAt: Date | string | number;
+};
+
+export type ChatWithSubChats = Chat & {
+  subChats: SubChat[];
+  project: Project | null;
+};
+
 export type SystemInfo = {
   version: string;
   platform: string;
@@ -220,6 +251,85 @@ export interface AppRPC {
         response: { success: boolean; path: string; error?: string };
       };
       worktreeConfigGetAvailablePaths: { params: { projectId: string }; response: WorktreeConfigAvailablePaths };
+      chatsList: { params: { projectId?: string }; response: Chat[] };
+      chatsListArchived: { params: { projectId?: string }; response: Chat[] };
+      chatsGet: { params: { id: string }; response: ChatWithSubChats | null };
+      chatsCreate: {
+        params: {
+          projectId: string;
+          name?: string;
+          initialMessage?: string;
+          initialMessageParts?: Array<
+            | { type: "text"; text: string }
+            | {
+                type: "data-image";
+                data: { url: string; mediaType?: string; filename?: string; base64Data?: string };
+              }
+            | { type: "file-content"; filePath: string; content: string }
+          >;
+          mode?: "plan" | "agent";
+          useWorktree?: boolean;
+        };
+        response: Chat & { subChats: SubChat[] };
+      };
+      chatsRename: { params: { id: string; name: string }; response: Chat };
+      chatsArchive: { params: { id: string; deleteWorktree?: boolean }; response: Chat };
+      chatsArchiveBatch: { params: { chatIds: string[] }; response: Chat[] };
+      chatsRestore: { params: { id: string }; response: Chat };
+      chatsDelete: { params: { id: string }; response: Chat };
+      chatsGetSubChat: {
+        params: { id: string };
+        response: (SubChat & { chat: (Chat & { project: Project | null }) | null }) | null;
+      };
+      chatsCreateSubChat: { params: { chatId: string; name?: string; mode?: "plan" | "agent" }; response: SubChat };
+      chatsUpdateSubChatMessages: { params: { id: string; messages: string }; response: SubChat };
+      chatsUpdateSubChatSession: { params: { id: string; sessionId: string | null }; response: SubChat };
+      chatsUpdateSubChatMode: { params: { id: string; mode: "plan" | "agent" }; response: SubChat };
+      chatsRenameSubChat: { params: { id: string; name: string }; response: SubChat };
+      chatsDeleteSubChat: { params: { id: string }; response: SubChat };
+      chatsGenerateSubChatName: { params: { userMessage: string; ollamaModel?: string }; response: { name: string } };
+      chatsGenerateCommitMessage: {
+        params: { chatId: string; filePaths?: string[]; ollamaModel?: string | null };
+        response: { message: string | null };
+      };
+      chatsGetDiff: { params: { chatId: string }; response: { diff: string | null; error?: string } };
+      chatsGetParsedDiff: {
+        params: { chatId: string };
+        response: {
+          files: unknown[];
+          totalAdditions: number;
+          totalDeletions: number;
+          fileContents: Record<string, string>;
+          error?: string;
+        };
+      };
+      chatsGetPrContext: { params: { chatId: string }; response: { branch: string; baseBranch: string; uncommittedCount: number; hasUpstream: boolean } | null };
+      chatsUpdatePrInfo: { params: { chatId: string; prUrl: string; prNumber: number }; response: Chat };
+      chatsGetPrStatus: { params: { chatId: string }; response: unknown };
+      chatsMergePr: { params: { chatId: string; method?: "merge" | "squash" | "rebase" }; response: { success: boolean; error?: string } };
+      chatsGetFileStats: {
+        params: { openSubChatIds?: string[]; chatIds?: string[] };
+        response: Array<{ chatId: string; additions: number; deletions: number; fileCount: number }>;
+      };
+      chatsGetPendingPlanApprovals: { params: { openSubChatIds: string[] }; response: Array<{ subChatId: string; chatId: string }> };
+      chatsGetWorktreeStatus: { params: { chatId: string }; response: { hasWorktree: boolean; uncommittedCount: number } };
+      chatsExportChat: {
+        params: { chatId: string; subChatId?: string; format?: "json" | "markdown" | "text" };
+        response: { format: "json" | "markdown" | "text"; content: string; filename: string };
+      };
+      chatsGetChatStats: {
+        params: { chatId: string; subChatId?: string };
+        response: {
+          messageCount: number;
+          userMessageCount: number;
+          assistantMessageCount: number;
+          toolCalls: number;
+          toolUsage: Record<string, number>;
+          totalInputTokens: number;
+          totalOutputTokens: number;
+          subChatCount: number;
+        };
+      };
     };
     messages: {};
   }>;
