@@ -15,6 +15,7 @@ import { createOllamaHandlers } from "./ollama";
 import { createProjectsHandlers } from "./projects";
 import { createSkillsHandlers } from "./skills";
 import { createTerminalHandlers, destroyAll } from "./terminal-manager";
+import { createVoiceHandlers } from "./voice";
 import { createWorktreeConfigHandlers } from "./worktree-config-handlers";
 
 let mainWindow: BrowserWindow | null = null;
@@ -43,6 +44,7 @@ const projectsHandlers = createProjectsHandlers();
 const debugHandlers = createDebugHandlers();
 const worktreeConfigHandlers = createWorktreeConfigHandlers();
 const chatsHandlers = createChatsHandlers();
+const voiceHandlers = createVoiceHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
   handlers: {
@@ -172,6 +174,10 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       anthropicAccountsRemove: anthropicAccountsHandlers.anthropicAccountsRemove,
       anthropicAccountsHasAccounts: anthropicAccountsHandlers.anthropicAccountsHasAccounts,
       anthropicAccountsMigrateLegacy: anthropicAccountsHandlers.anthropicAccountsMigrateLegacy,
+      voiceTranscribe: voiceHandlers.voiceTranscribe,
+      voiceIsAvailable: voiceHandlers.voiceIsAvailable,
+      voiceSetOpenAIKey: voiceHandlers.voiceSetOpenAIKey,
+      voiceHasOpenAIKey: voiceHandlers.voiceHasOpenAIKey,
     },
     messages: {
       "*": (name, payload) => {

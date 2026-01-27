@@ -355,6 +355,16 @@ export interface AppRPC {
           | { migrated: true; accountId: string }
           | { migrated: false; reason: "accounts_exist" | "no_legacy" };
       };
+      voiceTranscribe: {
+        params: { audioBase64: string; format: string; language?: string };
+        response: { text: string };
+      };
+      voiceIsAvailable: {
+        params: {};
+        response: { available: boolean; method: "local" | "backend" | null; reason?: string };
+      };
+      voiceSetOpenAIKey: { params: { key: string }; response: { success: true } };
+      voiceHasOpenAIKey: { params: {}; response: { hasKey: boolean } };
     };
     messages: {};
   }>;
