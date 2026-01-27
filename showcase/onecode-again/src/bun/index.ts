@@ -2,11 +2,13 @@ import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import type { AppRPC } from "../shared/rpc-schema";
 import { createAgentsHandlers } from "./agents";
 import { createClaudeSettingsHandlers } from "./claude-settings";
+import { parseLaunchDirectory } from "./cli";
 import { createCommandsHandlers } from "./commands";
 import { initDatabase } from "./db";
 import { createExternalHandlers } from "./external";
 import { createFileHandlers } from "./files";
 import { createOllamaHandlers } from "./ollama";
+import { createProjectsHandlers } from "./projects";
 import { createSkillsHandlers } from "./skills";
 import { createTerminalHandlers, destroyAll } from "./terminal-manager";
 
@@ -14,6 +16,7 @@ let mainWindow: BrowserWindow | null = null;
 let sendToWebview: BrowserView["rpc"] | null = null;
 
 await initDatabase();
+parseLaunchDirectory();
 
 const terminalHandlers = createTerminalHandlers(
   (id, data) => sendToWebview?.send?.data({ id, data }),
@@ -29,6 +32,7 @@ const ollamaHandlers = createOllamaHandlers();
 const skillsHandlers = createSkillsHandlers();
 const agentsHandlers = createAgentsHandlers();
 const claudeSettingsHandlers = createClaudeSettingsHandlers();
+const projectsHandlers = createProjectsHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
   handlers: {
@@ -97,6 +101,17 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       agentsDelete: agentsHandlers.agentsDelete,
       claudeSettingsGetIncludeCoAuthoredBy: claudeSettingsHandlers.claudeSettingsGetIncludeCoAuthoredBy,
       claudeSettingsSetIncludeCoAuthoredBy: claudeSettingsHandlers.claudeSettingsSetIncludeCoAuthoredBy,
+      projectsGetLaunchDirectory: projectsHandlers.projectsGetLaunchDirectory,
+      projectsList: projectsHandlers.projectsList,
+      projectsGet: projectsHandlers.projectsGet,
+      projectsOpenFolder: projectsHandlers.projectsOpenFolder,
+      projectsCreate: projectsHandlers.projectsCreate,
+      projectsRename: projectsHandlers.projectsRename,
+      projectsDelete: projectsHandlers.projectsDelete,
+      projectsRefreshGitInfo: projectsHandlers.projectsRefreshGitInfo,
+      projectsCloneFromGitHub: projectsHandlers.projectsCloneFromGitHub,
+      projectsLocateAndAdd: projectsHandlers.projectsLocateAndAdd,
+      projectsPickCloneDestination: projectsHandlers.projectsPickCloneDestination,
     },
     messages: {
       "*": (name, payload) => {

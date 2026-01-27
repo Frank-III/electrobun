@@ -49,6 +49,18 @@ export type FileAgent = {
   path: string;
 };
 
+export type Project = {
+  id: string;
+  name: string;
+  path: string;
+  createdAt: Date | string | number;
+  updatedAt: Date | string | number;
+  gitRemoteUrl?: string | null;
+  gitProvider?: "github" | "gitlab" | "bitbucket" | null;
+  gitOwner?: string | null;
+  gitRepo?: string | null;
+};
+
 export interface AppRPC {
   bun: RPCSchema<{
     requests: TerminalRequests & {
@@ -142,6 +154,28 @@ export interface AppRPC {
       };
       claudeSettingsGetIncludeCoAuthoredBy: { params: {}; response: boolean };
       claudeSettingsSetIncludeCoAuthoredBy: { params: { enabled: boolean }; response: { success: true } };
+      projectsGetLaunchDirectory: { params: {}; response: string | null };
+      projectsList: { params: {}; response: Project[] };
+      projectsGet: { params: { id: string }; response: Project | null };
+      projectsOpenFolder: { params: {}; response: Project | null };
+      projectsCreate: { params: { path: string; name?: string }; response: Project };
+      projectsRename: { params: { id: string; name: string }; response: Project };
+      projectsDelete: { params: { id: string }; response: Project };
+      projectsRefreshGitInfo: { params: { id: string }; response: Project | null };
+      projectsCloneFromGitHub: { params: { repoUrl: string }; response: Project };
+      projectsLocateAndAdd: {
+        params: { expectedOwner: string; expectedRepo: string };
+        response:
+          | { success: true; project: Project }
+          | { success: false; reason: "canceled" }
+          | { success: false; reason: "wrong-repo"; found: string };
+      };
+      projectsPickCloneDestination: {
+        params: { suggestedName: string };
+        response:
+          | { success: true; targetPath: string }
+          | { success: false; reason: "canceled" };
+      };
     };
     messages: {};
   }>;
