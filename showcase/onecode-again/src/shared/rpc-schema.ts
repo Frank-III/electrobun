@@ -251,6 +251,69 @@ export interface AppRPC {
         params: {};
         response: { hasConfig: boolean; hasApiKey: boolean; baseUrl: string | null };
       };
+      claudeCodeGetIntegration: {
+        params: {};
+        response: {
+          isConnected: boolean;
+          connectedAt: string | null;
+          accountId: string | null;
+          displayName: string | null;
+        };
+      };
+      claudeCodeStartAuth: {
+        params: {};
+        response: { sandboxId: string; sandboxUrl: string; sessionId: string };
+      };
+      claudeCodePollStatus: {
+        params: { sandboxUrl: string; sessionId: string };
+        response: { state: string; oauthUrl: string | null; error: string | null };
+      };
+      claudeCodeSubmitCode: {
+        params: { sandboxUrl: string; sessionId: string; code: string };
+        response: { success: true };
+      };
+      claudeCodeGetSystemToken: { params: {}; response: { token: string | null } };
+      claudeCodeImportSystemToken: { params: {}; response: { success: true } };
+      claudeCodeGetToken: { params: {}; response: { token: string | null; error: string | null } };
+      claudeCodeDisconnect: { params: {}; response: { success: true } };
+      claudeCodeOpenOAuthUrl: { params: { url: string }; response: { success: true } };
+      claudeGetMcpConfig: {
+        params: { projectPath: string };
+        response: {
+          mcpServers: Array<{ name: string; status: string; config: Record<string, unknown> }>;
+          projectPath: string;
+          error?: string;
+        };
+      };
+      claudeGetAllMcpConfig: {
+        params: {};
+        response: {
+          groups: Array<{
+            groupName: string;
+            projectPath: string | null;
+            mcpServers: Array<{
+              name: string;
+              status: string;
+              tools: string[];
+              needsAuth: boolean;
+              config: Record<string, unknown>;
+            }>;
+          }>;
+          error?: string;
+        };
+      };
+      claudeStartMcpOAuth: {
+        params: { serverName: string; projectPath: string };
+        response: { success: boolean; error?: string };
+      };
+      claudeFetchMcpOAuthMetadata: {
+        params: { serverName: string; projectPath: string };
+        response: {
+          metadata:
+            | { authorization_endpoint: string; token_endpoint: string; registration_endpoint?: string }
+            | null;
+        };
+      };
       claudeSettingsGetIncludeCoAuthoredBy: { params: {}; response: boolean };
       claudeSettingsSetIncludeCoAuthoredBy: { params: { enabled: boolean }; response: { success: true } };
       projectsGetLaunchDirectory: { params: {}; response: string | null };
@@ -274,6 +337,38 @@ export interface AppRPC {
         response:
           | { success: true; targetPath: string }
           | { success: false; reason: "canceled" };
+      };
+      sandboxImportImportSandboxChat: {
+        params: {
+          sandboxId: string;
+          remoteChatId: string;
+          remoteSubChatId?: string;
+          projectId: string;
+          chatName?: string;
+        };
+        response: {
+          success: true;
+          chatId: string;
+          worktreePath: string;
+          gitImportSuccess: boolean;
+          gitImportError?: string;
+        };
+      };
+      sandboxImportCloneFromSandbox: {
+        params: {
+          sandboxId: string;
+          remoteChatId: string;
+          remoteSubChatId?: string;
+          chatName?: string;
+          targetPath: string;
+        };
+        response: {
+          success: true;
+          projectId: string;
+          chatId: string;
+          gitImportSuccess: boolean;
+          gitImportError?: string;
+        };
       };
       debugGetSystemInfo: { params: {}; response: SystemInfo };
       debugGetDbStats: { params: {}; response: { projects: number; chats: number; subChats: number } };

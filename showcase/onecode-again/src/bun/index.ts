@@ -2,6 +2,7 @@ import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import type { AppRPC } from "../shared/rpc-schema";
 import { createAgentsHandlers } from "./agents";
 import { createAnthropicAccountsHandlers } from "./anthropic-accounts";
+import { createClaudeHandlers } from "./claude";
 import { createClaudeCodeHandlers } from "./claude-code";
 import { createClaudeSettingsHandlers } from "./claude-settings";
 import { createChatsHandlers } from "./chats";
@@ -15,6 +16,7 @@ import { createFileHandlers } from "./files";
 import { createGitWatcherHandlers } from "./git-watcher-handlers";
 import { createOllamaHandlers } from "./ollama";
 import { createProjectsHandlers } from "./projects";
+import { createSandboxImportHandlers } from "./sandbox-import";
 import { createSkillsHandlers } from "./skills";
 import { createTerminalHandlers, destroyAll } from "./terminal-manager";
 import { createVoiceHandlers } from "./voice";
@@ -40,9 +42,11 @@ const ollamaHandlers = createOllamaHandlers();
 const skillsHandlers = createSkillsHandlers();
 const agentsHandlers = createAgentsHandlers();
 const anthropicAccountsHandlers = createAnthropicAccountsHandlers();
+const claudeHandlers = createClaudeHandlers();
 const claudeCodeHandlers = createClaudeCodeHandlers();
 const claudeSettingsHandlers = createClaudeSettingsHandlers();
 const projectsHandlers = createProjectsHandlers();
+const sandboxImportHandlers = createSandboxImportHandlers();
 const debugHandlers = createDebugHandlers();
 const worktreeConfigHandlers = createWorktreeConfigHandlers();
 const chatsHandlers = createChatsHandlers();
@@ -123,6 +127,19 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       claudeSettingsGetIncludeCoAuthoredBy: claudeSettingsHandlers.claudeSettingsGetIncludeCoAuthoredBy,
       claudeSettingsSetIncludeCoAuthoredBy: claudeSettingsHandlers.claudeSettingsSetIncludeCoAuthoredBy,
       claudeCodeHasExistingCliConfig: claudeCodeHandlers.claudeCodeHasExistingCliConfig,
+      claudeCodeGetIntegration: claudeCodeHandlers.claudeCodeGetIntegration,
+      claudeCodeStartAuth: claudeCodeHandlers.claudeCodeStartAuth,
+      claudeCodePollStatus: claudeCodeHandlers.claudeCodePollStatus,
+      claudeCodeSubmitCode: claudeCodeHandlers.claudeCodeSubmitCode,
+      claudeCodeGetSystemToken: claudeCodeHandlers.claudeCodeGetSystemToken,
+      claudeCodeImportSystemToken: claudeCodeHandlers.claudeCodeImportSystemToken,
+      claudeCodeGetToken: claudeCodeHandlers.claudeCodeGetToken,
+      claudeCodeDisconnect: claudeCodeHandlers.claudeCodeDisconnect,
+      claudeCodeOpenOAuthUrl: claudeCodeHandlers.claudeCodeOpenOAuthUrl,
+      claudeGetMcpConfig: claudeHandlers.claudeGetMcpConfig,
+      claudeGetAllMcpConfig: claudeHandlers.claudeGetAllMcpConfig,
+      claudeStartMcpOAuth: claudeHandlers.claudeStartMcpOAuth,
+      claudeFetchMcpOAuthMetadata: claudeHandlers.claudeFetchMcpOAuthMetadata,
       projectsGetLaunchDirectory: projectsHandlers.projectsGetLaunchDirectory,
       projectsList: projectsHandlers.projectsList,
       projectsGet: projectsHandlers.projectsGet,
@@ -134,6 +151,8 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       projectsCloneFromGitHub: projectsHandlers.projectsCloneFromGitHub,
       projectsLocateAndAdd: projectsHandlers.projectsLocateAndAdd,
       projectsPickCloneDestination: projectsHandlers.projectsPickCloneDestination,
+      sandboxImportImportSandboxChat: sandboxImportHandlers.sandboxImportImportSandboxChat,
+      sandboxImportCloneFromSandbox: sandboxImportHandlers.sandboxImportCloneFromSandbox,
       debugGetSystemInfo: debugHandlers.debugGetSystemInfo,
       debugGetDbStats: debugHandlers.debugGetDbStats,
       debugClearChats: debugHandlers.debugClearChats,
