@@ -17,6 +17,13 @@ export type FileCommand = {
   path: string;
 };
 
+export type FileSkill = {
+  name: string;
+  description: string;
+  source: "user" | "project";
+  path: string;
+};
+
 export interface AppRPC {
   bun: RPCSchema<{
     requests: TerminalRequests & {
@@ -52,6 +59,8 @@ export interface AppRPC {
       };
       commandsList: { params?: { projectPath?: string }; response: FileCommand[] };
       commandsGetContent: { params: { path: string }; response: { content: string } };
+      skillsList: { params?: { cwd?: string }; response: FileSkill[] };
+      skillsListEnabled: { params?: { cwd?: string }; response: FileSkill[] };
     };
     messages: {};
   }>;

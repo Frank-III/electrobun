@@ -3,6 +3,7 @@ import type { AppRPC } from "../shared/rpc-schema";
 import { createCommandsHandlers } from "./commands";
 import { createExternalHandlers } from "./external";
 import { createFileHandlers } from "./files";
+import { createSkillsHandlers } from "./skills";
 import { createTerminalHandlers, destroyAll } from "./terminal-manager";
 
 let mainWindow: BrowserWindow | null = null;
@@ -18,6 +19,7 @@ const terminalHandlers = createTerminalHandlers(
 const fileHandlers = createFileHandlers();
 const externalHandlers = createExternalHandlers();
 const commandsHandlers = createCommandsHandlers();
+const skillsHandlers = createSkillsHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
   handlers: {
@@ -71,6 +73,8 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       filesWritePastedText: fileHandlers.filesWritePastedText,
       commandsList: commandsHandlers.commandsList,
       commandsGetContent: commandsHandlers.commandsGetContent,
+      skillsList: skillsHandlers.skillsList,
+      skillsListEnabled: skillsHandlers.skillsListEnabled,
     },
     messages: {
       "*": (name, payload) => {
