@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import { GitBranch, ChevronDown, Check } from "lucide-react"
 import {
   Dialog,

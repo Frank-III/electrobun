@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useEffect, useRef, useState } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import { trpc } from "../../lib/trpc"
 import { getWindowId } from "../../contexts/WindowContext"
 import {

@@ -81,7 +81,7 @@ import {
 } from "../../components/ui/alert-dialog"
 import { api } from "../../lib/mock-api"
 import { trpcClient } from "../../lib/trpc"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import { AgentsRenameSubChatDialog } from "../agents/components/agents-rename-subchat-dialog"
 import { SearchCombobox } from "../../components/ui/search-combobox"
 import { SubChatContextMenu } from "../agents/ui/sub-chat-context-menu"

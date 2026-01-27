@@ -1,6 +1,6 @@
 import { trpcClient } from "../../../lib/trpc"
 import { remoteApi } from "../../../lib/remote-api"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 
 export type ExportFormat = "markdown" | "json" | "text"
 

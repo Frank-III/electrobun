@@ -47,7 +47,7 @@ import {
 } from "../../../components/ui/context-menu"
 import { InlineEdit } from "./inline-edit"
 import { api } from "../../../lib/mock-api"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import { SearchCombobox } from "../../../components/ui/search-combobox"
 import { SubChatContextMenu } from "./sub-chat-context-menu"
 import { formatTimeAgo } from "../utils/format-time-ago"

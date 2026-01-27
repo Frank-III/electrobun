@@ -1,5 +1,5 @@
 import { Button } from "../../../../components/ui/button";
-import { toast } from "sonner";
+import { toast } from "solid-sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
 import { useState } from "react";
 import { trpc } from "../../../../lib/trpc";

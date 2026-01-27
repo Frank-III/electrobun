@@ -16,7 +16,7 @@ import {
 	AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/ui/tabs";
-import { toast } from "sonner";
+import { toast } from "solid-sonner";
 import { useEffect, useState, useCallback, useRef, useMemo, memo } from "react";
 import { useAtom } from "jotai";
 import { trpc } from "../../lib/trpc";

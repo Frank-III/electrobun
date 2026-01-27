@@ -3,7 +3,7 @@ import { useAtom } from "jotai"
 import { Button } from "../../ui/button"
 import { Switch } from "../../ui/switch"
 import { trpc } from "../../../lib/trpc"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import { Copy, FolderOpen, RefreshCw, Terminal, Check, Scan, WifiOff } from "lucide-react"
 
 // Hook to detect narrow screen

@@ -61,7 +61,7 @@ import {
   chatSourceModeAtom,
 } from "../../../lib/atoms"
 // Desktop uses real tRPC
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import { trpc } from "../../../lib/trpc"
 import {
   AgentsSlashCommand,

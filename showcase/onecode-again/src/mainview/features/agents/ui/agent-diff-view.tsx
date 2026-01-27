@@ -21,7 +21,7 @@ import { agentsFocusedDiffFileAtom, filteredDiffFilesAtom, viewedFilesAtomFamily
 import { DiffModeEnum, DiffView, DiffFile } from "@git-diff-view/react"
 import "@git-diff-view/react/styles/diff-view-pure.css"
 import { useTheme } from "next-themes"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import {
   AlertTriangle,
   Check,

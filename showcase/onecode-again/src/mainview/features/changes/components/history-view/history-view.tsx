@@ -12,7 +12,7 @@ import {
 	ContextMenuItem,
 	ContextMenuTrigger,
 } from "../../../../components/ui/context-menu";
-import { toast } from "sonner";
+import { toast } from "solid-sonner";
 
 export interface CommitInfo {
 	hash: string;

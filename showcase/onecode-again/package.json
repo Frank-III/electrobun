@@ -1,0 +1,26 @@
+{
+  "name": "onecode-again",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "ui:build": "bun scripts/build-ui.ts",
+    "ui:build:prod": "bun scripts/build-ui.ts --minify",
+    "typecheck": "bunx tsc -p tsconfig.typecheck.json",
+    "build": "bun run ui:build && electrobun build",
+    "build:prod": "bun run ui:build:prod && electrobun build --env=stable",
+    "dev": "bun run build && electrobun dev",
+    "start": "bun run dev"
+  },
+  "dependencies": {
+    "electrobun": "*",
+    "solid-js": "^1.9.6",
+    "solid-sonner": "^0.2.8"
+  },
+  "devDependencies": {
+    "bun-plugin-tailwind": "^0.0.13",
+    "solid-jsx-oxc": "0.1.0-alpha.14",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3"
+  }
+}

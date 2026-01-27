@@ -3,7 +3,7 @@
 import { ChevronRight, ExternalLink, Loader2, RefreshCw } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import { trpc } from "../../../lib/trpc"
 import { cn } from "../../../lib/utils"
 import { Button } from "../../ui/button"

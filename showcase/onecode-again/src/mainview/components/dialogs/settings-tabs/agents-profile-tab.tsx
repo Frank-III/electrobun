@@ -3,7 +3,7 @@ import { Button } from "../../ui/button"
 import { Input } from "../../ui/input"
 import { Label } from "../../ui/label"
 import { IconSpinner } from "../../../icons"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 
 // Hook to detect narrow screen
 function useIsNarrowScreen(): boolean {

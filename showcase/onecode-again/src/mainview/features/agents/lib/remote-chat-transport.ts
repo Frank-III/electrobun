@@ -1,5 +1,5 @@
 import type { ChatTransport, UIMessage } from "ai"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 
 // Cache the API base URL (fetched once from main process)
 let cachedApiBase: string | null = null

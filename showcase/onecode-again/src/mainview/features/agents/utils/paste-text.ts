@@ -1,4 +1,4 @@
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 
 // Threshold for auto-converting large pasted text to a file (5KB)
 // Text larger than this will be saved as a file attachment instead of pasted inline

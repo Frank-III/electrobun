@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/electron/renderer"
 import type { ChatTransport, UIMessage } from "ai"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import {
   agentsLoginModalOpenAtom,
   customClaudeConfigAtom,

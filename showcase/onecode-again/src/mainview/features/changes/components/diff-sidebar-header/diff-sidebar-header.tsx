@@ -46,7 +46,7 @@ import { trpc } from "../../../../lib/trpc";
 import { cn } from "../../../../lib/utils";
 import { usePRStatus } from "../../../../hooks/usePRStatus";
 import { PRIcon } from "../pr-icon";
-import { toast } from "sonner";
+import { toast } from "solid-sonner";
 import { DiffModeEnum } from "@git-diff-view/react";
 
 interface DiffStats {

@@ -52,7 +52,7 @@ import { OpenLocallyDialog } from "../agents/components/open-locally-dialog"
 import { useAutoImport } from "../agents/hooks/use-auto-import"
 import { ConfirmArchiveDialog } from "../../components/confirm-archive-dialog"
 import { trpc } from "../../lib/trpc"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import {
   DropdownMenu,
   DropdownMenuContent,

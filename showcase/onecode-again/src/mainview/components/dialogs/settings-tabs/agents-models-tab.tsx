@@ -1,7 +1,7 @@
 import { useAtom, useSetAtom } from "jotai"
 import { MoreHorizontal, Plus } from "lucide-react"
 import { useEffect, useState } from "react"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import {
   agentsSettingsDialogOpenAtom,
   anthropicOnboardingCompletedAtom,

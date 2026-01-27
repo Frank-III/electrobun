@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import { useMessageQueueStore } from "../stores/message-queue-store"
 import { useStreamingStatusStore } from "../stores/streaming-status-store"
 import { useAgentSubChatStore } from "../stores/sub-chat-store"

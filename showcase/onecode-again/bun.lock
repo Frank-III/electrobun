@@ -7,6 +7,7 @@
       "dependencies": {
         "electrobun": "*",
         "solid-js": "^1.9.6",
+        "solid-sonner": "^0.2.8",
       },
       "devDependencies": {
         "bun-plugin-tailwind": "^0.0.13",
@@ -282,6 +283,8 @@
     "solid-js": ["solid-js@1.9.11", "", { "dependencies": { "csstype": "^3.1.0", "seroval": "~1.5.0", "seroval-plugins": "~1.5.0" } }, "sha512-WEJtcc5mkh/BnHA6Yrg4whlF8g6QwpmXXRg4P2ztPmcKeHHlH4+djYecBLhSpecZY2RRECXYUwIc/C2r3yzQ4Q=="],
 
     "solid-jsx-oxc": ["solid-jsx-oxc@0.1.0-alpha.14", "", {}, "sha512-u1Axtckm8nRibq3ggScvGr4V9VPo6HAZWtpyDOvzRWWvmRefHmmJoQAQy8JsE2mT2dN0tJ750ixD/36AOdjVEA=="],
+
+    "solid-sonner": ["solid-sonner@0.2.8", "", { "peerDependencies": { "solid-js": "^1.6.0" } }, "sha512-EQ2EIznvHHpAmkYh2CTu0AdCgmPJRJWLGFRWygE8j+vMEfvIV2wotHU5qgWzqzVTG1SODGsay2Lwq6ENWx/rPA=="],
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
 

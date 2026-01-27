@@ -1,6 +1,6 @@
 import { useCallback } from "react"
 import { trpc } from "../../../lib/trpc"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import { useSetAtom } from "jotai"
 import { selectedAgentChatIdAtom } from "../atoms"
 import { chatSourceModeAtom } from "../../../lib/atoms"

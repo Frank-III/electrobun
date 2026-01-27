@@ -56,7 +56,7 @@ import {
   useState
 } from "react"
 import { flushSync } from "react-dom"
-import { toast } from "sonner"
+import { toast } from "solid-sonner"
 import type { FileStatus } from "../../../../shared/changes-types"
 import { getQueryClient } from "../../../contexts/TRPCProvider"
 import { trackMessageSent } from "../../../lib/analytics"
