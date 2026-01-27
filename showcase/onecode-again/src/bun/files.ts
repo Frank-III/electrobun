@@ -1,5 +1,6 @@
 import { mkdir, readdir, stat } from "fs/promises";
 import { basename, join, relative } from "path";
+import { Updater } from "electrobun/bun";
 
 const IGNORED_DIRS = new Set([
   ".git",
@@ -46,7 +47,8 @@ const ALLOWED_LOCK_FILES = new Set([
   "bun.lockb",
 ]);
 
-const APP_DATA_DIR_NAME = "onecode-again";
+const APP_IDENTIFIER = "dev.onecode.again";
+const APP_NAME = "onecode-again";
 const CACHE_TTL = 5000;
 
 interface FileEntry {
@@ -56,21 +58,28 @@ interface FileEntry {
 
 const fileListCache = new Map<string, { entries: FileEntry[]; timestamp: number }>();
 
-function resolveUserDataDir() {
+async function resolveUserDataDir() {
+  try {
+    const appDataFolder = await Updater.appDataFolder();
+    if (appDataFolder) return appDataFolder;
+  } catch (error) {
+    console.warn("[files] Updater.appDataFolder failed, using fallback path.", error);
+  }
+
   const platform = process.platform;
   const home = process.env.HOME || process.env.USERPROFILE || process.cwd();
 
   if (platform === "win32") {
-    const base = process.env.APPDATA || process.env.LOCALAPPDATA || home;
-    return join(base, APP_DATA_DIR_NAME);
+    const base = process.env.LOCALAPPDATA || join(home, "AppData", "Local");
+    return join(base, APP_IDENTIFIER, APP_NAME);
   }
 
   if (platform === "darwin") {
-    return join(home, "Library", "Application Support", APP_DATA_DIR_NAME);
+    return join(home, "Library", "Application Support", APP_IDENTIFIER, APP_NAME);
   }
 
   const base = process.env.XDG_DATA_HOME || join(home, ".local", "share");
-  return join(base, APP_DATA_DIR_NAME);
+  return join(base, APP_IDENTIFIER, APP_NAME);
 }
 
 async function scanDirectory(
@@ -225,7 +234,8 @@ export function createFileHandlers() {
       text: string;
       filename?: string;
     }) => {
-      const sessionDir = join(resolveUserDataDir(), "claude-sessions", subChatId);
+      const userDataDir = await resolveUserDataDir();
+      const sessionDir = join(userDataDir, "claude-sessions", subChatId);
       const pastedDir = join(sessionDir, "pasted");
       await mkdir(pastedDir, { recursive: true });
 
