@@ -1,4 +1,5 @@
 import type { RPCSchema } from "electrobun/bun";
+import type { ChangedFile, GitChangesStatus } from "./changes-types";
 import type { TerminalMessages, TerminalRequests } from "./terminal-rpc";
 
 export type FileEntryResult = {
@@ -128,6 +129,31 @@ export type WorktreeConfigResponse = {
   source: WorktreeConfigSource;
   available: WorktreeConfigAvailablePaths;
   projectPath: string;
+};
+
+export type GitHubCheckItem = {
+  name: string;
+  status: "success" | "failure" | "pending" | "skipped" | "cancelled";
+  url?: string;
+};
+
+export type GitHubStatus = {
+  pr: {
+    number: number;
+    title: string;
+    url: string;
+    state: "open" | "draft" | "merged" | "closed";
+    mergedAt?: number;
+    additions: number;
+    deletions: number;
+    reviewDecision: "approved" | "changes_requested" | "pending";
+    checksStatus: "success" | "failure" | "pending" | "none";
+    checks: GitHubCheckItem[];
+    mergeable?: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+  } | null;
+  repoUrl: string;
+  branchExistsOnRemote: boolean;
+  lastRefreshed: number;
 };
 
 export interface AppRPC {
@@ -344,6 +370,64 @@ export interface AppRPC {
           subChatCount: number;
         };
       };
+      changesGetStatus: { params: { worktreePath: string; defaultBranch?: string }; response: GitChangesStatus };
+      changesGetBranches: {
+        params: { worktreePath: string };
+        response: {
+          current: string;
+          local: Array<{ branch: string; lastCommitDate: number }>;
+          remote: string[];
+          defaultBranch: string;
+          checkedOutBranches: Record<string, string>;
+        };
+      };
+      changesFetch: { params: { worktreePath: string }; response: { success: true } };
+      changesFetchRemote: { params: { worktreePath: string }; response: { success: true } };
+      changesCheckout: { params: { worktreePath: string; branch: string }; response: { success: true } };
+      changesGetHistory: {
+        params: { worktreePath: string; limit?: number };
+        response: Array<{
+          hash: string;
+          shortHash: string;
+          message: string;
+          author: string;
+          email: string;
+          date: Date | string | number;
+        }>;
+      };
+      changesCommit: { params: { worktreePath: string; message: string }; response: { success: true; hash: string } };
+      changesAtomicCommit: {
+        params: { worktreePath: string; filePaths: string[]; message: string };
+        response: { success: true; hash: string };
+      };
+      changesPush: { params: { worktreePath: string; setUpstream?: boolean }; response: { success: true } };
+      changesForcePush: { params: { worktreePath: string }; response: { success: true } };
+      changesPull: { params: { worktreePath: string; autoStash?: boolean }; response: { success: true } };
+      changesMergeFromDefault: { params: { worktreePath: string; useRebase?: boolean }; response: { success: true } };
+      changesCreateBranch: {
+        params: { projectPath: string; branchName: string; baseBranch: string };
+        response: { success: true; branchName: string };
+      };
+      changesGetCommitFiles: {
+        params: { worktreePath: string; commitHash: string };
+        response: ChangedFile[];
+      };
+      changesGetCommitFileDiff: {
+        params: { worktreePath: string; commitHash: string; filePath: string };
+        response: string;
+      };
+      changesIsWorktreeRegistered: { params: { worktreePath: string }; response: boolean };
+      changesGetGitHubStatus: { params: { worktreePath: string }; response: GitHubStatus | null };
+      changesStageFile: { params: { worktreePath: string; filePath: string }; response: { success: true } };
+      changesUnstageFile: { params: { worktreePath: string; filePath: string }; response: { success: true } };
+      changesDiscardChanges: { params: { worktreePath: string; filePath: string }; response: { success: true } };
+      changesStageAll: { params: { worktreePath: string }; response: { success: true } };
+      changesUnstageAll: { params: { worktreePath: string }; response: { success: true } };
+      changesStageFiles: { params: { worktreePath: string; filePaths: string[] }; response: { success: true } };
+      changesUnstageFiles: { params: { worktreePath: string; filePaths: string[] }; response: { success: true } };
+      changesDeleteUntracked: { params: { worktreePath: string; filePath: string }; response: { success: true } };
+      changesDiscardMultipleChanges: { params: { worktreePath: string; filePaths: string[] }; response: { success: true } };
+      changesDeleteMultipleUntracked: { params: { worktreePath: string; filePaths: string[] }; response: { success: true } };
       anthropicAccountsList: { params: {}; response: AnthropicAccount[] };
       anthropicAccountsGetActive: { params: {}; response: AnthropicAccount | null };
       anthropicAccountsGetActiveToken: { params: {}; response: { token: string | null; error: string | null } };

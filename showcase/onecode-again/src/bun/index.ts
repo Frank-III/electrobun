@@ -5,6 +5,7 @@ import { createAnthropicAccountsHandlers } from "./anthropic-accounts";
 import { createClaudeCodeHandlers } from "./claude-code";
 import { createClaudeSettingsHandlers } from "./claude-settings";
 import { createChatsHandlers } from "./chats";
+import { createChangesHandlers } from "./changes";
 import { parseLaunchDirectory } from "./cli";
 import { createCommandsHandlers } from "./commands";
 import { initDatabase } from "./db";
@@ -44,6 +45,7 @@ const projectsHandlers = createProjectsHandlers();
 const debugHandlers = createDebugHandlers();
 const worktreeConfigHandlers = createWorktreeConfigHandlers();
 const chatsHandlers = createChatsHandlers();
+const changesHandlers = createChangesHandlers();
 const voiceHandlers = createVoiceHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
@@ -166,6 +168,33 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       chatsGetWorktreeStatus: chatsHandlers.chatsGetWorktreeStatus,
       chatsExportChat: chatsHandlers.chatsExportChat,
       chatsGetChatStats: chatsHandlers.chatsGetChatStats,
+      changesGetStatus: changesHandlers.changesGetStatus,
+      changesGetBranches: changesHandlers.changesGetBranches,
+      changesFetch: changesHandlers.changesFetch,
+      changesFetchRemote: changesHandlers.changesFetchRemote,
+      changesCheckout: changesHandlers.changesCheckout,
+      changesGetHistory: changesHandlers.changesGetHistory,
+      changesCommit: changesHandlers.changesCommit,
+      changesAtomicCommit: changesHandlers.changesAtomicCommit,
+      changesPush: changesHandlers.changesPush,
+      changesForcePush: changesHandlers.changesForcePush,
+      changesPull: changesHandlers.changesPull,
+      changesMergeFromDefault: changesHandlers.changesMergeFromDefault,
+      changesCreateBranch: changesHandlers.changesCreateBranch,
+      changesGetCommitFiles: changesHandlers.changesGetCommitFiles,
+      changesGetCommitFileDiff: changesHandlers.changesGetCommitFileDiff,
+      changesIsWorktreeRegistered: changesHandlers.changesIsWorktreeRegistered,
+      changesGetGitHubStatus: changesHandlers.changesGetGitHubStatus,
+      changesStageFile: changesHandlers.changesStageFile,
+      changesUnstageFile: changesHandlers.changesUnstageFile,
+      changesDiscardChanges: changesHandlers.changesDiscardChanges,
+      changesStageAll: changesHandlers.changesStageAll,
+      changesUnstageAll: changesHandlers.changesUnstageAll,
+      changesStageFiles: changesHandlers.changesStageFiles,
+      changesUnstageFiles: changesHandlers.changesUnstageFiles,
+      changesDeleteUntracked: changesHandlers.changesDeleteUntracked,
+      changesDiscardMultipleChanges: changesHandlers.changesDiscardMultipleChanges,
+      changesDeleteMultipleUntracked: changesHandlers.changesDeleteMultipleUntracked,
       anthropicAccountsList: anthropicAccountsHandlers.anthropicAccountsList,
       anthropicAccountsGetActive: anthropicAccountsHandlers.anthropicAccountsGetActive,
       anthropicAccountsGetActiveToken: anthropicAccountsHandlers.anthropicAccountsGetActiveToken,
