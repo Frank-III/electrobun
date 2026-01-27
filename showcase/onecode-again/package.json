@@ -13,6 +13,7 @@
     "start": "bun run dev"
   },
   "dependencies": {
+    "@kobalte/core": "^0.13.11",
     "electrobun": "*",
     "solid-js": "^1.9.6",
     "solid-sonner": "^0.2.8"

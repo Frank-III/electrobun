@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react"
 import { createPortal } from "react-dom"
 // Desktop: stub for next/image
 const Image = ({ src, alt, width, height, className }: any) => <img src={src} alt={alt} width={width} height={height} class={className} />
-import { useTheme } from "next-themes"
+import { useTheme } from "../../../lib/hooks/use-theme"
 import { X } from "lucide-react"
 import { useAtom } from "jotai"
 import { Button } from "../../../components/ui/button"
@@ -137,7 +137,7 @@ export function AgentsOnboardingDialog() {
                           >
                             <Image
                               src={
-                                resolvedTheme === "dark"
+                                resolvedTheme() === "dark"
                                   ? "/agents-onboarding-dark.webp"
                                   : "/agents-onboarding-light.webp"
                               }

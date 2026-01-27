@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from "react"
 import { useAtom, useAtomValue } from "jotai"
-import { useTheme } from "next-themes"
+import { useTheme } from "../../lib/hooks/use-theme"
 import { fullThemeDataAtom } from "@/lib/atoms"
 import { motion } from "motion/react"
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar"
@@ -99,7 +99,7 @@ export function TerminalSidebar({
 
   // Theme detection for terminal background
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
+  const isDark = resolvedTheme() === "dark"
 
   // Resolved hotkey for tooltip
   const toggleTerminalHotkey = useResolvedHotkeyDisplay("toggle-terminal")

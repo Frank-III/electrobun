@@ -20,7 +20,7 @@ import { atomWithStorage } from "jotai/utils"
 import { agentsFocusedDiffFileAtom, filteredDiffFilesAtom, viewedFilesAtomFamily, type ViewedFileState } from "../atoms"
 import { DiffModeEnum, DiffView, DiffFile } from "@git-diff-view/react"
 import "@git-diff-view/react/styles/diff-view-pure.css"
-import { useTheme } from "next-themes"
+import { useTheme } from "../../../lib/hooks/use-theme"
 import { toast } from "solid-sonner"
 import {
   AlertTriangle,
@@ -1075,7 +1075,7 @@ export const AgentDiffView = forwardRef<AgentDiffViewRef, AgentDiffViewProps>(
       }
     }, [chatId, sandboxId])
 
-    const isLight = isHydrated ? resolvedTheme !== "dark" : true
+    const isLight = isHydrated ? resolvedTheme() !== "dark" : true
 
     // Read filter for sub-chat specific file filtering
     const filteredDiffFiles = useAtomValue(filteredDiffFilesAtom)

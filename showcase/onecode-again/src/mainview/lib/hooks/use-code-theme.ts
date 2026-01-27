@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai"
-import { useTheme } from "next-themes"
+import { useTheme } from "./use-theme"
 import {
   vscodeCodeThemeLightAtom,
   vscodeCodeThemeDarkAtom,
@@ -26,5 +26,5 @@ export function useCodeTheme(): string {
   }
 
   // Fallback to legacy code-only theme selection
-  return resolvedTheme === "light" ? lightTheme : darkTheme
+  return resolvedTheme() === "light" ? lightTheme : darkTheme
 }

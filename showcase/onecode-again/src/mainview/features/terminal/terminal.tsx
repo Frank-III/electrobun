@@ -3,7 +3,7 @@ import type { Terminal as XTerm } from "xterm"
 import type { FitAddon } from "@xterm/addon-fit"
 import type { SearchAddon } from "@xterm/addon-search"
 import type { SerializeAddon } from "@xterm/addon-serialize"
-import { useTheme } from "next-themes"
+import { useTheme } from "../../lib/hooks/use-theme"
 import { useSetAtom, useAtomValue } from "jotai"
 import { toast } from "solid-sonner"
 import { trpc } from "@/lib/trpc"
@@ -51,7 +51,7 @@ export function Terminal({
 
   // Theme detection
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
+  const isDark = resolvedTheme() === "dark"
   
   // VS Code theme data (if a full theme is selected)
   const fullThemeData = useAtomValue(fullThemeDataAtom)

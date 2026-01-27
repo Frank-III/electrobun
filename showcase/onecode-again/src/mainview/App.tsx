@@ -1,6 +1,6 @@
 import { Provider as JotaiProvider, useAtomValue, useSetAtom } from "jotai"
-import { ThemeProvider, useTheme } from "next-themes"
-import { useEffect, useMemo } from "react"
+import { ColorModeProvider, ColorModeScript, useColorMode } from "@kobalte/core"
+import { createEffect, createMemo } from "solid-js"
 import { Toaster } from "./components/ui/sonner"
 import { TooltipProvider } from "./components/ui/tooltip"
 import { TRPCProvider } from "./contexts/TRPCProvider"
@@ -27,12 +27,12 @@ import { trpc } from "./lib/trpc"
  * Custom Toaster that adapts to theme
  */
 function ThemedToaster() {
-  const { resolvedTheme } = useTheme()
+  const { colorMode } = useColorMode()
 
   return (
     <Toaster
       position="bottom-right"
-      theme={resolvedTheme as "light" | "dark" | "system"}
+      theme={colorMode()}
       closeButton
     />
   )
@@ -55,7 +55,7 @@ function AppContent() {
   const { setActiveSubChat, addToOpenSubChats, setChatId } = useAgentSubChatStore()
 
   // Apply initial window params (chatId/subChatId) when opening via "Open in new window"
-  useEffect(() => {
+  createEffect(() => {
     const params = getInitialWindowParams()
     if (params.chatId) {
       console.log("[App] Opening chat from window params:", params.chatId, params.subChatId)
@@ -75,28 +75,28 @@ function AppContent() {
 
   // Migration: If user already completed Anthropic onboarding but has no billing method set,
   // automatically set it to "claude-subscription" (legacy users before billing method was added)
-  useEffect(() => {
+  createEffect(() => {
     if (!billingMethod && anthropicOnboardingCompleted) {
       setBillingMethod("claude-subscription")
     }
-  }, [billingMethod, anthropicOnboardingCompleted, setBillingMethod])
+  })
 
   // Auto-skip onboarding if user has existing CLI config (API key or proxy)
   // This allows users with ANTHROPIC_API_KEY to use the app without OAuth
-  useEffect(() => {
+  createEffect(() => {
     if (cliConfig?.hasConfig && !billingMethod) {
       console.log("[App] Detected existing CLI config, auto-completing onboarding")
       setBillingMethod("api-key")
       setApiKeyOnboardingCompleted(true)
     }
-  }, [cliConfig?.hasConfig, billingMethod, setBillingMethod, setApiKeyOnboardingCompleted])
+  })
 
   // Fetch projects to validate selectedProject exists
   const { data: projects, isLoading: isLoadingProjects } =
     trpc.projects.list.useQuery()
 
   // Validated project - only valid if exists in DB
-  const validatedProject = useMemo(() => {
+  const validatedProject = createMemo(() => {
     if (!selectedProject) return null
     // While loading, trust localStorage value to prevent flicker
     if (isLoadingProjects) return selectedProject
@@ -104,7 +104,7 @@ function AppContent() {
     if (!projects) return null
     const exists = projects.some((p) => p.id === selectedProject.id)
     return exists ? selectedProject : null
-  }, [selectedProject, projects, isLoadingProjects])
+  })
 
   // Determine which page to show:
   // 1. No billing method selected -> BillingMethodPage
@@ -127,7 +127,7 @@ function AppContent() {
     return <ApiKeyOnboardingPage />
   }
 
-  if (!validatedProject && !isLoadingProjects) {
+  if (!validatedProject() && !isLoadingProjects) {
     return <SelectRepoPage />
   }
 
@@ -136,7 +136,7 @@ function AppContent() {
 
 export function App() {
   // Initialize analytics on mount
-  useEffect(() => {
+  createEffect(() => {
     initAnalytics()
 
     // Sync analytics opt-out status to main process
@@ -172,8 +172,9 @@ export function App() {
 
   return (
     <WindowProvider>
-      <JotaiProvider store={appStore}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <ColorModeScript initialColorMode="system" />
+      <ColorModeProvider initialColorMode="system">
+        <JotaiProvider store={appStore}>
           <VSCodeThemeProvider>
             <TooltipProvider delayDuration={100}>
               <TRPCProvider>
@@ -187,8 +188,8 @@ export function App() {
               </TRPCProvider>
             </TooltipProvider>
           </VSCodeThemeProvider>
-        </ThemeProvider>
-      </JotaiProvider>
+        </JotaiProvider>
+      </ColorModeProvider>
     </WindowProvider>
   )
 }

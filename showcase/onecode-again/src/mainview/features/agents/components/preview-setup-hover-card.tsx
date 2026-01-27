@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useTheme } from "next-themes"
+import { useTheme } from "../../../lib/hooks/use-theme"
 // import Image from "next/image" // Desktop doesn't use next/image
 import {
   HoverCard,
@@ -56,7 +56,7 @@ export function PreviewSetupHoverCard({ children }: PreviewSetupHoverCardProps) 
                 {/* Desktop: use regular img tag instead of next/image */}
                 <img
                   src={
-                    resolvedTheme === "dark"
+                    resolvedTheme() === "dark"
                       ? "/agents-onboarding-dark.webp"
                       : "/agents-onboarding-light.webp"
                   }
@@ -91,4 +91,3 @@ export function PreviewSetupHoverCard({ children }: PreviewSetupHoverCardProps) 
     </HoverCard>
   )
 }
-

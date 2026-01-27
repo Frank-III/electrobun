@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useRef, useCallback } from "react"
-import { useTheme } from "next-themes"
+import { useTheme } from "../lib/hooks/use-theme"
 import { Copy, Check, Download, AlertTriangle, RotateCcw, Maximize2, X, ZoomIn, ZoomOut, RotateCcw as ResetZoom } from "lucide-react"
 import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch"
 import { cn } from "../lib/utils"
@@ -192,7 +192,7 @@ const MermaidBlockInner = memo(function MermaidBlockInner({
   code: string
 }) {
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
+  const isDark = resolvedTheme() === "dark"
   const [renderState, setRenderState] = useState<RenderState>(() => {
     // Check cache on initial render
     const cacheKey = `${code}-${isDark ? 'dark' : 'light'}`

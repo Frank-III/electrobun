@@ -1,4 +1,4 @@
-import { useTheme } from "next-themes"
+import { useTheme } from "../../../lib/hooks/use-theme"
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { IconSpinner } from "../../../icons"
 import { useAtom, useSetAtom } from "jotai"
@@ -246,7 +246,7 @@ export function AgentsAppearanceTab() {
         setNextTheme("system")
 
         // Apply the appropriate system theme
-        const isDark = resolvedTheme === "dark"
+        const isDark = resolvedTheme() === "dark"
         const systemTheme = isDark
           ? getBuiltinThemeById(systemDarkThemeId)
           : getBuiltinThemeById(systemLightThemeId)
@@ -268,15 +268,8 @@ export function AgentsAppearanceTab() {
         const cssVars = generateCSSVariables(theme.colors)
         applyCSSVariables(cssVars)
 
-        // Sync next-themes with theme type
+        // Sync color mode with theme type
         const themeType = getThemeTypeFromColors(theme.colors)
-        if (themeType === "dark") {
-          document.documentElement.classList.add("dark")
-          document.documentElement.classList.remove("light")
-        } else {
-          document.documentElement.classList.remove("dark")
-          document.documentElement.classList.add("light")
-        }
         setNextTheme(themeType)
       }
     },
@@ -309,7 +302,7 @@ export function AgentsAppearanceTab() {
     (themeId: string) => {
       setSystemLightThemeId(themeId)
       // If currently in light mode, apply the new theme
-      if (resolvedTheme === "light" && selectedThemeId === null) {
+      if (resolvedTheme() === "light" && selectedThemeId === null) {
         const theme = getBuiltinThemeById(themeId)
         if (theme) {
           const cssVars = generateCSSVariables(theme.colors)
@@ -325,7 +318,7 @@ export function AgentsAppearanceTab() {
     (themeId: string) => {
       setSystemDarkThemeId(themeId)
       // If currently in dark mode, apply the new theme
-      if (resolvedTheme === "dark" && selectedThemeId === null) {
+      if (resolvedTheme() === "dark" && selectedThemeId === null) {
         const theme = getBuiltinThemeById(themeId)
         if (theme) {
           const cssVars = generateCSSVariables(theme.colors)
@@ -349,7 +342,7 @@ export function AgentsAppearanceTab() {
   // Re-apply theme when system preference changes
   useEffect(() => {
     if (selectedThemeId === null && mounted) {
-      const isDark = resolvedTheme === "dark"
+      const isDark = resolvedTheme() === "dark"
       const systemTheme = isDark
         ? getBuiltinThemeById(systemDarkThemeId)
         : getBuiltinThemeById(systemLightThemeId)
@@ -412,7 +405,7 @@ export function AgentsAppearanceTab() {
                   <>
                     <ThemePreviewBox
                       theme={
-                        resolvedTheme === "dark"
+                        resolvedTheme() === "dark"
                           ? (systemDarkTheme ?? null)
                           : (systemLightTheme ?? null)
                       }
@@ -435,7 +428,7 @@ export function AgentsAppearanceTab() {
                 <div class="flex items-center gap-2">
                   <ThemePreviewBox
                     theme={
-                      resolvedTheme === "dark"
+                      resolvedTheme() === "dark"
                         ? (systemDarkTheme ?? null)
                         : (systemLightTheme ?? null)
                     }

@@ -41,7 +41,7 @@ body:has([data-agents-page]) [data-sonner-toast] {
 }
 
 /* Dark theme */
-.dark [data-agents-page] {
+[data-kb-theme="dark"] [data-agents-page] {
   /* Override muted to be brighter for better code block visibility */
   --muted: 0 0% 14%;
   /* ~#242424 - visible on dark backgrounds */
@@ -219,20 +219,20 @@ body:has([data-agents-page]) .canvas-dialog,
 }
 
 /* Dark mode ring for all dialogs */
-.dark body:has([data-agents-page]) [data-canvas-dialog],
-.dark [data-agents-page] [data-canvas-dialog],
-.dark body:has([data-agents-page]) .canvas-dialog,
-.dark [data-agents-page] .canvas-dialog {
+[data-kb-theme="dark"] body:has([data-agents-page]) [data-canvas-dialog],
+[data-kb-theme="dark"] [data-agents-page] [data-canvas-dialog],
+[data-kb-theme="dark"] body:has([data-agents-page]) .canvas-dialog,
+[data-kb-theme="dark"] [data-agents-page] .canvas-dialog {
   --tw-ring-color: rgb(38 38 38 / 0.8);
   /* neutral-800/80 */
 }
 
 /* Dark theme for agents portals - apply popover color */
-.dark body:has([data-agents-page]) [data-radix-portal],
-.dark body:has([data-agents-page]) [data-radix-popper-content-wrapper],
-.dark body:has([data-agents-page]) [role="dialog"],
-.dark [data-radix-portal] [role="dialog"],
-.dark .canvas-dialog {
+[data-kb-theme="dark"] body:has([data-agents-page]) [data-radix-portal],
+[data-kb-theme="dark"] body:has([data-agents-page]) [data-radix-popper-content-wrapper],
+[data-kb-theme="dark"] body:has([data-agents-page]) [role="dialog"],
+[data-kb-theme="dark"] [data-radix-portal] [role="dialog"],
+[data-kb-theme="dark"] .canvas-dialog {
   /* Apply popover color to dialogs and portals */
   --popover: 0 0% 9%;
   /* #171717 */

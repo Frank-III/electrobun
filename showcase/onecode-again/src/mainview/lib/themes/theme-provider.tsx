@@ -12,13 +12,12 @@
 import {
   createContext,
   useContext,
-  useEffect,
-  useMemo,
-  useCallback,
-  type ReactNode,
-} from "react"
+  createEffect,
+  createMemo,
+  type ParentProps,
+} from "solid-js"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
-import { useTheme } from "next-themes"
+import { useColorMode } from "@kobalte/core"
 import type { ITheme } from "xterm"
 
 import {
@@ -131,15 +130,11 @@ const DEFAULT_TERMINAL_THEME_LIGHT: ITheme = {
   brightWhite: "#fafafa",
 }
 
-interface VSCodeThemeProviderProps {
-  children: ReactNode
-}
-
 /**
  * VS Code Theme Provider Component
  */
-export function VSCodeThemeProvider({ children }: VSCodeThemeProviderProps) {
-  const { resolvedTheme, setTheme: setNextTheme } = useTheme()
+export function VSCodeThemeProvider(props: ParentProps) {
+  const { colorMode, setColorMode } = useColorMode()
   
   // Atoms
   const [selectedThemeId, setSelectedThemeId] = useAtom(selectedFullThemeIdAtom)
@@ -149,60 +144,53 @@ export function VSCodeThemeProvider({ children }: VSCodeThemeProviderProps) {
   const importedThemes = useAtomValue(importedThemesAtom)
 
   // Combine builtin and imported themes
-  const allThemes = useMemo(
+  const allThemes = createMemo(
     () => [...BUILTIN_THEMES, ...importedThemes],
-    [importedThemes],
   )
   
-  // Determine if we're in dark mode (from next-themes or theme type)
-  const isDark = useMemo(() => {
+  // Determine if we're in dark mode (from color mode or theme type)
+  const isDark = createMemo(() => {
     if (fullThemeData) {
       return fullThemeData.type === "dark"
     }
-    return resolvedTheme === "dark"
-  }, [fullThemeData, resolvedTheme])
+    return colorMode() === "dark"
+  })
   
   // Find the current theme by ID (considering system mode)
-  const currentTheme = useMemo(() => {
+  const currentTheme = createMemo(() => {
     if (selectedThemeId === null) {
       // System mode - use the appropriate theme based on system preference
-      const systemThemeId = resolvedTheme === "dark" ? systemDarkThemeId : systemLightThemeId
+      const systemThemeId = colorMode() === "dark" ? systemDarkThemeId : systemLightThemeId
       // First check in all themes (includes imported), then fallback to builtin
-      return allThemes.find((t) => t.id === systemThemeId) || getBuiltinThemeById(systemThemeId) || null
+      return allThemes().find((t) => t.id === systemThemeId) || getBuiltinThemeById(systemThemeId) || null
     }
-    return allThemes.find((t) => t.id === selectedThemeId) || null
-  }, [selectedThemeId, allThemes, resolvedTheme, systemLightThemeId, systemDarkThemeId])
+    return allThemes().find((t) => t.id === selectedThemeId) || null
+  })
   
   // Update fullThemeData when theme changes
-  useEffect(() => {
-    if (currentTheme) {
-      setFullThemeData(currentTheme)
+  createEffect(() => {
+    const theme = currentTheme()
+    if (theme) {
+      setFullThemeData(theme)
     } else {
       setFullThemeData(null)
     }
-  }, [currentTheme, setFullThemeData])
+  })
   
   // Apply CSS variables when theme changes
-  useEffect(() => {
+  createEffect(() => {
     if (fullThemeData?.colors) {
       // Generate and apply CSS variables
       const cssVars = generateCSSVariables(fullThemeData.colors)
       applyCSSVariables(cssVars)
       
-      // For system mode, let next-themes handle the class
+      // For system mode, let color mode follow system preference
       if (selectedThemeId === null) {
-        setNextTheme("system")
+        setColorMode("system")
       } else {
-        // Sync next-themes with the theme type
+        // Sync color mode with the theme type
         const themeType = getThemeTypeFromColors(fullThemeData.colors)
-        if (themeType === "dark") {
-          document.documentElement.classList.add("dark")
-          document.documentElement.classList.remove("light")
-        } else {
-          document.documentElement.classList.remove("dark")
-          document.documentElement.classList.add("light")
-        }
-        setNextTheme(themeType)
+        setColorMode(themeType)
       }
     } else {
       // Remove custom CSS variables when no theme is selected
@@ -213,19 +201,19 @@ export function VSCodeThemeProvider({ children }: VSCodeThemeProviderProps) {
       // Cleanup on unmount
       removeCSSVariables()
     }
-  }, [fullThemeData, selectedThemeId, setNextTheme])
+  })
   
   // Get terminal theme
-  const terminalTheme = useMemo((): ITheme => {
+  const terminalTheme = createMemo((): ITheme => {
     if (fullThemeData?.colors) {
       return extractTerminalTheme(fullThemeData.colors)
     }
     // Fallback to default themes
-    return isDark ? DEFAULT_TERMINAL_THEME_DARK : DEFAULT_TERMINAL_THEME_LIGHT
-  }, [fullThemeData, isDark])
+    return isDark() ? DEFAULT_TERMINAL_THEME_DARK : DEFAULT_TERMINAL_THEME_LIGHT
+  })
   
   // Get Shiki theme name for syntax highlighting
-  const shikiThemeName = useMemo(() => {
+  const shikiThemeName = createMemo(() => {
     if (fullThemeData) {
       // For builtin themes, use the ID directly (Shiki supports these)
       if (fullThemeData.source === "builtin") {
@@ -236,35 +224,27 @@ export function VSCodeThemeProvider({ children }: VSCodeThemeProviderProps) {
       return fullThemeData.type === "dark" ? "github-dark" : "github-light"
     }
     // Default based on system theme
-    return isDark ? "github-dark" : "github-light"
-  }, [fullThemeData, isDark])
+    return isDark() ? "github-dark" : "github-light"
+  })
   
   // Theme actions
-  const setThemeById = useCallback((id: string | null) => {
+  const setThemeById = (id: string | null) => {
     setSelectedThemeId(id)
-  }, [setSelectedThemeId])
+  }
   
-  const contextValue = useMemo((): ThemeContextValue => ({
+  const contextValue = createMemo((): ThemeContextValue => ({
     currentTheme: fullThemeData,
     currentThemeId: selectedThemeId,
-    isDark,
-    terminalTheme,
-    allThemes,
+    isDark: isDark(),
+    terminalTheme: terminalTheme(),
+    allThemes: allThemes(),
     setThemeById,
-    shikiThemeName,
-  }), [
-    fullThemeData,
-    selectedThemeId,
-    isDark,
-    terminalTheme,
-    allThemes,
-    setThemeById,
-    shikiThemeName,
-  ])
+    shikiThemeName: shikiThemeName(),
+  }))
   
   return (
     <ThemeContext.Provider value={contextValue}>
-      {children}
+      {props.children}
     </ThemeContext.Provider>
   )
 }

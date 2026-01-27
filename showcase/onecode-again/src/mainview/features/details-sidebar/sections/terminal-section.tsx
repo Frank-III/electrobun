@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom, useAtomValue } from "jotai"
-import { useTheme } from "next-themes"
+import { useTheme } from "../../../lib/hooks/use-theme"
 import { fullThemeDataAtom } from "@/lib/atoms"
 import { motion } from "motion/react"
 import { Button } from "@/components/ui/button"
@@ -66,7 +66,7 @@ export function TerminalSection({
 
   // Theme detection for terminal background
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
+  const isDark = resolvedTheme() === "dark"
   const fullThemeData = useAtomValue(fullThemeDataAtom)
 
   const terminalBg = useMemo(() => {

@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom, useAtomValue } from "jotai"
-import { useTheme } from "next-themes"
+import { useTheme } from "../../../lib/hooks/use-theme"
 import { fullThemeDataAtom } from "@/lib/atoms"
 import { motion } from "motion/react"
 import { ArrowUpRight } from "lucide-react"
@@ -73,7 +73,7 @@ export const TerminalWidget = memo(function TerminalWidget({
 
   // Theme detection for terminal background
   const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
+  const isDark = resolvedTheme() === "dark"
   const fullThemeData = useAtomValue(fullThemeDataAtom)
 
   // Resolved hotkey for tooltip
