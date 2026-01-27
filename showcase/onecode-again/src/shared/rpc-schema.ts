@@ -14,6 +14,11 @@ export interface AppRPC {
     requests: TerminalRequests & {
       ping: { params: { label: string }; response: { ok: true; reply: string } };
       openExternal: { params: { url: string }; response: void };
+      openInFinder: { params: { path: string }; response: { success: true } };
+      openFileInEditor: {
+        params: { path: string; cwd?: string };
+        response: { success: true; editor: string };
+      };
       openFileDialog: {
         params: {
           directory?: boolean;

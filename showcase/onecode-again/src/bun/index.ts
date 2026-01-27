@@ -1,5 +1,6 @@
 import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import type { AppRPC } from "../shared/rpc-schema";
+import { createExternalHandlers } from "./external";
 import { createFileHandlers } from "./files";
 import { createTerminalHandlers, destroyAll } from "./terminal-manager";
 
@@ -14,6 +15,7 @@ const terminalHandlers = createTerminalHandlers(
 );
 
 const fileHandlers = createFileHandlers();
+const externalHandlers = createExternalHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
   handlers: {
@@ -22,6 +24,8 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       openExternal: ({ url }) => {
         Utils.openExternal(url);
       },
+      openInFinder: externalHandlers.openInFinder,
+      openFileInEditor: externalHandlers.openFileInEditor,
       openFileDialog: async ({ directory, multiple }) => {
         const paths = await Utils.openFileDialog({
           directory: directory ?? false,
