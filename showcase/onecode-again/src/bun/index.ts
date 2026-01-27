@@ -5,6 +5,7 @@ import { createClaudeSettingsHandlers } from "./claude-settings";
 import { parseLaunchDirectory } from "./cli";
 import { createCommandsHandlers } from "./commands";
 import { initDatabase } from "./db";
+import { createDebugHandlers } from "./debug";
 import { createExternalHandlers } from "./external";
 import { createFileHandlers } from "./files";
 import { createOllamaHandlers } from "./ollama";
@@ -33,6 +34,7 @@ const skillsHandlers = createSkillsHandlers();
 const agentsHandlers = createAgentsHandlers();
 const claudeSettingsHandlers = createClaudeSettingsHandlers();
 const projectsHandlers = createProjectsHandlers();
+const debugHandlers = createDebugHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
   handlers: {
@@ -112,6 +114,14 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       projectsCloneFromGitHub: projectsHandlers.projectsCloneFromGitHub,
       projectsLocateAndAdd: projectsHandlers.projectsLocateAndAdd,
       projectsPickCloneDestination: projectsHandlers.projectsPickCloneDestination,
+      debugGetSystemInfo: debugHandlers.debugGetSystemInfo,
+      debugGetDbStats: debugHandlers.debugGetDbStats,
+      debugClearChats: debugHandlers.debugClearChats,
+      debugClearAllData: debugHandlers.debugClearAllData,
+      debugLogout: debugHandlers.debugLogout,
+      debugOpenUserDataFolder: debugHandlers.debugOpenUserDataFolder,
+      debugGetOfflineSimulation: debugHandlers.debugGetOfflineSimulation,
+      debugSetOfflineSimulation: debugHandlers.debugSetOfflineSimulation,
     },
     messages: {
       "*": (name, payload) => {

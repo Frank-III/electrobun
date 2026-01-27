@@ -61,6 +61,15 @@ export type Project = {
   gitRepo?: string | null;
 };
 
+export type SystemInfo = {
+  version: string;
+  platform: string;
+  arch: string;
+  isDev: boolean;
+  userDataPath: string;
+  protocolRegistered: boolean;
+};
+
 export interface AppRPC {
   bun: RPCSchema<{
     requests: TerminalRequests & {
@@ -176,6 +185,14 @@ export interface AppRPC {
           | { success: true; targetPath: string }
           | { success: false; reason: "canceled" };
       };
+      debugGetSystemInfo: { params: {}; response: SystemInfo };
+      debugGetDbStats: { params: {}; response: { projects: number; chats: number; subChats: number } };
+      debugClearChats: { params: {}; response: { success: true } };
+      debugClearAllData: { params: {}; response: { success: true } };
+      debugLogout: { params: {}; response: { success: true } };
+      debugOpenUserDataFolder: { params: {}; response: { success: true } };
+      debugGetOfflineSimulation: { params: {}; response: { enabled: boolean } };
+      debugSetOfflineSimulation: { params: { enabled: boolean }; response: { success: true; enabled: boolean } };
     };
     messages: {};
   }>;
