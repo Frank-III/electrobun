@@ -247,6 +247,10 @@ export interface AppRPC {
         params: { name: string; source: "user" | "project"; cwd?: string };
         response: { deleted: true };
       };
+      claudeCodeHasExistingCliConfig: {
+        params: {};
+        response: { hasConfig: boolean; hasApiKey: boolean; baseUrl: string | null };
+      };
       claudeSettingsGetIncludeCoAuthoredBy: { params: {}; response: boolean };
       claudeSettingsSetIncludeCoAuthoredBy: { params: { enabled: boolean }; response: { success: true } };
       projectsGetLaunchDirectory: { params: {}; response: string | null };
