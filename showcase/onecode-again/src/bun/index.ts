@@ -1,5 +1,6 @@
 import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import type { AppRPC } from "../shared/rpc-schema";
+import { createCommandsHandlers } from "./commands";
 import { createExternalHandlers } from "./external";
 import { createFileHandlers } from "./files";
 import { createTerminalHandlers, destroyAll } from "./terminal-manager";
@@ -16,6 +17,7 @@ const terminalHandlers = createTerminalHandlers(
 
 const fileHandlers = createFileHandlers();
 const externalHandlers = createExternalHandlers();
+const commandsHandlers = createCommandsHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
   handlers: {
@@ -67,6 +69,8 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       filesClearCache: fileHandlers.filesClearCache,
       filesRead: fileHandlers.filesRead,
       filesWritePastedText: fileHandlers.filesWritePastedText,
+      commandsList: commandsHandlers.commandsList,
+      commandsGetContent: commandsHandlers.commandsGetContent,
     },
     messages: {
       "*": (name, payload) => {

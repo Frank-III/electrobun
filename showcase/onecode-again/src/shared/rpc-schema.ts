@@ -9,6 +9,14 @@ export type FileEntryResult = {
   type: "file" | "folder";
 };
 
+export type FileCommand = {
+  name: string;
+  description: string;
+  argumentHint?: string;
+  source: "user" | "project";
+  path: string;
+};
+
 export interface AppRPC {
   bun: RPCSchema<{
     requests: TerminalRequests & {
@@ -42,6 +50,8 @@ export interface AppRPC {
         params: { subChatId: string; text: string; filename?: string };
         response: { filePath: string; filename: string; size: number };
       };
+      commandsList: { params?: { projectPath?: string }; response: FileCommand[] };
+      commandsGetContent: { params: { path: string }; response: { content: string } };
     };
     messages: {};
   }>;
