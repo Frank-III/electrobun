@@ -428,6 +428,8 @@ export interface AppRPC {
       changesDeleteUntracked: { params: { worktreePath: string; filePath: string }; response: { success: true } };
       changesDiscardMultipleChanges: { params: { worktreePath: string; filePaths: string[] }; response: { success: true } };
       changesDeleteMultipleUntracked: { params: { worktreePath: string; filePaths: string[] }; response: { success: true } };
+      gitWatcherSubscribe: { params: { worktreePath: string }; response: { success: true } };
+      gitWatcherUnsubscribe: { params: { worktreePath: string }; response: { success: true } };
       anthropicAccountsList: { params: {}; response: AnthropicAccount[] };
       anthropicAccountsGetActive: { params: {}; response: AnthropicAccount | null };
       anthropicAccountsGetActiveToken: { params: {}; response: { token: string | null; error: string | null } };
@@ -462,6 +464,7 @@ export interface AppRPC {
     requests: {};
     messages: TerminalMessages & {
       log: { level: "info" | "error"; message: string };
+      gitStatusChanged: { worktreePath: string; changes: Array<{ path: string; type: "add" | "change" | "unlink" }> };
     };
   }>;
 }

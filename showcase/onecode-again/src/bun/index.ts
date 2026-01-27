@@ -12,6 +12,7 @@ import { initDatabase } from "./db";
 import { createDebugHandlers } from "./debug";
 import { createExternalHandlers } from "./external";
 import { createFileHandlers } from "./files";
+import { createGitWatcherHandlers } from "./git-watcher-handlers";
 import { createOllamaHandlers } from "./ollama";
 import { createProjectsHandlers } from "./projects";
 import { createSkillsHandlers } from "./skills";
@@ -46,6 +47,12 @@ const debugHandlers = createDebugHandlers();
 const worktreeConfigHandlers = createWorktreeConfigHandlers();
 const chatsHandlers = createChatsHandlers();
 const changesHandlers = createChangesHandlers();
+const gitWatcherHandlers = createGitWatcherHandlers((event) => {
+  sendToWebview?.send?.gitStatusChanged({
+    worktreePath: event.worktreePath,
+    changes: event.changes,
+  });
+});
 const voiceHandlers = createVoiceHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
@@ -195,6 +202,8 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       changesDeleteUntracked: changesHandlers.changesDeleteUntracked,
       changesDiscardMultipleChanges: changesHandlers.changesDiscardMultipleChanges,
       changesDeleteMultipleUntracked: changesHandlers.changesDeleteMultipleUntracked,
+      gitWatcherSubscribe: gitWatcherHandlers.gitWatcherSubscribe,
+      gitWatcherUnsubscribe: gitWatcherHandlers.gitWatcherUnsubscribe,
       anthropicAccountsList: anthropicAccountsHandlers.anthropicAccountsList,
       anthropicAccountsGetActive: anthropicAccountsHandlers.anthropicAccountsGetActive,
       anthropicAccountsGetActiveToken: anthropicAccountsHandlers.anthropicAccountsGetActiveToken,
