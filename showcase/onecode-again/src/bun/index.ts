@@ -12,6 +12,7 @@ import { createOllamaHandlers } from "./ollama";
 import { createProjectsHandlers } from "./projects";
 import { createSkillsHandlers } from "./skills";
 import { createTerminalHandlers, destroyAll } from "./terminal-manager";
+import { createWorktreeConfigHandlers } from "./worktree-config-handlers";
 
 let mainWindow: BrowserWindow | null = null;
 let sendToWebview: BrowserView["rpc"] | null = null;
@@ -35,6 +36,7 @@ const agentsHandlers = createAgentsHandlers();
 const claudeSettingsHandlers = createClaudeSettingsHandlers();
 const projectsHandlers = createProjectsHandlers();
 const debugHandlers = createDebugHandlers();
+const worktreeConfigHandlers = createWorktreeConfigHandlers();
 
 const rpc = BrowserView.defineRPC<AppRPC>({
   handlers: {
@@ -122,6 +124,9 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       debugOpenUserDataFolder: debugHandlers.debugOpenUserDataFolder,
       debugGetOfflineSimulation: debugHandlers.debugGetOfflineSimulation,
       debugSetOfflineSimulation: debugHandlers.debugSetOfflineSimulation,
+      worktreeConfigGet: worktreeConfigHandlers.worktreeConfigGet,
+      worktreeConfigSave: worktreeConfigHandlers.worktreeConfigSave,
+      worktreeConfigGetAvailablePaths: worktreeConfigHandlers.worktreeConfigGetAvailablePaths,
     },
     messages: {
       "*": (name, payload) => {

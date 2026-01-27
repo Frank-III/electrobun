@@ -70,6 +70,27 @@ export type SystemInfo = {
   protocolRegistered: boolean;
 };
 
+export type WorktreeConfig = {
+  "setup-worktree-unix"?: string[] | string;
+  "setup-worktree-windows"?: string[] | string;
+  "setup-worktree"?: string[] | string;
+};
+
+export type WorktreeConfigSource = "custom" | "cursor" | "1code" | null;
+
+export type WorktreeConfigAvailablePaths = {
+  cursor: { exists: boolean; path: string };
+  onecode: { exists: boolean; path: string };
+};
+
+export type WorktreeConfigResponse = {
+  config: WorktreeConfig | null;
+  path: string | null;
+  source: WorktreeConfigSource;
+  available: WorktreeConfigAvailablePaths;
+  projectPath: string;
+};
+
 export interface AppRPC {
   bun: RPCSchema<{
     requests: TerminalRequests & {
@@ -193,6 +214,12 @@ export interface AppRPC {
       debugOpenUserDataFolder: { params: {}; response: { success: true } };
       debugGetOfflineSimulation: { params: {}; response: { enabled: boolean } };
       debugSetOfflineSimulation: { params: { enabled: boolean }; response: { success: true; enabled: boolean } };
+      worktreeConfigGet: { params: { projectId: string }; response: WorktreeConfigResponse };
+      worktreeConfigSave: {
+        params: { projectId: string; config: WorktreeConfig; target?: string };
+        response: { success: boolean; path: string; error?: string };
+      };
+      worktreeConfigGetAvailablePaths: { params: { projectId: string }; response: WorktreeConfigAvailablePaths };
     };
     messages: {};
   }>;
