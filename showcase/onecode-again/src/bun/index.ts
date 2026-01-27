@@ -1,6 +1,8 @@
 import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import type { AppRPC } from "../shared/rpc-schema";
 import { createAgentsHandlers } from "./agents";
+import { createAnthropicAccountsHandlers } from "./anthropic-accounts";
+import { createClaudeCodeHandlers } from "./claude-code";
 import { createClaudeSettingsHandlers } from "./claude-settings";
 import { createChatsHandlers } from "./chats";
 import { parseLaunchDirectory } from "./cli";
@@ -34,6 +36,8 @@ const commandsHandlers = createCommandsHandlers();
 const ollamaHandlers = createOllamaHandlers();
 const skillsHandlers = createSkillsHandlers();
 const agentsHandlers = createAgentsHandlers();
+const anthropicAccountsHandlers = createAnthropicAccountsHandlers();
+const claudeCodeHandlers = createClaudeCodeHandlers();
 const claudeSettingsHandlers = createClaudeSettingsHandlers();
 const projectsHandlers = createProjectsHandlers();
 const debugHandlers = createDebugHandlers();
@@ -107,6 +111,7 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       agentsDelete: agentsHandlers.agentsDelete,
       claudeSettingsGetIncludeCoAuthoredBy: claudeSettingsHandlers.claudeSettingsGetIncludeCoAuthoredBy,
       claudeSettingsSetIncludeCoAuthoredBy: claudeSettingsHandlers.claudeSettingsSetIncludeCoAuthoredBy,
+      claudeCodeHasExistingCliConfig: claudeCodeHandlers.claudeCodeHasExistingCliConfig,
       projectsGetLaunchDirectory: projectsHandlers.projectsGetLaunchDirectory,
       projectsList: projectsHandlers.projectsList,
       projectsGet: projectsHandlers.projectsGet,
@@ -158,6 +163,15 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       chatsGetWorktreeStatus: chatsHandlers.chatsGetWorktreeStatus,
       chatsExportChat: chatsHandlers.chatsExportChat,
       chatsGetChatStats: chatsHandlers.chatsGetChatStats,
+      anthropicAccountsList: anthropicAccountsHandlers.anthropicAccountsList,
+      anthropicAccountsGetActive: anthropicAccountsHandlers.anthropicAccountsGetActive,
+      anthropicAccountsGetActiveToken: anthropicAccountsHandlers.anthropicAccountsGetActiveToken,
+      anthropicAccountsSetActive: anthropicAccountsHandlers.anthropicAccountsSetActive,
+      anthropicAccountsAdd: anthropicAccountsHandlers.anthropicAccountsAdd,
+      anthropicAccountsRename: anthropicAccountsHandlers.anthropicAccountsRename,
+      anthropicAccountsRemove: anthropicAccountsHandlers.anthropicAccountsRemove,
+      anthropicAccountsHasAccounts: anthropicAccountsHandlers.anthropicAccountsHasAccounts,
+      anthropicAccountsMigrateLegacy: anthropicAccountsHandlers.anthropicAccountsMigrateLegacy,
     },
     messages: {
       "*": (name, payload) => {

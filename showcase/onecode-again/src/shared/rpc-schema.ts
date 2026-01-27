@@ -92,6 +92,14 @@ export type ChatWithSubChats = Chat & {
   project: Project | null;
 };
 
+export type AnthropicAccount = {
+  id: string;
+  email: string | null;
+  displayName: string;
+  connectedAt: string | null;
+  lastUsedAt?: string | null;
+};
+
 export type SystemInfo = {
   version: string;
   platform: string;
@@ -329,6 +337,23 @@ export interface AppRPC {
           totalOutputTokens: number;
           subChatCount: number;
         };
+      };
+      anthropicAccountsList: { params: {}; response: AnthropicAccount[] };
+      anthropicAccountsGetActive: { params: {}; response: AnthropicAccount | null };
+      anthropicAccountsGetActiveToken: { params: {}; response: { token: string | null; error: string | null } };
+      anthropicAccountsSetActive: { params: { accountId: string }; response: { success: true } };
+      anthropicAccountsAdd: {
+        params: { oauthToken: string; email?: string; displayName?: string };
+        response: { id: string; success: true };
+      };
+      anthropicAccountsRename: { params: { accountId: string; displayName: string }; response: { success: true } };
+      anthropicAccountsRemove: { params: { accountId: string }; response: { success: true } };
+      anthropicAccountsHasAccounts: { params: {}; response: { hasAccounts: boolean } };
+      anthropicAccountsMigrateLegacy: {
+        params: {};
+        response:
+          | { migrated: true; accountId: string }
+          | { migrated: false; reason: "accounts_exist" | "no_legacy" };
       };
     };
     messages: {};
