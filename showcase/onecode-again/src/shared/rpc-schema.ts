@@ -277,6 +277,8 @@ export interface AppRPC {
           >;
           mode?: "plan" | "agent";
           useWorktree?: boolean;
+          baseBranch?: string;
+          branchType?: "local" | "remote";
         };
         response: Chat & { subChats: SubChat[] };
       };
@@ -291,6 +293,10 @@ export interface AppRPC {
       };
       chatsCreateSubChat: { params: { chatId: string; name?: string; mode?: "plan" | "agent" }; response: SubChat };
       chatsUpdateSubChatMessages: { params: { id: string; messages: string }; response: SubChat };
+      chatsRollbackToMessage: {
+        params: { subChatId: string; sdkMessageUuid: string };
+        response: { success: boolean; error?: string; messages?: any[] };
+      };
       chatsUpdateSubChatSession: { params: { id: string; sessionId: string | null }; response: SubChat };
       chatsUpdateSubChatMode: { params: { id: string; mode: "plan" | "agent" }; response: SubChat };
       chatsRenameSubChat: { params: { id: string; name: string }; response: SubChat };

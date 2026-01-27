@@ -148,6 +148,7 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       chatsGetSubChat: chatsHandlers.chatsGetSubChat,
       chatsCreateSubChat: chatsHandlers.chatsCreateSubChat,
       chatsUpdateSubChatMessages: chatsHandlers.chatsUpdateSubChatMessages,
+      chatsRollbackToMessage: chatsHandlers.chatsRollbackToMessage,
       chatsUpdateSubChatSession: chatsHandlers.chatsUpdateSubChatSession,
       chatsUpdateSubChatMode: chatsHandlers.chatsUpdateSubChatMode,
       chatsRenameSubChat: chatsHandlers.chatsRenameSubChat,

@@ -1,5 +1,21 @@
+import { stat } from "fs/promises";
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { join } from "path";
 import { chats, getDatabase, projects, subChats } from "./db";
+import { splitUnifiedDiffByFile } from "./git-diff";
+import {
+  createWorktreeForChat,
+  getCurrentBranch,
+  getDefaultBranch,
+  hasUpstream,
+  getWorktreeDiff,
+  getWorktreeStatus,
+  removeWorktree,
+  sanitizeProjectName,
+} from "./git-worktree";
+import { fetchGitHubPRStatus } from "./github";
+import { applyRollbackStash } from "./git-stash";
+import { execWithShellEnv } from "./shell-env";
 
 function getFallbackName(userMessage: string): string {
   const trimmed = userMessage.trim();
@@ -67,6 +83,8 @@ export function createChatsHandlers() {
       initialMessageParts,
       mode = "agent",
       useWorktree = true,
+      baseBranch,
+      branchType,
     }: {
       projectId: string;
       name?: string;
@@ -81,6 +99,8 @@ export function createChatsHandlers() {
       >;
       mode?: "plan" | "agent";
       useWorktree?: boolean;
+      baseBranch?: string;
+      branchType?: "local" | "remote";
     }) => {
       const db = await getDatabase();
       const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
@@ -121,19 +141,50 @@ export function createChatsHandlers() {
         .returning()
         .get();
 
-      const worktreePath = project.path;
-      db.update(chats)
-        .set({ worktreePath })
-        .where(eq(chats.id, chat.id))
-        .run();
+      let worktreePath = project.path;
+      let worktreeBranch: string | null = null;
+      let worktreeBaseBranch: string | null = null;
+
+      if (useWorktree) {
+        const result = await createWorktreeForChat(
+          project.path,
+          sanitizeProjectName(project.name),
+          chat.id,
+          baseBranch,
+          branchType,
+        );
+
+        if (result.success && result.worktreePath) {
+          worktreePath = result.worktreePath;
+          worktreeBranch = result.branch ?? null;
+          worktreeBaseBranch = result.baseBranch ?? null;
+          db.update(chats)
+            .set({
+              worktreePath,
+              branch: worktreeBranch,
+              baseBranch: worktreeBaseBranch,
+            })
+            .where(eq(chats.id, chat.id))
+            .run();
+        } else {
+          db.update(chats)
+            .set({ worktreePath: project.path })
+            .where(eq(chats.id, chat.id))
+            .run();
+        }
+      } else {
+        db.update(chats)
+          .set({ worktreePath: project.path })
+          .where(eq(chats.id, chat.id))
+          .run();
+      }
 
       return {
         ...chat,
         worktreePath,
-        branch: null,
-        baseBranch: null,
+        branch: worktreeBranch,
+        baseBranch: worktreeBaseBranch,
         subChats: [subChat],
-        useWorktree,
       };
     },
 
@@ -147,14 +198,34 @@ export function createChatsHandlers() {
         .get();
     },
 
-    chatsArchive: async ({ id }: { id: string; deleteWorktree?: boolean }) => {
+    chatsArchive: async ({ id, deleteWorktree }: { id: string; deleteWorktree?: boolean }) => {
       const db = await getDatabase();
-      return db
+      const chat = db.select().from(chats).where(eq(chats.id, id)).get();
+
+      const result = db
         .update(chats)
         .set({ archivedAt: new Date() })
         .where(eq(chats.id, id))
         .returning()
         .get();
+
+      if (deleteWorktree && chat && chat.worktreePath && chat.branch) {
+        const project = db.select().from(projects).where(eq(projects.id, chat.projectId)).get();
+        if (project) {
+          removeWorktree(project.path, chat.worktreePath)
+            .then((worktreeResult) => {
+              if (worktreeResult.success) {
+                db.update(chats)
+                  .set({ worktreePath: null })
+                  .where(eq(chats.id, id))
+                  .run();
+              }
+            })
+            .catch(() => {});
+        }
+      }
+
+      return result;
     },
 
     chatsArchiveBatch: async ({ chatIds }: { chatIds: string[] }) => {
@@ -180,6 +251,13 @@ export function createChatsHandlers() {
 
     chatsDelete: async ({ id }: { id: string }) => {
       const db = await getDatabase();
+      const chat = db.select().from(chats).where(eq(chats.id, id)).get();
+      if (chat?.worktreePath && chat.branch) {
+        const project = db.select().from(projects).where(eq(projects.id, chat.projectId)).get();
+        if (project) {
+          await removeWorktree(project.path, chat.worktreePath);
+        }
+      }
       return db.delete(chats).where(eq(chats.id, id)).returning().get();
     },
 
@@ -275,21 +353,121 @@ export function createChatsHandlers() {
     },
 
     chatsGetDiff: async ({ chatId }: { chatId: string }) => {
-      return { diff: null, error: "Diff unavailable in Bun backend" };
+      const db = await getDatabase();
+      const chat = db.select().from(chats).where(eq(chats.id, chatId)).get();
+
+      if (!chat?.worktreePath) {
+        return { diff: null, error: "No worktree path" };
+      }
+
+      const result = await getWorktreeDiff(chat.worktreePath, chat.baseBranch ?? undefined);
+      if (!result.success) {
+        return { diff: null, error: result.error };
+      }
+
+      return { diff: result.diff || "" };
     },
 
     chatsGetParsedDiff: async ({ chatId }: { chatId: string }) => {
+      const db = await getDatabase();
+      const chat = db.select().from(chats).where(eq(chats.id, chatId)).get();
+
+      if (!chat?.worktreePath) {
+        return {
+          files: [],
+          totalAdditions: 0,
+          totalDeletions: 0,
+          fileContents: {},
+          error: "No worktree path",
+        };
+      }
+
+      const result = await getWorktreeDiff(chat.worktreePath, chat.baseBranch ?? undefined, {
+        onlyUncommitted: true,
+      });
+
+      if (!result.success) {
+        return {
+          files: [],
+          totalAdditions: 0,
+          totalDeletions: 0,
+          fileContents: {},
+          error: result.error,
+        };
+      }
+
+      const diffText = result.diff || "";
+      const files = splitUnifiedDiffByFile(diffText);
+      const totalAdditions = files.reduce((sum, file) => sum + file.additions, 0);
+      const totalDeletions = files.reduce((sum, file) => sum + file.deletions, 0);
+
+      const MAX_PREFETCH = 20;
+      const MAX_FILE_SIZE = 2 * 1024 * 1024;
+
+      const filesToFetch = files
+        .filter((file) => !file.isBinary && !file.isDeletedFile)
+        .slice(0, MAX_PREFETCH)
+        .map((file) => ({
+          key: file.key,
+          filePath: file.newPath !== "/dev/null" ? file.newPath : file.oldPath,
+        }))
+        .filter((file) => file.filePath && file.filePath !== "/dev/null");
+
+      const fileContents: Record<string, string> = {};
+
+      await Promise.all(
+        filesToFetch.map(async ({ key, filePath }) => {
+          try {
+            const fullPath = join(chat.worktreePath!, filePath);
+            const stats = await stat(fullPath);
+            if (stats.size > MAX_FILE_SIZE) return;
+
+            const file = Bun.file(fullPath);
+            const buffer = await file.arrayBuffer();
+            const view = new Uint8Array(buffer);
+            const checkLength = Math.min(view.length, 8192);
+            for (let i = 0; i < checkLength; i += 1) {
+              if (view[i] === 0) return;
+            }
+
+            fileContents[key] = new TextDecoder().decode(view);
+          } catch {
+            // ignore
+          }
+        }),
+      );
+
       return {
-        files: [],
-        totalAdditions: 0,
-        totalDeletions: 0,
-        fileContents: {},
-        error: "Diff parsing unavailable in Bun backend",
+        files,
+        totalAdditions,
+        totalDeletions,
+        fileContents,
       };
     },
 
     chatsGetPrContext: async ({ chatId }: { chatId: string }) => {
-      return null;
+      const db = await getDatabase();
+      const chat = db.select().from(chats).where(eq(chats.id, chatId)).get();
+
+      if (!chat?.worktreePath) {
+        return null;
+      }
+
+      try {
+        const status = await getWorktreeStatus(chat.worktreePath);
+        const currentBranch = chat.branch || (await getCurrentBranch(chat.worktreePath));
+        const baseBranch = chat.baseBranch || (await getDefaultBranch(chat.worktreePath));
+        const upstream = await hasUpstream(chat.worktreePath);
+
+        return {
+          branch: currentBranch || "unknown",
+          baseBranch: baseBranch || "main",
+          uncommittedCount: status?.uncommittedCount ?? 0,
+          hasUpstream: upstream,
+        };
+      } catch {
+        return null;
+      }
     },
 
     chatsUpdatePrInfo: async ({ chatId, prUrl, prNumber }: { chatId: string; prUrl: string; prNumber: number }) => {
@@ -303,11 +481,64 @@ export function createChatsHandlers() {
     },
 
     chatsGetPrStatus: async ({ chatId }: { chatId: string }) => {
-      return null;
+      const db = await getDatabase();
+      const chat = db.select().from(chats).where(eq(chats.id, chatId)).get();
+      if (!chat?.worktreePath) {
+        return null;
+      }
+      return await fetchGitHubPRStatus(chat.worktreePath);
     },
 
     chatsMergePr: async ({ chatId, method }: { chatId: string; method?: "merge" | "squash" | "rebase" }) => {
-      return { success: false as const, error: "PR merge unavailable in Bun backend" };
+      const db = await getDatabase();
+      const chat = db.select().from(chats).where(eq(chats.id, chatId)).get();
+
+      if (!chat?.worktreePath || !chat?.prNumber) {
+        return { success: false as const, error: "No PR to merge" };
+      }
+
+      const prStatus = await fetchGitHubPRStatus(chat.worktreePath);
+      if (prStatus?.pr?.mergeable === "CONFLICTING") {
+        return {
+          success: false as const,
+          error:
+            "MERGE_CONFLICT: This PR has merge conflicts with the base branch. Please sync your branch with the latest changes from main to resolve conflicts.",
+        };
+      }
+
+      try {
+        const result = await execWithShellEnv(
+          "gh",
+          [
+            "pr",
+            "merge",
+            String(chat.prNumber),
+            `--${method || "squash"}`,
+            "--delete-branch",
+          ],
+          { cwd: chat.worktreePath },
+        );
+
+        if (result.code !== 0) {
+          const errorMsg = (result.stderr || result.stdout || "Failed to merge PR").trim();
+          const lower = errorMsg.toLowerCase();
+          if (lower.includes("not mergeable") || lower.includes("merge conflict") || lower.includes("conflicting")) {
+            return {
+              success: false as const,
+              error:
+                "MERGE_CONFLICT: This PR has merge conflicts with the base branch. Please sync your branch with the latest changes from main to resolve conflicts.",
+            };
+          }
+          return { success: false as const, error: errorMsg };
+        }
+
+        return { success: true as const };
+      } catch (error) {
+        return {
+          success: false as const,
+          error: error instanceof Error ? error.message : "Failed to merge PR",
+        };
+      }
     },
 
     chatsGetFileStats: async ({
@@ -479,7 +710,15 @@ export function createChatsHandlers() {
     },
 
     chatsGetWorktreeStatus: async ({ chatId }: { chatId: string }) => {
-      return { hasWorktree: false, uncommittedCount: 0 };
+      const db = await getDatabase();
+      const chat = db.select().from(chats).where(eq(chats.id, chatId)).get();
+
+      if (!chat?.worktreePath || !chat.branch) {
+        return { hasWorktree: false, uncommittedCount: 0 };
+      }
+
+      const status = await getWorktreeStatus(chat.worktreePath);
+      return { hasWorktree: true, uncommittedCount: status?.uncommittedCount ?? 0 };
     },
 
     chatsExportChat: async ({
@@ -738,3 +977,56 @@ export function createChatsHandlers() {
     },
   };
 }
+    chatsRollbackToMessage: async ({ subChatId, sdkMessageUuid }: { subChatId: string; sdkMessageUuid: string }) => {
+      const db = await getDatabase();
+
+      const subChat = db.select().from(subChats).where(eq(subChats.id, subChatId)).get();
+      if (!subChat) {
+        return { success: false as const, error: "Sub-chat not found" };
+      }
+
+      let messages: any[];
+      try {
+        messages = JSON.parse(subChat.messages || "[]");
+      } catch {
+        return { success: false as const, error: "Invalid message history" };
+      }
+
+      const targetIndex = messages.findIndex(
+        (msg: any) => msg?.metadata?.sdkMessageUuid === sdkMessageUuid,
+      );
+
+      if (targetIndex === -1) {
+        return { success: false as const, error: "Message not found" };
+      }
+
+      const chat = db.select().from(chats).where(eq(chats.id, subChat.chatId)).get();
+      if (chat?.worktreePath) {
+        const rollbackOk = await applyRollbackStash(chat.worktreePath, sdkMessageUuid);
+        if (!rollbackOk) {
+          return { success: false as const, error: "Git rollback failed" };
+        }
+      }
+
+      let truncatedMessages = messages.slice(0, targetIndex + 1);
+      truncatedMessages = truncatedMessages.map((msg: any, index: number) => {
+        const { shouldResume, ...restMeta } = msg.metadata || {};
+        return {
+          ...msg,
+          metadata: {
+            ...restMeta,
+            ...(index === truncatedMessages.length - 1 ? { shouldResume: true } : {}),
+          },
+        };
+      });
+
+      db.update(subChats)
+        .set({
+          messages: JSON.stringify(truncatedMessages),
+          updatedAt: new Date(),
+        })
+        .where(eq(subChats.id, subChatId))
+        .run();
+
+      return { success: true as const, messages: truncatedMessages };
+    },
