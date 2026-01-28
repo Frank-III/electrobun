@@ -10,7 +10,7 @@ type BillingOption = {
 	title: string;
 	subtitle: string;
 	recommended?: boolean;
-	icon: React.ReactNode;
+	icon: JSX.Element;
 };
 const billingOptions: BillingOption[] = [
 	{
@@ -41,7 +41,7 @@ export function BillingMethodPage() {
 	};
 	return <div class="h-screen w-screen flex flex-col items-center justify-center bg-background select-none">
       {	/* Draggable title bar area */}
-      <div class="fixed top-0 left-0 right-0 h-10" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
+      <div class="fixed top-0 left-0 right-0 h-10" style={{ WebkitAppRegion: "drag" } as JSX.CSSProperties} />
 
       <div class="w-full max-w-[440px] space-y-8 px-4">
         { /* Header */}

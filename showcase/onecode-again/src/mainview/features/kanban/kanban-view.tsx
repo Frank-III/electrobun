@@ -243,7 +243,7 @@ type Project = NonNullable<typeof projects>[number];
 		return result;
 	});
 	// Navigation on card click
-	const handleCardClick = (card: KanbanCardData, e?: React.MouseEvent) => {
+	const handleCardClick = (card: KanbanCardData, e?: MouseEvent) => {
 		// In multi-select mode with shift/cmd, toggle selection instead of navigating
 		if (isMultiSelectMode() || e?.shiftKey || e?.metaKey) {
 			if (!card.isDraft) {
@@ -263,7 +263,7 @@ type Project = NonNullable<typeof projects>[number];
 		}
 	};
 	// Checkbox click handler for multi-select
-	const handleCheckboxClick = (e: React.MouseEvent, chatId: string) => {
+	const handleCheckboxClick = (e: MouseEvent, chatId: string) => {
 		e.stopPropagation();
 		toggleChatSelection(chatId);
 	};

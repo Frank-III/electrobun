@@ -188,7 +188,7 @@ export function AnthropicOnboardingPage() {
 			});
 		}
 	};
-	const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+	const handleCodeChange = (e: Event<HTMLInputElement>) => {
 		const value = e.target.value;
 		setAuthCode(value);
 		// Auto-submit if the pasted value looks like a valid auth code
@@ -197,7 +197,7 @@ export function AnthropicOnboardingPage() {
 			setTimeout(() => submitCode(value), 100);
 		}
 	};
-	const handleKeyDown = (e: React.KeyboardEvent) => {
+	const handleKeyDown = (e: KeyboardEvent) => {
 		if (e.key === "Enter" && authCode.trim()) {
 			submitCode(authCode);
 		}
@@ -211,7 +211,7 @@ export function AnthropicOnboardingPage() {
 	const isSubmitting = flowState.step === "submitting";
 	return <div class="h-screen w-screen flex flex-col items-center justify-center bg-background select-none">
       {	/* Draggable title bar area */}
-      <div class="fixed top-0 left-0 right-0 h-10" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
+      <div class="fixed top-0 left-0 right-0 h-10" style={{ WebkitAppRegion: "drag" } as JSX.CSSProperties} />
 
       { /* Back button - fixed in top left corner below traffic lights */}
       <button onClick={handleBack} class="fixed top-12 left-4 flex items-center justify-center h-8 w-8 rounded-full hover:bg-foreground/5 transition-colors">

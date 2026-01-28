@@ -44,12 +44,12 @@ export function WidgetSettingsPopup({ workspaceId, isRemoteChat = false }: Widge
 		}
 	};
 	// Drag handlers
-	const handleDragStart = (e: React.DragEvent, widgetId: WidgetId) => {
+	const handleDragStart = (e: DragEvent, widgetId: WidgetId) => {
 		setDraggedWidget(widgetId);
 		e.dataTransfer.effectAllowed = "move";
 		e.dataTransfer.setData("text/plain", widgetId);
 	};
-	const handleDragOver = (e: React.DragEvent, widgetId: WidgetId) => {
+	const handleDragOver = (e: DragEvent, widgetId: WidgetId) => {
 		e.preventDefault();
 		e.dataTransfer.dropEffect = "move";
 		if (draggedWidget && draggedWidget !== widgetId) {
@@ -59,7 +59,7 @@ export function WidgetSettingsPopup({ workspaceId, isRemoteChat = false }: Widge
 	const handleDragLeave = () => {
 		setDragOverWidget(null);
 	};
-	const handleDrop = (e: React.DragEvent, targetWidgetId: WidgetId) => {
+	const handleDrop = (e: DragEvent, targetWidgetId: WidgetId) => {
 		e.preventDefault();
 		if (!draggedWidget || draggedWidget === targetWidgetId) {
 			setDraggedWidget(null);

@@ -136,8 +136,8 @@
         "Scroll refs use SolidJS pattern"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Fixed ArchiveSection and HelpSection (signal-based refs to let ref pattern, memo() removed, onCleanup() usage), fixed hasRunStartupSync (signal to let). Converted use-desktop-notifications.ts from React (useRef/useEffect/useCallback) to SolidJS (createEffect/onCleanup). Deleted stale use-desktop-notifications.js. Remaining .current patterns in agents-sidebar.tsx are pre-existing and extensive (~70+) requiring further migration work."
     },
     {
       "id": "US-011",
@@ -150,8 +150,8 @@
         "changes-header.tsx uses signal() for all reads"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted all four files: changes-view.tsx (removed memo(), createSignal for refs->let, signal accessors, For/Show components), changes-panel-header.tsx (let ref, onCleanup, For/Show components), changes-header.tsx (let ref, onCleanup, For/Show), diff-sidebar-header.tsx (removed memo(), let ref, onCleanup, signal accessors)"
     },
     {
       "id": "US-012",

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useCallback } from "react"
+import { createEffect, onCleanup } from "solid-js"
 import { useAtom } from "../../../lib/state/jotai"
 import { createStoredSignal } from "../../../lib/state/signal-storage"
 import { isDesktopApp } from "../../../lib/utils/platform"
@@ -59,10 +59,10 @@ function generateBadgeIcon(count: number): string {
  */
 export function useDesktopNotifications() {
   const [pendingCount, setPendingCount] = useAtom(pendingNotificationsAtom)
-  const isInitialized = useRef(false)
+  let isInitialized = false
 
   // Subscribe to window focus changes
-  useEffect(() => {
+  createEffect(() => {
     if (!isDesktopApp() || typeof window === "undefined") return
 
     // Initialize focus state
@@ -84,7 +84,7 @@ export function useDesktopNotifications() {
     window.addEventListener("blur", handleBlur)
 
     // Also subscribe to Electron focus events
-    const unsubscribe = window.desktopApi?.onFocusChange?.((focused) => {
+    const unsubscribe = window.desktopApi?.onFocusChange?.((focused: boolean) => {
       if (focused) {
         handleFocus()
       } else {
@@ -92,25 +92,26 @@ export function useDesktopNotifications() {
       }
     })
 
-    isInitialized.current = true
+    isInitialized = true
 
-    return () => {
+    onCleanup(() => {
       window.removeEventListener("focus", handleFocus)
       window.removeEventListener("blur", handleBlur)
       unsubscribe?.()
-    }
-  }, [setPendingCount])
+    })
+  })
 
   // Update badge when pending count changes
-  useEffect(() => {
+  createEffect(() => {
     if (!isDesktopApp() || typeof window === "undefined") return
 
-    if (pendingCount > 0) {
-      window.desktopApi?.setBadge(pendingCount)
+    const count = pendingCount()
+    if (count > 0) {
+      window.desktopApi?.setBadge(count)
 
       // Windows: Generate and set overlay icon with badge number
       if (window.desktopApi?.platform === "win32" && window.desktopApi?.setBadgeIcon) {
-        const badgeImage = generateBadgeIcon(pendingCount)
+        const badgeImage = generateBadgeIcon(count)
         window.desktopApi.setBadgeIcon(badgeImage)
       }
     } else {
@@ -120,37 +121,34 @@ export function useDesktopNotifications() {
         window.desktopApi.setBadgeIcon(null)
       }
     }
-  }, [pendingCount])
+  })
 
   /**
    * Show a notification for agent completion
    * Only shows if window is not focused (in desktop app)
    */
-  const notifyAgentComplete = useCallback(
-    (agentName: string) => {
-      if (!isDesktopApp() || typeof window === "undefined") return
+  const notifyAgentComplete = (agentName: string) => {
+    if (!isDesktopApp() || typeof window === "undefined") return
 
-      // Only notify if window is not focused
-      if (!isWindowFocused) {
-        // Increment badge count
-        setPendingCount((prev) => prev + 1)
+    // Only notify if window is not focused
+    if (!isWindowFocused) {
+      // Increment badge count
+      setPendingCount((prev) => prev + 1)
 
-        // Show native notification
-        window.desktopApi?.showNotification({
-          title: "Agent finished",
-          body: `${agentName} completed the task`,
-        })
-      }
-    },
-    [setPendingCount],
-  )
+      // Show native notification
+      window.desktopApi?.showNotification({
+        title: "Agent finished",
+        body: `${agentName} completed the task`,
+      })
+    }
+  }
 
   /**
    * Check if window is currently focused
    */
-  const isAppFocused = useCallback(() => {
+  const isAppFocused = () => {
     return isWindowFocused
-  }, [])
+  }
 
   return {
     notifyAgentComplete,

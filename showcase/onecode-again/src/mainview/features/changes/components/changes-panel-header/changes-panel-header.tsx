@@ -1,7 +1,7 @@
 import { Button } from "../../../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../../components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, onCleanup, For, Show } from "solid-js";
 import { RefreshCw, ChevronDown, GitBranch, GitPullRequest } from "lucide-solid";
 import { trpc } from "../../../../lib/trpc";
 import { cn } from "../../../../lib/utils";
@@ -24,10 +24,10 @@ function formatTimeSince(date: Date): string {
 	return `${days}d ago`;
 }
 export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: ChangesPanelHeaderProps) {
-	const [lastFetchTime, setLastFetchTime] = createSignal(null);
+	const [lastFetchTime, setLastFetchTime] = createSignal<Date | null>(null);
 	const [isRefreshing, setIsRefreshing] = createSignal(false);
 	const [displayTime, setDisplayTime] = createSignal("");
-	const [timeoutRef, setTimeoutRef] = createSignal<NodeJS.Timeout | null>(null);
+	let timeoutRef: ReturnType<typeof setTimeout> | undefined;
 	const { data: branchData, refetch: refetchBranches } = trpc.changes.getBranches.useQuery({ worktreePath }, { enabled: !!worktreePath });
 	const fetchMutation = trpc.changes.fetch.useMutation({ onSuccess: () => {
 		setLastFetchTime(new Date());
@@ -42,19 +42,20 @@ export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: 
 	});
 	// Update display time every minute
 	createEffect(() => {
-		if (!lastFetchTime) return;
+		const time = lastFetchTime();
+		if (!time) return;
 		const updateTime = () => {
-			setDisplayTime(formatTimeSince(lastFetchTime));
+			setDisplayTime(formatTimeSince(time));
 		};
 		updateTime();
 		const interval = setInterval(updateTime, 6e4);
-		return () => clearInterval(interval);
+		onCleanup(() => clearInterval(interval));
 	});
 	const handleFetch = () => {
 		setIsRefreshing(true);
 		fetchMutation.mutate({ worktreePath }, { onSettled: () => {
-			if (timeoutRef.current) clearTimeout(timeoutRef.current);
-			timeoutRef.current = setTimeout(() => setIsRefreshing(false), 600);
+			if (timeoutRef) clearTimeout(timeoutRef);
+			timeoutRef = setTimeout(() => setIsRefreshing(false), 600);
 		} });
 	};
 	const handleBranchSelect = (branch: string) => {
@@ -64,10 +65,8 @@ export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: 
 			branch
 		});
 	};
-	createEffect(() => {
-		return () => {
-			if (timeoutRef.current) clearTimeout(timeoutRef.current);
-		};
+	onCleanup(() => {
+		if (timeoutRef) clearTimeout(timeoutRef);
 	});
 	const branches = branchData?.local ?? [];
 	const isCompact = layoutMode === "compact";
@@ -89,17 +88,21 @@ export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: 
 					<TooltipContent side="bottom">Switch branch</TooltipContent>
 				</Tooltip>
 				<DropdownMenuContent align="start" class="w-48">
-					{branches.map((branchInfo) => <DropdownMenuItem key={branchInfo.branch} onClick={() => handleBranchSelect(branchInfo.branch)} class={cn("text-xs", branchInfo.branch === currentBranch && "bg-accent")}>
+					<For each={branches}>
+						{(branchInfo) => <DropdownMenuItem onClick={() => handleBranchSelect(branchInfo.branch)} class={cn("text-xs", branchInfo.branch === currentBranch && "bg-accent")}>
 							<GitBranch class="mr-2 size-3.5" />
 							<span class="truncate">{branchInfo.branch}</span>
-							{branchInfo.branch === branchData?.defaultBranch && <span class="ml-auto text-[10px] text-muted-foreground">
-									default
-								</span>}
-						</DropdownMenuItem>)}
-					{branches.length > 0 && <DropdownMenuSeparator />}
+							<Show when={branchInfo.branch === branchData?.defaultBranch}>
+								<span class="ml-auto text-[10px] text-muted-foreground">default</span>
+							</Show>
+						</DropdownMenuItem>}
+					</For>
+					<Show when={branches.length > 0}>
+						<DropdownMenuSeparator />
+					</Show>
 					<DropdownMenuItem onClick={() => {
- // TODO: Implement create branch dialog
-	}} class="text-xs">
+						// TODO: Implement create branch dialog
+					}} class="text-xs">
 						<GitBranch class="mr-2 size-3.5" />
 						Create new branch...
 					</DropdownMenuItem>
@@ -109,32 +112,32 @@ export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: 
 			{	/* Right side: PR status + Fetch */}
 			<div class="flex items-center gap-1">
 				{ /* PR Status */}
-				{pr && <Tooltip>
+				<Show when={pr}>
+					{(prData) => <Tooltip>
 						<TooltipTrigger asChild>
-							<a href={pr.url} target="_blank" rel="noopener noreferrer" class={cn("flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-accent transition-colors", isCompact && "px-1")}>
-								<PRIcon state={pr.state} class={cn("size-3.5", isCompact && "size-3")} />
-								{!isCompact && <span class="text-[10px] text-muted-foreground font-mono">
-										#{pr.number}
-									</span>}
+							<a href={prData().url} target="_blank" rel="noopener noreferrer" class={cn("flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-accent transition-colors", isCompact && "px-1")}>
+								<PRIcon state={prData().state} class={cn("size-3.5", isCompact && "size-3")} />
+								<Show when={!isCompact}>
+									<span class="text-[10px] text-muted-foreground font-mono">#{prData().number}</span>
+								</Show>
 							</a>
 						</TooltipTrigger>
-						<TooltipContent side="bottom">
-							PR #{pr.number}: {pr.title}
-						</TooltipContent>
+						<TooltipContent side="bottom">PR #{prData().number}: {prData().title}</TooltipContent>
 					</Tooltip>}
+				</Show>
 
 				{ /* Fetch button */}
 				<Tooltip>
 					<TooltipTrigger asChild>
-						<Button variant="ghost" size="sm" onClick={handleFetch} disabled={isRefreshing || fetchMutation.isPending} class={cn("h-6 px-2 gap-1.5 text-xs", isCompact && "h-5 px-1.5 gap-1")}>
-							<RefreshCw class={cn("size-3.5", (isRefreshing || fetchMutation.isPending) && "animate-spin", isCompact && "size-3")} />
-							{layoutMode !== "compact" && <span class="text-[10px] text-muted-foreground">
-									{displayTime || "Fetch"}
-								</span>}
+						<Button variant="ghost" size="sm" onClick={handleFetch} disabled={isRefreshing() || fetchMutation.isPending} class={cn("h-6 px-2 gap-1.5 text-xs", isCompact && "h-5 px-1.5 gap-1")}>
+							<RefreshCw class={cn("size-3.5", (isRefreshing() || fetchMutation.isPending) && "animate-spin", isCompact && "size-3")} />
+							<Show when={layoutMode !== "compact"}>
+								<span class="text-[10px] text-muted-foreground">{displayTime() || "Fetch"}</span>
+							</Show>
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent side="bottom">
-						{lastFetchTime ? `Last fetched ${displayTime}` : "Fetch from remote"}
+						{lastFetchTime() ? `Last fetched ${displayTime()}` : "Fetch from remote"}
 					</TooltipContent>
 				</Tooltip>
 			</div>

@@ -60,7 +60,7 @@ type AgentsMentionsEditorProps = {
 	onSubmit?: () => void;
 	onForceSubmit?: () => void;
 	disabled?: boolean;
-	onPaste?: (e: React.ClipboardEvent) => void;
+	onPaste?: (e: ClipboardEvent) => void;
 	onShiftTab?: () => void;
 	onFocus?: () => void;
 	onBlur?: () => void;
@@ -875,7 +875,7 @@ interface UndoState {
 		};
 	});
 	// Handle keydown
-	const handleKeyDown = (e: React.KeyboardEvent) => {
+	const handleKeyDown = (e: KeyboardEvent) => {
 		// Custom undo (Cmd+Z / Ctrl+Z)
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
 			if (undoStack.current.length > 0) {

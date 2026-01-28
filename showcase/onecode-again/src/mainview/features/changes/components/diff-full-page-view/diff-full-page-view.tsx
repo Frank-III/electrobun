@@ -4,7 +4,7 @@ import { createEffect } from "solid-js";
 interface DiffFullPageViewProps {
 	isOpen: boolean;
 	onClose: () => void;
-	children: React.ReactNode;
+	children: JSX.Element;
 }
 export function DiffFullPageView({ isOpen, onClose, children }: DiffFullPageViewProps) {
 	// Close on Escape key

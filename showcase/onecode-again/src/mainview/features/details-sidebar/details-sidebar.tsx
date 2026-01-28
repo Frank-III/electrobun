@@ -131,10 +131,10 @@ export function DetailsSidebar({ chatId, worktreePath, planPath, mode, onBuildPl
 	const WidgetCard = ({ widgetId, title, badge, children, customHeader, headerBg, hideExpand }: {
 		widgetId: WidgetId;
 		title: string;
-		badge?: React.ReactNode;
-		children: React.ReactNode;
+		badge?: JSX.Element;
+		children: JSX.Element;
 		/** Custom header content (replaces default icon + title) */
-		customHeader?: React.ReactNode;
+		customHeader?: JSX.Element;
 		/** Custom background color for header */
 		headerBg?: string;
 		/** Hide the expand button (when custom actions are in badge) */

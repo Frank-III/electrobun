@@ -10,7 +10,7 @@ const agentsSettingsDialogOpenAtom = createSignal(false);
 const agentsSettingsDialogActiveTabAtom = createSignal<string | null>(null);
 import { GitHubIcon } from "../../../icons";
 interface PreviewSetupHoverCardProps {
-	children: React.ReactNode;
+	children: JSX.Element;
 }
 export function PreviewSetupHoverCard({ children }: PreviewSetupHoverCardProps) {
 	const { resolvedTheme } = useTheme();

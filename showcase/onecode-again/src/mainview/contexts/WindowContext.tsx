@@ -1,7 +1,7 @@
 import { createContext, useContext, createMemo } from "solid-js";
 const WindowContext = createContext<string>("default");
 export function WindowProvider({ children }: {
-	children: React.ReactNode;
+	children: JSX.Element;
 }) {
 	const windowId = createMemo(() => {
 		return getWindowId();

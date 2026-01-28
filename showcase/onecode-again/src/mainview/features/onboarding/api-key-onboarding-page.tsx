@@ -68,7 +68,7 @@ export function ApiKeyOnboardingPage() {
 		setApiKeyOnboardingCompleted(true);
 		setIsSubmitting(false);
 	};
-	const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+	const handleApiKeyChange = (e: Event<HTMLInputElement>) => {
 		const value = e.target.value;
 		setApiKey(value);
 		// Auto-submit if valid API key is pasted
@@ -76,7 +76,7 @@ export function ApiKeyOnboardingPage() {
 			setTimeout(() => submitApiKey(value), 100);
 		}
 	};
-	const handleApiKeyKeyDown = (e: React.KeyboardEvent) => {
+	const handleApiKeyKeyDown = (e: KeyboardEvent) => {
 		if (e.key === "Enter" && apiKey.trim()) {
 			submitApiKey(apiKey);
 		}
@@ -86,7 +86,7 @@ export function ApiKeyOnboardingPage() {
 	if (!isCustomModel) {
 		return <div class="h-screen w-screen flex flex-col items-center justify-center bg-background select-none">
         {		/* Draggable title bar area */}
-        <div class="fixed top-0 left-0 right-0 h-10" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
+        <div class="fixed top-0 left-0 right-0 h-10" style={{ WebkitAppRegion: "drag" } as JSX.CSSProperties} />
 
         { /* Back button - fixed in top left corner below traffic lights */}
         <button onClick={handleBack} class="fixed top-12 left-4 flex items-center justify-center h-8 w-8 rounded-full hover:bg-foreground/5 transition-colors">
@@ -135,7 +135,7 @@ export function ApiKeyOnboardingPage() {
 	// Custom model mode with all fields
 	return <div class="h-screen w-screen flex flex-col items-center justify-center bg-background select-none">
       {	/* Draggable title bar area */}
-      <div class="fixed top-0 left-0 right-0 h-10" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
+      <div class="fixed top-0 left-0 right-0 h-10" style={{ WebkitAppRegion: "drag" } as JSX.CSSProperties} />
 
       { /* Back button - fixed in top left corner below traffic lights */}
       <button onClick={handleBack} class="fixed top-12 left-4 flex items-center justify-center h-8 w-8 rounded-full hover:bg-foreground/5 transition-colors">

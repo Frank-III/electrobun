@@ -68,9 +68,9 @@ function useAvailableModels() {
 }
 export interface ChatInputAreaProps {
 	// Editor ref - passed from parent for external access
-	editorRef: React.RefObject<AgentsMentionsEditorHandle | null>;
+	editorRef: Ref<AgentsMentionsEditorHandle | null>;
 	// File input ref - for attachment button
-	fileInputRef: React.RefObject<HTMLInputElement | null>;
+	fileInputRef: Ref<HTMLInputElement | null>;
 	// Core callbacks
 	onSend: () => void;
 	onForceSend: () => void;
@@ -583,13 +583,13 @@ export const ChatInputArea = memo(function ChatInputArea({ editorRef, fileInputR
 		editorRef.current?.setValue(`/${command.name} `);
 	};
 	// Paste handler for images, plain text, and large text (saved as files)
-	const handlePaste = (e: React.ClipboardEvent) => handlePasteEvent(e, onAddAttachments, onAddPastedText);
+	const handlePaste = (e: ClipboardEvent) => handlePasteEvent(e, onAddAttachments, onAddPastedText);
 	// Drag/drop handlers
-	const handleDragOver = (e: React.DragEvent) => {
+	const handleDragOver = (e: DragEvent) => {
 		e.preventDefault();
 		setIsDragOver(true);
 	};
-	const handleDragLeave = (e: React.DragEvent) => {
+	const handleDragLeave = (e: DragEvent) => {
 		e.preventDefault();
 		setIsDragOver(false);
 	};
@@ -687,7 +687,7 @@ export const ChatInputArea = memo(function ChatInputArea({ editorRef, fileInputR
 		".bmp"
 	]);
 	const trpcUtils = trpc.useUtils();
-	const handleDrop = async (e: React.DragEvent) => {
+	const handleDrop = async (e: DragEvent) => {
 		e.preventDefault();
 		setIsDragOver(false);
 		const droppedFiles = Array.from(e.dataTransfer.files);

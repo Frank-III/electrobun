@@ -1,7 +1,6 @@
 "use client";
-import React, { createEffect, createMemo, createSignal } from "solid-js";
-import { createSignal, createMemo, createEffect } from "solid-js";
-import { createPortal } from "solid-js/web";
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { Portal } from "solid-js/web";
 import { motion, AnimatePresence } from "motion/react";
 import { Button as ButtonCustom } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
@@ -50,7 +49,7 @@ import { exportChat, copyChat, type ExportFormat } from "../agents/lib/export-ch
 // Feedback URL: uses env variable for hosted version, falls back to public Discord for open source
 const FEEDBACK_URL = import.meta.env.VITE_FEEDBACK_URL || "https://discord.gg/8ektTZGnj4";
 // GitHub avatar with loading placeholder
-const GitHubAvatar = React.memo(function GitHubAvatar({ gitOwner, className = "h-4 w-4" }: {
+const GitHubAvatar = function GitHubAvatar({ gitOwner, className = "h-4 w-4" }: {
 	gitOwner: string;
 	className?: string;
 }) {
@@ -66,9 +65,9 @@ const GitHubAvatar = React.memo(function GitHubAvatar({ gitOwner, className = "h
       {!isLoaded && <div class="absolute inset-0 rounded-sm bg-muted" />}
       <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={cn(className, "rounded-sm flex-shrink-0", isLoaded ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
     </div>;
- });
+}
 // Component to render chat icon with loading status
-const ChatIcon = React.memo(function ChatIcon({ isSelected, isLoading, hasUnseenChanges = false, hasPendingPlan = false, hasPendingQuestion = false, isMultiSelectMode = false, isChecked = false, onCheckboxClick, gitOwner, gitProvider, showIcon = true }: {
+const ChatIcon = function ChatIcon({ isSelected, isLoading, hasUnseenChanges = false, hasPendingPlan = false, hasPendingQuestion = false, isMultiSelectMode = false, isChecked = false, onCheckboxClick, gitOwner, gitProvider, showIcon = true }: {
 	isSelected: boolean;
 	isLoading: boolean;
 	hasUnseenChanges?: boolean;
@@ -76,7 +75,7 @@ const ChatIcon = React.memo(function ChatIcon({ isSelected, isLoading, hasUnseen
 	hasPendingQuestion?: boolean;
 	isMultiSelectMode?: boolean;
 	isChecked?: boolean;
-	onCheckboxClick?: (e: React.MouseEvent) => void;
+	onCheckboxClick?: (e: MouseEvent) => void;
 	gitOwner?: string | null;
 	gitProvider?: string | null;
 	showIcon?: boolean;
@@ -163,9 +162,9 @@ const ChatIcon = React.memo(function ChatIcon({ isSelected, isLoading, hasUnseen
           </motion.div>}
       </AnimatePresence>
     </div>;
-});
+}
 // Memoized Draft Item component to prevent re-renders on hover
-const DraftItem = React.memo(function DraftItem({ draftId, draftText, draftUpdatedAt, projectGitOwner, projectGitProvider, projectGitRepo, projectName, isSelected, isMultiSelectMode, isMobileFullscreen, showIcon, onSelect, onDelete, formatTime }: {
+const DraftItem = function DraftItem({ draftId, draftText, draftUpdatedAt, projectGitOwner, projectGitProvider, projectGitRepo, projectName, isSelected, isMultiSelectMode, isMobileFullscreen, showIcon, onSelect, onDelete, formatTime }: {
 	draftId: string;
 	draftText: string;
 	draftUpdatedAt: number;
@@ -214,9 +213,9 @@ const DraftItem = React.memo(function DraftItem({ draftId, draftText, draftUpdat
         </div>
       </div>
     </div>;
-});
+}
 // Memoized Agent Chat Item component to prevent re-renders on hover
-const AgentChatItem = React.memo(function AgentChatItem({ chatId, chatName, chatBranch, chatUpdatedAt, chatProjectId, globalIndex, isSelected, isLoading, hasUnseenChanges, hasPendingPlan, hasPendingQuestion, isMultiSelectMode, isChecked, isFocused, isMobileFullscreen, isDesktop, isPinned, displayText, gitOwner, gitProvider, stats, selectedChatIdsSize, canShowPinOption, areAllSelectedPinned, filteredChatsLength, isLastInFilteredChats, isRemote, showIcon, onChatClick, onCheckboxClick, onMouseEnter, onMouseLeave, onArchive, onTogglePin, onRenameClick, onCopyBranch, onArchiveAllBelow, onArchiveOthers, onOpenLocally, onBulkPin, onBulkUnpin, onBulkArchive, archivePending, archiveBatchPending, nameRefCallback, formatTime, isJustCreated }: {
+const AgentChatItem = function AgentChatItem({ chatId, chatName, chatBranch, chatUpdatedAt, chatProjectId, globalIndex, isSelected, isLoading, hasUnseenChanges, hasPendingPlan, hasPendingQuestion, isMultiSelectMode, isChecked, isFocused, isMobileFullscreen, isDesktop, isPinned, displayText, gitOwner, gitProvider, stats, selectedChatIdsSize, canShowPinOption, areAllSelectedPinned, filteredChatsLength, isLastInFilteredChats, isRemote, showIcon, onChatClick, onCheckboxClick, onMouseEnter, onMouseLeave, onArchive, onTogglePin, onRenameClick, onCopyBranch, onArchiveAllBelow, onArchiveOthers, onOpenLocally, onBulkPin, onBulkUnpin, onBulkArchive, archivePending, archiveBatchPending, nameRefCallback, formatTime, isJustCreated }: {
 	chatId: string;
 	chatName: string | null;
 	chatBranch: string | null;
@@ -249,8 +248,8 @@ const AgentChatItem = React.memo(function AgentChatItem({ chatId, chatName, chat
 	isLastInFilteredChats: boolean;
 	isRemote: boolean;
 	showIcon: boolean;
-	onChatClick: (chatId: string, e?: React.MouseEvent, globalIndex?: number) => void;
-	onCheckboxClick: (e: React.MouseEvent, chatId: string) => void;
+	onChatClick: (chatId: string, e?: MouseEvent, globalIndex?: number) => void;
+	onCheckboxClick: (e: MouseEvent, chatId: string) => void;
 	onMouseEnter: (chatId: string, chatName: string | null, element: HTMLElement, globalIndex: number) => void;
 	onMouseLeave: () => void;
 	onArchive: (chatId: string) => void;
@@ -493,7 +492,7 @@ const AgentChatItem = React.memo(function AgentChatItem({ chatId, chatName, chat
           </>}
       </ContextMenuContent>
     </ContextMenu>;
-});
+}
 // Custom comparator for ChatListSection to handle Set/Map props correctly
 // Sets and Maps from Jotai atoms are stable by reference when unchanged,
 // but we add explicit size checks for extra safety
@@ -577,8 +576,8 @@ interface ChatListSectionProps {
 	canShowPinOption: boolean;
 	areAllSelectedPinned: boolean;
 	showIcon: boolean;
-	onChatClick: (chatId: string, e?: React.MouseEvent, globalIndex?: number) => void;
-	onCheckboxClick: (e: React.MouseEvent, chatId: string) => void;
+	onChatClick: (chatId: string, e?: MouseEvent, globalIndex?: number) => void;
+	onCheckboxClick: (e: MouseEvent, chatId: string) => void;
 	onMouseEnter: (chatId: string, chatName: string | null, element: HTMLElement, globalIndex: number) => void;
 	onMouseLeave: () => void;
 	onArchive: (chatId: string) => void;
@@ -602,7 +601,7 @@ interface ChatListSectionProps {
 	justCreatedIds: Set<string>;
 }
 // Memoized Chat List Section component
-const ChatListSection = React.memo(function ChatListSection({ title, chats, selectedChatId, selectedChatIsRemote, focusedChatIndex, loadingChatIds, unseenChanges, workspacePendingPlans, workspacePendingQuestions, isMultiSelectMode, selectedChatIds, isMobileFullscreen, isDesktop, pinnedChatIds, projectsMap, workspaceFileStats, filteredChats, canShowPinOption, areAllSelectedPinned, showIcon, onChatClick, onCheckboxClick, onMouseEnter, onMouseLeave, onArchive, onTogglePin, onRenameClick, onCopyBranch, onArchiveAllBelow, onArchiveOthers, onOpenLocally, onBulkPin, onBulkUnpin, onBulkArchive, archivePending, archiveBatchPending, nameRefCallback, formatTime, justCreatedIds }: ChatListSectionProps) {
+const ChatListSection = function ChatListSection({ title, chats, selectedChatId, selectedChatIsRemote, focusedChatIndex, loadingChatIds, unseenChanges, workspacePendingPlans, workspacePendingQuestions, isMultiSelectMode, selectedChatIds, isMobileFullscreen, isDesktop, pinnedChatIds, projectsMap, workspaceFileStats, filteredChats, canShowPinOption, areAllSelectedPinned, showIcon, onChatClick, onCheckboxClick, onMouseEnter, onMouseLeave, onArchive, onTogglePin, onRenameClick, onCopyBranch, onArchiveAllBelow, onArchiveOthers, onOpenLocally, onBulkPin, onBulkUnpin, onBulkArchive, archivePending, archiveBatchPending, nameRefCallback, formatTime, justCreatedIds }: ChatListSectionProps) {
 	if (chats.length === 0) return null;
 	// Pre-compute global indices map to avoid O(n²) findIndex in map()
 	const globalIndexMap = createMemo(() => {
@@ -644,7 +643,7 @@ const ChatListSection = React.memo(function ChatListSection({ title, chats, sele
 	})}
       </div>
     </>;
-}, chatListSectionPropsAreEqual);
+}
 interface AgentsSidebarProps {
 	userId?: string | null | undefined;
 	clerkUser?: any;
@@ -658,14 +657,14 @@ interface AgentsSidebarProps {
 	isMobileFullscreen?: boolean;
 	onChatSelect?: () => void;
 }
-// Memoized Archive Button to prevent re-creation on every sidebar render
-const ArchiveButton = memo(forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(function ArchiveButton(props, ref) {
-	return <button ref={ref} type="button" class="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" {...props}>
+// Archive Button component
+function ArchiveButton(props: JSX.ButtonHTMLAttributes<HTMLButtonElement>) {
+	return <button type="button" class="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" {...props}>
         <ArchiveIcon class="h-4 w-4" />
       </button>;
-}));
+}
 // Isolated Kanban Button - clears selection to show Kanban view
-const KanbanButton = memo(function KanbanButton() {
+function KanbanButton() {
 	const kanbanEnabled = useAtomValue(betaKanbanEnabledAtom);
 	const setSelectedChatId = useSetAtom(selectedAgentChatIdAtom);
 	const setSelectedDraftId = useSetAtom(selectedDraftIdAtom);
@@ -691,38 +690,37 @@ const KanbanButton = memo(function KanbanButton() {
         {openKanbanHotkey && <Kbd>{openKanbanHotkey}</Kbd>}
       </TooltipContent>
     </Tooltip>;
-});
+}
 // Isolated Archive Section - subscribes to archivePopoverOpenAtom internally
 // to prevent sidebar re-renders when popover opens/closes
 interface ArchiveSectionProps {
 	archivedChatsCount: number;
 }
-const ArchiveSection = memo(function ArchiveSection({ archivedChatsCount }: ArchiveSectionProps) {
+function ArchiveSection(props: ArchiveSectionProps) {
 	const archivePopoverOpen = useAtomValue(archivePopoverOpenAtom);
 	const [blockArchiveTooltip, setBlockArchiveTooltip] = createSignal(false);
-	const [prevArchivePopoverOpen, setPrevArchivePopoverOpen] = createSignal(false);
-	const [archiveButtonRef, setArchiveButtonRef] = createSignal<HTMLButtonElement>(null);
+	let prevArchivePopoverOpen = false;
+	let archiveButtonRef: HTMLButtonElement | undefined;
 	// Handle tooltip blocking when popover closes
 	createEffect(() => {
-		if (prevArchivePopoverOpen.current && !archivePopoverOpen) {
-			archiveButtonRef.current?.blur();
+		if (prevArchivePopoverOpen && !archivePopoverOpen) {
+			archiveButtonRef?.blur();
 			setBlockArchiveTooltip(true);
 			const timer = setTimeout(() => setBlockArchiveTooltip(false), 300);
-			prevArchivePopoverOpen.current = archivePopoverOpen;
-			return () => clearTimeout(timer);
+			onCleanup(() => clearTimeout(timer));
 		}
-		prevArchivePopoverOpen.current = archivePopoverOpen;
+		prevArchivePopoverOpen = archivePopoverOpen;
 	});
-	if (archivedChatsCount === 0) return null;
-	return <Tooltip delayDuration={500} open={archivePopoverOpen || blockArchiveTooltip ? false : undefined}>
+	if (props.archivedChatsCount === 0) return null;
+	return <Tooltip delayDuration={500} open={archivePopoverOpen || blockArchiveTooltip() ? false : undefined}>
       <TooltipTrigger asChild>
         <div>
-          <ArchivePopover trigger={<ArchiveButton ref={archiveButtonRef} />} />
+          <ArchivePopover trigger={<ArchiveButton ref={(el) => archiveButtonRef = el} />} />
         </div>
       </TooltipTrigger>
       <TooltipContent>Archive</TooltipContent>
     </Tooltip>;
-});
+}
 // Isolated Sidebar Header - contains dropdown, traffic lights, close button
 // Subscribes to dropdown state internally to prevent sidebar re-renders
 interface SidebarHeaderProps {
@@ -742,9 +740,9 @@ interface SidebarHeaderProps {
 	setShowAuthDialog: (open: boolean) => void;
 	handleSidebarMouseEnter: () => void;
 	handleSidebarMouseLeave: () => void;
-	closeButtonRef: React.RefObject<HTMLDivElement>;
+	closeButtonRef: Ref<HTMLDivElement>;
 }
-const SidebarHeader = memo(function SidebarHeader({ isDesktop, isFullscreen, isMobileFullscreen, userId, desktopUser, onSignOut, onToggleSidebar, setSettingsDialogOpen, setSettingsActiveTab, setShowAuthDialog, handleSidebarMouseEnter, handleSidebarMouseLeave, closeButtonRef }: SidebarHeaderProps) {
+function SidebarHeader({ isDesktop, isFullscreen, isMobileFullscreen, userId, desktopUser, onSignOut, onToggleSidebar, setSettingsDialogOpen, setSettingsActiveTab, setShowAuthDialog, handleSidebarMouseEnter, handleSidebarMouseLeave, closeButtonRef }: SidebarHeaderProps) {
 	const [isDropdownOpen, setIsDropdownOpen] = createSignal(false);
 	const showOfflineFeatures = useAtomValue(showOfflineModeFeaturesAtom);
 	const toggleSidebarHotkey = useResolvedHotkeyDisplay("toggle-sidebar");
@@ -914,33 +912,32 @@ const SidebarHeader = memo(function SidebarHeader({ isDesktop, isFullscreen, isM
         </div>
       </div>
     </div>;
-});
+}
 // Isolated Help Section - subscribes to agentsHelpPopoverOpenAtom internally
 // to prevent sidebar re-renders when popover opens/closes
 interface HelpSectionProps {
 	isMobile: boolean;
 }
-const HelpSection = memo(function HelpSection({ isMobile }: HelpSectionProps) {
+function HelpSection(props: HelpSectionProps) {
 	const [helpPopoverOpen, setHelpPopoverOpen] = useAtom(agentsHelpPopoverOpenAtom);
 	const [blockHelpTooltip, setBlockHelpTooltip] = createSignal(false);
-	const [prevHelpPopoverOpen, setPrevHelpPopoverOpen] = createSignal(false);
-	const [helpButtonRef, setHelpButtonRef] = createSignal<HTMLButtonElement>(null);
+	let prevHelpPopoverOpen = false;
+	let helpButtonRef: HTMLButtonElement | undefined;
 	// Handle tooltip blocking when popover closes
 	createEffect(() => {
-		if (prevHelpPopoverOpen.current && !helpPopoverOpen) {
-			helpButtonRef.current?.blur();
+		if (prevHelpPopoverOpen && !helpPopoverOpen) {
+			helpButtonRef?.blur();
 			setBlockHelpTooltip(true);
 			const timer = setTimeout(() => setBlockHelpTooltip(false), 300);
-			prevHelpPopoverOpen.current = helpPopoverOpen;
-			return () => clearTimeout(timer);
+			onCleanup(() => clearTimeout(timer));
 		}
-		prevHelpPopoverOpen.current = helpPopoverOpen;
+		prevHelpPopoverOpen = helpPopoverOpen;
 	});
-	return <Tooltip delayDuration={500} open={helpPopoverOpen || blockHelpTooltip ? false : undefined}>
+	return <Tooltip delayDuration={500} open={helpPopoverOpen || blockHelpTooltip() ? false : undefined}>
       <TooltipTrigger asChild>
         <div>
-          <AgentsHelpPopover open={helpPopoverOpen} onOpenChange={setHelpPopoverOpen} isMobile={isMobile}>
-            <button ref={helpButtonRef} type="button" class="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" suppressHydrationWarning>
+          <AgentsHelpPopover open={helpPopoverOpen} onOpenChange={setHelpPopoverOpen} isMobile={props.isMobile}>
+            <button ref={(el) => helpButtonRef = el} type="button" class="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" suppressHydrationWarning>
               <QuestionCircleIcon class="h-4 w-4" />
             </button>
           </AgentsHelpPopover>
@@ -948,7 +945,7 @@ const HelpSection = memo(function HelpSection({ isMobile }: HelpSectionProps) {
       </TooltipTrigger>
       <TooltipContent>Help</TooltipContent>
     </Tooltip>;
-});
+}
 export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, desktopUser = {
 	id: "demo-user-id",
 	email: "demo@example.com",
@@ -1029,10 +1026,10 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	const teamId = useAtomValue(selectedTeamIdAtom);
 	// Sync chatSourceMode with selectedChatIsRemote on startup
 	// This fixes the race condition where atoms load independently from localStorage
-	const [hasRunStartupSync, setHasRunStartupSync] = createSignal(false);
+	let hasRunStartupSync = false;
 	createEffect(() => {
-		if (hasRunStartupSync.current) return;
-		hasRunStartupSync.current = true;
+		if (hasRunStartupSync) return;
+		hasRunStartupSync = true;
 		const correctMode = selectedChatIsRemote ? "sandbox" : "local";
 		if (chatSourceMode !== correctMode) {
 			setChatSourceMode(correctMode);
@@ -1706,7 +1703,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			onChatSelect();
 		}
 	};
-	const handleChatClick = (chatId: string, e?: React.MouseEvent, globalIndex?: number) => {
+	const handleChatClick = (chatId: string, e?: MouseEvent, globalIndex?: number) => {
 		// Shift+click for range selection (works in both normal and multi-select mode)
 		if (e?.shiftKey) {
 			e.preventDefault();
@@ -1765,7 +1762,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			onChatSelect();
 		}
 	};
-	const handleCheckboxClick = (e: React.MouseEvent, chatId: string) => {
+	const handleCheckboxClick = (e: MouseEvent, chatId: string) => {
 		e.stopPropagation();
 		toggleChatSelection(chatId);
 	};
@@ -1957,7 +1954,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	const handleSidebarMouseEnter = () => {
 		updateSidebarHoverUI(true);
 	};
-	const handleSidebarMouseLeave = (e: React.MouseEvent) => {
+	const handleSidebarMouseLeave = (e: MouseEvent) => {
 		// Electron's drag region (WebkitAppRegion: "drag") returns a non-HTMLElement
 		// object as relatedTarget. We preserve hover state in this case so the
 		// traffic lights remain visible when hovering over the drag area.
@@ -1969,7 +1966,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 		}
 	};
 	// Check if scroll is needed and show/hide gradients via DOM manipulation
-	React.useEffect(() => {
+	createEffect(() => {
 		const container = scrollContainerRef.current;
 		if (!container) return;
 		const checkScroll = () => {
@@ -2072,7 +2069,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 		clearChatSelection();
 	});
 	// Handle scroll for gradients - use DOM manipulation to avoid re-renders
-	const handleAgentsScroll = React.useCallback((e: React.UIEvent<HTMLDivElement>) => {
+	const handleAgentsScroll = ((e: UIEvent<HTMLDivElement>) => {
 		const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
 		const needsScroll = scrollHeight > clientHeight;
 		if (!needsScroll) {

@@ -130,7 +130,7 @@ export function useMessageStoreSync(_messages: Message[], _status: string) {
 }
 // Provider component
 export function MessageStoreProvider({ children, messages, status }: {
-	children: React.ReactNode;
+	children: JSX.Element;
 	messages: Message[];
 	status: string;
 }) {
@@ -685,20 +685,20 @@ interface SimpleIsolatedGroupProps {
 	sandboxSetupError?: string;
 	onRetrySetup?: () => void;
 	// Components passed from parent - must be stable references
-	UserBubbleComponent: React.ComponentType<{
+	UserBubbleComponent: Component<{
 		messageId: string;
 		textContent: string;
 		imageParts: any[];
 		skipTextMentionBlocks?: boolean;
 	}>;
-	ToolCallComponent: React.ComponentType<{
+	ToolCallComponent: Component<{
 		icon: any;
 		title: string;
 		isPending: boolean;
 		isError: boolean;
 	}>;
-	MessageGroupComponent: React.ComponentType<{
-		children: React.ReactNode;
+	MessageGroupComponent: Component<{
+		children: JSX.Element;
 	}>;
 	toolRegistry: Record<string, {
 		icon: any;

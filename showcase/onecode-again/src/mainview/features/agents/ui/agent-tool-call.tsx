@@ -3,7 +3,7 @@ import { memo } from "solid-js";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 interface AgentToolCallProps {
-	icon: React.ComponentType<{
+	icon: Component<{
 		className?: string;
 	}>;
 	title: string;

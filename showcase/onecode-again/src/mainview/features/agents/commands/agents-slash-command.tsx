@@ -254,7 +254,7 @@ export const AgentsSlashCommand = memo(function AgentsSlashCommand({ isOpen, onC
 		transform: transformY,
 		scrollbarWidth: "none",
 		msOverflowStyle: "none"
-	} as React.CSSProperties}>
+	} as JSX.CSSProperties}>
       {	/* All commands in one section - custom first, then builtin */}
       {options.length > 0 && <>
           <div class="px-2.5 py-1.5 mx-1 text-xs font-medium text-muted-foreground">

@@ -216,7 +216,7 @@ export const SubChatStatusCard = memo(function SubChatStatusCard({ chatId, subCh
 			// Open diff sidebar
 			setDiffSidebarOpen(true);
 		};
-		const handleKeyDown = (e: React.KeyboardEvent) => {
+		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.key === "Enter" || e.key === " ") {
 				e.preventDefault();
 				handleFileClick();

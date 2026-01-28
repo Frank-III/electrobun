@@ -33,8 +33,8 @@ export interface KanbanCardData {
 interface KanbanCardProps {
 	card: KanbanCardData;
 	isMultiSelectMode: boolean;
-	onClick: (e: React.MouseEvent) => void;
-	onCheckboxClick: (e: React.MouseEvent, chatId: string) => void;
+	onClick: (e: MouseEvent) => void;
+	onCheckboxClick: (e: MouseEvent, chatId: string) => void;
 	onTogglePin: (chatId: string) => void;
 	onRename: (chat: {
 		id: string;

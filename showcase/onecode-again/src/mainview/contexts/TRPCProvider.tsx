@@ -4,7 +4,7 @@ import { ipcLink } from "trpc-electron/renderer";
 import { trpc } from "../lib/trpc";
 import superjson from "superjson";
 interface TRPCProviderProps {
-	children: React.ReactNode;
+	children: JSX.Element;
 }
 // Global query client instance for use outside React components
 let globalQueryClient: QueryClient | null = null;

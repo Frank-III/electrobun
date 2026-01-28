@@ -126,7 +126,7 @@ export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading
 		}
 		setIsEditing(false);
 	};
-	const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+	const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
 		if (e.key === "Enter") {
 			e.preventDefault();
 			handleSubmit();

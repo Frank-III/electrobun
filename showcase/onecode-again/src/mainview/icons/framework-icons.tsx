@@ -470,7 +470,7 @@ export function GitHubIcon({ className }: FrameworkIconProps) {
     </svg>;
 }
 // Map language/framework to icon component
-export function getFrameworkIcon(language?: string | null, repoName?: string, topics?: string[]): React.ReactNode {
+export function getFrameworkIcon(language?: string | null, repoName?: string, topics?: string[]): JSX.Element {
 	// First priority: check GitHub topics (most reliable)
 	// GitHub topics are user-defined and often include framework names
 	if (topics && topics.length > 0) {
@@ -574,7 +574,7 @@ export function getFrameworkIcon(language?: string | null, repoName?: string, to
 }
 // Get framework icon based on detected framework (from our detect-framework service)
 // Falls back to language icon if framework is unknown
-export function getDetectedFrameworkIcon(framework?: string, className?: string, language?: string): React.ReactNode {
+export function getDetectedFrameworkIcon(framework?: string, className?: string, language?: string): JSX.Element {
 	// First check known frameworks
 	switch (framework?.toLowerCase()) {
 		case "mintlify": return <MintlifyIcon class={className} />;

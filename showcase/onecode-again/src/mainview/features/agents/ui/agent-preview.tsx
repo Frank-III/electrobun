@@ -159,7 +159,7 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 			preset: "Custom"
 		});
 	};
-	const handleResizeStart = (e: React.PointerEvent) => {
+	const handleResizeStart = (e: PointerEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
 		const handle = e.currentTarget as HTMLElement;

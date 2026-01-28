@@ -18,7 +18,7 @@ interface TerminalSectionProps {
 	workspaceId: string;
 	isExpanded?: boolean;
 	/** Render header with tabs separately (for widget card integration) */
-	renderHeader?: (header: React.ReactNode) => void;
+	renderHeader?: (header: JSX.Element) => void;
 	/** Background color for terminal */
 	onTerminalBgChange?: (bg: string) => void;
 }

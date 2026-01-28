@@ -72,7 +72,7 @@ export const PlanWidget = memo(function PlanWidget({ chatId, activeSubChatId, pl
 	// Only show error if we have no content to display
 	const showError = error && !displayContent;
 	// Toggle expand state
-	const handleToggleExpand = (e: React.MouseEvent) => {
+	const handleToggleExpand = (e: MouseEvent) => {
 		e.stopPropagation();
 		setIsExpanded((prev) => !prev);
 	};

@@ -90,7 +90,7 @@ const ArchiveChatItem = memo(function ArchiveChatItem({ chat, index, isSelected,
 	const handleClick = () => {
 		onSelect(chat.id);
 	};
-	const handleRestore = (e: React.MouseEvent) => {
+	const handleRestore = (e: MouseEvent) => {
 		e.stopPropagation();
 		onRestore(chat.id);
 	};
@@ -135,7 +135,7 @@ const ArchiveChatItem = memo(function ArchiveChatItem({ chat, index, isSelected,
  });
 // Desktop: uses project info for git owner/provider
 interface ArchivePopoverProps {
-	trigger: React.ReactNode;
+	trigger: JSX.Element;
 }
 export const ArchivePopover = memo(function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	const [open, setOpen] = useAtom(archivePopoverOpenAtom);
@@ -274,7 +274,7 @@ export const ArchivePopover = memo(function ArchivePopover({ trigger }: ArchiveP
 		}
 	});
 	// Keyboard navigation - memoized to prevent recreation
-	const handleKeyDown = (e: React.KeyboardEvent) => {
+	const handleKeyDown = (e: KeyboardEvent) => {
 		if (filteredChats.length === 0) return;
 		if (e.key === "ArrowDown") {
 			e.preventDefault();
@@ -356,7 +356,7 @@ export const ArchivePopover = memo(function ArchivePopover({ trigger }: ArchiveP
 		chatItemRefs.current[index] = el;
 	};
 	// Memoized search input handler
-	const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+	const handleSearchChange = (e: Event<HTMLInputElement>) => {
 		setSearchQuery(e.target.value);
 	};
 	return <Popover open={open} onOpenChange={setOpen}>

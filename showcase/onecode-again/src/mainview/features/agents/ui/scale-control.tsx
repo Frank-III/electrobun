@@ -17,7 +17,7 @@ export function ScaleControl({ value, onChange, presets = AGENTS_PREVIEW_CONSTAN
 	createEffect(() => {
 		setInputValue(String(value));
 	});
-	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+	const handleInputChange = (e: Event<HTMLInputElement>) => {
 		const raw = e.target.value.replace(/[^0-9]/g, "");
 		setInputValue(raw);
 		const num = parseInt(raw);
@@ -34,7 +34,7 @@ export function ScaleControl({ value, onChange, presets = AGENTS_PREVIEW_CONSTAN
 			setInputValue(String(value));
 		}
 	};
-	const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+	const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
 		if (e.key === "Enter") {
 			handleCommit();
 			setIsOpen(false);

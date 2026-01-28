@@ -1,7 +1,7 @@
 "use client";
 import { LucideProps } from "lucide-solid";
 import * as React from "solid-js";
-type IconProps = React.SVGProps<SVGSVGElement> & {
+type IconProps = JSX.SvgSVGAttributes<SVGSVGElement> & {
 	className?: string;
 };
 export function AnthropicLogoIcon({ className }: {
@@ -643,7 +643,7 @@ export const CodeIcon = (props: LucideProps) => <svg xmlns="http://www.w3.org/20
       <path d="M10 20L14 4M18 8.00004L19.9775 9.75781C21.32 10.9512 21.32 13.0489 19.9775 14.2423L18 16M6 16L4.02251 14.2423C2.67996 13.0489 2.67996 10.9512 4.02251 9.75781L6 8.00004" />
     </g>
   </svg>;
-export const FilePlusIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
+export const FilePlusIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
     <g transform="scale(1.15) translate(-1.8, -1.8)">
       <path d="M11 21H8C6.34315 21 5 19.6569 5 18V6C5 4.34315 6.34315 3 8 3H16C17.6569 3 19 4.34315 19 6V11" />
       <path d="M18 15V18M18 18V21M18 18H15M18 18H21" />
@@ -651,49 +651,49 @@ export const FilePlusIcon = ({ className, ...props }: React.SVGProps<SVGSVGEleme
       <path d="M9 11H11" />
     </g>
   </svg>;
-export const FilePageIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
+export const FilePageIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
     <g transform="scale(1.15) translate(-1.8, -1.8)">
       <path d="M9 7H15M9 11H15M9 15H11M7 21H17C18.1046 21 19 20.1046 19 19V5C19 3.89543 18.1046 3 17 3H7C5.89543 3 5 3.89543 5 5V19C5 20.1046 5.89543 21 7 21Z" />
     </g>
   </svg>;
-export const BlankProjectIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className} {...props}>
+export const BlankProjectIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className} {...props}>
     <path d="M21 7C21 5.89543 20.1046 5 19 5H5C3.89543 5 3 5.89543 3 7V12.1429C3 14.571 4.14321 16.8574 6.08571 18.3143C6.67919 18.7594 7.40102 19 8.14286 19H19C20.1046 19 21 18.1046 21 17V7Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M3 7.00005V6.85791C3 9.51008 4.05357 11.0536 5.92893 12.929L7 14C6 15.5 6 19 8.5 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>;
-export const HomeIconCustom = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
+export const HomeIconCustom = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
     <g transform="scale(1.15) translate(-1.8, -1.8)">
       <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
       <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
     </g>
   </svg>;
-export const ProfileIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
+export const ProfileIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
     <g transform="scale(1.15) translate(-1.8, -1.8)">
       <path d="M17.8841 18.8103C16.5544 17.0943 14.4995 16 12 16C9.50054 16 7.44562 17.0943 6.11594 18.8103M17.8841 18.8103C19.7925 17.16 21 14.721 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 14.721 4.20753 17.16 6.11594 18.8103M17.8841 18.8103C16.3063 20.1747 14.2495 21 12 21C9.75046 21 7.69368 20.1747 6.11594 18.8103" />
       <path d="M15 10C15 11.6569 13.6569 13 12 13C10.3431 13 9 11.6569 9 10C9 8.34315 10.3431 7 12 7C13.6569 7 15 8.34315 15 10Z" />
     </g>
   </svg>;
-export const DocumentIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" class={className} {...props}>
+export const DocumentIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" class={className} {...props}>
     <g transform="scale(1.15) translate(-1.8, -1.8)">
       <path d="M13 3.5V7C13 8.10457 13.8954 9 15 9H18.5M9 13H12M9 17H15.5M8 3H12.1716C12.702 3 13.2107 3.21071 13.5858 3.58579L18.4142 8.41421C18.7893 8.78929 19 9.29799 19 9.82843V18C19 19.6569 17.6569 21 16 21H8C6.34315 21 5 19.6569 5 18V6C5 4.34315 6.34315 3 8 3Z" />
     </g>
   </svg>;
-export const FilesIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
+export const FilesIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
     <g transform="scale(1.2) translate(-1.8, -1.8)">
       <path d="M17 18C17 19.6569 15.6569 21 14 21H8C6.34315 21 5 19.6569 5 18V9C5 7.34315 6.34315 6 8 6M17 18H11C9.34315 18 8 16.6569 8 15V6M17 18C18.6569 18 20 16.6569 20 15V8M8 6C8 4.34315 9.34315 3 11 3H15M15 3L20 8M15 3V6C15 7.10457 15.8954 8 17 8H20" />
     </g>
   </svg>;
-export const SettingsIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" class={className} {...props}>
+export const SettingsIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" class={className} {...props}>
     <g transform="scale(1.15) translate(-1.8, -1.8)">
       <path d="M7.67668 5.32539L7.30515 5.23965C6.72652 5.10612 6.11991 5.28009 5.7 5.7C5.28009 6.11991 5.10612 6.72651 5.23965 7.30515L5.32539 7.67668C5.55082 8.65357 5.148 9.668 4.31382 10.2241L3.74885 10.6008C3.28101 10.9127 3 11.4377 3 12C3 12.5623 3.28101 13.0873 3.74885 13.3992L4.31382 13.7759C5.148 14.332 5.55082 15.3464 5.32539 16.3233L5.23965 16.6949C5.10612 17.2735 5.28009 17.8801 5.7 18.3C6.11991 18.7199 6.72651 18.8939 7.30515 18.7604L7.67668 18.6746C8.65357 18.4492 9.668 18.852 10.2241 19.6862L10.6008 20.2512C10.9127 20.719 11.4377 21 12 21C12.5623 21 13.0873 20.719 13.3992 20.2512L13.7759 19.6862C14.332 18.852 15.3464 18.4492 16.3233 18.6746L16.6949 18.7604C17.2735 18.8939 17.8801 18.7199 18.3 18.3C18.7199 17.8801 18.8939 17.2735 18.7604 16.6949L18.6746 16.3233C18.4492 15.3464 18.852 14.332 19.6862 13.7759L20.2512 13.3992C20.719 13.0873 21 12.5623 21 12C21 11.4377 20.719 10.9127 20.2512 10.6008L19.6862 10.2241C18.852 9.668 18.4492 8.65357 18.6746 7.67668L18.7604 7.30515C18.8939 6.72652 18.7199 6.11991 18.3 5.7C17.8801 5.28009 17.2735 5.10612 16.6949 5.23965L16.3233 5.32539C15.3464 5.55082 14.332 5.148 13.7759 4.31382L13.3992 3.74884C13.0873 3.28101 12.5623 3 12 3C11.4377 3 10.9127 3.28101 10.6008 3.74885L10.2241 4.31382C9.668 5.148 8.65357 5.55082 7.67668 5.32539Z" />
       <path d="M15 12C15 13.6569 13.6569 15 12 15C10.3431 15 9 13.6569 9 12C9 10.3431 10.3431 9 12 9C13.6569 9 15 10.3431 15 12Z" />
     </g>
   </svg>;
-export const EditIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
+export const EditIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
     <g transform="scale(1.15) translate(-1.8, -1.8)">
       <path d="M13.5 5.99997L15.25 4.24997C16.4926 3.00733 18.5074 3.00733 19.75 4.24997C20.9926 5.49261 20.9926 7.50733 19.75 8.74997L18 10.5M13.5 5.99997L3.29289 16.2071C3.10536 16.3946 3 16.649 3 16.9142V21H7.08579C7.351 21 7.60536 20.8946 7.79289 20.7071L18 10.5M13.5 5.99997L18 10.5" />
     </g>
   </svg>;
-export const TrashIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
+export const TrashIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
     <g transform="scale(1.15) translate(-1.8, -1.8)">
       <path d="M5 6.5L5.80734 18.2064C5.91582 19.7794 7.22348 21 8.80023 21H15.1998C16.7765 21 18.0842 19.7794 18.1927 18.2064L19 6.5" />
       <path d="M10 11V16" />
@@ -702,7 +702,7 @@ export const TrashIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>
       <path d="M8.07092 5.74621C8.42348 3.89745 10.0485 2.5 12 2.5C13.9515 2.5 15.5765 3.89745 15.9291 5.74621" />
     </g>
   </svg>;
-export const ThemeIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
+export const ThemeIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" class={className} {...props}>
     <g transform="scale(1.15) translate(-1.8, -1.8)">
       <path d="M6 17.5V20C6 20.5523 6.44772 21 7 21H17C17.5523 21 18 20.5523 18 20V17.5M14 15H16M8 6H16V12H8V6ZM5 15V6C5 4.34315 6.34315 3 8 3H16C17.6569 3 19 4.34315 19 6V15C19 16.6569 17.6569 18 16 18H8C6.34315 18 5 16.6569 5 15Z" />
     </g>
@@ -724,7 +724,7 @@ export function PlayIcon({ className }: {
       <path d="M19.6848 9.49288L10.6475 3.55409C8.65262 2.24315 6 3.67411 6 6.06121V17.9388C6 20.3259 8.65263 21.7568 10.6475 20.4459L19.6848 14.5071C21.4881 13.3221 21.4881 10.6779 19.6848 9.49288Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
     </svg>;
 }
-export const PromptCopyIcon = (props: React.SVGProps<SVGSVGElement>) => {
+export const PromptCopyIcon = (props: JSX.SvgSVGAttributes<SVGSVGElement>) => {
 	return <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
       <path d="M8 5C8 3.89543 8.89543 3 10 3H14C15.1046 3 16 3.89543 16 5V7H8V5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M19.2405 16.1852L18.5436 14.3733C18.4571 14.1484 18.241 14 18 14C17.759 14 17.5429 14.1484 17.4564 14.3733L16.7595 16.1852C16.658 16.4493 16.4493 16.658 16.1852 16.7595L14.3733 17.4564C14.1484 17.5429 14 17.759 14 18C14 18.241 14.1484 18.4571 14.3733 18.5436L16.1852 19.2405C16.4493 19.342 16.658 19.5507 16.7595 19.8148L17.4564 21.6267C17.5429 21.8516 17.759 22 18 22C18.241 22 18.4571 21.8516 18.5436 21.6267L19.2405 19.8148C19.342 19.5507 19.5507 19.342 19.8148 19.2405L21.6267 18.5436C21.8516 18.4571 22 18.241 22 18C22 17.759 21.8516 17.5429 21.6267 17.4564L19.8148 16.7595C19.5507 16.658 19.342 16.4493 19.2405 16.1852Z" fill="currentColor" />
@@ -742,7 +742,7 @@ export const SavedBookmarkFilledIcon = (props: IconProps) => <svg xmlns="http://
       <path d="M8 2C5.79086 2 4 3.79086 4 6V19.9948C4 21.6146 5.82485 22.5625 7.15006 21.6311L10.8499 19.0306C11.54 18.5456 12.46 18.5456 13.1501 19.0306L16.8499 21.6311C18.1751 22.5625 20 21.6146 20 19.9948V6C20 3.79086 18.2091 2 16 2H8Z" fill="currentColor" />
     </g>
   </svg>;
-export const LightbulbIcon = (props: React.SVGProps<SVGSVGElement>) => {
+export const LightbulbIcon = (props: JSX.SvgSVGAttributes<SVGSVGElement>) => {
 	return <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
       <path d="M10 21H14M15.6076 15C17.6404 13.7751 19 11.5463 19 9C19 5.13401 15.866 2 12 2C8.13401 2 5 5.13401 5 9C5 11.5463 6.35958 13.7751 8.39241 15M15.6076 15C15.4111 15.1184 15.2084 15.2274 15 15.3264V16.5C15 17.3284 14.3284 18 13.5 18H10.5C9.67157 18 9 17.3284 9 16.5V15.3264C8.7916 15.2274 8.58886 15.1184 8.39241 15M15.6076 15H8.39241" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>;
@@ -816,7 +816,7 @@ export const SearchIcon = (props: LucideProps) => <svg xmlns="http://www.w3.org/
       <path d="M20 20L16.05 16.05" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </g>
   </svg>;
-export const VariantIcon = (props: React.SVGProps<SVGSVGElement>) => {
+export const VariantIcon = (props: JSX.SvgSVGAttributes<SVGSVGElement>) => {
 	return <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
       <g transform="scale(1.05) translate(-1.5, -1.5)">
         <circle cx="6.5" cy="6" r="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -1241,14 +1241,14 @@ export function QuestionsSkippedIcon({ className }: {
       </g>
     </svg>;
 }
-export const TeamIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className} {...props}>
+export const TeamIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className} {...props}>
     <path fillRule="evenodd" clipRule="evenodd" d="M5.75 3C4.23122 3 3 4.23122 3 5.75V18.5H1.75C1.33579 18.5 1 18.8358 1 19.25C1 19.6642 1.33579 20 1.75 20H22.25C22.6642 20 23 19.6642 23 19.25C23 18.8358 22.6642 18.5 22.25 18.5H21V9.75C21 8.23122 19.7688 7 18.25 7H16V18.5H15V5.75C15 4.23122 13.7688 3 12.25 3H5.75ZM7.75 8C7.33579 8 7 8.33579 7 8.75C7 9.16421 7.33579 9.5 7.75 9.5H10.25C10.6642 9.5 11 9.16421 11 8.75C11 8.33579 10.6642 8 10.25 8H7.75ZM7.75 12C7.33579 12 7 12.3358 7 12.75C7 13.1642 7.33579 13.5 7.75 13.5H10.25C10.6642 13.5 11 13.1642 11 12.75C11 12.3358 10.6642 12 10.25 12H7.75Z" fill="currentColor" />
   </svg>;
-export const ChipIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className} {...props}>
+export const ChipIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className} {...props}>
     <path d="M14.5 14.5H9.5V9.5H14.5V14.5Z" fill="currentColor" />
     <path fillRule="evenodd" clipRule="evenodd" d="M14.25 1C14.6642 1 15 1.33579 15 1.75V3H18.25C19.7688 3 21 4.23122 21 5.75V9H22.25L22.3271 9.00391C22.7051 9.04253 23 9.36183 23 9.75C23 10.1382 22.7051 10.4575 22.3271 10.4961L22.25 10.5H21V13.5H22.25L22.3271 13.5039C22.7051 13.5425 23 13.8618 23 14.25C23 14.6382 22.7051 14.9575 22.3271 14.9961L22.25 15H21V18.25C21 19.7688 19.7688 21 18.25 21H15V22.25C15 22.6642 14.6642 23 14.25 23C13.8358 23 13.5 22.6642 13.5 22.25V21H10.5V22.25C10.5 22.6642 10.1642 23 9.75 23C9.33579 23 9 22.6642 9 22.25V21H5.75C4.23122 21 3 19.7688 3 18.25V15H1.75C1.33579 15 1 14.6642 1 14.25C1 13.8358 1.33579 13.5 1.75 13.5H3V10.5H1.75C1.33579 10.5 1 10.1642 1 9.75C1 9.33579 1.33579 9 1.75 9H3V5.75C3 4.23122 4.23122 3 5.75 3H9V1.75C9 1.33579 9.33579 1 9.75 1C10.1642 1 10.5 1.33579 10.5 1.75V3H13.5V1.75C13.5 1.33579 13.8358 1 14.25 1ZM8.75 8C8.36183 8 8.04253 8.29488 8.00391 8.67285L8 8.75V15.25C8 15.6642 8.33579 16 8.75 16H15.25C15.6642 16 16 15.6642 16 15.25V8.75C16 8.36183 15.7051 8.04253 15.3271 8.00391L15.25 8H8.75Z" fill="currentColor" />
   </svg>;
-export const MembersIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className} {...props}>
+export const MembersIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className} {...props}>
     <path d="M3.99854 7C3.99854 4.79086 5.7894 3 7.99854 3C10.2077 3 11.9985 4.79086 11.9985 7C11.9985 9.20914 10.2077 11 7.99854 11C5.7894 11 3.99854 9.20914 3.99854 7Z" fill="currentColor" />
     <path d="M13.4985 7.5C13.4985 5.567 15.0655 4 16.9985 4C18.9315 4 20.4985 5.567 20.4985 7.5C20.4985 9.433 18.9315 11 16.9985 11C15.0655 11 13.4985 9.433 13.4985 7.5Z" fill="currentColor" />
     <path d="M7.99874 12C6.23369 12 4.76256 12.6347 3.63361 13.7201C2.51685 14.7939 1.76592 16.2768 1.35206 17.9455C0.932102 19.6387 2.3507 21 3.90031 21H12.0972C13.6468 21 15.0654 19.6387 14.6454 17.9455C14.2316 16.2768 13.4806 14.7939 12.3639 13.7201C11.2349 12.6347 9.76378 12 7.99874 12Z" fill="currentColor" />
@@ -1291,12 +1291,12 @@ export const FollowPersonPlusIcon = ({ className }: {
       <path d="M18 15V18M18 18V21M18 18H15M18 18H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </g>
   </svg>;
-export const InviteTeamIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className} {...props}>
+export const InviteTeamIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className} {...props}>
     <path d="M12 2C9.51472 2 7.5 4.01472 7.5 6.5C7.5 8.98528 9.51472 11 12 11C14.4853 11 16.5 8.98528 16.5 6.5C16.5 4.01472 14.4853 2 12 2Z" fill="currentColor" />
     <path d="M18 14C18.5523 14 19 14.4477 19 15V17H21C21.5523 17 22 17.4477 22 18C22 18.5523 21.5523 19 21 19H19V21C19 21.5523 18.5523 22 18 22C17.4477 22 17 21.5523 17 21V19H15C14.4477 19 14 18.5523 14 18C14 17.4477 14.4477 17 15 17H17V15C17 14.4477 17.4477 14 18 14Z" fill="currentColor" />
     <path d="M3.69691 18.6964C4.55378 14.8837 7.70183 12 12.001 12C13.4328 12 14.7368 12.3198 15.8711 12.8873C15.3332 13.4295 15.001 14.1759 15.001 15C13.3441 15 12.001 16.3431 12.001 18C12.001 19.6569 13.3441 21 15.001 21H5.59944C4.46429 21 3.40713 19.9858 3.69691 18.6964Z" fill="currentColor" />
   </svg>;
-export const MoveToTeamIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className} {...props}>
+export const MoveToTeamIcon = ({ className, ...props }: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className} {...props}>
     <g transform="scale(1.15) translate(-1.8, -1.8)">
       <path d="M10 9H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M8 13H10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

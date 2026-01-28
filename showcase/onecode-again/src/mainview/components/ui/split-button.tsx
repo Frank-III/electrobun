@@ -7,13 +7,13 @@ export interface SplitButtonProps extends Omit<ButtonProps, "children"> {
 	/** Main button label */
 	label: string;
 	/** Icon to show before label */
-	icon?: React.ReactNode;
+	icon?: JSX.Element;
 	/** Badge to show after label (e.g., "↑3") */
 	badge?: string;
 	/** Handler for main button click */
 	onClick: () => void;
 	/** Dropdown menu content */
-	dropdownContent?: React.ReactNode;
+	dropdownContent?: JSX.Element;
 	/** Whether to show the dropdown trigger */
 	showDropdown?: boolean;
 }

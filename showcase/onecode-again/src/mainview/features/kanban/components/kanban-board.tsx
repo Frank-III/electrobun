@@ -7,8 +7,8 @@ interface KanbanBoardProps {
 	pinnedChatIds: Set<string>;
 	isMultiSelectMode: boolean;
 	selectedChatIds: Set<string>;
-	onCardClick: (card: KanbanCardData, e: React.MouseEvent) => void;
-	onCheckboxClick: (e: React.MouseEvent, chatId: string) => void;
+	onCardClick: (card: KanbanCardData, e: MouseEvent) => void;
+	onCheckboxClick: (e: MouseEvent, chatId: string) => void;
 	onTogglePin: (chatId: string) => void;
 	onRename: (chat: {
 		id: string;

@@ -106,7 +106,7 @@ export const McpServersIndicator = memo(function McpServersIndicator({ projectPa
 		}
 	};
 	// Keyboard navigation handler
-	const handleKeyDown = (e: React.KeyboardEvent) => {
+	const handleKeyDown = (e: KeyboardEvent) => {
 		const serverCount = sessionInfo.mcpServers.length;
 		switch (e.key) {
 			case "ArrowDown":

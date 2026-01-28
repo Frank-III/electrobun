@@ -268,7 +268,7 @@ export const AgentTodoTool = memo(function AgentTodoTool({ part, chatStatus, sub
 	const handleCollapse = () => {
 		setIsExpanded(false);
 	};
-	const handleKeyDown = (e: React.KeyboardEvent) => {
+	const handleKeyDown = (e: KeyboardEvent) => {
 		if (e.key === "Enter" || e.key === " ") {
 			e.preventDefault();
 			setIsExpanded((prev) => !prev);

@@ -883,7 +883,7 @@ export const AgentsFileMention = memo(function AgentsFileMention({ isOpen, onClo
 		transform: transformY,
 		scrollbarWidth: "none",
 		msOverflowStyle: "none"
-	} as React.CSSProperties}>
+	} as JSX.CSSProperties}>
         {	/* Initial loading state (no previous data) */}
         {isLoading && options.length === 0 && <div class="flex items-center gap-1.5 h-7 px-1.5 mx-1 text-xs text-muted-foreground">
             <IconSpinner class="h-3.5 w-3.5" />

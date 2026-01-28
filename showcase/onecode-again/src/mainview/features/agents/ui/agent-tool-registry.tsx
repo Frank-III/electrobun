@@ -3,7 +3,7 @@ import { Database, FileCode2, FolderSearch, GitBranch, ListTodo, LogOut, Minimiz
 import { CustomTerminalIcon, EyeIcon, GlobeIcon, IconEditFile, PlanningIcon, SearchIcon, SparklesIcon, WriteFileIcon } from "../../../components/ui/icons";
 export type ToolVariant = "simple" | "collapsible";
 export interface ToolMeta {
-	icon: React.ComponentType<{
+	icon: Component<{
 		className?: string;
 	}>;
 	title: (part: any) => string;

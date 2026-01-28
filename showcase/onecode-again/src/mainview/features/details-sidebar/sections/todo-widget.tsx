@@ -90,7 +90,7 @@ export const TodoWidget = memo(function TodoWidget({ subChatId }: TodoWidgetProp
 	const handleToggleExpand = () => {
 		setIsExpanded((prev) => !prev);
 	};
-	const handleKeyDown = (e: React.KeyboardEvent) => {
+	const handleKeyDown = (e: KeyboardEvent) => {
 		if (e.key === "Enter" || e.key === " ") {
 			e.preventDefault();
 			setIsExpanded((prev) => !prev);

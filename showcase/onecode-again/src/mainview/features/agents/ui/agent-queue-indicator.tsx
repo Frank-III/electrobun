@@ -15,11 +15,11 @@ const QueueItemRow = memo(function QueueItemRow({ item, onRemove, onSendNow }: {
 	onRemove?: (itemId: string) => void;
 	onSendNow?: (itemId: string) => void;
 }) {
-	const handleRemove = (e: React.MouseEvent) => {
+	const handleRemove = (e: MouseEvent) => {
 		e.stopPropagation();
 		onRemove?.(item.id);
 	};
-	const handleSendNow = (e: React.MouseEvent) => {
+	const handleSendNow = (e: MouseEvent) => {
 		e.stopPropagation();
 		onSendNow?.(item.id);
 	};

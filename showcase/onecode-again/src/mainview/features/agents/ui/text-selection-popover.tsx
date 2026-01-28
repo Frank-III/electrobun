@@ -79,7 +79,7 @@ export function TextSelectionPopover({ onAddToContext, onQuickComment, onFocusIn
 	const spaceAbove = selectionRect.top;
 	const showAbove = spaceAbove > popoverHeight + 8;
 	const top = showAbove ? selectionRect.top - popoverHeight - 4 : selectionRect.bottom + 4;
-	const style: React.CSSProperties = {
+	const style: JSX.CSSProperties = {
 		position: "fixed",
 		top,
 		left: centeredLeft,

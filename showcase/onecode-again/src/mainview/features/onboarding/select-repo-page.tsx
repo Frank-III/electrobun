@@ -82,7 +82,7 @@ export function SelectRepoPage() {
 	if (showClonePage) {
 		return <div class="h-screen w-screen flex flex-col items-center justify-center bg-background select-none">
         {		/* Draggable title bar area */}
-        <div class="fixed top-0 left-0 right-0 h-10" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
+        <div class="fixed top-0 left-0 right-0 h-10" style={{ WebkitAppRegion: "drag" } as JSX.CSSProperties} />
 
         { /* Back button */}
         <button onClick={handleBack} disabled={cloneFromGitHub.isPending} class="fixed top-12 left-4 flex items-center justify-center h-8 w-8 rounded-full hover:bg-foreground/5 transition-colors disabled:opacity-50">
@@ -132,7 +132,7 @@ export function SelectRepoPage() {
 	// Main select repo page
 	return <div class="h-screen w-screen flex flex-col items-center justify-center bg-background select-none">
       {	/* Draggable title bar area */}
-      <div class="fixed top-0 left-0 right-0 h-10" style={{ WebkitAppRegion: "drag" } as React.CSSProperties} />
+      <div class="fixed top-0 left-0 right-0 h-10" style={{ WebkitAppRegion: "drag" } as JSX.CSSProperties} />
 
       <div class="w-full max-w-[440px] space-y-8 px-4">
         { /* Header */}

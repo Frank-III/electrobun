@@ -557,12 +557,12 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 		}
 	};
 	// Handle checkbox click
-	const handleCheckboxClick = (e: React.MouseEvent, subChatId: string) => {
+	const handleCheckboxClick = (e: MouseEvent, subChatId: string) => {
 		e.stopPropagation();
 		toggleSubChatSelection(subChatId);
 	};
 	// Handle sub-chat item click with shift support
-	const handleSubChatItemClick = (subChatId: string, e?: React.MouseEvent, globalIndex?: number) => {
+	const handleSubChatItemClick = (subChatId: string, e?: MouseEvent, globalIndex?: number) => {
 		// Shift+click for range selection
 		if (e?.shiftKey) {
 			e.preventDefault();

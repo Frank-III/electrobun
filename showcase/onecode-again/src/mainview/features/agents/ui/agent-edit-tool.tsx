@@ -231,13 +231,13 @@ export const AgentEditTool = memo(function AgentEditTool({ part, messageId, part
 			setIsOutputExpanded((prev) => !prev);
 		}
 	};
-	const handleFilenameClick = (e: React.MouseEvent) => {
+	const handleFilenameClick = (e: MouseEvent) => {
 		if (displayPath) {
 			e.stopPropagation();
 			handleOpenInDiff();
 		}
 	};
-	const handleExpandButtonClick = (e: React.MouseEvent) => {
+	const handleExpandButtonClick = (e: MouseEvent) => {
 		e.stopPropagation();
 		setIsOutputExpanded((prev) => !prev);
 	};

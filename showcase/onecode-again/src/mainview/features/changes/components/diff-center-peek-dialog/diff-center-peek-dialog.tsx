@@ -4,7 +4,7 @@ import { createEffect } from "solid-js";
 interface DiffCenterPeekDialogProps {
 	isOpen: boolean;
 	onClose: () => void;
-	children: React.ReactNode;
+	children: JSX.Element;
 }
 export function DiffCenterPeekDialog({ isOpen, onClose, children }: DiffCenterPeekDialogProps) {
 	// Close on Escape key

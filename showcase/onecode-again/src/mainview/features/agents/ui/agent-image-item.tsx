@@ -44,11 +44,11 @@ export function AgentImageItem({ id, filename, url, isLoading = false, onRemove,
 	const closeFullscreen = () => {
 		setIsFullscreen(false);
 	};
-	const goToPrevious = (e?: React.MouseEvent) => {
+	const goToPrevious = (e?: MouseEvent) => {
 		e?.stopPropagation();
 		setCurrentIndex((prev) => prev > 0 ? prev - 1 : images.length - 1);
 	};
-	const goToNext = (e?: React.MouseEvent) => {
+	const goToNext = (e?: MouseEvent) => {
 		e?.stopPropagation();
 		setCurrentIndex((prev) => prev < images.length - 1 ? prev + 1 : 0);
 	};

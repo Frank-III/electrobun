@@ -25,6 +25,8 @@ Started: 2026-01-28
 - Replace `React.KeyboardEvent` with native `KeyboardEvent`, `React.CSSProperties` with `JSX.CSSProperties`
 - For ref collections, use `Map<string, HTMLElement>` directly, not `createSignal<Map<...>>`
 - Replace `memo(forwardRef(...))` with plain function + `props.ref?.(element)` pattern
+- createMemo values are accessors: call them like functions `filteredFiles()` not `filteredFiles.length`
+- Tabs/Select value props need accessor calls: `value={activeTab()}` not `value={activeTab}`
 
 ---
 
@@ -167,4 +169,36 @@ Thread: https://ampcode.com/threads/T-019c0611-68e3-776f-b9ae-8143bfe498b0
   - Replaced createPortal with Portal from solid-js/web
   - agents-sidebar.tsx is much larger and still has many React patterns (React.memo, forwardRef, motion/react, React namespace types) - needs US-013/US-014/US-019 to fully migrate
   - The useAtomValue returns plain values in this jotai integration, not SolidJS signals - so isMultiSelectMode works without ()
+---
+
+## 2026-01-28 - US-010
+Thread: https://ampcode.com/threads/T-019c0619-1a10-719f-98b8-117d6b0ce0d7
+- Converted refs in sidebar components to SolidJS patterns
+- Files changed:
+  - src/mainview/features/sidebar/agents-sidebar.tsx - fixed ArchiveSection (createSignal refs→let refs, memo→plain function, onCleanup), fixed HelpSection (same pattern), fixed hasRunStartupSync (createSignal→let)
+  - src/mainview/features/sidebar/hooks/use-desktop-notifications.ts - full rewrite from React (useRef/useEffect/useCallback) to SolidJS (createEffect/onCleanup, let for refs)
+  - Deleted: src/mainview/features/sidebar/hooks/use-desktop-notifications.js (stale transpiled file)
+- **Learnings for future iterations:**
+  - agents-sidebar.tsx still has ~70+ .current patterns that were not addressed - they use createSignal for refs and need conversion via memo() removal stories (US-013, US-014)
+  - The file has duplicate imports at top (React and solid-js mixed) - fixed by cleaning imports and adding onCleanup
+  - Some createSignal patterns like `prevArchivePopoverOpen` are used to track previous state - convert to simple `let` variables
+  - Pre-existing type errors about window.desktopApi are addressed in US-023
+---
+
+## 2026-01-28 - US-011
+Thread: https://ampcode.com/threads/T-019c0624-b9ba-707a-b3e1-bf7db5b57917
+- Fixed signal accessors in changes feature
+- Files changed:
+  - src/mainview/features/changes/changes-view.tsx - removed memo() from ChangesFileItemWithContext, converted to props pattern, createSignal ref -> let ref, signal accessors (allFiles(), filteredFiles(), selectedForCommit(), highlightedFiles(), discardFile(), discardFiles(), etc.), For/Show components, onCleanup for cleanup, viewedFiles() accessor
+  - src/mainview/features/changes/components/changes-panel-header/changes-panel-header.tsx - let timeoutRef, onCleanup(), signal accessors (isRefreshing(), lastFetchTime(), displayTime()), For/Show components
+  - src/mainview/features/changes/components/changes-header/changes-header.tsx - let timeoutRef, onCleanup(), signal accessors (isManualRefresh()), For/Show components
+  - src/mainview/features/changes/components/diff-sidebar-header/diff-sidebar-header.tsx - removed memo() wrapper, let timeoutRef, onCleanup(), signal accessors (isRefreshing(), lastFetchTime(), displayTime())
+- **Learnings for future iterations:**
+  - The changes-view.tsx file is large (~700 lines) with many signal accessor patterns that needed fixing
+  - ChangesFileItemWithContext was wrapped in memo() but should be a plain function with props pattern
+  - createMemo values are already accessors - call them like functions: `filteredFiles()`
+  - For/Show components replace ternary and && patterns in JSX
+  - Tabs value prop needs accessor call: `value={activeTab()}` not `value={activeTab}`
+  - useAtom returns accessor - viewedFiles() not viewedFiles[key]
+  - Pre-existing type errors (Kobalte asChild, Select components) are separate migration issues
 ---

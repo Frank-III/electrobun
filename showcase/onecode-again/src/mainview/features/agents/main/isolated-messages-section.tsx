@@ -24,20 +24,20 @@ interface IsolatedMessagesSectionProps {
 	sandboxSetupError?: string;
 	onRetrySetup?: () => void;
 	// Components passed from parent - must be stable references
-	UserBubbleComponent: React.ComponentType<{
+	UserBubbleComponent: Component<{
 		messageId: string;
 		textContent: string;
 		imageParts: any[];
 		skipTextMentionBlocks?: boolean;
 	}>;
-	ToolCallComponent: React.ComponentType<{
+	ToolCallComponent: Component<{
 		icon: any;
 		title: string;
 		isPending: boolean;
 		isError: boolean;
 	}>;
-	MessageGroupWrapper: React.ComponentType<{
-		children: React.ReactNode;
+	MessageGroupWrapper: Component<{
+		children: JSX.Element;
 		isLastGroup?: boolean;
 	}>;
 	toolRegistry: Record<string, {

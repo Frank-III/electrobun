@@ -6,7 +6,7 @@ import { DiscordIcon } from "../../../icons";
 import { useSetAtom } from "../../../lib/state/jotai";
 import { agentsSettingsDialogOpenAtom, agentsSettingsDialogActiveTabAtom } from "../../../lib/atoms";
 interface AgentsHelpPopoverProps {
-	children: React.ReactNode;
+	children: JSX.Element;
 	open?: boolean;
 	onOpenChange?: (open: boolean) => void;
 	isMobile?: boolean;

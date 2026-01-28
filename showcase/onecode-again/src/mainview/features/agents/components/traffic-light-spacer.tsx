@@ -84,7 +84,7 @@ export function TrafficLightSpacer({ isFullscreen = null, isDesktop = false, cla
 * Wrapper to make child elements non-draggable within a draggable region
 */
 export function NoDrag({ children }: {
-	children: React.ReactNode;
+	children: JSX.Element;
 }) {
 	return <div style={{ WebkitAppRegion: "no-drag" }}>
       {children}

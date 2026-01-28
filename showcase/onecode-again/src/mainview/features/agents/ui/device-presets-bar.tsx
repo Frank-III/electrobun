@@ -19,7 +19,7 @@ export function DevicePresetsBar({ selectedPreset, width, height, onPresetChange
 	createEffect(() => {
 		setWidthInputValue(String(width));
 	});
-	const handleWidthInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+	const handleWidthInputChange = (e: Event<HTMLInputElement>) => {
 		setWidthInputValue(e.target.value);
 	};
 	const handleWidthBlur = () => {

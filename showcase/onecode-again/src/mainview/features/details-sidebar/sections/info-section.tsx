@@ -16,7 +16,7 @@ interface InfoSectionProps {
 }
 /** Property row component - Notion-style with icon, label, and value */
 function PropertyRow({ icon: Icon, label, value, title, onClick, copyable, tooltip }: {
-	icon: React.ComponentType<{
+	icon: Component<{
 		className?: string;
 	}>;
 	label: string;

@@ -64,7 +64,7 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
 			toast.error(`Failed to create branch: ${error.message}`);
 		}
 	});
-	const handleSubmit = (e: React.FormEvent) => {
+	const handleSubmit = (e: Event) => {
 		e.preventDefault();
 		if (!branchName.trim()) {
 			toast.error("Branch name is required");

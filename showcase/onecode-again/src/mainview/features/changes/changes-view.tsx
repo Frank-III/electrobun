@@ -4,7 +4,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/ui/tabs";
 import { toast } from "solid-sonner";
-import { createEffect, createSignal, createMemo } from "solid-js";
+import { createEffect, createSignal, createMemo, For, Show, onCleanup } from "solid-js";
 import { useAtom } from "../../lib/state/jotai";
 import { trpc } from "../../lib/trpc";
 import { useChangesStore } from "../../lib/stores/changes-store";
@@ -20,8 +20,8 @@ import { GitPullRequest, Eye } from "lucide-solid";
 import type { ChangedFile as HistoryChangedFile } from "../../../shared/changes-types";
 import { viewedFilesAtomFamily, type ViewedFileState } from "../agents/atoms";
 import { Kbd } from "../../components/ui/kbd";
-// Memoized file item component with context menu to prevent re-renders
-const ChangesFileItemWithContext = memo(function ChangesFileItemWithContext({ file, category, isSelected, isChecked, isViewed, isHighlighted, highlightedCount, highlightedPaths, index, onSelect, onDoubleClick, onCheckboxChange, onShiftClick, onCopyPath, onCopyRelativePath, onRevealInFinder, onToggleViewed, onDiscard, onDiscardSelected, onIncludeSelected, onExcludeSelected, onCopySelectedPaths, onCopySelectedRelativePaths }: {
+
+interface ChangesFileItemWithContextProps {
 	file: ChangedFile;
 	category: ChangeCategory;
 	isSelected: boolean;
@@ -45,84 +45,87 @@ const ChangesFileItemWithContext = memo(function ChangesFileItemWithContext({ fi
 	onExcludeSelected: () => void;
 	onCopySelectedPaths: () => void;
 	onCopySelectedRelativePaths: () => void;
-}) {
-	const fileName = file.path.split("/").pop() || file.path;
-	const dirPath = file.path.includes("/") ? file.path.substring(0, file.path.lastIndexOf("/")) : "";
-	const isUntracked = file.status === "untracked" || file.status === "added";
-	// Show multi-discard when multiple files are highlighted (shift+click selected)
-	const showMultiDiscard = highlightedCount > 1 && isHighlighted;
+}
+
+function ChangesFileItemWithContext(props: ChangesFileItemWithContextProps) {
+	const fileName = () => props.file.path.split("/").pop() || props.file.path;
+	const dirPath = () => props.file.path.includes("/") ? props.file.path.substring(0, props.file.path.lastIndexOf("/")) : "";
+	const isUntracked = () => props.file.status === "untracked" || props.file.status === "added";
+	const showMultiDiscard = () => props.highlightedCount > 1 && props.isHighlighted;
 	return <ContextMenu>
 			<ContextMenuTrigger asChild>
-				<div data-file-item class={cn("flex items-center gap-2 px-2 py-1 cursor-pointer", "hover:bg-muted/80 transition-colors", isSelected && !isHighlighted && "bg-muted", isHighlighted && "bg-primary/10 hover:bg-primary/15")} onClick={(e) => {
+				<div data-file-item class={cn("flex items-center gap-2 px-2 py-1 cursor-pointer", "hover:bg-muted/80 transition-colors", props.isSelected && !props.isHighlighted && "bg-muted", props.isHighlighted && "bg-primary/10 hover:bg-primary/15")} onClick={(e) => {
 		if (e.shiftKey) {
 			e.preventDefault();
-			onShiftClick(index);
+			props.onShiftClick(props.index);
 		} else {
-			onSelect();
+			props.onSelect();
 		}
-	}} onDoubleClick={onDoubleClick}>
-					<Checkbox checked={isChecked} onCheckedChange={onCheckboxChange} onClick={(e) => e.stopPropagation()} class="size-4 shrink-0 border-muted-foreground/50" />
+	}} onDoubleClick={props.onDoubleClick}>
+					<Checkbox checked={props.isChecked} onCheckedChange={props.onCheckboxChange} onClick={(e) => e.stopPropagation()} class="size-4 shrink-0 border-muted-foreground/50" />
 					<div class="flex-1 min-w-0 flex items-center overflow-hidden">
-						{dirPath && <span class="text-xs text-muted-foreground truncate flex-shrink min-w-0">
-								{dirPath}/
-							</span>}
+						<Show when={dirPath()}>
+							<span class="text-xs text-muted-foreground truncate flex-shrink min-w-0">
+								{dirPath()}/
+							</span>
+						</Show>
 						<span class="text-xs font-medium flex-shrink-0 whitespace-nowrap">
-							{fileName}
+							{fileName()}
 						</span>
 					</div>
 					<div class="shrink-0 flex items-center gap-1.5">
-						{isViewed && <div class="size-4 rounded bg-emerald-500/20 flex items-center justify-center">
+						<Show when={props.isViewed}>
+							<div class="size-4 rounded bg-emerald-500/20 flex items-center justify-center">
 								<Eye class="size-2.5 text-emerald-500" />
-							</div>}
-						{getStatusIndicator(file.status)}
+							</div>
+						</Show>
+						{getStatusIndicator(props.file.status)}
 					</div>
 				</div>
 			</ContextMenuTrigger>
 			<ContextMenuContent class="w-64">
-				{showMultiDiscard ? <>
-						{	/* Multi-select context menu */}
-						<ContextMenuItem onClick={onDiscardSelected} class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
-							Discard {highlightedCount} Selected Changes...
-						</ContextMenuItem>
-						<ContextMenuSeparator />
-						<ContextMenuItem onClick={onIncludeSelected}>
-							Include Selected Files
-						</ContextMenuItem>
-						<ContextMenuItem onClick={onExcludeSelected}>
-							Exclude Selected Files
-						</ContextMenuItem>
-						<ContextMenuSeparator />
-						<ContextMenuItem onClick={onCopySelectedPaths}>
-							Copy Paths
-						</ContextMenuItem>
-						<ContextMenuItem onClick={onCopySelectedRelativePaths}>
-							Copy Relative Paths
-						</ContextMenuItem>
-					</> : <>
-						{ /* Single file context menu */}
-						<ContextMenuItem onClick={onCopyPath}>
+				<Show when={showMultiDiscard()} fallback={<>
+						<ContextMenuItem onClick={props.onCopyPath}>
 							Copy Path
 						</ContextMenuItem>
-						<ContextMenuItem onClick={onCopyRelativePath}>
+						<ContextMenuItem onClick={props.onCopyRelativePath}>
 							Copy Relative Path
 						</ContextMenuItem>
 						<ContextMenuSeparator />
-						<ContextMenuItem onClick={onRevealInFinder}>
+						<ContextMenuItem onClick={props.onRevealInFinder}>
 							Reveal in Finder
 						</ContextMenuItem>
 						<ContextMenuSeparator />
-						<ContextMenuItem onClick={onToggleViewed} class="justify-between">
-							{isViewed ? "Mark as unviewed" : "Mark as viewed"}
+						<ContextMenuItem onClick={props.onToggleViewed} class="justify-between">
+							{props.isViewed ? "Mark as unviewed" : "Mark as viewed"}
 							<Kbd>V</Kbd>
 						</ContextMenuItem>
 						<ContextMenuSeparator />
-						<ContextMenuItem onClick={onDiscard} class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
-							{isUntracked ? "Delete File..." : "Discard Changes..."}
+						<ContextMenuItem onClick={props.onDiscard} class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
+							{isUntracked() ? "Delete File..." : "Discard Changes..."}
 						</ContextMenuItem>
-					</>}
+					</>}>
+					<ContextMenuItem onClick={props.onDiscardSelected} class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
+						Discard {props.highlightedCount} Selected Changes...
+					</ContextMenuItem>
+					<ContextMenuSeparator />
+					<ContextMenuItem onClick={props.onIncludeSelected}>
+						Include Selected Files
+					</ContextMenuItem>
+					<ContextMenuItem onClick={props.onExcludeSelected}>
+						Exclude Selected Files
+					</ContextMenuItem>
+					<ContextMenuSeparator />
+					<ContextMenuItem onClick={props.onCopySelectedPaths}>
+						Copy Paths
+					</ContextMenuItem>
+					<ContextMenuItem onClick={props.onCopySelectedRelativePaths}>
+						Copy Relative Paths
+					</ContextMenuItem>
+				</Show>
 			</ContextMenuContent>
 		</ContextMenu>;
- });
+ }
 interface ChangesViewProps {
 	worktreePath: string;
 	selectedFilePath?: string | null;
@@ -221,16 +224,16 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 		}
 	});
 	// Discard confirmation dialog state - single file
-	const [discardFile, setDiscardFile] = createSignal(null);
+	const [discardFile, setDiscardFile] = createSignal<ChangedFile | null>(null);
 	// Discard confirmation dialog state - multiple files
-	const [discardFiles, setDiscardFiles] = createSignal(null);
+	const [discardFiles, setDiscardFiles] = createSignal<ChangedFile[] | null>(null);
 	const { selectFile, getSelectedFile } = useChangesStore();
 	const selectedFileState = getSelectedFile(worktreePath || "");
 	const selectedFile = selectedFilePath !== undefined ? selectedFilePath ? { path: selectedFilePath } as ChangedFile : null : selectedFileState?.file ?? null;
 	const [fileFilter, setFileFilter] = createSignal("");
-	const [subChatFilter, setSubChatFilter] = createSignal(initialSubChatFilter);
-	const [activeTab, setActiveTab] = createSignal("changes");
-	const [fileListRef, setFileListRef] = createSignal<HTMLDivElement>(null);
+	const [subChatFilter, setSubChatFilter] = createSignal<string | null>(initialSubChatFilter);
+	const [activeTab, setActiveTab] = createSignal<"changes" | "history">("changes");
+	let fileListRef: HTMLDivElement | undefined;
 	// Update subchat filter when initialSubChatFilter changes (e.g., from Review button)
 	createEffect(() => {
 		setSubChatFilter(initialSubChatFilter);
@@ -286,39 +289,40 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	});
 	// Initialize selection - select all files by default when data loads
 	createEffect(() => {
-		if (!hasInitializedSelection && allFiles.length > 0) {
-			const allPaths = new Set(allFiles.map((f) => f.file.path));
+		if (!hasInitializedSelection() && allFiles().length > 0) {
+			const allPaths = new Set(allFiles().map((f) => f.file.path));
 			setSelectedForCommit(allPaths);
 			setHasInitializedSelection(true);
 		}
 	});
 	// Get file paths for selected subchat filter
 	const subChatFilterPaths = createMemo(() => {
-		if (!subChatFilter) return null;
-		const subChat = subChats.find((sc) => sc.id === subChatFilter);
+		if (!subChatFilter()) return null;
+		const subChat = subChats.find((sc) => sc.id === subChatFilter());
 		return subChat?.filePaths || null;
 	});
 	// Apply filters (text filter + subchat filter)
 	const filteredFiles = createMemo(() => {
-		let result = allFiles;
+		let result = allFiles();
 		// Apply subchat filter first
-		if (subChatFilterPaths) {
-			result = result.filter(({ file }) => subChatFilterPaths.some((filterPath) => file.path === filterPath || file.path.endsWith(filterPath) || filterPath.endsWith(file.path)));
+		const filterPaths = subChatFilterPaths();
+		if (filterPaths) {
+			result = result.filter(({ file }) => filterPaths.some((filterPath) => file.path === filterPath || file.path.endsWith(filterPath) || filterPath.endsWith(file.path)));
 		}
 		// Then apply text filter
-		if (fileFilter.trim()) {
-			result = result.filter(({ file }) => file.path.toLowerCase().includes(fileFilter.toLowerCase()));
+		if (fileFilter().trim()) {
+			result = result.filter(({ file }) => file.path.toLowerCase().includes(fileFilter().toLowerCase()));
 		}
 		return result;
 	});
-	const filteredCount = filteredFiles.length;
-	const totalCount = allFiles.length;
+	const filteredCount = () => filteredFiles().length;
+	const totalCount = () => allFiles().length;
 	// Counts for commit selection (checkboxes)
-	const selectedCount = filteredFiles.filter((f) => selectedForCommit.has(f.file.path)).length;
-	const allSelected = filteredCount > 0 && selectedCount === filteredCount;
-	const someSelected = selectedCount > 0 && selectedCount < filteredCount;
+	const selectedCount = () => filteredFiles().filter((f) => selectedForCommit().has(f.file.path)).length;
+	const allSelected = () => filteredCount() > 0 && selectedCount() === filteredCount();
+	const someSelected = () => selectedCount() > 0 && selectedCount() < filteredCount();
 	// Count for highlighted files (shift+click selection for discard)
-	const highlightedCount = highlightedFiles.size;
+	const highlightedCount = () => highlightedFiles().size;
 	// Handle file click - selects file for diff view and clears highlighting
 	const handleFileSelect = (file: ChangedFile, category: ChangeCategory) => {
 		if (!worktreePath) return;
@@ -348,10 +352,11 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	// Uses the currently selected file (the one showing in diff view) as anchor
 	const handleShiftClick = (clickedIndex: number) => {
 		// Find anchor index from currently selected file (the one showing diff)
-		const anchorIndex = selectedFile ? filteredFiles.findIndex((f) => f.file.path === selectedFile.path) : -1;
+		const files = filteredFiles();
+		const anchorIndex = selectedFile ? files.findIndex((f) => f.file.path === selectedFile.path) : -1;
 		if (anchorIndex === -1) {
 			// No anchor - just highlight this one file
-			const file = filteredFiles[clickedIndex];
+			const file = files[clickedIndex];
 			if (file) {
 				setHighlightedFiles(new Set([file.file.path]));
 			}
@@ -362,7 +367,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 		const endIndex = Math.max(anchorIndex, clickedIndex);
 		const newHighlighted = new Set<string>();
 		for (let i = startIndex; i <= endIndex; i++) {
-			const file = filteredFiles[i];
+			const file = files[i];
 			if (file) {
 				newHighlighted.add(file.file.path);
 			}
@@ -371,13 +376,13 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	};
 	// Get highlighted file paths as array (for context menu actions)
 	const highlightedPaths = createMemo(() => {
-		return filteredFiles.filter((f) => highlightedFiles.has(f.file.path)).map((f) => f.file.path);
+		return filteredFiles().filter((f) => highlightedFiles().has(f.file.path)).map((f) => f.file.path);
 	});
 	// Include highlighted files in commit (check their checkboxes)
 	const handleIncludeSelected = () => {
 		setSelectedForCommit((prev) => {
 			const next = new Set(prev);
-			for (const path of highlightedFiles) {
+			for (const path of highlightedFiles()) {
 				next.add(path);
 			}
 			return next;
@@ -387,7 +392,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	const handleExcludeSelected = () => {
 		setSelectedForCommit((prev) => {
 			const next = new Set(prev);
-			for (const path of highlightedFiles) {
+			for (const path of highlightedFiles()) {
 				next.delete(path);
 			}
 			return next;
@@ -395,22 +400,23 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	};
 	// Copy paths of highlighted files
 	const handleCopySelectedPaths = (worktreePath: string) => {
-		const paths = highlightedPaths.map((p) => `${worktreePath}/${p}`);
+		const paths = highlightedPaths().map((p) => `${worktreePath}/${p}`);
 		navigator.clipboard.writeText(paths.join("\n"));
 		toast.success(`Copied ${paths.length} paths`);
 	};
 	// Copy relative paths of highlighted files
 	const handleCopySelectedRelativePaths = () => {
-		navigator.clipboard.writeText(highlightedPaths.join("\n"));
-		toast.success(`Copied ${highlightedPaths.length} paths`);
+		const hp = highlightedPaths();
+		navigator.clipboard.writeText(hp.join("\n"));
+		toast.success(`Copied ${hp.length} paths`);
 	};
 	// Toggle all files selection
 	const handleSelectAllChange = () => {
-		if (allSelected) {
+		if (allSelected()) {
 			// Deselect all filtered files
 			setSelectedForCommit((prev) => {
 				const next = new Set(prev);
-				for (const { file } of filteredFiles) {
+				for (const { file } of filteredFiles()) {
 					next.delete(file.path);
 				}
 				return next;
@@ -419,7 +425,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 			// Select all filtered files
 			setSelectedForCommit((prev) => {
 				const next = new Set(prev);
-				for (const { file } of filteredFiles) {
+				for (const { file } of filteredFiles()) {
 					next.add(file.path);
 				}
 				return next;
@@ -427,25 +433,25 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 		}
 	};
 	// Keyboard navigation handler for arrow up/down
-	const handleKeyDown = (e: React.KeyboardEvent) => {
+	const handleKeyDown = (e: KeyboardEvent) => {
 		if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
 		e.preventDefault();
-		if (filteredFiles.length === 0) return;
-		const currentIndex = filteredFiles.findIndex(({ file }) => file.path === selectedFile?.path);
+		const files = filteredFiles();
+		if (files.length === 0) return;
+		const currentIndex = files.findIndex(({ file }) => file.path === selectedFile?.path);
 		let newIndex: number;
 		if (currentIndex === -1) {
 			newIndex = 0;
 		} else if (e.key === "ArrowDown") {
-			newIndex = Math.min(currentIndex + 1, filteredFiles.length - 1);
+			newIndex = Math.min(currentIndex + 1, files.length - 1);
 		} else {
 			newIndex = Math.max(currentIndex - 1, 0);
 		}
-		const newFile = filteredFiles[newIndex];
+		const newFile = files[newIndex];
 		if (newFile) {
 			handleFileSelect(newFile.file, newFile.category);
-			const container = fileListRef.current;
-			if (container) {
-				const items = container.querySelectorAll("[data-file-item]");
+			if (fileListRef) {
+				const items = fileListRef.querySelectorAll("[data-file-item]");
 				const targetItem = items[newIndex] as HTMLElement | undefined;
 				targetItem?.scrollIntoView({ block: "nearest" });
 			}
@@ -454,7 +460,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	// Get selected file paths for commit - only from filtered files (visible in current view)
 	// This ensures that when filtering by subchat, only the visible selected files are committed
 	const selectedFilePaths = createMemo(() => {
-		return filteredFiles.filter((f) => selectedForCommit.has(f.file.path)).map((f) => f.file.path);
+		return filteredFiles().filter((f) => selectedForCommit().has(f.file.path)).map((f) => f.file.path);
 	});
 	// Check if a file is marked as viewed in the diff view
 	// Key format matches agent-diff-view.tsx: `${oldPath}->${newPath}`
@@ -469,8 +475,9 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 			`/dev/null->${filePath}`,
 			`${filePath}->/dev/null`
 		];
+		const files = viewedFiles();
 		for (const key of possibleKeys) {
-			const viewedState = viewedFiles[key];
+			const viewedState = files[key];
 			if (viewedState?.viewed) {
 				return true;
 			}
@@ -485,19 +492,20 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 			`/dev/null->${filePath}`,
 			`${filePath}->/dev/null`
 		];
+		const files = viewedFiles();
 		let existingKey: string | null = null;
 		for (const key of possibleKeys) {
-			if (viewedFiles[key]) {
+			if (files[key]) {
 				existingKey = key;
 				break;
 			}
 		}
 		// Use existing key or default to modified format
 		const fileKey = existingKey || `${filePath}->${filePath}`;
-		const currentState = viewedFiles[fileKey];
+		const currentState = files[fileKey];
 		const isCurrentlyViewed = currentState?.viewed || false;
 		setViewedFiles({
-			...viewedFiles,
+			...files,
 			[fileKey]: {
 				viewed: !isCurrentlyViewed,
 				contentHash: currentState?.contentHash || ""
@@ -506,7 +514,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	};
 	// Handler for discarding highlighted files (multi-file discard via Shift+Click)
 	const handleDiscardSelected = () => {
-		const filesToDiscard = filteredFiles.filter((f) => highlightedFiles.has(f.file.path)).map((f) => f.file);
+		const filesToDiscard = filteredFiles().filter((f) => highlightedFiles().has(f.file.path)).map((f) => f.file);
 		if (filesToDiscard.length > 0) {
 			setDiscardFiles(filesToDiscard);
 		}
@@ -528,45 +536,47 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	}
 	// Handle single file discard confirmation
 	const handleConfirmDiscard = () => {
-		if (!discardFile || !worktreePath) return;
-		const isUntracked = discardFile.status === "untracked" || discardFile.status === "added";
+		const file = discardFile();
+		if (!file || !worktreePath) return;
+		const isUntracked = file.status === "untracked" || file.status === "added";
 		if (isUntracked) {
 			deleteUntrackedMutation.mutate({
 				worktreePath,
-				filePath: discardFile.path
+				filePath: file.path
 			});
 		} else {
 			discardChangesMutation.mutate({
 				worktreePath,
-				filePath: discardFile.path
+				filePath: file.path
 			});
 		}
 		setDiscardFile(null);
 	};
 	// Handle multi-file discard confirmation
 	const handleConfirmMultiDiscard = () => {
-		if (!discardFiles || discardFiles.length === 0 || !worktreePath) return;
+		const files = discardFiles();
+		if (!files || files.length === 0 || !worktreePath) return;
 		// Split files by type - untracked/added need deletion, others need checkout
-		const untrackedFiles = discardFiles.filter((f) => f.status === "untracked" || f.status === "added");
-		const trackedFiles = discardFiles.filter((f) => f.status !== "untracked" && f.status !== "added");
+		const untrackedFiles = files.filter((f: ChangedFile) => f.status === "untracked" || f.status === "added");
+		const trackedFiles = files.filter((f: ChangedFile) => f.status !== "untracked" && f.status !== "added");
 		// Discard tracked files (git checkout)
 		if (trackedFiles.length > 0) {
 			discardMultipleChangesMutation.mutate({
 				worktreePath,
-				filePaths: trackedFiles.map((f) => f.path)
+				filePaths: trackedFiles.map((f: ChangedFile) => f.path)
 			});
 		}
 		// Delete untracked files
 		if (untrackedFiles.length > 0) {
 			deleteMultipleUntrackedMutation.mutate({
 				worktreePath,
-				filePaths: untrackedFiles.map((f) => f.path)
+				filePaths: untrackedFiles.map((f: ChangedFile) => f.path)
 			});
 		}
 		// Clear commit selection and highlighting for discarded files
 		setSelectedForCommit((prev) => {
 			const next = new Set(prev);
-			for (const file of discardFiles) {
+			for (const file of files) {
 				next.delete(file.path);
 			}
 			return next;
@@ -595,7 +605,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	};
 	return <>
 			<div class="flex flex-col h-full">
-				<Tabs value={activeTab} onValueChange={(v) => {
+				<Tabs value={activeTab()} onValueChange={(v: string) => {
 		const newTab = v as "changes" | "history";
 		setActiveTab(newTab);
 		// Notify parent about tab change
@@ -618,30 +628,32 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 					{ /* Changes tab content */}
 					<TabsContent value="changes" class="flex-1 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden">
 						{ /* Filter */}
-						<ChangesFileFilter value={fileFilter} onChange={setFileFilter} subChats={subChats} selectedSubChatId={subChatFilter} onSubChatFilterChange={setSubChatFilter} />
+						<ChangesFileFilter value={fileFilter()} onChange={setFileFilter} subChats={subChats} selectedSubChatId={subChatFilter()} onSubChatFilterChange={setSubChatFilter} />
 
 						{ /* Select all header */}
 						<div class="flex items-center gap-2 px-2 py-1.5 border-b border-border/50">
-							<Checkbox checked={someSelected ? "indeterminate" : allSelected} onCheckedChange={handleSelectAllChange} class="size-4 border-muted-foreground/50" />
+							<Checkbox checked={someSelected() ? "indeterminate" : allSelected()} onCheckedChange={handleSelectAllChange} class="size-4 border-muted-foreground/50" />
 							<span class="text-xs text-muted-foreground">
-								{selectedCount} of {totalCount} file{totalCount !== 1 ? "s" : ""} selected
+								{selectedCount()} of {totalCount()} file{totalCount() !== 1 ? "s" : ""} selected
 							</span>
 						</div>
 
 						{ /* File list */}
-						{totalCount === 0 ? <div class="flex-1 flex items-center justify-center text-muted-foreground text-sm px-4 text-center">
-								No changes detected
-							</div> : filteredCount === 0 ? <div class="flex-1 flex items-center justify-center text-muted-foreground text-sm px-4 text-center">
-								No files match filter
-							</div> : <div ref={fileListRef} class="flex-1 overflow-y-auto outline-none" tabIndex={0} onKeyDown={handleKeyDown}>
-								{filteredFiles.map(({ file, category }, index) => <ChangesFileItemWithContext key={file.path} file={file} category={category} isSelected={selectedFile?.path === file.path} isChecked={selectedForCommit.has(file.path)} isViewed={isFileMarkedAsViewed(file.path)} isHighlighted={highlightedFiles.has(file.path)} highlightedCount={highlightedCount} highlightedPaths={highlightedPaths} index={index} onSelect={() => {
- handleFileSelect(file, category);
-		fileListRef.current?.focus();
-	}} onDoubleClick={() => handleFileDoubleClick(file, category)} onCheckboxChange={() => handleCheckboxChange(file.path)} onShiftClick={handleShiftClick} onCopyPath={() => handleCopyPath(file.path)} onCopyRelativePath={() => handleCopyRelativePath(file.path)} onRevealInFinder={() => handleRevealInFinder(file.path)} onToggleViewed={() => toggleFileViewed(file.path)} onDiscard={() => setDiscardFile(file)} onDiscardSelected={handleDiscardSelected} onIncludeSelected={handleIncludeSelected} onExcludeSelected={handleExcludeSelected} onCopySelectedPaths={() => handleCopySelectedPaths(worktreePath)} onCopySelectedRelativePaths={handleCopySelectedRelativePaths} />)}
-							</div>}
+						<Show when={totalCount() > 0} fallback={<div class="flex-1 flex items-center justify-center text-muted-foreground text-sm px-4 text-center">No changes detected</div>}>
+							<Show when={filteredCount() > 0} fallback={<div class="flex-1 flex items-center justify-center text-muted-foreground text-sm px-4 text-center">No files match filter</div>}>
+								<div ref={el => fileListRef = el} class="flex-1 overflow-y-auto outline-none" tabIndex={0} onKeyDown={handleKeyDown}>
+									<For each={filteredFiles()}>
+										{({ file, category }, index) => <ChangesFileItemWithContext file={file} category={category} isSelected={selectedFile?.path === file.path} isChecked={selectedForCommit().has(file.path)} isViewed={isFileMarkedAsViewed(file.path)} isHighlighted={highlightedFiles().has(file.path)} highlightedCount={highlightedCount()} highlightedPaths={highlightedPaths()} index={index()} onSelect={() => {
+											handleFileSelect(file, category);
+											fileListRef?.focus();
+										}} onDoubleClick={() => handleFileDoubleClick(file, category)} onCheckboxChange={() => handleCheckboxChange(file.path)} onShiftClick={handleShiftClick} onCopyPath={() => handleCopyPath(file.path)} onCopyRelativePath={() => handleCopyRelativePath(file.path)} onRevealInFinder={() => handleRevealInFinder(file.path)} onToggleViewed={() => toggleFileViewed(file.path)} onDiscard={() => setDiscardFile(file)} onDiscardSelected={handleDiscardSelected} onIncludeSelected={handleIncludeSelected} onExcludeSelected={handleExcludeSelected} onCopySelectedPaths={() => handleCopySelectedPaths(worktreePath)} onCopySelectedRelativePaths={handleCopySelectedRelativePaths} />}
+									</For>
+								</div>
+							</Show>
+						</Show>
 
 						{	/* Commit input */}
-						<CommitInput worktreePath={worktreePath} hasStagedChanges={selectedCount > 0} onRefresh={handleRefresh} onCommitSuccess={handleCommitSuccess} stagedCount={selectedCount} currentBranch={status.branch} selectedFilePaths={selectedFilePaths} chatId={chatId} />
+						<CommitInput worktreePath={worktreePath} hasStagedChanges={selectedCount() > 0} onRefresh={handleRefresh} onCommitSuccess={handleCommitSuccess} stagedCount={selectedCount()} currentBranch={status.branch} selectedFilePaths={selectedFilePaths()} chatId={chatId} />
 					</TabsContent>
 
 					{ /* History tab content */}
@@ -652,42 +664,42 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 			</div>
 
 			{ /* Discard confirmation dialog - single file */}
-			<AlertDialog open={!!discardFile} onOpenChange={(open) => !open && setDiscardFile(null)}>
+			<AlertDialog open={!!discardFile()} onOpenChange={(open) => !open && setDiscardFile(null)}>
 				<AlertDialogContent class="w-[340px]">
 					<AlertDialogHeader>
 						<AlertDialogTitle>
-							{discardFile?.status === "untracked" || discardFile?.status === "added" ? `Delete "${discardFile?.path.split("/").pop()}"?` : `Discard changes to "${discardFile?.path.split("/").pop()}"?`}
+							{discardFile()?.status === "untracked" || discardFile()?.status === "added" ? `Delete "${discardFile()?.path.split("/").pop()}"?` : `Discard changes to "${discardFile()?.path.split("/").pop()}"?`}
 						</AlertDialogTitle>
 					</AlertDialogHeader>
 					<AlertDialogDescription class="px-5 pb-5">
-						{discardFile?.status === "untracked" || discardFile?.status === "added" ? "This will permanently delete this file. This action cannot be undone." : "This will revert all changes to this file. This action cannot be undone."}
+						{discardFile()?.status === "untracked" || discardFile()?.status === "added" ? "This will permanently delete this file. This action cannot be undone." : "This will revert all changes to this file. This action cannot be undone."}
 					</AlertDialogDescription>
 					<AlertDialogFooter>
 						<Button variant="outline" size="sm" onClick={() => setDiscardFile(null)}>
 							Cancel
 						</Button>
 						<Button variant="destructive" size="sm" onClick={handleConfirmDiscard}>
-							{discardFile?.status === "untracked" || discardFile?.status === "added" ? "Delete" : "Discard"}
+							{discardFile()?.status === "untracked" || discardFile()?.status === "added" ? "Delete" : "Discard"}
 						</Button>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
 
 			{ /* Discard confirmation dialog - multiple files */}
-			<AlertDialog open={!!discardFiles} onOpenChange={(open) => !open && setDiscardFiles(null)}>
+			<AlertDialog open={!!discardFiles()} onOpenChange={(open) => !open && setDiscardFiles(null)}>
 				<AlertDialogContent class="w-[400px]">
 					<AlertDialogHeader>
 						<AlertDialogTitle>
-							Discard {discardFiles?.length} Selected Changes?
+							Discard {discardFiles()?.length} Selected Changes?
 						</AlertDialogTitle>
 					</AlertDialogHeader>
 					<AlertDialogDescription asChild>
 						<div class="px-5 pb-5">
 							<p class="mb-2">Are you sure you want to discard all changes to:</p>
 							<ul class="max-h-40 overflow-y-auto text-xs font-mono bg-muted/50 rounded-md p-2 space-y-0.5">
-								{discardFiles?.map((f) => <li key={f.path} class="truncate text-muted-foreground">
-										{f.path}
-									</li>)}
+								<For each={discardFiles() ?? []}>
+									{(f) => <li class="truncate text-muted-foreground">{f.path}</li>}
+								</For>
 							</ul>
 						</div>
 					</AlertDialogDescription>

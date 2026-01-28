@@ -3,7 +3,7 @@ import { cn } from "../../../lib/utils";
 import { motion } from "motion/react";
 interface ResizeHandleProps {
 	side: "left" | "right";
-	onPointerDown: (e: React.PointerEvent) => void;
+	onPointerDown: (e: PointerEvent) => void;
 	isResizing?: boolean;
 	className?: string;
 }

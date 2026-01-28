@@ -252,7 +252,7 @@ function MentionChip({ mention }: {
 /**
 * Render text with ultrathink highlighting
 */
-function renderTextWithUltrathink(text: string): React.ReactNode {
+function renderTextWithUltrathink(text: string): JSX.Element {
 	const parts = text.split(/(ultrathink)/gi);
 	if (parts.length === 1) return text;
 	return parts.map((part, index) => {
@@ -268,9 +268,9 @@ function renderTextWithUltrathink(text: string): React.ReactNode {
 * Hook to render text with file/folder mentions and ultrathink highlighting
 * Returns array of React nodes with mentions rendered as chips
 */
-export function useRenderFileMentions(text: string): React.ReactNode[] {
+export function useRenderFileMentions(text: string): JSX.Element[] {
 	return createMemo(() => {
-		const nodes: React.ReactNode[] = [];
+		const nodes: JSX.Element[] = [];
 		const regex = /@\[([^\]]+)\]/g;
 		let lastIndex = 0;
 		let match: RegExpExecArray | null;

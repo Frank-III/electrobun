@@ -1,6 +1,6 @@
 import * as React from "solid-js";
 import { cn } from "../../lib/utils";
-interface LogoProps extends React.SVGProps<SVGSVGElement> {
+interface LogoProps extends JSX.SvgSVGAttributes<SVGSVGElement> {
 	className?: string;
 	fill?: string;
 }

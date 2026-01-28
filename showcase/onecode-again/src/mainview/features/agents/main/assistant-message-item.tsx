@@ -65,7 +65,7 @@ function groupExploringTools(parts: any[], nestedToolIds: Set<string>): any[] {
 // Collapsible steps component
 interface CollapsibleStepsProps {
 	stepsCount: number;
-	children: React.ReactNode;
+	children: JSX.Element;
 	defaultExpanded?: boolean;
 }
 function CollapsibleSteps({ stepsCount, children, defaultExpanded = false }: CollapsibleStepsProps) {

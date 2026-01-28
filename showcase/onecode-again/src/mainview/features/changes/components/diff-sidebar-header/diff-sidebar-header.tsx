@@ -4,9 +4,9 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
 import { IconCloseSidebarRight, IconFetch, IconForcePush, IconSpinner, AgentIcon, CircleFilterIcon, IconReview, ExternalLinkIcon } from "../../../../components/ui/icons";
 import { DiffViewModeSwitcher } from "./diff-view-mode-switcher";
-import { createEffect, createSignal } from "solid-js";
-import { RefreshCw, ChevronDown, GitBranch } from "lucide-solid";
-import { ArrowDown, ArrowUp, Check, ChevronsDownUp, ChevronsUpDown, Columns2, Eye, GitMerge, GitPullRequest, MoreHorizontal, RefreshCw, Rows2, Square, Upload, X } from "lucide-solid";
+import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import type { JSX } from "solid-js";
+import { RefreshCw, ChevronDown, GitBranch, ArrowDown, ArrowUp, Check, ChevronsDownUp, ChevronsUpDown, Columns2, Eye, GitMerge, GitPullRequest, MoreHorizontal, Rows2, Square, Upload, X } from "lucide-solid";
 import { trpc } from "../../../../lib/trpc";
 import { cn } from "../../../../lib/utils";
 import { usePRStatus } from "../../../../hooks/usePRStatus";
@@ -78,15 +78,18 @@ function formatTimeSince(date: Date): string {
 	const days = Math.floor(hours / 24);
 	return `${days}d ago`;
 }
-export const DiffSidebarHeader = memo(function DiffSidebarHeader({ worktreePath, currentBranch, diffStats, sidebarWidth = 800, pushCount = 0, pullCount = 0, hasUpstream = true, isSyncStatusLoading = false, aheadOfDefault = 0, behindDefault = 0, onReview, isReviewing = false, onCreatePr, isCreatingPr = false, onCreatePrWithAI, isCreatingPrWithAI = false, onMergePr, isMergingPr = false, onClose, onRefresh, hasPrNumber = false, isPrOpen = false, hasMergeConflicts = false, onFixConflicts, onExpandAll, onCollapseAll, viewMode = DiffModeEnum.Unified, onViewModeChange, viewedCount = 0, onMarkAllViewed, onMarkAllUnviewed, isDesktop = false, isFullscreen = false, displayMode = "side-peek", onDisplayModeChange }: DiffSidebarHeaderProps) {
+interface DiffSidebarHeaderComponentProps extends DiffSidebarHeaderProps {}
+
+export function DiffSidebarHeader(props: DiffSidebarHeaderComponentProps) {
+	const { worktreePath, currentBranch, diffStats, sidebarWidth = 800, pushCount = 0, pullCount = 0, hasUpstream = true, isSyncStatusLoading = false, aheadOfDefault = 0, behindDefault = 0, onReview, isReviewing = false, onCreatePr, isCreatingPr = false, onCreatePrWithAI, isCreatingPrWithAI = false, onMergePr, isMergingPr = false, onClose, onRefresh, hasPrNumber = false, isPrOpen = false, hasMergeConflicts = false, onFixConflicts, onExpandAll, onCollapseAll, viewMode = DiffModeEnum.Unified, onViewModeChange, viewedCount = 0, onMarkAllViewed, onMarkAllUnviewed, isDesktop = false, isFullscreen = false, displayMode = "side-peek", onDisplayModeChange } = props;
 	// Responsive breakpoints - progressive disclosure
 	const isCompact = sidebarWidth < 350;
 	const showViewModeToggle = sidebarWidth >= 450;
 	const showReviewButton = sidebarWidth >= 550;
-	const [lastFetchTime, setLastFetchTime] = createSignal(null);
+	const [lastFetchTime, setLastFetchTime] = createSignal<Date | null>(null);
 	const [isRefreshing, setIsRefreshing] = createSignal(false);
 	const [displayTime, setDisplayTime] = createSignal("");
-	const [timeoutRef, setTimeoutRef] = createSignal<NodeJS.Timeout | null>(null);
+	let timeoutRef: ReturnType<typeof setTimeout> | undefined;
 	const { data: branchData, refetch: refetchBranches } = trpc.changes.getBranches.useQuery({ worktreePath }, { enabled: !!worktreePath });
 	// Check if current branch is the default branch (main/master)
 	const isDefaultBranch = currentBranch === branchData?.defaultBranch;
@@ -129,19 +132,20 @@ export const DiffSidebarHeader = memo(function DiffSidebarHeader({ worktreePath,
 	});
 	// Update display time every minute
 	createEffect(() => {
-		if (!lastFetchTime) return;
+		const time = lastFetchTime();
+		if (!time) return;
 		const updateTime = () => {
-			setDisplayTime(formatTimeSince(lastFetchTime));
+			setDisplayTime(formatTimeSince(time));
 		};
 		updateTime();
 		const interval = setInterval(updateTime, 6e4);
-		return () => clearInterval(interval);
+		onCleanup(() => clearInterval(interval));
 	});
 	const handleFetch = () => {
 		setIsRefreshing(true);
 		fetchMutation.mutate({ worktreePath }, { onSettled: () => {
-			if (timeoutRef.current) clearTimeout(timeoutRef.current);
-			timeoutRef.current = setTimeout(() => setIsRefreshing(false), 600);
+			if (timeoutRef) clearTimeout(timeoutRef);
+			timeoutRef = setTimeout(() => setIsRefreshing(false), 600);
 		} });
 	};
 	const handlePush = () => {
@@ -177,15 +181,13 @@ export const DiffSidebarHeader = memo(function DiffSidebarHeader({ worktreePath,
 			navigator.clipboard.writeText(pr.url);
 		}
 	};
-	createEffect(() => {
-		return () => {
-			if (timeoutRef.current) clearTimeout(timeoutRef.current);
-		};
+	onCleanup(() => {
+		if (timeoutRef) clearTimeout(timeoutRef);
 	});
 	// Check pending states
 	const isPushPending = pushMutation.isPending;
 	const isPullPending = pullMutation.isPending;
-	const isFetchPending = isRefreshing || fetchMutation.isPending;
+	const isFetchPending = isRefreshing() || fetchMutation.isPending;
 	// ============ NEW BUTTON LOGIC ============
 	// Priority:
 	// 1. !hasUpstream → Publish Branch
@@ -197,7 +199,7 @@ export const DiffSidebarHeader = memo(function DiffSidebarHeader({ worktreePath,
 interface ActionButton {
 		label: string;
 		pendingLabel?: string;
-		icon: React.ReactNode;
+		icon: JSX.Element;
 		handler: () => void;
 		tooltip: string;
 		badge?: string;
@@ -288,7 +290,7 @@ interface ActionButton {
 				pendingLabel: "Fetching...",
 				icon: <IconFetch class="size-3.5" />,
 				handler: handleFetch,
-				tooltip: lastFetchTime ? `Last fetched ${displayTime}` : "Check for updates",
+				tooltip: lastFetchTime() ? `Last fetched ${displayTime()}` : "Check for updates",
 				variant: "ghost",
 				isPending: isFetchPending
 			};
@@ -430,7 +432,7 @@ interface ActionButton {
 									<div class="flex-1">
 										<div>Fetch origin</div>
 										<div class="text-[10px] text-muted-foreground">
-											{lastFetchTime ? `Last fetched ${displayTime}` : "Check for updates"}
+											{lastFetchTime() ? `Last fetched ${displayTime()}` : "Check for updates"}
 										</div>
 									</div>
 								</DropdownMenuItem>
@@ -605,4 +607,4 @@ interface ActionButton {
 				</DropdownMenu>
 			</div>
 		</div>;
- });
+ }
