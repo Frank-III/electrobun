@@ -1,6 +1,6 @@
 "use client";
 import { createEffect, createMemo, onCleanup } from "solid-js";
-import { useAtom } from "../../lib/state/jotai";
+import { useAtom } from "../../lib/state/store";
 import { X } from "lucide-solid";
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,7 @@ export function ExpandedWidgetSidebar({ chatId, worktreePath, planPath, planRefe
 	// Keyboard shortcut: Escape to close expanded sidebar
 	createEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.code === "Escape" && expandedWidget) {
+			if (e.code === "Escape" && expandedWidget()) {
 				e.preventDefault();
 				e.stopPropagation();
 				closeSidebar();
@@ -59,7 +59,7 @@ export function ExpandedWidgetSidebar({ chatId, worktreePath, planPath, planRefe
 		switch (expandedWidget) {
 			case "info": return <InfoSection chatId={chatId} worktreePath={worktreePath} isExpanded />;
 			case "plan": return <PlanSection chatId={activeSubChatId || chatId} planPath={planPath} refetchTrigger={planRefetchTrigger} isExpanded />;
-			case "terminal": return worktreePath ? <TerminalSection chatId={chatId} cwd={worktreePath} workspaceId={chatId} isExpanded /> : null;
+			case "terminal": return worktreePath ? <TerminalSection chatId={chatId} cwd={worktreePath} isExpanded /> : null;
 			case "diff": return <DiffSection chatId={chatId} isDiffSidebarOpen={isDiffSidebarOpen} setIsDiffSidebarOpen={setIsDiffSidebarOpen} diffStats={diffStats} isExpanded />;
 			default: return null;
 		}

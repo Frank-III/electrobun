@@ -1,6 +1,5 @@
 "use client";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
-import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { useTheme } from "../../../lib/hooks/use-theme";
 import { fullThemeDataAtom } from "@/lib/atoms";
 import { ArrowUpRight } from "lucide-solid";
@@ -13,13 +12,13 @@ import { Terminal } from "@/features/terminal/terminal";
 import { TerminalTabs } from "@/features/terminal/terminal-tabs";
 import { getDefaultTerminalBg } from "@/features/terminal/helpers";
 import { terminalsAtom, activeTerminalIdAtom, terminalCwdAtom } from "@/features/terminal/atoms";
-import { trpc } from "@/lib/trpc";
+import { useMutation } from "@tanstack/solid-query";
+import { desktopRpc } from "@/lib/desktop-rpc";
 import type { TerminalInstance } from "@/features/terminal/types";
 import { cn } from "@/lib/utils";
 interface TerminalWidgetProps {
 	chatId: string;
 	cwd: string;
-	workspaceId: string;
 	onExpand?: () => void;
 }
 function generateTerminalId(): string {
@@ -41,15 +40,15 @@ function getNextTerminalName(terminals: TerminalInstance[]): string {
 * Combines WidgetCard header with terminal tabs and content
 * Memoized to prevent re-renders when parent updates
 */
-export function TerminalWidget({ chatId, cwd, workspaceId, onExpand }: TerminalWidgetProps) {
+export function TerminalWidget({ chatId, cwd, onExpand }: TerminalWidgetProps) {
 	// Terminal state - reuse existing atoms
-	const [allTerminals, setAllTerminals] = useAtom(terminalsAtom);
-	const [allActiveIds, setAllActiveIds] = useAtom(activeTerminalIdAtom);
-	const terminalCwds = useAtomValue(terminalCwdAtom);
+	const [allTerminals, setAllTerminals] = terminalsAtom;
+	const [allActiveIds, setAllActiveIds] = activeTerminalIdAtom;
+	const [terminalCwds] = terminalCwdAtom;
 	// Theme detection for terminal background
 	const { resolvedTheme } = useTheme();
 	const isDark = resolvedTheme() === "dark";
-	const fullThemeData = useAtomValue(fullThemeDataAtom);
+	const [fullThemeData] = fullThemeDataAtom;
 	// Resolved hotkey for tooltip
 	const toggleTerminalHotkey = useResolvedHotkeyDisplay("toggle-terminal");
 	const terminalBg = createMemo(() => {
@@ -62,20 +61,16 @@ export function TerminalWidget({ chatId, cwd, workspaceId, onExpand }: TerminalW
 		return getDefaultTerminalBg(isDark);
 	});
 	// Get terminals for this chat
-	const terminals = createMemo(() => allTerminals[chatId] || []);
-	const activeTerminalId = createMemo(() => allActiveIds[chatId] || null);
-	const activeTerminal = createMemo(() => terminals.find((t) => t.id === activeTerminalId) || null);
-	const killMutation = trpc.terminal.kill.useMutation();
-	// Refs for stable callbacks
-	const [chatIdRef, setChatIdRef] = createSignal(chatId);
-	chatIdRef.current = chatId;
-	const [terminalsRef, setTerminalsRef] = createSignal(terminals);
-	terminalsRef.current = terminals;
-	const [activeTerminalIdRef, setActiveTerminalIdRef] = createSignal(activeTerminalId);
-	activeTerminalIdRef.current = activeTerminalId;
+	const terminals = createMemo(() => allTerminals()[chatId] || []);
+	const activeTerminalId = createMemo(() => allActiveIds()[chatId] || null);
+	const activeTerminal = createMemo(() => terminals().find((t) => t.id === activeTerminalId()) || null);
+	const killMutation = useMutation(() => ({
+		mutationFn: (input: { paneId: string }) => desktopRpc.terminal.kill.mutate(input),
+	}));
+	// Callback functions - read props/derived values directly
 	const createTerminal = () => {
-		const currentChatId = chatIdRef.current;
-		const currentTerminals = terminalsRef.current;
+		const currentChatId = chatId;
+		const currentTerminals = terminals();
 		const id = generateTerminalId();
 		const paneId = generatePaneId(currentChatId, id);
 		const name = getNextTerminalName(currentTerminals);
@@ -95,45 +90,41 @@ export function TerminalWidget({ chatId, cwd, workspaceId, onExpand }: TerminalW
 		}));
 	};
 	const selectTerminal = (id: string) => {
-		const currentChatId = chatIdRef.current;
 		setAllActiveIds((prev) => ({
 			...prev,
-			[currentChatId]: id
+			[chatId]: id
 		}));
 	};
 	const closeTerminal = (id: string) => {
-		const currentChatId = chatIdRef.current;
-		const currentTerminals = terminalsRef.current;
-		const currentActiveId = activeTerminalIdRef.current;
+		const currentTerminals = terminals();
+		const currentActiveId = activeTerminalId();
 		const terminal = currentTerminals.find((t) => t.id === id);
 		if (!terminal) return;
 		killMutation.mutate({ paneId: terminal.paneId });
 		const newTerminals = currentTerminals.filter((t) => t.id !== id);
 		setAllTerminals((prev) => ({
 			...prev,
-			[currentChatId]: newTerminals
+			[chatId]: newTerminals
 		}));
 		if (currentActiveId === id) {
 			const newActive = newTerminals[newTerminals.length - 1]?.id || null;
 			setAllActiveIds((prev) => ({
 				...prev,
-				[currentChatId]: newActive
+				[chatId]: newActive
 			}));
 		}
 	};
 	const renameTerminal = (id: string, name: string) => {
-		const currentChatId = chatIdRef.current;
 		setAllTerminals((prev) => ({
 			...prev,
-			[currentChatId]: (prev[currentChatId] || []).map((t) => t.id === id ? {
+			[chatId]: (prev[chatId] || []).map((t) => t.id === id ? {
 				...t,
 				name
 			} : t)
 		}));
 	};
 	const closeOtherTerminals = (id: string) => {
-		const currentChatId = chatIdRef.current;
-		const currentTerminals = terminalsRef.current;
+		const currentTerminals = terminals();
 		currentTerminals.forEach((terminal) => {
 			if (terminal.id !== id) {
 				killMutation.mutate({ paneId: terminal.paneId });
@@ -142,16 +133,15 @@ export function TerminalWidget({ chatId, cwd, workspaceId, onExpand }: TerminalW
 		const remainingTerminal = currentTerminals.find((t) => t.id === id);
 		setAllTerminals((prev) => ({
 			...prev,
-			[currentChatId]: remainingTerminal ? [remainingTerminal] : []
+			[chatId]: remainingTerminal ? [remainingTerminal] : []
 		}));
 		setAllActiveIds((prev) => ({
 			...prev,
-			[currentChatId]: id
+			[chatId]: id
 		}));
 	};
 	const closeTerminalsToRight = (id: string) => {
-		const currentChatId = chatIdRef.current;
-		const currentTerminals = terminalsRef.current;
+		const currentTerminals = terminals();
 		const index = currentTerminals.findIndex((t) => t.id === id);
 		if (index === -1) return;
 		const terminalsToClose = currentTerminals.slice(index + 1);
@@ -161,19 +151,19 @@ export function TerminalWidget({ chatId, cwd, workspaceId, onExpand }: TerminalW
 		const remainingTerminals = currentTerminals.slice(0, index + 1);
 		setAllTerminals((prev) => ({
 			...prev,
-			[currentChatId]: remainingTerminals
+			[chatId]: remainingTerminals
 		}));
-		const currentActiveId = activeTerminalIdRef.current;
+		const currentActiveId = activeTerminalId();
 		if (currentActiveId && !remainingTerminals.find((t) => t.id === currentActiveId)) {
 			setAllActiveIds((prev) => ({
 				...prev,
-				[currentChatId]: remainingTerminals[remainingTerminals.length - 1]?.id || null
+				[chatId]: remainingTerminals[remainingTerminals.length - 1]?.id || null
 			}));
 		}
 	};
 	// Auto-create first terminal when section is rendered and no terminals exist
 	createEffect(() => {
-		if (terminals.length === 0) {
+		if (terminals().length === 0) {
 			createTerminal();
 		}
 	});
@@ -188,9 +178,9 @@ export function TerminalWidget({ chatId, cwd, workspaceId, onExpand }: TerminalW
 	return <div class="mx-2 mb-2">
       <div class={cn("rounded-lg border border-border/50 overflow-hidden")}>
         {	/* Widget Header with Tabs - like terminal-sidebar.tsx */}
-        <div class="flex items-center gap-1 pl-1 pr-2 py-1.5 select-none group" style={{ "background-color": terminalBg }}>
+	      <div class="flex items-center gap-1 pl-1 pr-2 py-1.5 select-none group" style={{ "background-color": terminalBg() }}>
           { /* Terminal Tabs - directly without wrapper, like in terminal-sidebar.tsx */}
-          {terminals.length > 0 && <TerminalTabs terminals={terminals} activeTerminalId={activeTerminalId} cwds={terminalCwds} initialCwd={cwd} terminalBg={terminalBg} hidePlusButton small onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />}
+	        {terminals().length > 0 && <TerminalTabs terminals={terminals()} activeTerminalId={activeTerminalId()} cwds={terminalCwds()} initialCwd={cwd} terminalBg={terminalBg()} hidePlusButton small onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />}
 
           { /* Plus button after tabs */}
           <Tooltip>
@@ -217,16 +207,16 @@ export function TerminalWidget({ chatId, cwd, workspaceId, onExpand }: TerminalW
         </div>
 
         { /* Terminal Content */}
-        <div class="min-h-0 overflow-hidden" style={{
- "background-color": terminalBg,
+	      <div class="min-h-0 overflow-hidden" style={{
+ "background-color": terminalBg(),
 		height: "200px"
 	}}>
-          {activeTerminal && canRenderTerminal ? <div class="h-full">
-              <Terminal paneId={activeTerminal.paneId} cwd={cwd} workspaceId={workspaceId} initialCwd={cwd} />
-            </div> : <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
-              {!canRenderTerminal ? "" : "No terminal open"}
-            </div>}
-        </div>
+	        {activeTerminal() && canRenderTerminal() ? <div class="h-full">
+	            <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} initialCwd={cwd} />
+	          </div> : <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+	            {!canRenderTerminal() ? "" : "No terminal open"}
+	          </div>}
+	      </div>
       </div>
     </div>;
 }

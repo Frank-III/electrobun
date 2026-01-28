@@ -1,5 +1,4 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
-import { useAtom, useAtomValue } from "../../lib/state/jotai";
 import { useTheme } from "../../lib/hooks/use-theme";
 import { fullThemeDataAtom } from "@/lib/atoms";
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar";
@@ -13,7 +12,7 @@ import { Terminal } from "./terminal";
 import { TerminalTabs } from "./terminal-tabs";
 import { getDefaultTerminalBg } from "./helpers";
 import { terminalSidebarOpenAtomFamily, terminalSidebarWidthAtom, terminalsAtom, activeTerminalIdAtom, terminalCwdAtom } from "./atoms";
-import { trpc } from "@/lib/trpc";
+import { desktopRpc } from "@/lib/desktop-rpc";
 import type { TerminalInstance } from "./types";
 // Animation constants - keep in sync with ResizableSidebar animationDuration
 const SIDEBAR_ANIMATION_DURATION_SECONDS = 0;
@@ -23,9 +22,6 @@ interface TerminalSidebarProps {
 	/** Chat ID - used to scope terminals to this chat */
 	chatId: string;
 	cwd: string;
-	workspaceId: string;
-	tabId?: string;
-	initialCommands?: string[];
 	/** Mobile fullscreen mode - skip ResizableSidebar wrapper */
 	isMobileFullscreen?: boolean;
 	/** Callback when closing in mobile mode */
@@ -54,19 +50,19 @@ function getNextTerminalName(terminals: TerminalInstance[]): string {
 	const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
 	return `Terminal ${maxNumber + 1}`;
 }
-export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialCommands, isMobileFullscreen = false, onClose }: TerminalSidebarProps) {
+export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClose }: TerminalSidebarProps) {
 	// Per-chat terminal sidebar state
 	const terminalSidebarAtom = createMemo(() => terminalSidebarOpenAtomFamily(chatId));
-	const [isOpen, setIsOpen] = useAtom(terminalSidebarAtom());
-	const [allTerminals, setAllTerminals] = useAtom(terminalsAtom);
-	const [allActiveIds, setAllActiveIds] = useAtom(activeTerminalIdAtom);
-	const terminalCwds = useAtomValue(terminalCwdAtom);
+	const [isOpen, setIsOpen] = terminalSidebarAtom();
+	const [allTerminals, setAllTerminals] = terminalsAtom;
+	const [allActiveIds, setAllActiveIds] = activeTerminalIdAtom;
+	const [terminalCwds] = terminalCwdAtom;
 	// Theme detection for terminal background
 	const { resolvedTheme } = useTheme();
 	const isDark = resolvedTheme() === "dark";
 	// Resolved hotkey for tooltip
 	const toggleTerminalHotkey = useResolvedHotkeyDisplay("toggle-terminal");
-	const fullThemeData = useAtomValue(fullThemeDataAtom);
+	const [fullThemeData] = fullThemeDataAtom;
 	const terminalBg = createMemo(() => {
 		const themeData = fullThemeData();
 		// Use VS Code theme terminal background if available
@@ -85,7 +81,7 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 	// Get the active terminal instance
 	const activeTerminal = createMemo(() => terminals().find((t) => t.id === activeTerminalId()) || null);
 	// tRPC mutation for killing terminal sessions
-	const killMutation = trpc.terminal.kill.useMutation();
+	const killTerminal = (paneId: string) => desktopRpc.terminal.kill.mutate({ paneId });
 	// Create a new terminal - stable callback
 	const createTerminal = () => {
 		const currentChatId = chatId;
@@ -123,7 +119,7 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 		const terminal = currentTerminals.find((t) => t.id === id);
 		if (!terminal) return;
 		// Kill the session on the backend
-		killMutation.mutate({ paneId: terminal.paneId });
+		killTerminal(terminal.paneId);
 		// Remove from state
 		const newTerminals = currentTerminals.filter((t) => t.id !== id);
 		setAllTerminals((prev) => ({
@@ -155,7 +151,7 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 		// Kill all terminals except the one with the given id
 		currentTerminals.forEach((terminal) => {
 			if (terminal.id !== id) {
-				killMutation.mutate({ paneId: terminal.paneId });
+				killTerminal(terminal.paneId);
 			}
 		});
 		// Keep only the terminal with the given id
@@ -178,7 +174,7 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 		// Kill terminals to the right
 		const terminalsToClose = currentTerminals.slice(index + 1);
 		terminalsToClose.forEach((terminal) => {
-			killMutation.mutate({ paneId: terminal.paneId });
+			killTerminal(terminal.paneId);
 		});
 		// Keep only terminals up to and including the one with the given id
 		const remainingTerminals = currentTerminals.slice(0, index + 1);
@@ -268,7 +264,7 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
               {!canRenderTerminal() ? "" : "No terminal open"}
             </div>}>
             <div class="h-full">
-              <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} workspaceId={workspaceId} tabId={tabId} initialCommands={initialCommands} initialCwd={cwd} />
+              <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} initialCwd={cwd} />
             </div>
           </Show>
         </div>
@@ -309,7 +305,7 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
               {!canRenderTerminal() ? "" : "No terminal open"}
             </div>}>
             <div class="h-full">
-              <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} workspaceId={workspaceId} tabId={tabId} initialCommands={initialCommands} initialCwd={cwd} />
+              <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} initialCwd={cwd} />
             </div>
           </Show>
         </div>

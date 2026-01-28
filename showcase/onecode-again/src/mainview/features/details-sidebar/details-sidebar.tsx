@@ -1,6 +1,6 @@
 "use client";
 import { createEffect, createMemo, For, Show, Switch, Match, onCleanup } from "solid-js";
-import { useAtom, useAtomValue } from "../../lib/state/jotai";
+import { useAtom, useAtomValue } from "../../lib/state/store";
 import { ArrowUpRight, TerminalSquare, Box, ListTodo } from "lucide-solid";
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar";
 import { Button } from "@/components/ui/button";
@@ -213,9 +213,9 @@ export function DetailsSidebar({ chatId, worktreePath, planPath, mode, onBuildPl
                   <Match when={widgetId === "plan" && planPath && !isPlanSidebarOpen}>
                     <PlanWidget chatId={chatId} activeSubChatId={activeSubChatId} planPath={planPath} refetchTrigger={planRefetchTrigger} mode={mode} onApprovePlan={onBuildPlan} onExpandPlan={onExpandPlan} />
                   </Match>
-                  <Match when={widgetId === "terminal" && worktreePath && !isTerminalSidebarOpen}>
-                    <TerminalWidget chatId={chatId} cwd={worktreePath} workspaceId={chatId} onExpand={onExpandTerminal} />
-                  </Match>
+				<Match when={widgetId === "terminal" && worktreePath && !isTerminalSidebarOpen}>
+					<TerminalWidget chatId={chatId} cwd={worktreePath} onExpand={onExpandTerminal} />
+				</Match>
                   <Match when={widgetId === "diff" && (canOpenDiff || (isRemoteChat && diffStats && (diffStats.fileCount > 0 || diffStats.additions > 0 || diffStats.deletions > 0))) && !(isDiffSidebarOpen && diffDisplayMode === "side-peek")}>
                     <ChangesWidget chatId={chatId} worktreePath={worktreePath} diffStats={diffStats} parsedFileDiffs={parsedFileDiffs} onCommit={onCommit} isCommitting={isCommitting} onExpand={canOpenDiff ? onExpandDiff : undefined} onFileSelect={canOpenDiff ? onFileSelect : undefined} diffDisplayMode={diffDisplayMode} />
                   </Match>
