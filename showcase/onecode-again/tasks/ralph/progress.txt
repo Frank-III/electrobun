@@ -34,6 +34,7 @@ Started: 2026-01-28
 - Use solid-motionone: `Motion.div` (capitalized), `Presence` instead of React's `motion.div` and `AnimatePresence`
 - solid-motionone transition uses `easing` prop, not `ease` (Framer Motion style)
 - Use `<Presence exitBeforeEnter>` for AnimatePresence mode="wait" behavior
+- window.desktopApi is typed in src/types/globals.d.ts - use `window.desktopApi?.method()` not `(window as any).desktopApi`
 
 ---
 
@@ -428,4 +429,51 @@ Thread: https://ampcode.com/threads/T-019c0672-11b7-7418-a9d1-a5e14f6a53df
   - WebkitAppRegion is a special vendor prefix used for Electron window dragging - can keep camelCase with `as JSX.CSSProperties` cast
   - Many files already use correct kebab-case (terminal.tsx, terminal-sidebar.tsx) from previous migrations
   - Pre-existing type errors in src/bun/ are unrelated to CSS migration (electrobun/drizzle type issues)
+---
+
+## 2026-01-28 - US-023
+Thread: https://ampcode.com/threads/T-019c0676-6afd-712e-a9d5-ff8c2788c30a
+- Added comprehensive DesktopApi type declarations to globals.d.ts
+- Files changed:
+  - src/types/globals.d.ts - Added DesktopApi interface with ~40 methods covering:
+    - Platform properties (platform, arch)
+    - User & Authentication (getUser, updateUser, logout, startAuthFlow, onAuthSuccess, setAnalyticsOptOut)
+    - Version & Updates (getVersion, isPackaged, checkForUpdates, downloadUpdate, installUpdate + 7 event listeners)
+    - Window Control (minimize/maximize/close, windowIsMaximized/Fullscreen, setTrafficLightVisibility, newWindow)
+    - External Links & Dev Tools (openExternal, toggleDevTools, unlockDevTools)
+    - Notifications & Badge (showNotification, setBadge, setBadgeIcon, onFocusChange)
+    - API & Fetch (getApiBaseUrl, signedFetch)
+    - File Watchers (onFileChanged, subscribeToGitWatcher, unsubscribeFromGitWatcher, onGitStatusChanged)
+    - VS Code Themes (scanVSCodeThemes, loadVSCodeTheme)
+    - Streaming Fetch (streamFetch, onStreamChunk, onStreamDone, onStreamError)
+    - Window Title (setWindowTitle)
+    - Clipboard (clipboardWrite)
+    - Menu Shortcuts (onShortcutNewAgent)
+  - src/mainview/components/dialogs/settings-tabs/agents-appearance-tab.tsx - removed (window as any) cast
+  - src/mainview/components/dialogs/settings-tabs/agents-beta-tab.tsx - removed 3x (window as any) casts
+  - src/mainview/components/dialogs/agents-settings-dialog.tsx - removed (window as any) cast
+  - src/mainview/components/chat-markdown-renderer.tsx - removed (window as any) cast
+- **Learnings for future iterations:**
+  - window.desktopApi is typed as optional (DesktopApi | undefined) since it only exists in desktop app
+  - All DesktopApi methods now have proper types - no more `any` casts needed
+  - Remaining "possibly undefined" errors are expected - code handles this with optional chaining (?.)
+  - Pre-existing type errors in src/bun/ are unrelated (electrobun/drizzle type issues)
+  - Supporting types: DesktopApiUser, DesktopApiUpdateInfo, DesktopApiUpdateProgress, DesktopApiNotificationOptions, DesktopApiFileChangeData, DesktopApiGitStatusData, DesktopApiStreamFetchResult
+---
+
+## 2026-01-28 - US-024
+Thread: https://ampcode.com/threads/T-019c067b-691a-772d-8700-62acb7995c08
+- Fixed jotai signal accessor patterns across settings tab components
+- Files changed:
+  - src/mainview/components/dialogs/settings-tabs/agents-debug-tab.tsx - fixed useIsNarrowScreen return type, signal accessor calls for reactScanEnabled/reactScanLoading, onCleanup pattern
+  - src/mainview/components/dialogs/settings-tabs/agents-keyboard-tab.tsx - fixed all signal accessor patterns: betaKanbanEnabled(), customHotkeys(), searchQuery(), filteredShortcuts(), conflicts(), ctrlTabTarget(), selectedActionId(), hasCustomHotkeys(), isRecording(), selectedAction(), conflictMessage()
+  - src/mainview/components/dialogs/settings-tabs/agents-models-tab.tsx - fixed storedConfig() accessors, trimmed value accessors, canSave/canReset accessors, isNarrowScreen accessor, input value accessors
+  - src/mainview/components/dialogs/settings-tabs/agents-preferences-tab.tsx - fixed all atom accessor patterns: thinkingEnabled(), soundEnabled(), desktopNotificationsEnabled(), analyticsOptOut(), ctrlTabTarget(), autoAdvanceTarget(), defaultAgentMode()
+  - Deleted stale .js files: agents-beta-tab.js, agents-debug-tab.js, agents-preferences-tab.js, index.js, tool-selector.js
+- **Learnings for future iterations:**
+  - The jotai.ts shim already returns SolidJS Accessors - the issue is calling them with ()
+  - useAtom returns [Accessor<T>, Setter<T>] - must call accessor like `value()` not `value`
+  - useAtomValue returns Accessor<T> - same pattern
+  - Kobalte Select component type errors are pre-existing issues with the component's TypeScript definitions, not related to jotai migration
+  - When a derived value depends on a signal, make it a function: `const canSave = () => Boolean(...)` not `const canSave = Boolean(...)`
 ---

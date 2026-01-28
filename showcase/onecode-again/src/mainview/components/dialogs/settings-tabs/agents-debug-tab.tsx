@@ -1,12 +1,11 @@
-import { createSignal, createEffect } from "solid-js";
-import { useAtom } from "../../../lib/state/jotai";
+import { createSignal, createEffect, onCleanup, type Accessor } from "solid-js";
 import { Button } from "../../ui/button";
 import { Switch } from "../../ui/switch";
 import { trpc } from "../../../lib/trpc";
 import { toast } from "solid-sonner";
 import { Copy, FolderOpen, RefreshCw, Terminal, Check, Scan, WifiOff } from "lucide-solid";
-// Hook to detect narrow screen
-function useIsNarrowScreen(): boolean {
+
+function useIsNarrowScreen(): Accessor<boolean> {
 	const [isNarrow, setIsNarrow] = createSignal(false);
 	createEffect(() => {
 		const checkWidth = () => {
@@ -14,7 +13,7 @@ function useIsNarrowScreen(): boolean {
 		};
 		checkWidth();
 		window.addEventListener("resize", checkWidth);
-		return () => window.removeEventListener("resize", checkWidth);
+		onCleanup(() => window.removeEventListener("resize", checkWidth));
 	});
 	return isNarrow;
 }
@@ -143,7 +142,7 @@ export function AgentsDebugTab() {
 	const isLoading = isLoadingSystem || isLoadingDb;
 	return <div class="p-6 space-y-6">
       {	/* Header - hidden on narrow screens since it's in the navigation bar */}
-      {!isNarrowScreen && <div>
+      {!isNarrowScreen() && <div>
           <h3 class="text-lg font-semibold mb-1">Debug</h3>
           <p class="text-sm text-muted-foreground">
             System information and developer tools
@@ -202,7 +201,7 @@ export function AgentsDebugTab() {
                   </p>
                 </div>
               </div>
-              <Switch checked={reactScanEnabled} onCheckedChange={handleReactScanToggle} disabled={reactScanLoading} />
+              <Switch checked={reactScanEnabled()} onCheckedChange={handleReactScanToggle} disabled={reactScanLoading()} />
             </div>
             <div class="flex items-center justify-between p-3">
               <div class="flex items-center gap-2">

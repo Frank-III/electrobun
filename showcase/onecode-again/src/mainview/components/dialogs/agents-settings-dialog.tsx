@@ -229,7 +229,7 @@ export function AgentsSettingsDialog(props: AgentsSettingsDialogProps) {
 			if (betaClickCount >= DEVTOOLS_UNLOCK_CLICKS) {
 				setDevToolsUnlocked(true);
 				betaClickCount = 0;
-				(window as any).desktopApi?.unlockDevTools();
+				window.desktopApi?.unlockDevTools();
 				console.log("[Settings] DevTools unlocked!");
 			}
 		}

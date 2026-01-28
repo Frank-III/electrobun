@@ -37,12 +37,12 @@ export function AgentsBetaTab() {
 	const [currentVersion, setCurrentVersion] = createSignal(null);
 	// Get current version on mount
 	createEffect(() => {
-		(window as any).desktopApi?.getVersion().then(setCurrentVersion);
+		window.desktopApi?.getVersion().then(setCurrentVersion);
 	});
 	// Check for updates with force flag to bypass cache
 	const handleCheckForUpdates = async () => {
 		// Check if we're in dev mode
-		const isPackaged = await (window as any).desktopApi?.isPackaged?.();
+		const isPackaged = await window.desktopApi?.isPackaged?.();
 		if (!isPackaged) {
 			setUpdateStatus("error");
 			console.log("Update check skipped in dev mode");
@@ -51,7 +51,7 @@ export function AgentsBetaTab() {
 		setUpdateStatus("checking");
 		setUpdateVersion(null);
 		try {
-			const result = await (window as any).desktopApi?.checkForUpdates(true);
+			const result = await window.desktopApi?.checkForUpdates(true);
 			if (result) {
 				setUpdateStatus("available");
 				setUpdateVersion(result.version);

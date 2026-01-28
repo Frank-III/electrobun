@@ -1,6 +1,6 @@
 import { useAtom, useSetAtom } from "../../../lib/state/jotai";
 import { MoreHorizontal, Plus } from "lucide-solid";
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
 import { toast } from "solid-sonner";
 import { agentsSettingsDialogOpenAtom, anthropicOnboardingCompletedAtom, customClaudeConfigAtom, openaiApiKeyAtom, type CustomClaudeConfig } from "../../../lib/atoms";
 import { trpc } from "../../../lib/trpc";
@@ -9,8 +9,8 @@ import { Button } from "../../ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../ui/dropdown-menu";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
-// Hook to detect narrow screen
-function useIsNarrowScreen(): boolean {
+
+function useIsNarrowScreen(): Accessor<boolean> {
 	const [isNarrow, setIsNarrow] = createSignal(false);
 	createEffect(() => {
 		const checkWidth = () => {
@@ -18,7 +18,7 @@ function useIsNarrowScreen(): boolean {
 		};
 		checkWidth();
 		window.addEventListener("resize", checkWidth);
-		return () => window.removeEventListener("resize", checkWidth);
+		onCleanup(() => window.removeEventListener("resize", checkWidth));
 	});
 	return isNarrow;
 }
@@ -161,9 +161,9 @@ function AnthropicAccountsSection() {
 }
 export function AgentsModelsTab() {
 	const [storedConfig, setStoredConfig] = useAtom(customClaudeConfigAtom);
-	const [model, setModel] = createSignal(storedConfig.model);
-	const [baseUrl, setBaseUrl] = createSignal(storedConfig.baseUrl);
-	const [token, setToken] = createSignal(storedConfig.token);
+	const [model, setModel] = createSignal(storedConfig().model);
+	const [baseUrl, setBaseUrl] = createSignal(storedConfig().baseUrl);
+	const [token, setToken] = createSignal(storedConfig().token);
 	const setAnthropicOnboardingCompleted = useSetAtom(anthropicOnboardingCompletedAtom);
 	const setSettingsOpen = useSetAtom(agentsSettingsDialogOpenAtom);
 	const isNarrowScreen = useIsNarrowScreen();
@@ -172,31 +172,31 @@ export function AgentsModelsTab() {
 	const isClaudeCodeConnected = claudeCodeIntegration?.isConnected;
 	// OpenAI API key state
 	const [storedOpenAIKey, setStoredOpenAIKey] = useAtom(openaiApiKeyAtom);
-	const [openaiKey, setOpenaiKey] = createSignal(storedOpenAIKey);
+	const [openaiKey, setOpenaiKey] = createSignal(storedOpenAIKey());
 	const setOpenAIKeyMutation = trpc.voice.setOpenAIKey.useMutation();
 	const trpcUtils = trpc.useUtils();
 	createEffect(() => {
-		setModel(storedConfig.model);
-		setBaseUrl(storedConfig.baseUrl);
-		setToken(storedConfig.token);
+		setModel(storedConfig().model);
+		setBaseUrl(storedConfig().baseUrl);
+		setToken(storedConfig().token);
 	});
 	createEffect(() => {
-		setOpenaiKey(storedOpenAIKey);
+		setOpenaiKey(storedOpenAIKey());
 	});
-	const trimmedModel = model.trim();
-	const trimmedBaseUrl = baseUrl.trim();
-	const trimmedToken = token.trim();
-	const canSave = Boolean(trimmedModel && trimmedBaseUrl && trimmedToken);
-	const canReset = Boolean(trimmedModel || trimmedBaseUrl || trimmedToken);
+	const trimmedModel = () => model().trim();
+	const trimmedBaseUrl = () => baseUrl().trim();
+	const trimmedToken = () => token().trim();
+	const canSave = () => Boolean(trimmedModel() && trimmedBaseUrl() && trimmedToken());
+	const canReset = () => Boolean(trimmedModel() || trimmedBaseUrl() || trimmedToken());
 	const handleSave = () => {
-		if (!canSave) {
+		if (!canSave()) {
 			toast.error("Fill model, token, and base URL to save");
 			return;
 		}
 		const nextConfig: CustomClaudeConfig = {
-			model: trimmedModel,
-			token: trimmedToken,
-			baseUrl: trimmedBaseUrl
+			model: trimmedModel(),
+			token: trimmedToken(),
+			baseUrl: trimmedBaseUrl()
 		};
 		setStoredConfig(nextConfig);
 		toast.success("Model settings saved");
@@ -214,17 +214,18 @@ export function AgentsModelsTab() {
 		setAnthropicOnboardingCompleted(false);
 	};
 	// OpenAI key handlers
-	const trimmedOpenAIKey = openaiKey.trim();
-	const canSaveOpenAI = trimmedOpenAIKey !== storedOpenAIKey;
-	const canResetOpenAI = !!trimmedOpenAIKey;
+	const trimmedOpenAIKey = () => openaiKey().trim();
+	const canSaveOpenAI = () => trimmedOpenAIKey() !== storedOpenAIKey();
+	const canResetOpenAI = () => !!trimmedOpenAIKey();
 	const handleSaveOpenAI = async () => {
-		if (trimmedOpenAIKey && !trimmedOpenAIKey.startsWith("sk-")) {
+		const key = trimmedOpenAIKey();
+		if (key && !key.startsWith("sk-")) {
 			toast.error("Invalid OpenAI API key format. Key should start with 'sk-'");
 			return;
 		}
 		try {
-			await setOpenAIKeyMutation.mutateAsync({ key: trimmedOpenAIKey });
-			setStoredOpenAIKey(trimmedOpenAIKey);
+			await setOpenAIKeyMutation.mutateAsync({ key });
+			setStoredOpenAIKey(key);
 			// Invalidate voice availability check
 			await trpcUtils.voice.isAvailable.invalidate();
 			toast.success("OpenAI API key saved");
@@ -245,7 +246,7 @@ export function AgentsModelsTab() {
 	};
 	return <div class="p-6 space-y-6">
       {	/* Header - hidden on narrow screens since it's in the navigation bar */}
-      {!isNarrowScreen && <div class="flex flex-col space-y-1.5 text-center sm:text-left">
+      {!isNarrowScreen() && <div class="flex flex-col space-y-1.5 text-center sm:text-left">
           <h3 class="text-sm font-semibold text-foreground">Models</h3>
           <p class="text-xs text-muted-foreground">
             Configure model overrides and Claude Code authentication
@@ -289,7 +290,7 @@ export function AgentsModelsTab() {
               </p>
             </div>
             <div class="flex-shrink-0 w-80">
-              <Input value={model} onInput={(e) => setModel(e.currentTarget.value)} class="w-full" placeholder="claude-3-7-sonnet-20250219" />
+              <Input value={model()} onInput={(e) => setModel(e.currentTarget.value)} class="w-full" placeholder="claude-3-7-sonnet-20250219" />
             </div>
           </div>
 
@@ -301,7 +302,7 @@ export function AgentsModelsTab() {
               </p>
             </div>
             <div class="flex-shrink-0 w-80">
-              <Input type="password" value={token} onInput={(e) => {
+              <Input type="password" value={token()} onInput={(e) => {
  setToken(e.currentTarget.value);
 	}} class="w-full" placeholder="sk-ant-..." />
             </div>
@@ -315,16 +316,16 @@ export function AgentsModelsTab() {
               </p>
             </div>
             <div class="flex-shrink-0 w-80">
-              <Input value={baseUrl} onInput={(e) => setBaseUrl(e.currentTarget.value)} class="w-full" placeholder="https://api.anthropic.com" />
+              <Input value={baseUrl()} onInput={(e) => setBaseUrl(e.currentTarget.value)} class="w-full" placeholder="https://api.anthropic.com" />
             </div>
           </div>
         </div>
 
         <div class="bg-muted p-3 rounded-b-lg flex justify-end gap-2 border-t">
-          <Button variant="ghost" size="sm" onClick={handleReset} disabled={!canReset} class="hover:bg-red-500/10 hover:text-red-600">
+          <Button variant="ghost" size="sm" onClick={handleReset} disabled={!canReset()} class="hover:bg-red-500/10 hover:text-red-600">
             Reset
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={!canSave}>
+          <Button size="sm" onClick={handleSave} disabled={!canSave()}>
             Save
           </Button>
         </div>
@@ -347,16 +348,16 @@ export function AgentsModelsTab() {
                 </p>
               </div>
               <div class="flex-shrink-0 w-80">
-                <Input type="password" value={openaiKey} onInput={(e) => setOpenaiKey(e.currentTarget.value)} class="w-full" placeholder="sk-..." />
+                <Input type="password" value={openaiKey()} onInput={(e) => setOpenaiKey(e.currentTarget.value)} class="w-full" placeholder="sk-..." />
               </div>
             </div>
           </div>
 
           <div class="bg-muted p-3 rounded-b-lg flex justify-end gap-2 border-t">
-            <Button variant="ghost" size="sm" onClick={handleResetOpenAI} disabled={!canResetOpenAI || setOpenAIKeyMutation.isPending} class="hover:bg-red-500/10 hover:text-red-600">
+            <Button variant="ghost" size="sm" onClick={handleResetOpenAI} disabled={!canResetOpenAI() || setOpenAIKeyMutation.isPending} class="hover:bg-red-500/10 hover:text-red-600">
               Remove
             </Button>
-            <Button size="sm" onClick={handleSaveOpenAI} disabled={!canSaveOpenAI || setOpenAIKeyMutation.isPending}>
+            <Button size="sm" onClick={handleSaveOpenAI} disabled={!canSaveOpenAI() || setOpenAIKeyMutation.isPending}>
               Save
             </Button>
           </div>

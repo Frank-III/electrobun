@@ -1,12 +1,12 @@
 import { useAtom } from "../../../lib/state/jotai";
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
 import { analyticsOptOutAtom, autoAdvanceTargetAtom, ctrlTabTargetAtom, defaultAgentModeAtom, desktopNotificationsEnabledAtom, extendedThinkingEnabledAtom, soundNotificationsEnabledAtom, type AgentMode, type AutoAdvanceTarget, type CtrlTabTarget } from "../../../lib/atoms";
 import { Kbd } from "../../ui/kbd";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "../../ui/select";
 import { Switch } from "../../ui/switch";
 import { trpc } from "../../../lib/trpc";
-// Hook to detect narrow screen
-function useIsNarrowScreen(): boolean {
+
+function useIsNarrowScreen(): Accessor<boolean> {
 	const [isNarrow, setIsNarrow] = createSignal(false);
 	createEffect(() => {
 		const checkWidth = () => {
@@ -14,7 +14,7 @@ function useIsNarrowScreen(): boolean {
 		};
 		checkWidth();
 		window.addEventListener("resize", checkWidth);
-		return () => window.removeEventListener("resize", checkWidth);
+		onCleanup(() => window.removeEventListener("resize", checkWidth));
 	});
 	return isNarrow;
 }
@@ -47,7 +47,7 @@ export function AgentsPreferencesTab() {
 	};
 	return <div class="p-6 space-y-6">
       {	/* Header - hidden on narrow screens since it's in the navigation bar */}
-      {!isNarrowScreen && <div class="flex flex-col space-y-1.5 text-center sm:text-left">
+      {!isNarrowScreen() && <div class="flex flex-col space-y-1.5 text-center sm:text-left">
           <h3 class="text-sm font-semibold text-foreground">Preferences</h3>
           <p class="text-xs text-muted-foreground">
             Configure Claude's behavior and features
@@ -69,7 +69,7 @@ export function AgentsPreferencesTab() {
                 <span class="text-foreground/70">Disables response streaming.</span>
               </span>
             </div>
-            <Switch checked={thinkingEnabled} onCheckedChange={setThinkingEnabled} />
+            <Switch checked={thinkingEnabled()} onCheckedChange={setThinkingEnabled} />
           </div>
 
           { /* Desktop Notifications Toggle */}
@@ -82,7 +82,7 @@ export function AgentsPreferencesTab() {
                 Show system notifications when agent needs input or completes work
               </span>
             </div>
-            <Switch checked={desktopNotificationsEnabled} onCheckedChange={setDesktopNotificationsEnabled} />
+            <Switch checked={desktopNotificationsEnabled()} onCheckedChange={setDesktopNotificationsEnabled} />
           </div>
 
           { /* Sound Notifications Toggle */}
@@ -95,7 +95,7 @@ export function AgentsPreferencesTab() {
                 Play a sound when agent completes work while you're away
               </span>
             </div>
-            <Switch checked={soundEnabled} onCheckedChange={setSoundEnabled} />
+            <Switch checked={soundEnabled()} onCheckedChange={setSoundEnabled} />
           </div>
 
           { /* Co-Authored-By Toggle */}
@@ -121,10 +121,10 @@ export function AgentsPreferencesTab() {
                 What <Kbd>⌃Tab</Kbd> switches between
               </span>
             </div>
-            <Select value={ctrlTabTarget} onValueChange={(value: CtrlTabTarget) => setCtrlTabTarget(value)}>
+            <Select value={ctrlTabTarget()} onValueChange={(value: CtrlTabTarget) => setCtrlTabTarget(value)}>
               <SelectTrigger class="w-auto px-2">
                 <span class="text-xs">
-                  {ctrlTabTarget === "workspaces" ? "Workspaces" : "Agents"}
+                  {ctrlTabTarget() === "workspaces" ? "Workspaces" : "Agents"}
                 </span>
               </SelectTrigger>
               <SelectContent>
@@ -144,10 +144,10 @@ export function AgentsPreferencesTab() {
                 Where to go after archiving a workspace
               </span>
             </div>
-            <Select value={autoAdvanceTarget} onValueChange={(value: AutoAdvanceTarget) => setAutoAdvanceTarget(value)}>
+            <Select value={autoAdvanceTarget()} onValueChange={(value: AutoAdvanceTarget) => setAutoAdvanceTarget(value)}>
               <SelectTrigger class="w-auto px-2">
                 <span class="text-xs">
-                  {autoAdvanceTarget === "next" ? "Go to next workspace" : autoAdvanceTarget === "previous" ? "Go to previous workspace" : "Close workspace"}
+                  {autoAdvanceTarget() === "next" ? "Go to next workspace" : autoAdvanceTarget() === "previous" ? "Go to previous workspace" : "Close workspace"}
                 </span>
               </SelectTrigger>
               <SelectContent>
@@ -168,10 +168,10 @@ export function AgentsPreferencesTab() {
                 Mode for new agents (Plan = read-only, Agent = can edit)
               </span>
             </div>
-            <Select value={defaultAgentMode} onValueChange={(value: AgentMode) => setDefaultAgentMode(value)}>
+            <Select value={defaultAgentMode()} onValueChange={(value: AgentMode) => setDefaultAgentMode(value)}>
               <SelectTrigger class="w-auto px-2">
                 <span class="text-xs">
-                  {defaultAgentMode === "agent" ? "Agent" : "Plan"}
+                  {defaultAgentMode() === "agent" ? "Agent" : "Plan"}
                 </span>
               </SelectTrigger>
               <SelectContent>
@@ -204,7 +204,7 @@ export function AgentsPreferencesTab() {
                   Help us improve Agents by sharing anonymous usage data. We only track feature usage and app performance–never your code, prompts, or messages. No AI training on your data.
                 </span>
               </div>
-              <Switch checked={!analyticsOptOut} onCheckedChange={(enabled) => handleAnalyticsToggle(!enabled)} />
+              <Switch checked={!analyticsOptOut()} onCheckedChange={(enabled) => handleAnalyticsToggle(!enabled)} />
             </div>
           </div>
         </div>

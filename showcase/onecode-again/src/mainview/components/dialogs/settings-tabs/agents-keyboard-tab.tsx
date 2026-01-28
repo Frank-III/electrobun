@@ -215,7 +215,7 @@ export function AgentsKeyboardTab() {
 	const shortcutsByCategory = createMemo(() => {
 		const all = getShortcutsByCategory();
 		// Filter out kanban shortcut if feature is disabled
-		if (!betaKanbanEnabled) {
+		if (!betaKanbanEnabled()) {
 			return {
 				...all,
 				workspaces: all.workspaces.filter((action) => action.id !== "open-kanban")
@@ -224,27 +224,28 @@ export function AgentsKeyboardTab() {
 		return all;
 	});
 	// Detect conflicts
-	const conflicts = createMemo(() => detectConflicts(customHotkeys));
+	const conflicts = createMemo(() => detectConflicts(customHotkeys()));
 	// Filter shortcuts by search query
 	const filteredShortcuts = createMemo(() => {
-		if (!searchQuery.trim()) {
-			return shortcutsByCategory;
+		const cats = shortcutsByCategory();
+		if (!searchQuery().trim()) {
+			return cats;
 		}
-		const query = searchQuery.toLowerCase();
+		const query = searchQuery().toLowerCase();
 		const result: Record<ShortcutCategory, ShortcutAction[]> = {
 			general: [],
 			workspaces: [],
 			agents: []
 		};
-		for (const category of Object.keys(shortcutsByCategory) as ShortcutCategory[]) {
-			result[category] = shortcutsByCategory[category].filter((action) => action.label.toLowerCase().includes(query));
+		for (const category of Object.keys(cats) as ShortcutCategory[]) {
+			result[category] = cats[category].filter((action) => action.label.toLowerCase().includes(query));
 		}
 		return result;
 	});
 	// Get selected action
-	const selectedAction = createMemo(() => selectedActionId ? getShortcutAction(selectedActionId) : null);
+	const selectedAction = createMemo(() => selectedActionId() ? getShortcutAction(selectedActionId() as ShortcutActionId) : null);
 	// Has any custom hotkeys
-	const hasCustomHotkeys = createMemo(() => Object.keys(customHotkeys.bindings).length > 0);
+	const hasCustomHotkeys = createMemo(() => Object.keys(customHotkeys().bindings).length > 0);
 	// Start recording
 	const handleStartRecording = () => {
 		setIsRecording(true);
@@ -258,7 +259,7 @@ export function AgentsKeyboardTab() {
 		const normalizedNew = normalizeHotkey(hotkey);
 		for (const action of ALL_SHORTCUT_ACTIONS) {
 			if (action.id === currentActionId) continue;
-			const existingHotkey = getResolvedHotkey(action.id, customHotkeys);
+			const existingHotkey = getResolvedHotkey(action.id, customHotkeys());
 			if (existingHotkey && normalizeHotkey(existingHotkey) === normalizedNew) {
 				return action;
 			}
@@ -267,9 +268,10 @@ export function AgentsKeyboardTab() {
 	};
 	// Record a hotkey
 	const handleRecord = (hotkey: string) => {
-		if (!selectedActionId) return;
+		const actionId = selectedActionId();
+		if (!actionId) return;
 		// Check for conflicts
-		const conflictingAction = checkConflict(hotkey, selectedActionId);
+		const conflictingAction = checkConflict(hotkey, actionId as ShortcutActionId);
 		if (conflictingAction) {
 			// Show conflict message and don't save
 			setConflictMessage(`"${conflictingAction.label}" already uses this shortcut`);
@@ -285,7 +287,7 @@ export function AgentsKeyboardTab() {
 			...prev,
 			bindings: {
 				...prev.bindings,
-				[selectedActionId]: hotkey
+				[actionId]: hotkey
 			}
 		}));
 		setConflictMessage(null);
@@ -296,9 +298,10 @@ export function AgentsKeyboardTab() {
 	};
 	// Reset selected hotkey to default
 	const handleReset = () => {
-		if (!selectedActionId) return;
+		const actionId = selectedActionId();
+		if (!actionId) return;
 		setCustomHotkeys((prev) => {
-			const { [selectedActionId]: _, ...rest } = prev.bindings;
+			const { [actionId]: _, ...rest } = prev.bindings;
 			return {
 				...prev,
 				bindings: rest
@@ -314,7 +317,7 @@ export function AgentsKeyboardTab() {
 	};
 	// Count total shortcuts
 	const totalShortcuts = createMemo(() => {
-		return Object.values(filteredShortcuts).reduce((sum, arr) => sum + arr.length, 0);
+		return Object.values(filteredShortcuts()).reduce((sum, arr) => sum + arr.length, 0);
 	});
 	return <div class="flex flex-col h-full">
       {	/* Two-column layout */}
@@ -325,18 +328,18 @@ export function AgentsKeyboardTab() {
           <div class="pb-2 px-1 flex-shrink-0">
             <div class="relative">
               <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none z-10" />
-              <input type="text" placeholder="Search shortcuts..." value={searchQuery} onInput={(e) => setSearchQuery(e.currentTarget.value)} class="w-full h-8 pl-8 pr-3 text-sm bg-background border border-input rounded-lg placeholder:text-muted-foreground/70 transition-shadow focus-visible:border-primary focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20" />
+              <input type="text" placeholder="Search shortcuts..." value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} class="w-full h-8 pl-8 pr-3 text-sm bg-background border border-input rounded-lg placeholder:text-muted-foreground/70 transition-shadow focus-visible:border-primary focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20" />
             </div>
           </div>
 
           { /* Shortcuts list - padding to prevent focus ring clipping */}
           <div class="flex-1 min-h-0 overflow-y-auto p-1">
-            {totalShortcuts === 0 ? <div class="text-center py-8 text-sm text-muted-foreground">
+            {totalShortcuts() === 0 ? <div class="text-center py-8 text-sm text-muted-foreground">
                 No shortcuts found
               </div> : <div class="space-y-4">
                 <For each={["general", "workspaces", "agents"] as ShortcutCategory[]}>
                   {(category) => {
-                    const actions = filteredShortcuts[category];
+                    const actions = filteredShortcuts()[category];
                     return (
                       <Show when={actions.length > 0}>
                         <div>
@@ -348,14 +351,14 @@ export function AgentsKeyboardTab() {
                               {(action) => (
                                 <ShortcutListItem
                                   action={action}
-                                  config={customHotkeys}
-                                  isSelected={selectedActionId === action.id}
-                                  hasConflict={!!conflicts.get(action.id)}
+                                  config={customHotkeys()}
+                                  isSelected={selectedActionId() === action.id}
+                                  hasConflict={!!conflicts().get(action.id)}
                                   onClick={() => {
                                     setSelectedActionId(action.id);
                                     setIsRecording(false);
                                   }}
-                                  ctrlTabTarget={ctrlTabTarget}
+                                  ctrlTabTarget={ctrlTabTarget()}
                                 />
                               )}
                             </For>
@@ -369,7 +372,7 @@ export function AgentsKeyboardTab() {
           </div>
 
           {	/* Reset all button at bottom */}
-          {hasCustomHotkeys && <div class="pt-2 flex-shrink-0">
+          {hasCustomHotkeys() && <div class="pt-2 flex-shrink-0">
               <button type="button" onClick={handleResetAll} class="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
                 <RotateCcw class="h-3 w-3" />
                 Reset all to defaults
@@ -379,7 +382,7 @@ export function AgentsKeyboardTab() {
 
         { /* Right panel - shortcut details */}
         <div class="flex-1 bg-secondary/30 rounded-xl overflow-hidden">
-          {selectedAction ? <ShortcutDetailPanel action={selectedAction} config={customHotkeys} isRecording={isRecording} onStartRecording={handleStartRecording} onRecord={handleRecord} onCancel={handleCancel} onReset={handleReset} ctrlTabTarget={ctrlTabTarget} conflictMessage={conflictMessage} /> : <EmptyDetailPanel />}
+          {selectedAction() ? <ShortcutDetailPanel action={selectedAction()!} config={customHotkeys()} isRecording={isRecording()} onStartRecording={handleStartRecording} onRecord={handleRecord} onCancel={handleCancel} onReset={handleReset} ctrlTabTarget={ctrlTabTarget()} conflictMessage={conflictMessage()} /> : <EmptyDetailPanel />}
         </div>
       </div>
     </div>;

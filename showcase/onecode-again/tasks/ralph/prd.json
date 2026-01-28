@@ -308,8 +308,8 @@
         "Full type safety for RPC calls"
       ],
       "priority": 23,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added comprehensive DesktopApi interface to globals.d.ts with all methods: auth (getUser, updateUser, logout, startAuthFlow), updates (getVersion, checkForUpdates, downloadUpdate, installUpdate + event listeners), window control (minimize/maximize/close/fullscreen), notifications (showNotification, setBadge), file watchers, streaming fetch, clipboard, etc. Removed all (window as any).desktopApi casts from 4 files."
     },
     {
       "id": "US-024",
@@ -322,8 +322,8 @@
         "Shared state uses context or module-level signals"
       ],
       "priority": 24,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "jotai.ts shim already provides SolidJS-compatible API that returns accessors. Fixed signal accessor patterns in agents-debug-tab.tsx, agents-keyboard-tab.tsx, agents-models-tab.tsx, agents-preferences-tab.tsx. Remaining issues are pre-existing Kobalte component type mismatches (Select/asChild props) not related to jotai migration."
     },
     {
       "id": "US-025",

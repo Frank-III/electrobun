@@ -94,7 +94,7 @@ export function AgentsAppearanceTab() {
 	// Scan and load VS Code themes on mount
 	createEffect(() => {
 		if (!mounted()) return;
-		const api = (window as any).desktopApi;
+		const api = window.desktopApi;
 		if (typeof api?.scanVSCodeThemes !== "function") return;
 		if (typeof api?.loadVSCodeTheme !== "function") return;
 		const loadAllThemes = async () => {
