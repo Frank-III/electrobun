@@ -1,6 +1,6 @@
 "use client";
 import { useSetAtom } from "../../lib/state/jotai";
-import { createSignal } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { Check } from "lucide-solid";
 import { ClaudeCodeIcon, KeyFilledIcon, SettingsFilledIcon } from "../../components/ui/icons";
 import { billingMethodAtom, type BillingMethod } from "../../lib/atoms";
@@ -56,28 +56,32 @@ export function BillingMethodPage() {
 
         { /* Billing Options */}
         <div class="space-y-3">
-          {billingOptions.map((option) => <button key={option.id} onClick={() => setSelectedOption(option.id)} class={cn("relative w-full p-4 rounded-xl text-left transition-[transform,box-shadow] duration-150 ease-out", "shadow-[0_0_0_0.5px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.1)] dark:shadow-[0_0_0_0.5px_rgba(255,255,255,0.1),0_1px_2px_rgba(0,0,0,0.3)]", "hover:shadow-[0_0_0_0.5px_rgba(0,0,0,0.2),0_2px_4px_rgba(0,0,0,0.15)] dark:hover:shadow-[0_0_0_0.5px_rgba(255,255,255,0.15),0_2px_4px_rgba(0,0,0,0.4)]", "active:scale-[0.99]", selectedOption === option.id ? "bg-primary/5" : "bg-background")}>
+          <For each={billingOptions}>{(option) => <button onClick={() => setSelectedOption(option.id)} class={cn("relative w-full p-4 rounded-xl text-left transition-[transform,box-shadow] duration-150 ease-out", "shadow-[0_0_0_0.5px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.1)] dark:shadow-[0_0_0_0.5px_rgba(255,255,255,0.1),0_1px_2px_rgba(0,0,0,0.3)]", "hover:shadow-[0_0_0_0.5px_rgba(0,0,0,0.2),0_2px_4px_rgba(0,0,0,0.15)] dark:hover:shadow-[0_0_0_0.5px_rgba(255,255,255,0.15),0_2px_4px_rgba(0,0,0,0.4)]", "active:scale-[0.99]", selectedOption() === option.id ? "bg-primary/5" : "bg-background")}>
               { /* Checkmark in top right corner */}
-              {selectedOption === option.id && <div class="absolute top-3 right-3 w-5 h-5 rounded-full bg-primary flex items-center justify-center shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)]">
+              <Show when={selectedOption() === option.id}>
+                <div class="absolute top-3 right-3 w-5 h-5 rounded-full bg-primary flex items-center justify-center shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)]">
                   <Check class="w-3 h-3 text-primary-foreground" />
-                </div>}
+                </div>
+              </Show>
               <div class="flex items-start gap-3">
-                <div class={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", option.id === "claude-subscription" ? "bg-[#D97757] text-white" : selectedOption === option.id ? "bg-foreground text-background" : "bg-muted text-muted-foreground")}>
+                <div class={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", option.id === "claude-subscription" ? "bg-[#D97757] text-white" : selectedOption() === option.id ? "bg-foreground text-background" : "bg-muted text-muted-foreground")}>
                   {option.icon}
                 </div>
                 <div class="flex-1 min-w-0 pt-0.5">
                   <div class="flex items-center gap-2">
                     <span class="text-sm font-medium">{option.title}</span>
-                    {option.recommended && <span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                    <Show when={option.recommended}>
+                      <span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                         Recommended
-                      </span>}
+                      </span>
+                    </Show>
                   </div>
                   <p class="text-xs text-muted-foreground mt-0.5">
                     {option.subtitle}
                   </p>
                 </div>
               </div>
-            </button>)}
+            </button>}</For>
         </div>
 
         { /* Continue Button */}

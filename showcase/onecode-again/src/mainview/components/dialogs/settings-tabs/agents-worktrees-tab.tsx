@@ -1,4 +1,4 @@
-import { createSignal, createEffect } from "solid-js";
+import { createSignal, createEffect, For, Index, Show } from "solid-js";
 import { useSetAtom } from "../../../lib/state/jotai";
 import { trpc } from "../../../lib/trpc";
 import { Button } from "../../ui/button";
@@ -152,9 +152,9 @@ export function AgentsWorktreesTab() {
                   </span>
                 </SelectTrigger>
                 <SelectContent>
-                  {projects?.map((p) => <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>)}
+                  <For each={projects ?? []}>
+                    {(p) => <SelectItem value={p.id}>{p.name}</SelectItem>}
+                  </For>
                 </SelectContent>
               </Select>
             </div>
@@ -243,12 +243,18 @@ export function AgentsWorktreesTab() {
                   </span>
                 </div>
                 <div class="space-y-2">
-                  {commands.map((cmd, i) => <div key={i} class="flex items-center gap-2">
-                      <Input value={cmd} onInput={(e) => updateCommand(i, e.currentTarget.value, commands, setCommands)} placeholder="bun install && cp $ROOT_WORKTREE_PATH/.env .env" class="flex-1 font-mono text-sm" />
-                      {commands.length > 1 && <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeCommand(i, commands, setCommands)}>
-                          <Trash2 class="h-4 w-4" />
-                        </Button>}
-                    </div>)}
+                  <Index each={commands()}>
+                    {(cmd, i) => (
+                      <div class="flex items-center gap-2">
+                        <Input value={cmd()} onInput={(e) => updateCommand(i, e.currentTarget.value, commands, setCommands)} placeholder="bun install && cp $ROOT_WORKTREE_PATH/.env .env" class="flex-1 font-mono text-sm" />
+                        <Show when={commands().length > 1}>
+                          <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeCommand(i, commands, setCommands)}>
+                            <Trash2 class="h-4 w-4" />
+                          </Button>
+                        </Show>
+                      </div>
+                    )}
+                  </Index>
                 </div>
                 <Button variant="ghost" size="sm" class="gap-1.5 text-muted-foreground" onClick={() => addCommand(commands, setCommands)}>
                   <Plus class="h-3.5 w-3.5" />
@@ -269,16 +275,20 @@ export function AgentsWorktreesTab() {
                       <span class="text-xs font-medium text-muted-foreground">
                         macOS / Linux
                       </span>
-                      {unixCommands.length === 0 ? <p class="text-xs text-muted-foreground/60 italic">
-                          Falls back to "All Platforms"
-                        </p> : <div class="space-y-2">
-                          {unixCommands.map((cmd, i) => <div key={i} class="flex items-center gap-2">
-                              <Input value={cmd} onInput={(e) => updateCommand(i, e.currentTarget.value, unixCommands, setUnixCommands)} placeholder="bun install" class="flex-1 font-mono text-sm" />
-                              <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeCommand(i, unixCommands, setUnixCommands)}>
-                                <Trash2 class="h-4 w-4" />
-                              </Button>
-                            </div>)}
-                        </div>}
+                      <Show when={unixCommands().length > 0} fallback={<p class="text-xs text-muted-foreground/60 italic">Falls back to "All Platforms"</p>}>
+                        <div class="space-y-2">
+                          <Index each={unixCommands()}>
+                            {(cmd, i) => (
+                              <div class="flex items-center gap-2">
+                                <Input value={cmd()} onInput={(e) => updateCommand(i, e.currentTarget.value, unixCommands, setUnixCommands)} placeholder="bun install" class="flex-1 font-mono text-sm" />
+                                <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeCommand(i, unixCommands, setUnixCommands)}>
+                                  <Trash2 class="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </Index>
+                        </div>
+                      </Show>
                       <Button variant="ghost" size="sm" class="gap-1.5 text-muted-foreground h-7 text-xs" onClick={() => addCommand(unixCommands, setUnixCommands)}>
                         <Plus class="h-3 w-3" />
                         Add
@@ -290,16 +300,20 @@ export function AgentsWorktreesTab() {
                       <span class="text-xs font-medium text-muted-foreground">
                         Windows
                       </span>
-                      {windowsCommands.length === 0 ? <p class="text-xs text-muted-foreground/60 italic">
-                          Falls back to "All Platforms"
-                        </p> : <div class="space-y-2">
-                          {windowsCommands.map((cmd, i) => <div key={i} class="flex items-center gap-2">
-                              <Input value={cmd} onInput={(e) => updateCommand(i, e.currentTarget.value, windowsCommands, setWindowsCommands)} placeholder="npm ci" class="flex-1 font-mono text-sm" />
-                              <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeCommand(i, windowsCommands, setWindowsCommands)}>
-                                <Trash2 class="h-4 w-4" />
-                              </Button>
-                            </div>)}
-                        </div>}
+                      <Show when={windowsCommands().length > 0} fallback={<p class="text-xs text-muted-foreground/60 italic">Falls back to "All Platforms"</p>}>
+                        <div class="space-y-2">
+                          <Index each={windowsCommands()}>
+                            {(cmd, i) => (
+                              <div class="flex items-center gap-2">
+                                <Input value={cmd()} onInput={(e) => updateCommand(i, e.currentTarget.value, windowsCommands, setWindowsCommands)} placeholder="npm ci" class="flex-1 font-mono text-sm" />
+                                <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeCommand(i, windowsCommands, setWindowsCommands)}>
+                                  <Trash2 class="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </Index>
+                        </div>
+                      </Show>
                       <Button variant="ghost" size="sm" class="gap-1.5 text-muted-foreground h-7 text-xs" onClick={() => addCommand(windowsCommands, setWindowsCommands)}>
                         <Plus class="h-3 w-3" />
                         Add

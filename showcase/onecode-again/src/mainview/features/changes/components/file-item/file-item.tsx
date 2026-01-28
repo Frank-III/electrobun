@@ -4,7 +4,7 @@ import { Checkbox } from "../../../../components/ui/checkbox";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../../../components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
 import { cn } from "../../../../lib/utils";
-import { createSignal } from "solid-js";
+import { createSignal, Index, Show } from "solid-js";
 import { Minus as HiMiniMinus, Plus as HiMiniPlus } from "lucide-solid";
 import { trpc } from "../../../../lib/trpc";
 import { ClipboardIcon, ExternalLinkIcon, FolderIcon, PlusIcon, TrashIcon, UndoIcon } from "../../../../components/ui/icons";
@@ -41,7 +41,9 @@ function LevelIndicators({ level }: {
 }) {
 	if (level === 0) return null;
 	return <div class="flex self-stretch shrink-0">
-			{Array.from({ length: level }).map((_, i) => <div key={i} class="w-3 self-stretch border-r border-border" />)}
+			<Index each={Array.from({ length: level })}>
+				{() => <div class="w-3 self-stretch border-r border-border" />}
+			</Index>
 		</div>;
 }
 function getFileName(path: string): string {

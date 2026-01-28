@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/
 // import { clearSubChatSelectionAtom, isSubChatMultiSelectModeAtom, selectedSubChatIdsAtom } from "@/lib/atoms/agent-subchat-selection"
 import { Chat, useChat } from "@ai-sdk/react";
 import { DiffModeEnum } from "@git-diff-view/react";
-import { createMemo, createSignal, createEffect } from "solid-js";
+import { createMemo, createSignal, createEffect, For, Index, Show } from "solid-js";
 import { ReactiveSet } from "@solid-primitives/set";
 import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 import { ArrowDown, ChevronDown, GitFork, ListTree, TerminalSquare } from "lucide-solid";
@@ -454,9 +454,13 @@ function PlayButton({ text, isMobile = false, playbackRate = 1, onPlaybackRateCh
 		onPlaybackRateChange?.(PLAYBACK_SPEEDS[nextIndex]);
 	}} tabIndex={-1} class={cn("p-1.5 rounded-md transition-[background-color,opacity,transform] duration-150 ease-out hover:bg-accent active:scale-[0.97]", isMobile ? "opacity-100" : "opacity-0 group-hover/message:opacity-100")}>
           <div class="relative w-4 h-3.5 flex items-center justify-center">
-            {PLAYBACK_SPEEDS.map((speed) => <span key={speed} class={cn("absolute inset-0 flex items-center justify-center text-xs font-medium text-muted-foreground transition-[opacity,transform] duration-200 ease-out", speed === playbackRate ? "opacity-100 scale-100" : "opacity-0 scale-50")}>
-                {speed}x
-              </span>)}
+            <For each={PLAYBACK_SPEEDS}>
+              {(speed) => (
+                <span class={cn("absolute inset-0 flex items-center justify-center text-xs font-medium text-muted-foreground transition-[opacity,transform] duration-200 ease-out", speed === playbackRate ? "opacity-100 scale-100" : "opacity-0 scale-50")}>
+                  {speed}x
+                </span>
+              )}
+            </For>
           </div>
         </button>}
     </div>;
@@ -893,7 +897,7 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
                   <div class="px-2 py-1.5 text-xs text-muted-foreground font-medium bg-muted/30 border-b border-border/50">
                     Files in commit ({commitFiles.length})
                   </div>
-                  {commitFiles.map((file) => <CommitFileItem key={file.path} file={file} onClick={() => {}} />)}
+                  <For each={commitFiles}>{(file) => <CommitFileItem file={file} onClick={() => {}} />}</For>
                 </>)}
           </div>
           {		/* Diff view - always mounted to prevent expensive re-initialization */}
@@ -949,7 +953,7 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
                 <div class="px-2 py-1.5 text-xs text-muted-foreground font-medium bg-muted/30 border-b border-border/50">
                   Files in commit ({commitFiles.length})
                 </div>
-                {commitFiles.map((file) => <CommitFileItem key={file.path} file={file} onClick={() => {}} />)}
+                <For each={commitFiles}>{(file) => <CommitFileItem file={file} onClick={() => {}} />}</For>
               </>)}
         </div>
         {	/* Diff view - always mounted to prevent expensive re-initialization */}

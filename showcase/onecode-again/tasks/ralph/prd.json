@@ -229,8 +229,8 @@
         "Show components properly import from solid-js"
       ],
       "priority": 17,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted conditionals in: TerminalSearch.tsx, billing-method-page.tsx (also added For), changes-file-filter.tsx, file-list-item.tsx, mermaid-block.tsx, anthropic-onboarding-page.tsx, api-key-onboarding-page.tsx, select-repo-page.tsx, collapsible-row.tsx, folder-row.tsx (also added For). Deleted stale .js files. Many more files have conditional patterns but pre-existing Kobalte asChild issues prevent full migration. Remaining patterns need US-019 (motion/react) conversion first."
     },
     {
       "id": "US-018",
@@ -242,8 +242,8 @@
         "Primitive arrays use <Index> where appropriate"
       ],
       "priority": 18,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted ~20+ JSX .map() patterns to <For>/<Index> in key files: agents-keyboard-tab.tsx, agents-worktrees-tab.tsx, file-item.tsx, messages-list.tsx, details-sidebar.tsx, tool-selector.tsx, todo-widget.tsx, changes-widget.tsx, active-chat.tsx. Used <Index> for primitive arrays (keys, commands), <For> for object arrays. Removed key props as SolidJS handles identity differently."
     },
     {
       "id": "US-019",

@@ -1,4 +1,5 @@
 "use client";
+import { Show } from "solid-js";
 import { Eye } from "lucide-solid";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Kbd } from "@/components/ui/kbd";
@@ -50,17 +51,21 @@ export function FileListItem({ filePath, fileName, dirPath, status, isSelected =
 	const content = <div data-file-item class={cn("flex items-center gap-2 px-2 py-1 cursor-pointer", "hover:bg-muted/80 transition-colors", isSelected && "bg-muted")} onClick={onSelect} onDoubleClick={onDoubleClick}>
       <Checkbox checked={isChecked} onCheckedChange={onCheckboxChange} onClick={(e) => e.stopPropagation()} class="size-4 shrink-0 border-muted-foreground/50" />
       <div class="flex-1 min-w-0 flex items-center overflow-hidden">
-        {dirPath && <span class="text-xs text-muted-foreground truncate flex-shrink min-w-0">
+        <Show when={dirPath}>
+          <span class="text-xs text-muted-foreground truncate flex-shrink min-w-0">
             {dirPath}/
-          </span>}
+          </span>
+        </Show>
         <span class="text-xs font-medium flex-shrink-0 whitespace-nowrap">
           {fileName}
         </span>
       </div>
       <div class="shrink-0 flex items-center gap-1.5">
-        {isViewed && <div class="size-4 rounded bg-emerald-500/20 flex items-center justify-center">
+        <Show when={isViewed}>
+          <div class="size-4 rounded bg-emerald-500/20 flex items-center justify-center">
             <Eye class="size-2.5 text-emerald-500" />
-          </div>}
+          </div>
+        </Show>
         {getStatusIndicator(status)}
       </div>
     </div>;
@@ -70,27 +75,35 @@ export function FileListItem({ filePath, fileName, dirPath, status, isSelected =
 	return <ContextMenu>
       <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
       <ContextMenuContent class="w-52">
-        {onCopyPath && <ContextMenuItem onClick={onCopyPath}>Copy Path</ContextMenuItem>}
-        {onCopyRelativePath && <ContextMenuItem onClick={onCopyRelativePath}>
+        <Show when={onCopyPath}>
+          <ContextMenuItem onClick={onCopyPath}>Copy Path</ContextMenuItem>
+        </Show>
+        <Show when={onCopyRelativePath}>
+          <ContextMenuItem onClick={onCopyRelativePath}>
             Copy Relative Path
-          </ContextMenuItem>}
-        {(onCopyPath || onCopyRelativePath) && onRevealInFinder && <ContextMenuSeparator />}
-        {onRevealInFinder && <ContextMenuItem onClick={onRevealInFinder}>
+          </ContextMenuItem>
+        </Show>
+        <Show when={(onCopyPath || onCopyRelativePath) && onRevealInFinder}>
+          <ContextMenuSeparator />
+        </Show>
+        <Show when={onRevealInFinder}>
+          <ContextMenuItem onClick={onRevealInFinder}>
             Reveal in Finder
-          </ContextMenuItem>}
-        {onToggleViewed && <>
-            <ContextMenuSeparator />
-            <ContextMenuItem onClick={onToggleViewed} class="justify-between">
-              {isViewed ? "Mark as unviewed" : "Mark as viewed"}
-              <Kbd>V</Kbd>
-            </ContextMenuItem>
-          </>}
-        {onDiscard && <>
-            <ContextMenuSeparator />
-            <ContextMenuItem onClick={onDiscard} class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
-              {isUntracked ? "Delete File..." : "Discard Changes..."}
-            </ContextMenuItem>
-          </>}
+          </ContextMenuItem>
+        </Show>
+        <Show when={onToggleViewed}>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={onToggleViewed} class="justify-between">
+            {isViewed ? "Mark as unviewed" : "Mark as viewed"}
+            <Kbd>V</Kbd>
+          </ContextMenuItem>
+        </Show>
+        <Show when={onDiscard}>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={onDiscard} class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
+            {isUntracked ? "Delete File..." : "Discard Changes..."}
+          </ContextMenuItem>
+        </Show>
       </ContextMenuContent>
     </ContextMenu>;
 }

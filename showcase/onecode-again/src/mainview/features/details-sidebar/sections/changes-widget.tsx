@@ -1,5 +1,5 @@
 "use client";
-import { createSignal, createEffect } from "solid-js";
+import { createSignal, createEffect, For, Show } from "solid-js";
 import { useAtom } from "../../../lib/state/jotai";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -181,23 +181,41 @@ export function ChangesWidget({ chatId, worktreePath, diffStats, parsedFileDiffs
 
             { /* File list - using shared FileListItem component */}
             <div class="max-h-[300px] overflow-y-auto">
-              {displayFiles.map((file) => {
- const filePath = getDisplayPath(file);
-		const absolutePath = worktreePath ? `${worktreePath}/${filePath}` : null;
-		return <FileListItem key={file.key} filePath={filePath} fileName={getFileName(filePath)} dirPath={getFileDir(filePath)} status={getFileStatus(file)} isChecked={selectedForCommit.has(filePath)} isViewed={isFileMarkedAsViewed(filePath)} isUntracked={file.isNewFile ?? false} showContextMenu={!!worktreePath} onSelect={() => {
-			if (onFileSelect) {
-				onFileSelect(filePath);
-			} else {
-				onExpand?.();
-			}
-		}} onCheckboxChange={() => handleCheckboxChange(filePath)} onCopyPath={absolutePath ? async () => {
-			await navigator.clipboard.writeText(absolutePath);
-		} : undefined} onCopyRelativePath={async () => {
-			await navigator.clipboard.writeText(filePath);
-		}} onRevealInFinder={absolutePath ? () => {
-			openInFinderMutation.mutate(absolutePath);
-		} : undefined} />;
-	})}
+              <For each={displayFiles}>
+                {(file) => {
+                  const filePath = getDisplayPath(file);
+                  const absolutePath = worktreePath ? `${worktreePath}/${filePath}` : null;
+                  return (
+                    <FileListItem
+                      filePath={filePath}
+                      fileName={getFileName(filePath)}
+                      dirPath={getFileDir(filePath)}
+                      status={getFileStatus(file)}
+                      isChecked={selectedForCommit.has(filePath)}
+                      isViewed={isFileMarkedAsViewed(filePath)}
+                      isUntracked={file.isNewFile ?? false}
+                      showContextMenu={!!worktreePath}
+                      onSelect={() => {
+                        if (onFileSelect) {
+                          onFileSelect(filePath);
+                        } else {
+                          onExpand?.();
+                        }
+                      }}
+                      onCheckboxChange={() => handleCheckboxChange(filePath)}
+                      onCopyPath={absolutePath ? async () => {
+                        await navigator.clipboard.writeText(absolutePath);
+                      } : undefined}
+                      onCopyRelativePath={async () => {
+                        await navigator.clipboard.writeText(filePath);
+                      }}
+                      onRevealInFinder={absolutePath ? () => {
+                        openInFinderMutation.mutate(absolutePath);
+                      } : undefined}
+                    />
+                  );
+                }}
+              </For>
             </div>
 
             {	/* Action buttons */}

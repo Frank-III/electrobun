@@ -28,6 +28,9 @@ Started: 2026-01-28
 - createMemo values are accessors: call them like functions `filteredFiles()` not `filteredFiles.length`
 - Tabs/Select value props need accessor calls: `value={activeTab()}` not `value={activeTab}`
 - Use `e.currentTarget.value` in SolidJS event handlers, not `e.target.value` (better type safety)
+- Use `innerHTML={htmlString}` instead of `dangerouslySetInnerHTML={{__html: htmlString}}`
+- <Index each={}> for primitive arrays (strings) - item is accessor `item()`, index is number
+- <For each={}> for object arrays - item is value directly, index is accessor `index()`
 
 ---
 
@@ -302,4 +305,49 @@ Thread: https://ampcode.com/threads/T-019c0644-410e-73a7-b0a6-972e383f3c58
   - Use `e.currentTarget.value` instead of `e.target.value` for SolidJS type safety
   - Only convert text/password/number inputs and textareas, not file inputs or component callbacks
   - File inputs should keep using `onChange` - that's the correct event for file selection
+---
+
+## 2026-01-28 - US-017
+Thread: https://ampcode.com/threads/T-019c0649-e7e8-73ab-8680-552e79c26987
+- Converted {condition && <Component />} patterns to <Show when={condition}> components
+- Files changed:
+  - src/mainview/features/terminal/TerminalSearch.tsx - wrapped matchCount display in Show
+  - src/mainview/features/onboarding/billing-method-page.tsx - Show for selectedOption/recommended, For for options list
+  - src/mainview/features/changes/components/changes-file-filter/changes-file-filter.tsx - Show for clear button, subchat filter, filter bar
+  - src/mainview/features/changes/components/file-list-item.tsx - Show for dirPath, isViewed, context menu items
+  - src/mainview/components/mermaid-block.tsx - Show for status states (idle, loading, success, error), innerHTML instead of dangerouslySetInnerHTML
+  - src/mainview/features/onboarding/anthropic-onboarding-page.tsx - Show for all flow states, token display, error states
+  - src/mainview/features/onboarding/api-key-onboarding-page.tsx - Show for isSubmitting spinner
+  - src/mainview/features/onboarding/select-repo-page.tsx - Show for isPending spinner
+  - src/mainview/features/changes/components/collapsible-row/collapsible-row.tsx - Show for showChevron
+  - src/mainview/features/changes/components/folder-row/folder-row.tsx - Show for isGrouped/fileCount, For for level indicators
+  - Deleted: anthropic-onboarding-page.js, billing-method-page.js (stale transpiled files)
+- **Learnings for future iterations:**
+  - Use <Show when={condition}> for all conditional rendering, not {condition && <JSX>}
+  - Use <Show when={value}>{(item) => ...}</Show> for narrowing types in the callback
+  - SolidJS uses innerHTML prop instead of dangerouslySetInnerHTML={{__html: ...}}
+  - Many files still have conditional patterns tied to motion/react (AnimatePresence) - need US-019 first
+  - Pre-existing Kobalte asChild prop issues are separate from Show conversion
+---
+
+## 2026-01-28 - US-018
+Thread: https://ampcode.com/threads/T-019c0650-c052-758d-aea9-772e3dc83d4f
+- Converted JSX .map() calls to <For each={}> and <Index each={}>
+- Files changed:
+  - src/mainview/components/dialogs/settings-tabs/agents-keyboard-tab.tsx - <Index> for key arrays, <For> for actions, added Show imports
+  - src/mainview/components/dialogs/settings-tabs/agents-worktrees-tab.tsx - <Index> for commands arrays, <For> for projects
+  - src/mainview/features/changes/components/file-item/file-item.tsx - <Index> for level indicators (Array.from pattern)
+  - src/mainview/features/agents/main/messages-list.tsx - <For> for messageIds, assistantMsgIds, userMsgIds
+  - src/mainview/features/details-sidebar/details-sidebar.tsx - <For> with <Switch>/<Match> for widget order
+  - src/mainview/components/dialogs/settings-tabs/tool-selector.tsx - nested <For> for categories and tools
+  - src/mainview/features/details-sidebar/sections/todo-widget.tsx - <For> for todos list
+  - src/mainview/features/details-sidebar/sections/changes-widget.tsx - <For> for displayFiles
+  - src/mainview/features/agents/main/active-chat.tsx - <For> for commitFiles, PLAYBACK_SPEEDS
+- **Learnings for future iterations:**
+  - Use <Index> for primitive arrays (strings like keys, commands) where the index is stable and items may change
+  - Use <For> for object arrays where object identity matters
+  - Remove all `key` props when converting - SolidJS manages identity differently
+  - Index callback gives (item, index) where item is an accessor: `item()`, and index is a number (not accessor)
+  - For callback gives (item, index) where item is the value directly, index is an accessor: `index()`
+  - Can combine with <Switch>/<Match> for type-safe conditional rendering based on item values
 ---

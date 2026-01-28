@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createMemo } from "solid-js";
+import { createEffect, createMemo, For, Show, Switch, Match } from "solid-js";
 import { useAtom, useAtomValue } from "../../lib/state/jotai";
 import { ArrowUpRight, TerminalSquare, Box, ListTodo } from "lucide-solid";
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar";
@@ -198,32 +198,31 @@ export function DetailsSidebar({ chatId, worktreePath, planPath, mode, onBuildPl
 
         { /* Widget Cards - rendered in user-defined order */}
         <div class="flex-1 overflow-y-auto py-2">
-          {widgetOrder.map((widgetId) => {
- // Skip if widget is not visible
-		if (!isWidgetVisible(widgetId)) return null;
-		switch (widgetId) {
-			case "info": return <WidgetCard key="info" widgetId="info" title="Workspace">
-                    <InfoSection chatId={chatId} worktreePath={worktreePath} remoteInfo={remoteInfo} />
-                  </WidgetCard>;
-			case "todo": return <TodoWidget key="todo" subChatId={activeSubChatId || null} />;
-			case "plan":
-				// Hidden when Plan sidebar is open
-				if (!planPath || isPlanSidebarOpen) return null;
-				return <PlanWidget key="plan" chatId={chatId} activeSubChatId={activeSubChatId} planPath={planPath} refetchTrigger={planRefetchTrigger} mode={mode} onApprovePlan={onBuildPlan} onExpandPlan={onExpandPlan} />;
-			case "terminal":
-				// Hidden when Terminal sidebar is open
-				if (!worktreePath || isTerminalSidebarOpen) return null;
-				return <TerminalWidget key="terminal" chatId={chatId} cwd={worktreePath} workspaceId={chatId} onExpand={onExpandTerminal} />;
-			case "diff":
-				// Show widget if we have diff stats (local or remote)
-				// Hide only when Diff sidebar is open in side-peek mode
-				const hasDiffStats = !!diffStats && (diffStats.fileCount > 0 || diffStats.additions > 0 || diffStats.deletions > 0);
-				const canShowDiffWidget = canOpenDiff || isRemoteChat && hasDiffStats;
-				if (!canShowDiffWidget || isDiffSidebarOpen && diffDisplayMode === "side-peek") return null;
-				return <ChangesWidget key="diff" chatId={chatId} worktreePath={worktreePath} diffStats={diffStats} parsedFileDiffs={parsedFileDiffs} onCommit={onCommit} isCommitting={isCommitting} onExpand={canOpenDiff ? onExpandDiff : undefined} onFileSelect={canOpenDiff ? onFileSelect : undefined} diffDisplayMode={diffDisplayMode} />;
-			default: return null;
-		}
-	})}
+          <For each={widgetOrder}>
+            {(widgetId) => (
+              <Show when={isWidgetVisible(widgetId)}>
+                <Switch>
+                  <Match when={widgetId === "info"}>
+                    <WidgetCard widgetId="info" title="Workspace">
+                      <InfoSection chatId={chatId} worktreePath={worktreePath} remoteInfo={remoteInfo} />
+                    </WidgetCard>
+                  </Match>
+                  <Match when={widgetId === "todo"}>
+                    <TodoWidget subChatId={activeSubChatId || null} />
+                  </Match>
+                  <Match when={widgetId === "plan" && planPath && !isPlanSidebarOpen}>
+                    <PlanWidget chatId={chatId} activeSubChatId={activeSubChatId} planPath={planPath} refetchTrigger={planRefetchTrigger} mode={mode} onApprovePlan={onBuildPlan} onExpandPlan={onExpandPlan} />
+                  </Match>
+                  <Match when={widgetId === "terminal" && worktreePath && !isTerminalSidebarOpen}>
+                    <TerminalWidget chatId={chatId} cwd={worktreePath} workspaceId={chatId} onExpand={onExpandTerminal} />
+                  </Match>
+                  <Match when={widgetId === "diff" && (canOpenDiff || (isRemoteChat && diffStats && (diffStats.fileCount > 0 || diffStats.additions > 0 || diffStats.deletions > 0))) && !(isDiffSidebarOpen && diffDisplayMode === "side-peek")}>
+                    <ChangesWidget chatId={chatId} worktreePath={worktreePath} diffStats={diffStats} parsedFileDiffs={parsedFileDiffs} onCommit={onCommit} isCommitting={isCommitting} onExpand={canOpenDiff ? onExpandDiff : undefined} onFileSelect={canOpenDiff ? onFileSelect : undefined} diffDisplayMode={diffDisplayMode} />
+                  </Match>
+                </Switch>
+              </Show>
+            )}
+          </For>
         </div>
       </div>
     </ResizableSidebar>;

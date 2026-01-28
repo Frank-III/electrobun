@@ -1,6 +1,7 @@
+import { Show } from "solid-js";
+import type { JSX } from "solid-js";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../../components/ui/collapsible";
 import { cn } from "../../../../lib/utils";
-import type { JSX } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 interface CollapsibleRowProps {
 	isExpanded: boolean;
@@ -15,7 +16,9 @@ interface CollapsibleRowProps {
 export function CollapsibleRow({ isExpanded, onToggle, header, children, showChevron = true, className, triggerClassName, contentClassName }: CollapsibleRowProps) {
 	return <Collapsible open={isExpanded} onOpenChange={onToggle} class={cn("min-w-0", className)}>
 			<CollapsibleTrigger class={cn("w-full flex items-center gap-1.5 px-1.5 py-1 text-left rounded-sm", "hover:bg-accent/50 cursor-pointer transition-colors", triggerClassName)}>
-				{showChevron && <ChevronRight class={cn("size-2.5 text-muted-foreground shrink-0 transition-transform duration-150", isExpanded && "rotate-90")} />}
+				<Show when={showChevron}>
+					<ChevronRight class={cn("size-2.5 text-muted-foreground shrink-0 transition-transform duration-150", isExpanded && "rotate-90")} />
+				</Show>
 				{header}
 			</CollapsibleTrigger>
 			<CollapsibleContent class={cn("min-w-0", contentClassName)}>

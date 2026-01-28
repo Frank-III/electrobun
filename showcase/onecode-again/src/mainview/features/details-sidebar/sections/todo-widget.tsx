@@ -1,5 +1,5 @@
 "use client";
-import { createMemo, createSignal } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { useAtomValue } from "../../../lib/state/jotai";
 import { cn } from "@/lib/utils";
 import { PlanIcon, CheckIcon, IconArrowRight, ExpandIcon, CollapseIcon } from "@/components/ui/icons";
@@ -153,9 +153,13 @@ export function TodoWidget({ subChatId }: TodoWidgetProps) {
           </div>}
 
         { /* Expanded content - full todo list */}
-        {isExpanded && <div class="max-h-[300px] overflow-y-auto cursor-pointer" onClick={() => setIsExpanded(false)}>
-            {todos.map((todo, idx) => <TodoListItem key={idx} todo={todo} isLast={idx === todos.length - 1} />)}
-          </div>}
+        <Show when={isExpanded}>
+          <div class="max-h-[300px] overflow-y-auto cursor-pointer" onClick={() => setIsExpanded(false)}>
+            <For each={todos}>
+              {(todo, idx) => <TodoListItem todo={todo} isLast={idx() === todos.length - 1} />}
+            </For>
+          </div>
+        </Show>
       </div>
     </div>;
 }

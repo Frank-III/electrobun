@@ -1,5 +1,5 @@
 "use client";
-import { createMemo, createSignal, createEffect, onCleanup } from "solid-js";
+import { createMemo, createSignal, createEffect, onCleanup, For, Index, Show } from "solid-js";
 import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { X, RotateCcw, Search, Settings2 } from "lucide-solid";
 import { cn } from "../../../lib/utils";
@@ -90,7 +90,7 @@ function ShortcutListItem({ action, config, isSelected, hasConflict, onClick, ct
         {action.label}
       </span>
       <div class="flex items-center gap-0.5 ml-2 flex-shrink-0">
-        {keys.map((key, index) => <ShortcutKey key={index} keyName={key} size="sm" />)}
+        <Index each={keys}>{(key) => <ShortcutKey keyName={key()} size="sm" />}</Index>
       </div>
     </button>;
 }
@@ -152,7 +152,7 @@ function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, on
 		if (isRecording) {
 			if (currentKeys.length > 0) {
 				return <div class="flex items-center gap-1">
-                  {currentKeys.map((key, index) => <ShortcutKey key={index} keyName={key} size="lg" />)}
+                  <Index each={currentKeys}>{(key) => <ShortcutKey keyName={key()} size="lg" />}</Index>
                 </div>;
 			}
 			return <span class="text-sm text-muted-foreground animate-pulse">
@@ -162,7 +162,7 @@ function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, on
 		// Not recording - always show saved keys (they update immediately now)
 		if (keys.length > 0) {
 			return <div class="flex items-center gap-1">
-                {keys.map((key, index) => <ShortcutKey key={index} keyName={key} size="lg" />)}
+                <Index each={keys}>{(key) => <ShortcutKey keyName={key()} size="lg" />}</Index>
               </div>;
 		}
 		return <span class="text-sm text-muted-foreground">Not set</span>;
@@ -176,15 +176,15 @@ function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, on
 
       { /* Reset to default / Instructions - always reserve space to prevent layout shift */}
       <div class="mt-6 h-8 flex items-center justify-center">
-        {isCustom ? <button type="button" onClick={onReset} class="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground bg-secondary/50 hover:bg-secondary border border-border rounded-lg transition-colors">
+        <Show when={isCustom} fallback={<p class="text-xs text-muted-foreground text-center">Click to record a new shortcut</p>}>
+          <button type="button" onClick={onReset} class="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground bg-secondary/50 hover:bg-secondary border border-border rounded-lg transition-colors">
             <RotateCcw class="h-3 w-3" />
             <span>Reset to</span>
             <div class="flex items-center gap-0.5">
-              {defaultKeys.map((key, index) => <ShortcutKey key={index} keyName={key} size="sm" />)}
+              <Index each={defaultKeys}>{(key) => <ShortcutKey keyName={key()} size="sm" />}</Index>
             </div>
-          </button> : <p class="text-xs text-muted-foreground text-center">
-            Click to record a new shortcut
-          </p>}
+          </button>
+        </Show>
       </div>
     </div>;
  }
@@ -334,25 +334,37 @@ export function AgentsKeyboardTab() {
             {totalShortcuts === 0 ? <div class="text-center py-8 text-sm text-muted-foreground">
                 No shortcuts found
               </div> : <div class="space-y-4">
-                {([
- "general",
-		"workspaces",
-		"agents"
-	] as ShortcutCategory[]).map((category) => {
-		const actions = filteredShortcuts[category];
-		if (actions.length === 0) return null;
-		return <div key={category}>
-                      <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 py-1">
-                        {CATEGORY_LABELS[category]}
-                      </h4>
-                      <div class="space-y-0.5">
-                        {actions.map((action) => <ShortcutListItem key={action.id} action={action} config={customHotkeys} isSelected={selectedActionId === action.id} hasConflict={!!conflicts.get(action.id)} onClick={() => {
-			setSelectedActionId(action.id);
-			setIsRecording(false);
-		}} ctrlTabTarget={ctrlTabTarget} />)}
-                      </div>
-                    </div>;
-	})}
+                <For each={["general", "workspaces", "agents"] as ShortcutCategory[]}>
+                  {(category) => {
+                    const actions = filteredShortcuts[category];
+                    return (
+                      <Show when={actions.length > 0}>
+                        <div>
+                          <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 py-1">
+                            {CATEGORY_LABELS[category]}
+                          </h4>
+                          <div class="space-y-0.5">
+                            <For each={actions}>
+                              {(action) => (
+                                <ShortcutListItem
+                                  action={action}
+                                  config={customHotkeys}
+                                  isSelected={selectedActionId === action.id}
+                                  hasConflict={!!conflicts.get(action.id)}
+                                  onClick={() => {
+                                    setSelectedActionId(action.id);
+                                    setIsRecording(false);
+                                  }}
+                                  ctrlTabTarget={ctrlTabTarget}
+                                />
+                              )}
+                            </For>
+                          </div>
+                        </div>
+                      </Show>
+                    );
+                  }}
+                </For>
               </div>}
           </div>
 

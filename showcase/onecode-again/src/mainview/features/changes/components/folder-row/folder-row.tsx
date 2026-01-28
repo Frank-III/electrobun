@@ -1,5 +1,6 @@
-import { cn } from "../../../../lib/utils";
+import { Show, For } from "solid-js";
 import type { JSX } from "solid-js";
+import { cn } from "../../../../lib/utils";
 import { CollapsibleRow } from "../collapsible-row";
 interface FolderRowProps {
 	name: string;
@@ -18,7 +19,7 @@ function LevelIndicators({ level }: {
 }) {
 	if (level === 0) return null;
 	return <div class="flex self-stretch shrink-0">
-			{Array.from({ length: level }).map((_, i) => <div key={i} class="w-3 self-stretch border-r border-border/50" />)}
+			<For each={Array.from({ length: level })}>{(_, i) => <div class="w-3 self-stretch border-r border-border/50" />}</For>
 		</div>;
 }
 function FolderRowHeader({ name, level, fileCount, isGrouped }: {
@@ -28,14 +29,18 @@ function FolderRowHeader({ name, level, fileCount, isGrouped }: {
 	isGrouped: boolean;
 }) {
 	return <>
-			{!isGrouped && <LevelIndicators level={level} />}
+			<Show when={!isGrouped}>
+				<LevelIndicators level={level} />
+			</Show>
 			<div class="flex items-center gap-1 flex-1 min-w-0">
 				<span class={cn("truncate", isGrouped ? "w-0 grow text-left" : "flex-1 min-w-0 text-xs text-foreground")} dir={isGrouped ? "rtl" : undefined}>
 					{name}
 				</span>
-				{fileCount !== undefined && <span class="text-[10px] text-muted-foreground shrink-0 tabular-nums">
+				<Show when={fileCount !== undefined}>
+					<span class="text-[10px] text-muted-foreground shrink-0 tabular-nums">
 						{fileCount}
-					</span>}
+					</span>
+				</Show>
 			</div>
 		</>;
 }

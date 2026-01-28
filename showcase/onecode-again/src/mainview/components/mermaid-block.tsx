@@ -1,4 +1,4 @@
-import { createSignal, createEffect } from "solid-js";
+import { createSignal, createEffect, Show } from "solid-js";
 import { useTheme } from "../lib/hooks/use-theme";
 import { Copy, Check, Download, AlertTriangle, RotateCcw, Maximize2, X, ZoomIn, ZoomOut, RotateCcw as ResetZoom } from "lucide-solid";
 import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch";
@@ -332,18 +332,25 @@ function MermaidBlockInner({ code }: {
 
         { /* Content */}
         <div class="p-4 min-h-[60px] flex items-center justify-center">
-          {renderState.status === "idle" && <div class="text-muted-foreground text-sm">
+          <Show when={renderState.status === "idle"}>
+            <div class="text-muted-foreground text-sm">
               Waiting for diagram...
-            </div>}
+            </div>
+          </Show>
 
-          {(renderState.status === "loading" || renderState.status === "parsing") && <div class="flex items-center gap-2 text-muted-foreground text-sm">
+          <Show when={renderState.status === "loading" || renderState.status === "parsing"}>
+            <div class="flex items-center gap-2 text-muted-foreground text-sm">
               <div class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
               <span>Creating diagram...</span>
-            </div>}
+            </div>
+          </Show>
 
-          {renderState.status === "success" && <div class={cn("mermaid-diagram w-full overflow-x-auto cursor-pointer", "[&_svg]:max-w-full [&_svg]:h-auto [&_svg]:mx-auto")} onClick={openFullscreen} dangerouslySetInnerHTML={{ __html: renderState.svg }} />}
+          <Show when={renderState.status === "success"}>
+            <div class={cn("mermaid-diagram w-full overflow-x-auto cursor-pointer", "[&_svg]:max-w-full [&_svg]:h-auto [&_svg]:mx-auto")} onClick={openFullscreen} innerHTML={renderState.svg} />
+          </Show>
 
-          {renderState.status === "error" && <div class="w-full">
+          <Show when={renderState.status === "error"}>
+            <div class="w-full">
               <div class="flex items-start gap-2 text-destructive text-sm mb-3">
                 <AlertTriangle class="h-4 w-4 shrink-0 mt-0.5" />
                 <span class="break-words">{renderState.message}</span>
@@ -362,7 +369,8 @@ function MermaidBlockInner({ code }: {
                   {code}
                 </pre>
               </details>
-            </div>}
+            </div>
+          </Show>
         </div>
       </div>
 
@@ -381,14 +389,16 @@ function MermaidBlockInner({ code }: {
             </button>
 
             { /* Diagram viewer with zoom/pan */}
-            {renderState.status === "success" && <div class="w-full h-full overflow-hidden">
+            <Show when={renderState.status === "success"}>
+              <div class="w-full h-full overflow-hidden">
                 <TransformWrapper initialScale={1} minScale={.1} maxScale={8} centerOnInit limitToBounds={false} wheel={{ smoothStep: .1 }} panning={{ velocityDisabled: true }}>
                   <ZoomControls />
                   <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
-                    <div class={cn("mermaid-diagram-fullscreen p-8", "[&_svg]:max-w-none [&_svg]:h-auto", isDark ? "" : "[&_svg]:filter [&_svg]:drop-shadow-lg")} dangerouslySetInnerHTML={{ __html: renderState.svg }} />
+                    <div class={cn("mermaid-diagram-fullscreen p-8", "[&_svg]:max-w-none [&_svg]:h-auto", isDark ? "" : "[&_svg]:filter [&_svg]:drop-shadow-lg")} innerHTML={renderState.svg} />
                   </TransformComponent>
                 </TransformWrapper>
-              </div>}
+              </div>
+            </Show>
 
             { /* Keyboard hints */}
             <div class="absolute bottom-6 right-4 text-white/50 text-xs z-10">

@@ -1,5 +1,5 @@
 "use client";
-import { createMemo, createContext, useContext, createEffect, createSignal } from "solid-js";
+import { createMemo, createContext, useContext, createEffect, createSignal, For } from "solid-js";
 import { useAtomValue } from "../../../lib/state/jotai";
 import { AssistantMessageItem } from "./assistant-message-item";
 import { messageAtomFamily, isLastMessageAtomFamily, isStreamingAtom, chatStatusAtom } from "../stores/message-store";
@@ -420,7 +420,9 @@ export function MemoizedAssistantMessages({ assistantMsgIds, subChatId, chatId, 
 	// Therefore, MessageItemWrapper is never called, and the store
 	// subscription handles updates directly
 	return <>
-      {assistantMsgIds.map((id) => <MessageItemWrapper key={id} messageId={id} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} />)}
+      <For each={assistantMsgIds}>
+        {(id) => <MessageItemWrapper messageId={id} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} />}
+      </For>
     </>;
 }
 // ============================================================================
@@ -546,7 +548,9 @@ interface MessagesListProps {
 export function MessagesList({ subChatId, chatId, isMobile, sandboxSetupStatus }: MessagesListProps) {
 	const messageIds = useMessageIds();
 	return <>
-      {messageIds.map((id) => <MessageItemWrapper key={id} messageId={id} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} />)}
+      <For each={messageIds}>
+        {(id) => <MessageItemWrapper messageId={id} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} />}
+      </For>
     </>;
 }
 // ============================================================================
@@ -809,6 +813,23 @@ export function SimpleIsolatedMessagesList({ subChatId, isMobile, sandboxSetupSt
 	// Subscribe to user message IDs only
 	const userMsgIds = useUserMessageIds();
 	return <>
-      {userMsgIds.map((userMsgId) => <SimpleIsolatedGroup key={userMsgId} userMsgId={userMsgId} subChatId={subChatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} isSubChatsSidebarOpen={isSubChatsSidebarOpen} stickyTopClass={stickyTopClass} sandboxSetupError={sandboxSetupError} onRetrySetup={onRetrySetup} UserBubbleComponent={UserBubbleComponent} ToolCallComponent={ToolCallComponent} MessageGroupComponent={MessageGroupComponent} toolRegistry={toolRegistry} />)}
+      <For each={userMsgIds}>
+        {(userMsgId) => (
+          <SimpleIsolatedGroup
+            userMsgId={userMsgId}
+            subChatId={subChatId}
+            isMobile={isMobile}
+            sandboxSetupStatus={sandboxSetupStatus}
+            isSubChatsSidebarOpen={isSubChatsSidebarOpen}
+            stickyTopClass={stickyTopClass}
+            sandboxSetupError={sandboxSetupError}
+            onRetrySetup={onRetrySetup}
+            UserBubbleComponent={UserBubbleComponent}
+            ToolCallComponent={ToolCallComponent}
+            MessageGroupComponent={MessageGroupComponent}
+            toolRegistry={toolRegistry}
+          />
+        )}
+      </For>
     </>;
 }

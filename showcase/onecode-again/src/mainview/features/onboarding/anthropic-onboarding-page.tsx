@@ -1,7 +1,7 @@
 "use client";
 import { useSetAtom } from "../../lib/state/jotai";
 import { ChevronLeft } from "lucide-solid";
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, Show } from "solid-js";
 import { ClaudeCodeIcon, IconSpinner } from "../../components/ui/icons";
 import { Input } from "../../components/ui/input";
 import { Logo } from "../../components/ui/logo";
@@ -242,20 +242,25 @@ export function AnthropicOnboardingPage() {
         { /* Content */}
         <div class="space-y-6 flex flex-col items-center">
           { /* Existing token prompt */}
-          {shouldOfferExistingToken && flowState.step === "idle" && <div class="space-y-4 w-full">
+          <Show when={shouldOfferExistingToken && flowState.step === "idle"}>
+            <div class="space-y-4 w-full">
               <div class="p-4 bg-muted/50 border border-border rounded-lg">
                 <p class="text-sm font-medium">
                   Existing Claude Code credentials found
                 </p>
-                {existingToken && <pre class="mt-2 px-2.5 py-2 text-xs text-foreground whitespace-pre-wrap break-words font-mono bg-background/60 rounded border border-border/60">
-                    {formatTokenPreview(existingToken)}
-                  </pre>}
+                <Show when={existingToken}>
+                  <pre class="mt-2 px-2.5 py-2 text-xs text-foreground whitespace-pre-wrap break-words font-mono bg-background/60 rounded border border-border/60">
+                    {formatTokenPreview(existingToken!)}
+                  </pre>
+                </Show>
               </div>
-              {existingTokenError && <div class="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+              <Show when={existingTokenError}>
+                <div class="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
                   <p class="text-sm text-destructive">
                     {existingTokenError}
                   </p>
-                </div>}
+                </div>
+              </Show>
               <div class="flex w-full gap-2">
                 <button onClick={handleRejectExistingToken} disabled={isUsingExistingToken} class="h-8 px-3 flex-1 bg-muted text-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-muted/80 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
                   Auth with Anthropic
@@ -264,42 +269,51 @@ export function AnthropicOnboardingPage() {
                   {isUsingExistingToken ? <IconSpinner class="h-4 w-4" /> : "Use existing token"}
                 </button>
               </div>
-            </div>}
+            </div>
+          </Show>
 
           { /* Connect Button - shows loader only if user clicked AND loading */}
-          {checkedExistingToken && !shouldOfferExistingToken && !urlOpened && flowState.step !== "has_url" && flowState.step !== "error" && <button onClick={handleConnectClick} disabled={userClickedConnect && isLoadingAuth} class="h-8 px-4 min-w-[85px] bg-primary text-primary-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-primary/90 active:scale-[0.97] shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] dark:shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
-                {userClickedConnect && isLoadingAuth ? <IconSpinner class="h-4 w-4" /> : "Connect"}
-              </button>}
+          <Show when={checkedExistingToken && !shouldOfferExistingToken && !urlOpened && flowState.step !== "has_url" && flowState.step !== "error"}>
+            <button onClick={handleConnectClick} disabled={userClickedConnect && isLoadingAuth} class="h-8 px-4 min-w-[85px] bg-primary text-primary-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-primary/90 active:scale-[0.97] shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] dark:shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+              {userClickedConnect && isLoadingAuth ? <IconSpinner class="h-4 w-4" /> : "Connect"}
+            </button>
+          </Show>
 
           { /* Code Input - Show after URL is opened, if has_url (after redirect), or if submitting */}
           { /* No Continue button - auto-submit on valid code paste */}
-          {(urlOpened || flowState.step === "has_url" || flowState.step === "submitting") && <div class="space-y-4">
+          <Show when={urlOpened || flowState.step === "has_url" || flowState.step === "submitting"}>
+            <div class="space-y-4">
               <div class="relative">
                 <Input value={authCode} onInput={handleCodeChange} onKeyDown={handleKeyDown} placeholder="Paste your authentication code here..." class="font-mono text-center pr-10" autoFocus disabled={isSubmitting} />
-                {isSubmitting && <div class="absolute right-3 top-1/2 -translate-y-1/2">
+                <Show when={isSubmitting}>
+                  <div class="absolute right-3 top-1/2 -translate-y-1/2">
                     <IconSpinner class="h-4 w-4" />
-                  </div>}
+                  </div>
+                </Show>
               </div>
               <p class="text-xs text-muted-foreground text-center">
                 A new tab has opened for authentication.
-                {savedOauthUrl && <>
-                    {" "}
-                    <button onClick={handleOpenFallbackUrl} class="text-primary hover:underline">
-                      Didn't open? Click here
-                    </button>
-                  </>}
+                <Show when={savedOauthUrl}>
+                  {" "}
+                  <button onClick={handleOpenFallbackUrl} class="text-primary hover:underline">
+                    Didn't open? Click here
+                  </button>
+                </Show>
               </p>
-            </div>}
+            </div>
+          </Show>
 
           { /* Error State */}
-          {flowState.step === "error" && <div class="space-y-4">
+          <Show when={flowState.step === "error"}>
+            <div class="space-y-4">
               <div class="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <p class="text-sm text-destructive">{flowState.message}</p>
+                <p class="text-sm text-destructive">{(flowState as { step: "error"; message: string }).message}</p>
               </div>
               <button onClick={handleConnectClick} class="w-full h-8 px-3 bg-muted text-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-muted/80 active:scale-[0.97] flex items-center justify-center">
                 Try Again
               </button>
-            </div>}
+            </div>
+          </Show>
 
         </div>
       </div>

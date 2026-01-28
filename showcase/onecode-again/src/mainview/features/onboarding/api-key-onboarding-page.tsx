@@ -1,6 +1,6 @@
 "use client";
 import { useAtom, useAtomValue, useSetAtom } from "../../lib/state/jotai";
-import { createSignal, createEffect } from "solid-js";
+import { createSignal, createEffect, Show } from "solid-js";
 import { ChevronLeft } from "lucide-solid";
 import { IconSpinner, KeyFilledIcon, SettingsFilledIcon } from "../../components/ui/icons";
 import { Input } from "../../components/ui/input";
@@ -121,9 +121,11 @@ export function ApiKeyOnboardingPage() {
           <div class="space-y-4">
             <div class="relative">
               <Input value={apiKey} onInput={handleApiKeyChange} onKeyDown={handleApiKeyKeyDown} placeholder="sk-ant-..." class="font-mono text-center pr-10" autoFocus disabled={isSubmitting} />
-              {isSubmitting && <div class="absolute right-3 top-1/2 -translate-y-1/2">
+              <Show when={isSubmitting}>
+                <div class="absolute right-3 top-1/2 -translate-y-1/2">
                   <IconSpinner class="h-4 w-4" />
-                </div>}
+                </div>
+              </Show>
             </div>
             <p class="text-xs text-muted-foreground text-center">
               Your API key starts with sk-ant-

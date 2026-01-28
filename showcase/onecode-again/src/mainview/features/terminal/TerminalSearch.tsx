@@ -66,9 +66,11 @@ export function TerminalSearch(props: TerminalSearchProps) {
 	return <Show when={props.isOpen}>
       <div class="absolute top-2 right-2 z-10 flex items-center gap-1 rounded-md border border-border bg-background p-1.5 shadow-lg">
         <input ref={el => inputRef = el} type="text" value={query()} onInput={(e) => setQuery(e.currentTarget.value)} onKeyDown={handleKeyDown} placeholder="Find..." class="w-40 bg-transparent px-2 py-1 text-sm outline-none placeholder:text-muted-foreground" />
-        {matchCount() !== null && <span class="px-1 text-xs text-muted-foreground">
+        <Show when={matchCount() !== null}>
+          <span class="px-1 text-xs text-muted-foreground">
             {matchCount()} matches
-          </span>}
+          </span>
+        </Show>
         <button onClick={() => handleSearch("prev")} class="rounded p-1 hover:bg-muted" title="Previous match (Shift+Enter)">
           <ChevronUp class="h-4 w-4 text-muted-foreground" />
         </button>
