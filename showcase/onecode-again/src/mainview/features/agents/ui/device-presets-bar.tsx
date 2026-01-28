@@ -19,8 +19,8 @@ export function DevicePresetsBar({ selectedPreset, width, height, onPresetChange
 	createEffect(() => {
 		setWidthInputValue(String(width));
 	});
-	const handleWidthInputChange = (e: Event<HTMLInputElement>) => {
-		setWidthInputValue(e.target.value);
+	const handleWidthInputChange = (e: InputEvent & { currentTarget: HTMLInputElement }) => {
+		setWidthInputValue(e.currentTarget.value);
 	};
 	const handleWidthBlur = () => {
 		const value = parseInt(widthInputValue);
@@ -67,7 +67,7 @@ export function DevicePresetsBar({ selectedPreset, width, height, onPresetChange
 
         <div class="flex items-center gap-1">
           <span class="text-xs text-muted-foreground font-medium">W</span>
-          <Input type="number" value={widthInputValue} onChange={handleWidthInputChange} onBlur={handleWidthBlur} onKeyDown={(e) => {
+          <Input type="number" value={widthInputValue} onInput={handleWidthInputChange} onBlur={handleWidthBlur} onKeyDown={(e) => {
 		if (e.key === "Enter") {
 			e.currentTarget.blur();
 		}

@@ -131,7 +131,7 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 	};
 	return <div class="flex flex-col gap-2 p-2 border-t border-border/50 bg-background">
 			{	/* Summary input - single line */}
-			<input type="text" placeholder="Summary (required)" value={summary} onChange={(e) => setSummary(e.target.value)} class={cn("w-full px-2 py-1.5 text-xs rounded-md", "bg-background border border-input", "placeholder:text-muted-foreground", "focus:outline-none focus:ring-1 focus:ring-ring")} onKeyDown={(e) => {
+			<input type="text" placeholder="Summary (required)" value={summary} onInput={(e) => setSummary(e.currentTarget.value)} class={cn("w-full px-2 py-1.5 text-xs rounded-md", "bg-background border border-input", "placeholder:text-muted-foreground", "focus:outline-none focus:ring-1 focus:ring-ring")} onKeyDown={(e) => {
  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canCommit) {
 			e.preventDefault();
 			handleCommit();
@@ -139,7 +139,7 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 	}} />
 
 			{	/* Description textarea - multiline */}
-			<textarea placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} class={cn("w-full px-2 py-1.5 text-xs rounded-md resize-none", "bg-background border border-input", "placeholder:text-muted-foreground", "focus:outline-none focus:ring-1 focus:ring-ring", "min-h-[60px]")} onKeyDown={(e) => {
+			<textarea placeholder="Description" value={description} onInput={(e) => setDescription(e.currentTarget.value)} class={cn("w-full px-2 py-1.5 text-xs rounded-md resize-none", "bg-background border border-input", "placeholder:text-muted-foreground", "focus:outline-none focus:ring-1 focus:ring-ring", "min-h-[60px]")} onKeyDown={(e) => {
  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canCommit) {
 			e.preventDefault();
 			handleCommit();

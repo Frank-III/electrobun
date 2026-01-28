@@ -252,7 +252,7 @@ export function AgentsProjectWorktreeTab({ projectId }: AgentsProjectWorktreeTab
             </div>
             <div class="space-y-2">
               {commands.map((cmd, i) => <div key={i} class="flex items-center gap-2">
-                  <Input value={cmd} onChange={(e) => updateCommand(i, e.target.value, commands, setCommands)} placeholder="bun install && cp $ROOT_WORKTREE_PATH/.env .env" class="flex-1 font-mono text-sm" />
+                  <Input value={cmd} onInput={(e) => updateCommand(i, e.currentTarget.value, commands, setCommands)} placeholder="bun install && cp $ROOT_WORKTREE_PATH/.env .env" class="flex-1 font-mono text-sm" />
                   {commands.length > 1 && <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeCommand(i, commands, setCommands)}>
                       <Trash2 class="h-4 w-4" />
                     </Button>}
@@ -281,7 +281,7 @@ export function AgentsProjectWorktreeTab({ projectId }: AgentsProjectWorktreeTab
                       Falls back to "All Platforms"
                     </p> : <div class="space-y-2">
                       {unixCommands.map((cmd, i) => <div key={i} class="flex items-center gap-2">
-                          <Input value={cmd} onChange={(e) => updateCommand(i, e.target.value, unixCommands, setUnixCommands)} placeholder="bun install" class="flex-1 font-mono text-sm" />
+                          <Input value={cmd} onInput={(e) => updateCommand(i, e.currentTarget.value, unixCommands, setUnixCommands)} placeholder="bun install" class="flex-1 font-mono text-sm" />
                           <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeCommand(i, unixCommands, setUnixCommands)}>
                             <Trash2 class="h-4 w-4" />
                           </Button>
@@ -302,7 +302,7 @@ export function AgentsProjectWorktreeTab({ projectId }: AgentsProjectWorktreeTab
                       Falls back to "All Platforms"
                     </p> : <div class="space-y-2">
                       {windowsCommands.map((cmd, i) => <div key={i} class="flex items-center gap-2">
-                          <Input value={cmd} onChange={(e) => updateCommand(i, e.target.value, windowsCommands, setWindowsCommands)} placeholder="npm ci" class="flex-1 font-mono text-sm" />
+                          <Input value={cmd} onInput={(e) => updateCommand(i, e.currentTarget.value, windowsCommands, setWindowsCommands)} placeholder="npm ci" class="flex-1 font-mono text-sm" />
                           <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeCommand(i, windowsCommands, setWindowsCommands)}>
                             <Trash2 class="h-4 w-4" />
                           </Button>

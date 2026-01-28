@@ -84,7 +84,7 @@ export function AgentsProfileTab() {
                 </p>
               </div>
               <div class="flex-shrink-0 w-80">
-                <Input value={fullName} onChange={(e) => setFullName(e.target.value)} class="w-full" placeholder="Enter your name" />
+                <Input value={fullName} onInput={(e) => setFullName(e.currentTarget.value)} class="w-full" placeholder="Enter your name" />
               </div>
             </div>
 

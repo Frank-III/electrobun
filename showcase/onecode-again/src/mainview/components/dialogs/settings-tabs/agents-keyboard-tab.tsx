@@ -325,7 +325,7 @@ export function AgentsKeyboardTab() {
           <div class="pb-2 px-1 flex-shrink-0">
             <div class="relative">
               <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none z-10" />
-              <input type="text" placeholder="Search shortcuts..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} class="w-full h-8 pl-8 pr-3 text-sm bg-background border border-input rounded-lg placeholder:text-muted-foreground/70 transition-shadow focus-visible:border-primary focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20" />
+              <input type="text" placeholder="Search shortcuts..." value={searchQuery} onInput={(e) => setSearchQuery(e.currentTarget.value)} class="w-full h-8 pl-8 pr-3 text-sm bg-background border border-input rounded-lg placeholder:text-muted-foreground/70 transition-shadow focus-visible:border-primary focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20" />
             </div>
           </div>
 

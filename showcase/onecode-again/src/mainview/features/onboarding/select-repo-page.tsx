@@ -113,7 +113,7 @@ export function SelectRepoPage() {
           { /* Input */}
           <div class="space-y-4">
             <div class="relative">
-              <Input value={githubUrl} onChange={(e) => setGithubUrl(e.target.value)} onKeyDown={(e) => {
+              <Input value={githubUrl} onInput={(e) => setGithubUrl(e.currentTarget.value)} onKeyDown={(e) => {
  if (e.key === "Enter" && githubUrl.trim()) {
 				handleCloneFromGitHub();
 			}

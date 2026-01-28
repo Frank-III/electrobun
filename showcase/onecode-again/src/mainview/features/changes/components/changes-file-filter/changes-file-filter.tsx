@@ -61,7 +61,7 @@ export function ChangesFileFilter({ value, onChange, placeholder = "Filter files
 				{ /* Search input */}
 				<div class="relative flex-1">
 					<Search class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-					<Input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} class="h-7 pl-7 pr-7 text-xs bg-muted/50" />
+					<Input type="search" value={value} onInput={(e) => onChange(e.currentTarget.value)} placeholder={placeholder} class="h-7 pl-7 pr-7 text-xs bg-muted/50" />
 					{value && <button type="button" onClick={() => onChange("")} class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted-foreground/20 transition-colors">
 							<X class="size-3 text-muted-foreground" />
 						</button>}

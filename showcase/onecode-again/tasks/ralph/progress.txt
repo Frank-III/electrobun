@@ -27,6 +27,7 @@ Started: 2026-01-28
 - Replace `memo(forwardRef(...))` with plain function + `props.ref?.(element)` pattern
 - createMemo values are accessors: call them like functions `filteredFiles()` not `filteredFiles.length`
 - Tabs/Select value props need accessor calls: `value={activeTab()}` not `value={activeTab}`
+- Use `e.currentTarget.value` in SolidJS event handlers, not `e.target.value` (better type safety)
 
 ---
 
@@ -270,4 +271,35 @@ Thread: https://ampcode.com/threads/T-019c063f-f3de-7599-b81a-fc20537659bc
   - useRef pattern becomes `let ref: T = value` with direct mutation (no .current)
   - wdyr.ts (Why Did You Render) is a React-specific debugging tool that doesn't work with SolidJS - disabled but kept for reference
   - Many hook files still have React imports (useRef, useState, useEffect, etc.) - those need separate migration in later stories
+---
+
+## 2026-01-28 - US-016
+Thread: https://ampcode.com/threads/T-019c0644-410e-73a7-b0a6-972e383f3c58
+- Fixed event handler types by converting onChange to onInput for text inputs
+- Files changed:
+  - src/mainview/components/dialogs/settings-tabs/agents-profile-tab.tsx
+  - src/mainview/features/onboarding/select-repo-page.tsx
+  - src/mainview/features/onboarding/anthropic-onboarding-page.tsx
+  - src/mainview/components/dialogs/settings-tabs/agents-worktrees-tab.tsx
+  - src/mainview/components/dialogs/settings-tabs/agents-models-tab.tsx
+  - src/mainview/features/changes/components/commit-input/commit-input.tsx
+  - src/mainview/features/onboarding/api-key-onboarding-page.tsx
+  - src/mainview/components/dialogs/settings-tabs/agents-project-worktree-tab.tsx
+  - src/mainview/features/changes/components/changes-file-filter/changes-file-filter.tsx
+  - src/mainview/features/sidebar/agents-sidebar.tsx
+  - src/mainview/features/agents/components/project-selector.tsx
+  - src/mainview/features/agents/ui/device-presets-bar.tsx
+  - src/mainview/features/agents/ui/preview-url-input.tsx
+  - src/mainview/features/agents/ui/scale-control.tsx
+  - src/mainview/features/agents/components/create-branch-dialog.tsx
+  - src/mainview/features/agents/components/agents-rename-subchat-dialog.tsx
+  - src/mainview/features/agents/ui/archive-popover.tsx
+  - src/mainview/features/agents/main/new-chat-form.tsx
+  - src/mainview/components/dialogs/settings-tabs/agents-keyboard-tab.tsx
+  - Deleted 13 stale .js files
+- **Learnings for future iterations:**
+  - SolidJS uses `onInput` for real-time text input (like React's onChange), `onChange` fires on blur
+  - Use `e.currentTarget.value` instead of `e.target.value` for SolidJS type safety
+  - Only convert text/password/number inputs and textareas, not file inputs or component callbacks
+  - File inputs should keep using `onChange` - that's the correct event for file selection
 ---

@@ -117,7 +117,7 @@ export function AgentsRenameSubChatDialog({ isOpen, onClose, onSave, currentName
                   </h2>
 
                   {	/* Input */}
-                  <Input ref={inputRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="Chat name" class="w-full h-11 text-sm" disabled={isSaving || isLoading} />
+                  <Input ref={inputRef} value={name} onInput={(e) => setName(e.currentTarget.value)} placeholder="Chat name" class="w-full h-11 text-sm" disabled={isSaving || isLoading} />
                 </div>
 
                 { /* Footer with buttons */}

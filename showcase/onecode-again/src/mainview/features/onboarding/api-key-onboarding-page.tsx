@@ -68,8 +68,8 @@ export function ApiKeyOnboardingPage() {
 		setApiKeyOnboardingCompleted(true);
 		setIsSubmitting(false);
 	};
-	const handleApiKeyChange = (e: Event<HTMLInputElement>) => {
-		const value = e.target.value;
+	const handleApiKeyChange = (e: InputEvent & { currentTarget: HTMLInputElement }) => {
+		const value = e.currentTarget.value;
 		setApiKey(value);
 		// Auto-submit if valid API key is pasted
 		if (isValidApiKey(value)) {
@@ -120,7 +120,7 @@ export function ApiKeyOnboardingPage() {
           { /* API Key Input */}
           <div class="space-y-4">
             <div class="relative">
-              <Input value={apiKey} onChange={handleApiKeyChange} onKeyDown={handleApiKeyKeyDown} placeholder="sk-ant-..." class="font-mono text-center pr-10" autoFocus disabled={isSubmitting} />
+              <Input value={apiKey} onInput={handleApiKeyChange} onKeyDown={handleApiKeyKeyDown} placeholder="sk-ant-..." class="font-mono text-center pr-10" autoFocus disabled={isSubmitting} />
               {isSubmitting && <div class="absolute right-3 top-1/2 -translate-y-1/2">
                   <IconSpinner class="h-4 w-4" />
                 </div>}
@@ -168,7 +168,7 @@ export function ApiKeyOnboardingPage() {
           { /* Model Name */}
           <div class="space-y-2">
             <Label class="text-sm font-medium">Model name</Label>
-            <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="claude-sonnet-4-20250514" class="w-full" />
+            <Input value={model} onInput={(e) => setModel(e.currentTarget.value)} placeholder="claude-sonnet-4-20250514" class="w-full" />
             <p class="text-xs text-muted-foreground">
               Model identifier for API requests
             </p>
@@ -177,7 +177,7 @@ export function ApiKeyOnboardingPage() {
           { /* API Token */}
           <div class="space-y-2">
             <Label class="text-sm font-medium">API token</Label>
-            <Input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="sk-ant-..." class="w-full" />
+            <Input type="password" value={token} onInput={(e) => setToken(e.currentTarget.value)} placeholder="sk-ant-..." class="w-full" />
             <p class="text-xs text-muted-foreground">
               Your API key or token
             </p>
@@ -186,7 +186,7 @@ export function ApiKeyOnboardingPage() {
           { /* Base URL */}
           <div class="space-y-2">
             <Label class="text-sm font-medium">Base URL</Label>
-            <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.anthropic.com" class="w-full" />
+            <Input value={baseUrl} onInput={(e) => setBaseUrl(e.currentTarget.value)} placeholder="https://api.anthropic.com" class="w-full" />
             <p class="text-xs text-muted-foreground">API endpoint URL</p>
           </div>
         </div>

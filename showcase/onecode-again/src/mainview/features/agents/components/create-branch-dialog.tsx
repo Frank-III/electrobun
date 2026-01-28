@@ -93,7 +93,7 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
             <Label for="branch-name" class="text-sm">
               Name
             </Label>
-            <Input id="branch-name" placeholder="feature/my-new-feature" value={branchName} onChange={(e) => setBranchName(e.target.value)} onKeyDown={(e) => {
+            <Input id="branch-name" placeholder="feature/my-new-feature" value={branchName} onInput={(e) => setBranchName(e.currentTarget.value)} onKeyDown={(e) => {
  if (e.key === "Enter" && branchName.trim() && !createBranchMutation.isPending) {
 			e.preventDefault();
 			handleSubmit(e);

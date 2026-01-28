@@ -188,8 +188,8 @@ export function AnthropicOnboardingPage() {
 			});
 		}
 	};
-	const handleCodeChange = (e: Event<HTMLInputElement>) => {
-		const value = e.target.value;
+	const handleCodeChange = (e: InputEvent & { currentTarget: HTMLInputElement }) => {
+		const value = e.currentTarget.value;
 		setAuthCode(value);
 		// Auto-submit if the pasted value looks like a valid auth code
 		if (isValidCodeFormat(value) && flowState.step === "has_url") {
@@ -275,7 +275,7 @@ export function AnthropicOnboardingPage() {
           { /* No Continue button - auto-submit on valid code paste */}
           {(urlOpened || flowState.step === "has_url" || flowState.step === "submitting") && <div class="space-y-4">
               <div class="relative">
-                <Input value={authCode} onChange={handleCodeChange} onKeyDown={handleKeyDown} placeholder="Paste your authentication code here..." class="font-mono text-center pr-10" autoFocus disabled={isSubmitting} />
+                <Input value={authCode} onInput={handleCodeChange} onKeyDown={handleKeyDown} placeholder="Paste your authentication code here..." class="font-mono text-center pr-10" autoFocus disabled={isSubmitting} />
                 {isSubmitting && <div class="absolute right-3 top-1/2 -translate-y-1/2">
                     <IconSpinner class="h-4 w-4" />
                   </div>}

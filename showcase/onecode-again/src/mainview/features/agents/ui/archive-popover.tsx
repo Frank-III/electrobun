@@ -356,8 +356,8 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 		chatItemRefs.current[index] = el;
 	};
 	// Memoized search input handler
-	const handleSearchChange = (e: Event<HTMLInputElement>) => {
-		setSearchQuery(e.target.value);
+	const handleSearchChange = (e: InputEvent & { currentTarget: HTMLInputElement }) => {
+		setSearchQuery(e.currentTarget.value);
 	};
 	return <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
@@ -366,7 +366,7 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
         <div class="p-1 border-b">
           <div class="relative flex items-center gap-1.5 h-7 px-1.5 rounded-md bg-muted/50">
             <SearchIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <Input ref={searchInputRef} placeholder="Search..." value={searchQuery} onChange={handleSearchChange} class="h-auto p-0 border-0 bg-transparent text-sm placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0" />
+            <Input ref={searchInputRef} placeholder="Search..." value={searchQuery} onInput={handleSearchChange} class="h-auto p-0 border-0 bg-transparent text-sm placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0" />
           </div>
         </div>
 

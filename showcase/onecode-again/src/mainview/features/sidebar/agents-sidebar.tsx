@@ -2097,7 +2097,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
         <div class="space-y-2">
           { /* Search Input */}
           <div class="relative">
-            <Input ref={searchInputRef} placeholder="Search workspaces..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => {
+            <Input ref={searchInputRef} placeholder="Search workspaces..." value={searchQuery} onInput={(e) => setSearchQuery(e.currentTarget.value)} onKeyDown={(e) => {
  if (e.key === "Escape") {
 			e.preventDefault();
 			searchInputRef.current?.blur();

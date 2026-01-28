@@ -17,8 +17,8 @@ export function ScaleControl({ value, onChange, presets = AGENTS_PREVIEW_CONSTAN
 	createEffect(() => {
 		setInputValue(String(value));
 	});
-	const handleInputChange = (e: Event<HTMLInputElement>) => {
-		const raw = e.target.value.replace(/[^0-9]/g, "");
+	const handleInputChange = (e: InputEvent & { currentTarget: HTMLInputElement }) => {
+		const raw = e.currentTarget.value.replace(/[^0-9]/g, "");
 		setInputValue(raw);
 		const num = parseInt(raw);
 		if (!isNaN(num) && num >= AGENTS_PREVIEW_CONSTANTS.MIN_SCALE && num <= AGENTS_PREVIEW_CONSTANTS.MAX_SCALE) {
@@ -59,7 +59,7 @@ export function ScaleControl({ value, onChange, presets = AGENTS_PREVIEW_CONSTAN
 			inputRef.current?.focus();
 		}
 	}}>
-          <input ref={inputRef} type="text" value={inputValue} onChange={handleInputChange} onFocus={(e) => {
+          <input ref={inputRef} type="text" value={inputValue} onInput={handleInputChange} onFocus={(e) => {
 		e.target.select();
 		if (!isOpen) {
 			setIsOpen(true);

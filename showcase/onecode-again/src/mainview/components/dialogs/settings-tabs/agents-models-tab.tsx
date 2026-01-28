@@ -289,7 +289,7 @@ export function AgentsModelsTab() {
               </p>
             </div>
             <div class="flex-shrink-0 w-80">
-              <Input value={model} onChange={(e) => setModel(e.target.value)} class="w-full" placeholder="claude-3-7-sonnet-20250219" />
+              <Input value={model} onInput={(e) => setModel(e.currentTarget.value)} class="w-full" placeholder="claude-3-7-sonnet-20250219" />
             </div>
           </div>
 
@@ -301,8 +301,8 @@ export function AgentsModelsTab() {
               </p>
             </div>
             <div class="flex-shrink-0 w-80">
-              <Input type="password" value={token} onChange={(e) => {
- setToken(e.target.value);
+              <Input type="password" value={token} onInput={(e) => {
+ setToken(e.currentTarget.value);
 	}} class="w-full" placeholder="sk-ant-..." />
             </div>
           </div>
@@ -315,7 +315,7 @@ export function AgentsModelsTab() {
               </p>
             </div>
             <div class="flex-shrink-0 w-80">
-              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} class="w-full" placeholder="https://api.anthropic.com" />
+              <Input value={baseUrl} onInput={(e) => setBaseUrl(e.currentTarget.value)} class="w-full" placeholder="https://api.anthropic.com" />
             </div>
           </div>
         </div>
@@ -347,7 +347,7 @@ export function AgentsModelsTab() {
                 </p>
               </div>
               <div class="flex-shrink-0 w-80">
-                <Input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} class="w-full" placeholder="sk-..." />
+                <Input type="password" value={openaiKey} onInput={(e) => setOpenaiKey(e.currentTarget.value)} class="w-full" placeholder="sk-..." />
               </div>
             </div>
           </div>

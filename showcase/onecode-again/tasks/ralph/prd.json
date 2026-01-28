@@ -216,8 +216,8 @@
         "onChange replaced with onInput for text inputs"
       ],
       "priority": 16,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted onChange to onInput for text/password inputs across 19 TSX files. Used e.currentTarget.value instead of e.target.value for SolidJS type safety. Deleted 13 stale .js files with old patterns."
     },
     {
       "id": "US-017",

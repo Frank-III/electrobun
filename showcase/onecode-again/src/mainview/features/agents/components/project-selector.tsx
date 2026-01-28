@@ -204,7 +204,7 @@ export function ProjectSelector() {
             <h2 class="text-xl font-semibold mb-4">
               Clone from GitHub
             </h2>
-            <Input placeholder="owner/repo or https://github.com/..." value={githubUrl} onChange={(e) => setGithubUrl(e.target.value)} class="w-full h-11 text-sm" autoFocus />
+            <Input placeholder="owner/repo or https://github.com/..." value={githubUrl} onInput={(e) => setGithubUrl(e.currentTarget.value)} class="w-full h-11 text-sm" autoFocus />
           </div>
           <div class="bg-muted p-4 flex justify-between border-t border-border">
             <Button type="button" onClick={() => setGithubDialogOpen(false)} variant="ghost" class="rounded-md">

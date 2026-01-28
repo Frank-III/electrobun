@@ -1421,7 +1421,7 @@ type MessagePart = {
                         {	/* Search input with Create button */}
                         <div class="flex items-center gap-1.5 h-7 px-1.5 mx-1 my-1 rounded-md bg-muted/50">
                           <SearchIcon class="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <input type="text" placeholder="Search branches..." value={branchSearch} onChange={(e) => setBranchSearch(e.target.value)} class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" autoFocus />
+                          <input type="text" placeholder="Search branches..." value={branchSearch} onInput={(e) => setBranchSearch(e.currentTarget.value)} class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" autoFocus />
                           <Button size="sm" variant="ghost" class="h-6 px-1.5 flex items-center gap-1 text-xs shrink-0" onClick={(e) => {
  e.preventDefault();
 		e.stopPropagation();
