@@ -36,7 +36,7 @@ interface ChatDataSyncProps {
 	chat: Chat<any>;
 	subChatId: string;
 	streamId?: string | null;
-	children: ReactNode;
+	children: JSX.Element;
 }
 export function ChatDataSync({ chat, subChatId, streamId, children }: ChatDataSyncProps) {
 	// Call useChat - this causes re-renders on every chunk
@@ -58,34 +58,33 @@ export function ChatDataSync({ chat, subChatId, streamId, children }: ChatDataSy
 			subChatId
 		});
 	});
-	// Stable refs for actions to prevent context recreation
-	const [actionsRef, setActionsRef] = createSignal<ChatActionsContextValue>({
+	// Stable object for actions - mutated in place, no reactivity needed
+	let actionsRef: ChatActionsContextValue = {
 		sendMessage,
 		stop,
 		regenerate,
 		status
-	});
+	};
 	// Update refs (no re-render triggered)
-	actionsRef.current.sendMessage = sendMessage;
-	actionsRef.current.stop = stop;
-	actionsRef.current.regenerate = regenerate;
-	actionsRef.current.status = status;
-	// Memoized context value - only recreate when status changes
-	// (actions are accessed via ref, so they're always current)
-	const contextValue = useRef<ChatActionsContextValue>({
+	actionsRef.sendMessage = sendMessage;
+	actionsRef.stop = stop;
+	actionsRef.regenerate = regenerate;
+	actionsRef.status = status;
+	// Context value with getters that access current values
+	const contextValue: ChatActionsContextValue = {
 		get sendMessage() {
-			return actionsRef.current.sendMessage;
+			return actionsRef.sendMessage;
 		},
 		get stop() {
-			return actionsRef.current.stop;
+			return actionsRef.stop;
 		},
 		get regenerate() {
-			return actionsRef.current.regenerate;
+			return actionsRef.regenerate;
 		},
 		get status() {
-			return actionsRef.current.status;
+			return actionsRef.status;
 		}
-	}).current;
+	};
 	return <ChatActionsContext.Provider value={contextValue}>
       {children}
     </ChatActionsContext.Provider>;

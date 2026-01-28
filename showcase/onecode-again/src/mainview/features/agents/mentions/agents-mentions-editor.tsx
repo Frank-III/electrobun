@@ -1,6 +1,6 @@
 "use client";
 import { cn } from "../../../lib/utils";
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, onCleanup } from "solid-js";
 import { createFileIconElement } from "./agents-file-mention";
 // Threshold for skipping expensive trigger detection (characters)
 // Should be >= MAX_PASTE_LENGTH from paste-text.ts to avoid processing large pasted content
@@ -64,6 +64,7 @@ type AgentsMentionsEditorProps = {
 	onShiftTab?: () => void;
 	onFocus?: () => void;
 	onBlur?: () => void;
+	ref?: (handle: AgentsMentionsEditorHandle) => void;
 };
 // Append text to element (no styling in input, ultrathink only in sent messages)
 function appendText(root: HTMLElement, text: string) {
@@ -459,15 +460,16 @@ function walkTreeOnce(root: HTMLElement, range: Range | null): TreeWalkResult {
 		slashIndex
 	};
 }
-// Memoized to prevent re-renders when parent re-renders
-export const AgentsMentionsEditor = forwardRef<AgentsMentionsEditorHandle, AgentsMentionsEditorProps>(function AgentsMentionsEditor({ initialValue, onTrigger, onCloseTrigger, onSlashTrigger, onCloseSlashTrigger, onContentChange, placeholder, className, onSubmit, onForceSubmit, disabled, onPaste, onShiftTab, onFocus, onBlur }, ref) {
-	const [editorRef, setEditorRef] = createSignal<HTMLDivElement>(null);
-	const [triggerActive, setTriggerActive] = createSignal(false);
-	const [triggerStartIndex, setTriggerStartIndex] = createSignal<number | null>(null);
+// SolidJS component - fine-grained reactivity means no memo needed
+export function AgentsMentionsEditor(props: AgentsMentionsEditorProps) {
+	let editorRef: HTMLDivElement | undefined;
+	// Using let instead of createSignal for trigger state tracking (direct mutation)
+	let triggerActive = false;
+	let triggerStartIndex: number | null = null;
 	// Slash command trigger state
-	const [slashTriggerActive, setSlashTriggerActive] = createSignal(false);
-	const [slashTriggerStartIndex, setSlashTriggerStartIndex] = createSignal<number | null>(null);
-	// Track if editor has content for placeholder (updated via DOM, no React state)
+	let slashTriggerActive = false;
+	let slashTriggerStartIndex: number | null = null;
+	// Track if editor has content for placeholder (updated via DOM)
 	const [hasContent, setHasContent] = createSignal(false);
 	// Custom undo/redo stack
 	// Browser's native undo doesn't work well with execCommand insertText and DOM manipulations
@@ -482,14 +484,14 @@ interface UndoState {
 	const [debounceTimer, setDebounceTimer] = createSignal<ReturnType<typeof setTimeout> | null>(null);
 	// Get current editor state (html + cursor position)
 	const getCurrentState = (): UndoState | null => {
-		if (!editorRef.current) return null;
-		const html = editorRef.current.innerHTML;
+		if (!editorRef) return null;
+		const html = editorRef.innerHTML;
 		const sel = window.getSelection();
 		let cursorOffset = 0;
-		if (sel && sel.rangeCount > 0 && editorRef.current.contains(sel.anchorNode)) {
+		if (sel && sel.rangeCount > 0 && editorRef.contains(sel.anchorNode)) {
 			const range = sel.getRangeAt(0);
 			// Calculate offset by walking through all nodes
-			const walker = document.createTreeWalker(editorRef.current, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+			const walker = document.createTreeWalker(editorRef, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
 			let node: Node | null = walker.nextNode();
 			while (node) {
 				if (node === range.startContainer) {
@@ -521,46 +523,48 @@ interface UndoState {
 	};
 	// Save state to undo stack (call before making changes)
 	const saveUndoState = () => {
-		if (!editorRef.current || isUndoRedo.current) return;
+		if (!editorRef || isUndoRedo()) return;
 		const state = getCurrentState();
 		if (!state) return;
 		// Don't save if nothing changed
-		if (state.html === lastSavedHtml.current) return;
-		lastSavedHtml.current = state.html;
-		undoStack.current.push(state);
+		if (state.html === lastSavedHtml()) return;
+		setLastSavedHtml(state.html);
+		setUndoStack(prev => [...prev, state]);
 		// Clear redo stack when new action is performed
-		redoStack.current = [];
+		setRedoStack([]);
 		// Limit stack size
-		if (undoStack.current.length > 100) {
-			undoStack.current.shift();
+		if (undoStack().length > 100) {
+			setUndoStack(prev => prev.slice(1));
 		}
 	};
 	// Debounced save for typing - saves state after 500ms of no typing
 	const debouncedSaveUndoState = () => {
-		if (debounceTimer.current) {
-			clearTimeout(debounceTimer.current);
+		const timer = debounceTimer();
+		if (timer) {
+			clearTimeout(timer);
 		}
-		debounceTimer.current = setTimeout(() => {
+		setDebounceTimer(setTimeout(() => {
 			saveUndoState();
-			debounceTimer.current = null;
-		}, 500);
+			setDebounceTimer(null);
+		}, 500));
 	};
 	// Immediate save (for paste, mentions) - also cancels any pending debounce
 	const immediateSaveUndoState = () => {
-		if (debounceTimer.current) {
-			clearTimeout(debounceTimer.current);
-			debounceTimer.current = null;
+		const timer = debounceTimer();
+		if (timer) {
+			clearTimeout(timer);
+			setDebounceTimer(null);
 		}
 		saveUndoState();
 	};
 	// Restore cursor position after undo/redo
 	// Handles both text nodes and mention nodes
 	const restoreCursor = (offset: number) => {
-		if (!editorRef.current) return;
+		if (!editorRef) return;
 		const sel = window.getSelection();
 		if (!sel) return;
 		let currentOffset = 0;
-		const walker = document.createTreeWalker(editorRef.current, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+		const walker = document.createTreeWalker(editorRef, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
 		let node: Node | null = walker.nextNode();
 		let lastTextNode: Text | null = null;
 		let lastTextNodeOffset = 0;
@@ -604,16 +608,17 @@ interface UndoState {
 			node = walker.nextNode();
 		}
 		// Fallback: move to end
-		sel.selectAllChildren(editorRef.current);
+		sel.selectAllChildren(editorRef);
 		sel.collapseToEnd();
 	};
 	// Cleanup debounce timer on unmount
 	createEffect(() => {
-		return () => {
-			if (debounceTimer.current) {
-				clearTimeout(debounceTimer.current);
+		onCleanup(() => {
+			const timer = debounceTimer();
+			if (timer) {
+				clearTimeout(timer);
 			}
-		};
+		});
 	});
 	// Resolve mention from id for rendering
 	const resolveMention = (id: string): FileMentionOption | null => {
@@ -964,64 +969,62 @@ interface UndoState {
 			onShiftTab?.();
 		}
 	};
-	// Expose methods via ref (UNCONTROLLED pattern)
-	useImperativeHandle(ref, () => ({
+	// Expose methods via ref callback (UNCONTROLLED pattern)
+	const handle: AgentsMentionsEditorHandle = {
 		focus: () => {
-			const editor = editorRef.current;
-			if (!editor) return;
-			editor.focus();
+			if (!editorRef) return;
+			editorRef.focus();
 			// Always ensure cursor is visible at end
 			const sel = window.getSelection();
 			if (sel && sel.rangeCount === 0) {
-				sel.selectAllChildren(editor);
+				sel.selectAllChildren(editorRef);
 				sel.collapseToEnd();
 			}
 		},
 		blur: () => {
-			const editor = editorRef.current;
-			if (!editor) return;
-			editor.blur();
+			if (!editorRef) return;
+			editorRef.blur();
 		},
 		getValue: () => {
-			if (!editorRef.current) return "";
-			return serializeContent(editorRef.current);
+			if (!editorRef) return "";
+			return serializeContent(editorRef);
 		},
 		setValue: (value: string) => {
-			if (!editorRef.current) return;
-			buildContentFromSerialized(editorRef.current, value, resolveMention);
+			if (!editorRef) return;
+			buildContentFromSerialized(editorRef, value, resolveMention);
 			const newHasContent = !!value;
 			setHasContent(newHasContent);
-			onContentChange?.(newHasContent);
+			props.onContentChange?.(newHasContent);
 			// Position cursor at the end of content
 			if (newHasContent) {
 				const sel = window.getSelection();
 				if (sel) {
-					sel.selectAllChildren(editorRef.current);
+					sel.selectAllChildren(editorRef);
 					sel.collapseToEnd();
 				}
 			}
 		},
 		clear: () => {
-			if (!editorRef.current) return;
-			editorRef.current.innerHTML = "";
+			if (!editorRef) return;
+			editorRef.innerHTML = "";
 			setHasContent(false);
-			onContentChange?.(false);
-			triggerActive.current = false;
-			triggerStartIndex.current = null;
-			slashTriggerActive.current = false;
-			slashTriggerStartIndex.current = null;
+			props.onContentChange?.(false);
+			triggerActive = false;
+			triggerStartIndex = null;
+			slashTriggerActive = false;
+			slashTriggerStartIndex = null;
 		},
 		clearSlashCommand: () => {
-			if (!editorRef.current || slashTriggerStartIndex.current === null) return;
+			if (!editorRef || slashTriggerStartIndex === null) return;
 			const sel = window.getSelection();
 			if (!sel || sel.rangeCount === 0) {
 				// Fallback: clear entire editor if we can't find the range
-				editorRef.current.innerHTML = "";
+				editorRef.innerHTML = "";
 				setHasContent(false);
-				onContentChange?.(false);
-				slashTriggerActive.current = false;
-				slashTriggerStartIndex.current = null;
-				onCloseSlashTrigger?.();
+				props.onContentChange?.(false);
+				slashTriggerActive = false;
+				slashTriggerStartIndex = null;
+				props.onCloseSlashTrigger?.();
 				return;
 			}
 			const range = sel.getRangeAt(0);
@@ -1031,11 +1034,11 @@ interface UndoState {
 				// Find local position of / within this text node
 				let localSlashPosition: number | null = null;
 				let serializedCharCount = 0;
-				const walker = document.createTreeWalker(editorRef.current, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+				const walker = document.createTreeWalker(editorRef, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
 				let walkNode: Node | null = walker.nextNode();
 				while (walkNode) {
 					if (walkNode === node) {
-						localSlashPosition = slashTriggerStartIndex.current! - serializedCharCount;
+						localSlashPosition = slashTriggerStartIndex! - serializedCharCount;
 						break;
 					}
 					if (walkNode.nodeType === Node.TEXT_NODE) {
@@ -1058,9 +1061,9 @@ interface UndoState {
 				// Only proceed if we found the slash position
 				if (localSlashPosition === null || localSlashPosition < 0) {
 					// Node not found in tree walk - just close the trigger without modifying text
-					slashTriggerActive.current = false;
-					slashTriggerStartIndex.current = null;
-					onCloseSlashTrigger?.();
+					slashTriggerActive = false;
+					slashTriggerStartIndex = null;
+					props.onCloseSlashTrigger?.();
 					return;
 				}
 				// Remove from / to cursor
@@ -1074,33 +1077,33 @@ interface UndoState {
 				sel.removeAllRanges();
 				sel.addRange(newRange);
 				// Update hasContent
-				const newContent = editorRef.current.textContent;
+				const newContent = editorRef.textContent;
 				setHasContent(!!newContent);
-				onContentChange?.(!!newContent);
+				props.onContentChange?.(!!newContent);
 			}
 			// Close trigger
-			slashTriggerActive.current = false;
-			slashTriggerStartIndex.current = null;
-			onCloseSlashTrigger?.();
+			slashTriggerActive = false;
+			slashTriggerStartIndex = null;
+			props.onCloseSlashTrigger?.();
 		},
 		insertMention: (option: FileMentionOption) => {
-			if (!editorRef.current) return;
+			if (!editorRef) return;
 			// Save state for undo before inserting mention (immediate, not debounced)
 			immediateSaveUndoState();
 			const sel = window.getSelection();
 			const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
 			// Case 1: Triggered by @ - remove @ and search text, then insert mention
-			if (range && range.startContainer.nodeType === Node.TEXT_NODE && triggerStartIndex.current !== null) {
+			if (range && range.startContainer.nodeType === Node.TEXT_NODE && triggerStartIndex !== null) {
 				const node = range.startContainer;
 				const text = node.textContent || "";
 				// Find local position of @ within THIS text node
 				let localAtPosition = 0;
 				let serializedCharCount = 0;
-				const walker = document.createTreeWalker(editorRef.current, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+				const walker = document.createTreeWalker(editorRef, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
 				let walkNode: Node | null = walker.nextNode();
 				while (walkNode) {
 					if (walkNode === node) {
-						localAtPosition = triggerStartIndex.current - serializedCharCount;
+						localAtPosition = triggerStartIndex! - serializedCharCount;
 						break;
 					}
 					if (walkNode.nodeType === Node.TEXT_NODE) {
@@ -1139,15 +1142,15 @@ interface UndoState {
 				// Update hasContent
 				setHasContent(true);
 				// Close trigger
-				triggerActive.current = false;
-				triggerStartIndex.current = null;
-				onCloseTrigger();
+				triggerActive = false;
+				triggerStartIndex = null;
+				props.onCloseTrigger();
 			} else {
 				const mentionNode = createMentionNode(option);
 				const space = document.createTextNode(" ");
 				// Append to editor content
-				editorRef.current.appendChild(mentionNode);
-				editorRef.current.appendChild(space);
+				editorRef!.appendChild(mentionNode);
+				editorRef!.appendChild(space);
 				// Move cursor after the space
 				const newRange = document.createRange();
 				newRange.setStartAfter(space);
@@ -1158,24 +1161,20 @@ interface UndoState {
 				}
 				// Update hasContent
 				setHasContent(true);
-				onContentChange?.(true);
+				props.onContentChange?.(true);
 			}
 		}
-	}), [
-		onCloseTrigger,
-		onCloseSlashTrigger,
-		resolveMention,
-		onContentChange,
-		immediateSaveUndoState
-	]);
+	};
+	props.ref?.(handle);
+
 	return <div class="relative">
-          {!hasContent && placeholder && <div class="pointer-events-none absolute left-1 top-1 text-sm text-muted-foreground/60 whitespace-pre-wrap">
-              {placeholder}
+          {!hasContent() && props.placeholder && <div class="pointer-events-none absolute left-1 top-1 text-sm text-muted-foreground/60 whitespace-pre-wrap">
+              {props.placeholder}
             </div>}
-          <div ref={editorRef} contentEditable={!disabled} suppressContentEditableWarning spellCheck={false} onInput={handleInput} onKeyDown={handleKeyDown} onPaste={(e) => {
+          <div ref={el => editorRef = el} contentEditable={!props.disabled} spellCheck={false} onInput={handleInput} onKeyDown={handleKeyDown} onPaste={(e) => {
 		// Save state for undo before paste (immediate, not debounced)
 		immediateSaveUndoState();
-		onPaste?.(e);
-	}} onFocus={onFocus} onBlur={onBlur} class={cn("min-h-[24px] outline-none whitespace-pre-wrap break-words text-sm relative", disabled && "opacity-50 cursor-not-allowed", className)} />
+		props.onPaste?.(e);
+	}} onFocus={props.onFocus} onBlur={props.onBlur} class={cn("min-h-[24px] outline-none whitespace-pre-wrap break-words text-sm relative", props.disabled && "opacity-50 cursor-not-allowed", props.className)} />
         </div>;
-});
+}

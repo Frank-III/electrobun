@@ -5,8 +5,8 @@ import { ChevronRight } from "lucide-solid";
 interface CollapsibleRowProps {
 	isExpanded: boolean;
 	onToggle: (expanded: boolean) => void;
-	header: ReactNode;
-	children: ReactNode;
+	header: JSX.Element;
+	children: JSX.Element;
 	showChevron?: boolean;
 	className?: string;
 	triggerClassName?: string;

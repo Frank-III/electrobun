@@ -10,7 +10,7 @@
  * - Optionally providing custom rendering
  */
 
-import type { ReactNode } from "react"
+import type { JSX } from "solid-js"
 import type {
   MentionProviderId,
   MentionCategory,
@@ -106,7 +106,7 @@ export interface MentionProvider<TData = unknown> {
    * @param isSelected - Whether item is currently selected
    * @returns React node
    */
-  renderItem?(item: MentionItem<TData>, isSelected: boolean): ReactNode
+  renderItem?(item: MentionItem<TData>, isSelected: boolean): JSX.Element
 
   /**
    * Custom renderer for in-editor chip (optional)
@@ -115,7 +115,7 @@ export interface MentionProvider<TData = unknown> {
    * @param item - Item to render as chip
    * @returns React node
    */
-  renderChip?(item: MentionItem<TData>): ReactNode
+  renderChip?(item: MentionItem<TData>): JSX.Element
 
   /**
    * Custom renderer for tooltip/preview (optional)
@@ -123,7 +123,7 @@ export interface MentionProvider<TData = unknown> {
    * @param item - Item to render preview for
    * @returns React node
    */
-  renderTooltip?(item: MentionItem<TData>): ReactNode
+  renderTooltip?(item: MentionItem<TData>): JSX.Element
 
   /**
    * Called when provider is activated

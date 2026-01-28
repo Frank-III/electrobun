@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createMemo, createSignal, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, ErrorBoundary, For, type JSX } from "solid-js";
 import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 import { createStoredSignal } from "../../../lib/state/signal-storage";
 import { agentsFocusedDiffFileAtom, filteredDiffFilesAtom, viewedFilesAtomFamily, type ViewedFileState } from "../atoms";
@@ -36,79 +36,54 @@ function hashString(str: string): string {
 	// Convert to base36 for compact string representation
 	return (hash >>> 0).toString(36);
 }
-// Error Boundary for DiffView to catch parsing errors
+// Error Boundary fallback renderer for DiffView parsing errors
 interface DiffErrorBoundaryProps {
-	children: ReactNode;
+	children: JSX.Element;
 	fileName: string;
 	/** Raw diff text to show as fallback when parsing fails */
 	rawDiff?: string;
 }
-interface DiffErrorBoundaryState {
-	hasError: boolean;
-	error: Error | null;
-	prevRawDiff: string | undefined;
+
+function DiffErrorFallback(props: { rawDiff?: string }) {
+	if (props.rawDiff) {
+		const lines = props.rawDiff.split("\n");
+		const firstHunkIdx = lines.findIndex((l) => l.startsWith("@@"));
+		const contentLines = firstHunkIdx > 0 ? lines.slice(firstHunkIdx) : lines;
+		return (
+			<div class="text-xs font-mono overflow-x-auto">
+				<For each={contentLines}>
+					{(line) => {
+						let className = "block px-3 py-px min-h-[20px]";
+						if (line.startsWith("+") && !line.startsWith("+++")) {
+							className += " text-emerald-600 dark:text-emerald-400 bg-emerald-500/10";
+						} else if (line.startsWith("-") && !line.startsWith("---")) {
+							className += " text-red-600 dark:text-red-400 bg-red-500/10";
+						} else if (line.startsWith("@@")) {
+							className += " text-muted-foreground bg-blue-500/5 py-1 mt-1 first:mt-0";
+						}
+						return <code class={className}>{line || " "}</code>;
+					}}
+				</For>
+			</div>
+		);
+	}
+	return (
+		<div class="flex items-center gap-2 p-4 text-sm text-yellow-600 dark:text-yellow-500 bg-yellow-50 dark:bg-yellow-950/30 rounded-md">
+			<AlertTriangle class="h-4 w-4 flex-shrink-0" />
+			<span>
+				Failed to render diff for this file. The diff format may be
+				corrupted or truncated.
+			</span>
+		</div>
+	);
 }
-class DiffErrorBoundary extends Component<DiffErrorBoundaryProps, DiffErrorBoundaryState> {
-	constructor(props: DiffErrorBoundaryProps) {
-		super(props);
-		this.state = {
-			hasError: false,
-			error: null,
-			prevRawDiff: props.rawDiff
-		};
-	}
-	static getDerivedStateFromError(error: Error): Partial<DiffErrorBoundaryState> {
-		return {
-			hasError: true,
-			error
-		};
-	}
-	static getDerivedStateFromProps(props: DiffErrorBoundaryProps, state: DiffErrorBoundaryState): Partial<DiffErrorBoundaryState> | null {
-		// Reset error state when rawDiff changes (different file)
-		if (props.rawDiff !== state.prevRawDiff) {
-			return {
-				hasError: false,
-				error: null,
-				prevRawDiff: props.rawDiff
-			};
-		}
-		return null;
-	}
-	componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-		// Error already captured in state, no need to log
-	}
-	render() {
-		if (this.state.hasError) {
-			// Show raw diff as fallback when library fails to parse
-			if (this.props.rawDiff) {
-				const lines = this.props.rawDiff.split("\n");
-				// Find first hunk header to skip diff metadata
-				const firstHunkIdx = lines.findIndex((l) => l.startsWith("@@"));
-				const contentLines = firstHunkIdx > 0 ? lines.slice(firstHunkIdx) : lines;
-				return <div class="text-xs font-mono overflow-x-auto">
-            {contentLines.map((line, i) => {
-					let className = "block px-3 py-px min-h-[20px]";
-					if (line.startsWith("+") && !line.startsWith("+++")) {
-						className += " text-emerald-600 dark:text-emerald-400 bg-emerald-500/10";
-					} else if (line.startsWith("-") && !line.startsWith("---")) {
-						className += " text-red-600 dark:text-red-400 bg-red-500/10";
-					} else if (line.startsWith("@@")) {
-						className += " text-muted-foreground bg-blue-500/5 py-1 mt-1 first:mt-0";
-					}
-					return <code key={i} class={className}>{line || " "}</code>;
-				})}
-          </div>;
-			}
-			return <div class="flex items-center gap-2 p-4 text-sm text-yellow-600 dark:text-yellow-500 bg-yellow-50 dark:bg-yellow-950/30 rounded-md">
-          <AlertTriangle class="h-4 w-4 flex-shrink-0" />
-          <span>
-            Failed to render diff for this file. The diff format may be
-            corrupted or truncated.
-          </span>
-        </div>;
-		}
-		return this.props.children;
-	}
+
+function DiffErrorBoundary(props: DiffErrorBoundaryProps) {
+	return (
+		<ErrorBoundary fallback={<DiffErrorFallback rawDiff={props.rawDiff} />}>
+			{props.children}
+		</ErrorBoundary>
+	);
 }
 // Suppress @git-diff-view mismatch warnings globally in development
 // These warnings are caused by the library's internal validation which runs even in pure diff mode
@@ -566,6 +541,8 @@ interface AgentDiffViewProps {
 	onViewedCountChange?: (count: number) => void;
 	/** Initial selected file path - used to filter on first render before atom updates */
 	initialSelectedFile?: string | null;
+	/** Ref callback for exposing methods to parent */
+	ref?: (handle: AgentDiffViewRef) => void;
 }
 /** Ref handle for controlling AgentDiffView from parent */
 export interface AgentDiffViewRef {
@@ -580,7 +557,8 @@ export interface AgentDiffViewRef {
 }
 // DEBUG: Render counter
 let renderCount = 0;
-export const AgentDiffView = forwardRef<AgentDiffViewRef, AgentDiffViewProps>(function AgentDiffView({ chatId, sandboxId, worktreePath, repository, onStatsChange, initialDiff, initialParsedFiles, prefetchedFileContents, showFooter = true, onCreatePr: externalOnCreatePr, isCreatingPr: externalIsCreatingPr, isMobile = false, onClose, onCollapsedStateChange, onSelectNextFile, onViewedCountChange, initialSelectedFile }, ref) {
+export function AgentDiffView(props: AgentDiffViewProps) {
+	const { chatId, sandboxId, worktreePath, repository, onStatsChange, initialDiff, initialParsedFiles, prefetchedFileContents, showFooter = true, onCreatePr: externalOnCreatePr, isCreatingPr: externalIsCreatingPr, isMobile = false, onClose, onCollapsedStateChange, onSelectNextFile, onViewedCountChange, initialSelectedFile } = props;
 	// DEBUG: Log renders
 	renderCount++;
 	console.log(`[AgentDiffView] RENDER #${renderCount}`, {
@@ -918,8 +896,8 @@ export const AgentDiffView = forwardRef<AgentDiffViewRef, AgentDiffViewProps>(fu
 		}
 		setCollapsedByFileKey(newCollapsedState);
 	};
-	// Expose expand/collapse methods to parent via ref
-	useImperativeHandle(ref, () => ({
+	// Expose expand/collapse methods to parent via ref callback
+	const handle: AgentDiffViewRef = {
 		expandAll,
 		collapseAll,
 		isAllCollapsed,
@@ -927,15 +905,8 @@ export const AgentDiffView = forwardRef<AgentDiffViewRef, AgentDiffViewProps>(fu
 		getViewedCount,
 		markAllViewed,
 		markAllUnviewed
-	}), [
-		expandAll,
-		collapseAll,
-		isAllCollapsed,
-		isAllExpanded,
-		getViewedCount,
-		markAllViewed,
-		markAllUnviewed
-	]);
+	};
+	props.ref?.(handle);
 	// Notify parent when collapsed state changes
 	const [prevCollapseStateRef, setPrevCollapseStateRef] = createSignal<{
 		allCollapsed: boolean;
@@ -1601,4 +1572,4 @@ export const AgentDiffView = forwardRef<AgentDiffViewRef, AgentDiffViewProps>(fu
           </AlertDialogContent>
         </AlertDialog>
       </div>;
- });
+}

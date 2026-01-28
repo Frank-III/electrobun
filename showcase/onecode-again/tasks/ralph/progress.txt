@@ -232,3 +232,42 @@ Thread: https://ampcode.com/threads/T-019c062f-85e5-7684-9b99-9dcb0f0a4fdd
   - Also delete the second argument (custom comparison function) when present
   - memo was being imported from "solid-js" but doesn't exist there - it was React API copied over
 ---
+
+## 2026-01-28 - US-014
+Thread: https://ampcode.com/threads/T-019c0638-bf99-71da-a49d-8753ba7cba17
+- Removed all forwardRef patterns from TSX files
+- Files changed:
+  - src/mainview/features/agents/ui/agent-user-question.tsx - converted forwardRef+useImperativeHandle to props.ref callback, fixed all signal accessor patterns, converted .map() to <For>, added onCleanup, fixed props pattern
+  - src/mainview/features/agents/ui/agent-diff-view.tsx - converted forwardRef to plain function with props.ref callback pattern
+  - src/mainview/features/agents/mentions/agents-mentions-editor.tsx - converted forwardRef+useImperativeHandle to props.ref callback, converted editorRef/triggerActive/triggerStartIndex from createSignal to let variables, fixed many .current patterns, onCleanup for debounce timer
+  - Deleted: src/mainview/components/ui/button-group.js, prompt-input.js, command.js (stale transpiled files with React.forwardRef)
+- **Learnings for future iterations:**
+  - SolidJS ref pattern: Add `ref?: (handle: HandleType) => void` to props interface, then call `props.ref?.(handle)` after creating handle object
+  - For imperative handles, create a const object with methods and pass to ref callback
+  - SolidJS doesn't have useImperativeHandle - just call props.ref?.() directly
+  - agents-mentions-editor.tsx is large (1180+ lines) and still has some .current patterns in the middle of the file that need conversion in signal accessor stories
+  - When using <For each={}> the index parameter is an accessor: `optIndex()` not `optIndex`
+---
+
+## 2026-01-28 - US-015
+Thread: https://ampcode.com/threads/T-019c063f-f3de-7599-b81a-fc20537659bc
+- Fixed React namespace references in TSX and type files
+- Files changed:
+  - src/mainview/features/changes/components/category-section/category-section.tsx - ReactNode → JSX.Element
+  - src/mainview/features/changes/components/collapsible-row/collapsible-row.tsx - ReactNode → JSX.Element
+  - src/mainview/features/changes/components/folder-row/folder-row.tsx - ReactNode → JSX.Element
+  - src/mainview/features/changes/utils/status.tsx - ReactNode → JSX.Element
+  - src/mainview/features/agents/context/text-selection-context.tsx - ReactNode → JSX.Element
+  - src/mainview/features/agents/main/chat-data-sync.tsx - ReactNode → JSX.Element, useRef → let ref, .current → direct access
+  - src/mainview/features/mentions/types/provider.ts - ReactNode → JSX.Element
+  - src/mainview/features/mentions/types/core.ts - ComponentType from react → Component from solid-js
+  - src/mainview/features/agents/ui/agent-diff-view.tsx - ReactNode → JSX.Element, React class DiffErrorBoundary → SolidJS ErrorBoundary
+  - src/mainview/features/agents/ui/sub-chat-context-menu.tsx - removed invalid "React, useMemo, useCallback" from solid-js import
+- **Learnings for future iterations:**
+  - Replace ReactNode with JSX.Element for all children prop types
+  - Replace ComponentType from react with Component from solid-js (they're similar but not identical)
+  - React class components with error boundaries convert to SolidJS ErrorBoundary component wrapper
+  - useRef pattern becomes `let ref: T = value` with direct mutation (no .current)
+  - wdyr.ts (Why Did You Render) is a React-specific debugging tool that doesn't work with SolidJS - disabled but kept for reference
+  - Many hook files still have React imports (useRef, useState, useEffect, etc.) - those need separate migration in later stories
+---

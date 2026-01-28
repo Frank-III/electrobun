@@ -188,8 +188,8 @@
         "Component signatures simplified"
       ],
       "priority": 14,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted agent-user-question.tsx, agent-diff-view.tsx, agents-mentions-editor.tsx from forwardRef+useImperativeHandle to props.ref callback pattern. Deleted stale .js files (button-group.js, prompt-input.js, command.js). agents-mentions-editor.tsx still has some remaining .current patterns that need fixing in other stories."
     },
     {
       "id": "US-015",
@@ -202,8 +202,8 @@
         "No React namespace references remain"
       ],
       "priority": 15,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted ReactNode to JSX.Element in 9 files (category-section.tsx, collapsible-row.tsx, folder-row.tsx, status.tsx, text-selection-context.tsx, chat-data-sync.tsx, provider.ts, core.ts, agent-diff-view.tsx). Replaced ComponentType from react with Component from solid-js. Converted React class DiffErrorBoundary to SolidJS ErrorBoundary pattern. Fixed sub-chat-context-menu.tsx invalid React import from solid-js. Replaced useRef with let ref pattern in chat-data-sync.tsx."
     },
     {
       "id": "US-016",

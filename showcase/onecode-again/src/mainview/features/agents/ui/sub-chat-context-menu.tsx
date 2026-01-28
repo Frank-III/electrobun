@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, createMemo } from "solid-js";
+import { createMemo } from "solid-js";
 import { ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "../../../components/ui/context-menu";
 import { Kbd } from "../../../components/ui/kbd";
 import { isMac } from "../../../lib/utils";

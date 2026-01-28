@@ -5,7 +5,7 @@
  * Inspired by VS Code's extension model for maximum extensibility.
  */
 
-import type { ComponentType } from "react"
+import type { Component, JSX } from "solid-js"
 
 /**
  * Branded type for provider IDs to ensure type safety
@@ -73,7 +73,7 @@ export interface MentionCategory {
   /**
    * Optional icon component for the category
    */
-  icon?: ComponentType<{ className?: string }>
+  icon?: Component<{ className?: string }>
 
   /**
    * Sort priority (higher = shown first)
@@ -107,7 +107,7 @@ export interface MentionItem<TData = unknown> {
    * Icon identifier (string) or component
    * String IDs map to the icon registry
    */
-  icon?: string | ComponentType<{ className?: string }>
+  icon?: string | Component<{ className?: string }>
 
   /**
    * Provider-specific data payload

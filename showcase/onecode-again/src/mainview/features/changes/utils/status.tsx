@@ -50,7 +50,7 @@ export function getStatusColor(status: FileStatus): string {
 /**
 * Git status indicator with appropriate icon and color
 */
-export function getStatusIndicator(status: FileStatus): ReactNode {
+export function getStatusIndicator(status: FileStatus): JSX.Element {
 	const color = getStatusColor(status);
 	switch (status) {
 		case "added":

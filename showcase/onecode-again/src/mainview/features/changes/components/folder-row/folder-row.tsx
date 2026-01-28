@@ -5,7 +5,7 @@ interface FolderRowProps {
 	name: string;
 	isExpanded: boolean;
 	onToggle: (expanded: boolean) => void;
-	children: ReactNode;
+	children: JSX.Element;
 	/** Number of level indentations (for tree view) */
 	level?: number;
 	/** Show file count badge */

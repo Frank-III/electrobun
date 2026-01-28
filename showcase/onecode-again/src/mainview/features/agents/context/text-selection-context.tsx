@@ -36,7 +36,7 @@ export function useTextSelection(): TextSelectionContextValue {
 	return ctx;
 }
 interface TextSelectionProviderProps {
-	children: ReactNode;
+	children: JSX.Element;
 }
 // Helper to extract line number from diff selection
 function extractDiffLineInfo(element: Element): {

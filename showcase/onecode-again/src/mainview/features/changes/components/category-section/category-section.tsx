@@ -7,8 +7,8 @@ interface CategorySectionProps {
 	count: number;
 	isExpanded: boolean;
 	onToggle: () => void;
-	children: ReactNode;
-	actions?: ReactNode;
+	children: JSX.Element;
+	actions?: JSX.Element;
 }
 export function CategorySection({ title, count, isExpanded, onToggle, children, actions }: CategorySectionProps) {
 	if (count === 0) {
