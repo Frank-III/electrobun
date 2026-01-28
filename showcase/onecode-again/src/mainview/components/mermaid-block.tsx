@@ -1,4 +1,4 @@
-import { createSignal, createEffect, Show } from "solid-js";
+import { createSignal, createEffect, onCleanup, Show } from "solid-js";
 import { useTheme } from "../lib/hooks/use-theme";
 import { Copy, Check, Download, AlertTriangle, RotateCcw, Maximize2, X, ZoomIn, ZoomOut, RotateCcw as ResetZoom } from "lucide-solid";
 import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch";
@@ -281,13 +281,11 @@ function MermaidBlockInner({ code }: {
 		renderDiagram();
 	});
 	// Cleanup mermaid artifacts and debounce timeout on unmount
-	createEffect(() => {
-		return () => {
-			if (debounceTimeoutRef.current) {
-				clearTimeout(debounceTimeoutRef.current);
-			}
-			cleanupMermaidErrors();
-		};
+	onCleanup(() => {
+		if (debounceTimeoutRef.current) {
+			clearTimeout(debounceTimeoutRef.current);
+		}
+		cleanupMermaidErrors();
 	});
 	const handleCopy = async () => {
 		await navigator.clipboard.writeText(code);
@@ -314,10 +312,10 @@ function MermaidBlockInner({ code }: {
       <div class="relative mt-2 mb-4 rounded-[10px] bg-muted/50 overflow-hidden">
         {	/* Toolbar */}
         <div class="absolute top-[6px] right-[6px] flex gap-1 z-[2]">
-          <button onClick={handleCopy} tabIndex={-1} class="p-1" title={copied ? "Copied!" : "Copy code"}>
+          <button onClick={handleCopy} tabIndex={-1} class="p-1" title={copied() ? "Copied!" : "Copy code"}>
             <div class="relative w-3.5 h-3.5">
-              <Copy class={cn("absolute inset-0 w-3 h-3 text-muted-foreground transition-[opacity,transform] duration-200 ease-out hover:text-foreground", copied ? "opacity-0 scale-50" : "opacity-100 scale-100")} />
-              <Check class={cn("absolute inset-0 w-3 h-3 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", copied ? "opacity-100 scale-100" : "opacity-0 scale-50")} />
+              <Copy class={cn("absolute inset-0 w-3 h-3 text-muted-foreground transition-[opacity,transform] duration-200 ease-out hover:text-foreground", copied() ? "opacity-0 scale-50" : "opacity-100 scale-100")} />
+              <Check class={cn("absolute inset-0 w-3 h-3 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", copied() ? "opacity-100 scale-100" : "opacity-0 scale-50")} />
             </div>
           </button>
           {renderState.status === "success" && <>

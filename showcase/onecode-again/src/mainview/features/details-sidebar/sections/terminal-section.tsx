@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createMemo, createSignal } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { useTheme } from "../../../lib/hooks/use-theme";
 import { fullThemeDataAtom } from "@/lib/atoms";
@@ -179,7 +179,7 @@ export function TerminalSection({ chatId, cwd, workspaceId, isExpanded = false, 
 		const timer = setTimeout(() => {
 			setCanRenderTerminal(true);
 		}, 50);
-		return () => clearTimeout(timer);
+		onCleanup(() => clearTimeout(timer));
 	});
 	// Tabs component for header
 	const tabsHeader = terminals.length > 0 ? <TerminalTabs terminals={terminals} activeTerminalId={activeTerminalId} cwds={terminalCwds} initialCwd={cwd} terminalBg={terminalBg} onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} /> : null;

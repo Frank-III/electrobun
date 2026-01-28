@@ -1,4 +1,4 @@
-import { createSignal, createEffect } from "solid-js";
+import { createSignal, createEffect, onCleanup } from "solid-js";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
@@ -13,7 +13,7 @@ function useIsNarrowScreen(): boolean {
 		};
 		checkWidth();
 		window.addEventListener("resize", checkWidth);
-		return () => window.removeEventListener("resize", checkWidth);
+		onCleanup(() => window.removeEventListener("resize", checkWidth));
 	});
 	return isNarrow;
 }
@@ -61,7 +61,7 @@ export function AgentsProfileTab() {
 			setIsSaving(false);
 		}
 	};
-	if (isLoading) {
+	if (isLoading()) {
 		return <div class="flex items-center justify-center h-full">
         <IconSpinner class="h-6 w-6" />
       </div>;
@@ -106,7 +106,7 @@ export function AgentsProfileTab() {
           <div class="bg-muted p-3 rounded-b-lg flex justify-end gap-3 border-t">
             <Button onClick={handleSave} disabled={isSaving} size="sm" class="text-xs">
               <div class="flex items-center justify-center gap-2">
-                {isSaving && <IconSpinner class="h-3.5 w-3.5 text-current" />}
+                {isSaving() && <IconSpinner class="h-3.5 w-3.5 text-current" />}
                 Save
               </div>
             </Button>

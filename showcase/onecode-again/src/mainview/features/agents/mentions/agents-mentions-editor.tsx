@@ -740,10 +740,10 @@ interface UndoState {
 			});
 		};
 		document.addEventListener("selectionchange", handleSelectionChange);
-		return () => {
+		onCleanup(() => {
 			document.removeEventListener("selectionchange", handleSelectionChange);
 			if (rafId) cancelAnimationFrame(rafId);
-		};
+		});
 	});
 	// Trigger detection timeout ref for cleanup
 	const [triggerDetectionTimeout, setTriggerDetectionTimeout] = createSignal<number | null>(null);
@@ -873,11 +873,11 @@ interface UndoState {
 	};
 	// Cleanup on unmount
 	createEffect(() => {
-		return () => {
+		onCleanup(() => {
 			if (triggerDetectionTimeout.current) {
 				cancelAnimationFrame(triggerDetectionTimeout.current);
 			}
-		};
+		});
 	});
 	// Handle keydown
 	const handleKeyDown = (e: KeyboardEvent) => {

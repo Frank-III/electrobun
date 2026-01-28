@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createMemo, createSignal } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { useAtom } from "../../../lib/state/jotai";
 import { IconSpinner, PlanIcon } from "@/components/ui/icons";
 import { ChatMarkdownRenderer } from "@/components/chat-markdown-renderer";
@@ -67,7 +67,7 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
 		content.addEventListener("scroll", updateScrollGradients);
 		// Initial check
 		updateScrollGradients();
-		return () => content.removeEventListener("scroll", updateScrollGradients);
+		onCleanup(() => content.removeEventListener("scroll", updateScrollGradients));
 	});
 	// Also update gradients when content changes
 	createEffect(() => {

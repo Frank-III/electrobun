@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createSignal, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { useTextSelection, type TextSelectionSource } from "../context/text-selection-context";
 interface TextSelectionPopoverProps {
@@ -48,10 +48,10 @@ export function TextSelectionPopover({ onAddToContext, onQuickComment, onFocusIn
 		};
 		document.addEventListener("mousedown", handleMouseDown);
 		document.addEventListener("mouseup", handleMouseUp);
-		return () => {
+		onCleanup(() => {
 			document.removeEventListener("mousedown", handleMouseDown);
 			document.removeEventListener("mouseup", handleMouseUp);
-		};
+		});
 	});
 	// Show popover only when mouse is up and we have a valid selection
 	createEffect(() => {

@@ -1,5 +1,5 @@
 import { cn } from "../lib/utils";
-import { createSignal, createEffect, createMemo, For, Show, type Component } from "solid-js";
+import { createSignal, createEffect, createMemo, For, Show, onCleanup, type Component } from "solid-js";
 import { Streamdown, parseMarkdownIntoBlocks } from "streamdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -51,9 +51,9 @@ function CodeBlock({ language, children, themeId, size = "md" }: {
 			}
 		};
 		highlight();
-		return () => {
+		onCleanup(() => {
 			cancelled = true;
-		};
+		});
 	});
 	// For plaintext/ASCII art, just escape and render directly (no Shiki)
 	// For code with syntax highlighting, use Shiki output when available

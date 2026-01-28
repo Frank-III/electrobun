@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useAtom, useAtomValue } from "../state/jotai"
-import { useCallback, useEffect } from "react"
+import { createEffect } from "solid-js"
 import { selectedTeamIdAtom } from "../atoms"
 import { remoteApi, type RemoteChat, type RemoteChatWithSubChats } from "../remote-api"
 
@@ -23,32 +23,33 @@ export function useUserTeams(enabled: boolean = true) {
   })
 
   // Auto-select first team OR fix stale teamId
-  useEffect(() => {
+  createEffect(() => {
     // Wait for successful fetch
     if (query.status !== "success" || !query.data) return
 
     // If user has teams
     if (query.data.length > 0) {
       // If no teamId cached, select first team
-      if (!teamId) {
+      const currentTeamId = teamId()
+      if (!currentTeamId) {
         setTeamId(query.data[0].id)
         return
       }
 
       // Validate cached teamId exists in current user's teams
-      const teamExists = query.data.some((t) => t.id === teamId)
+      const teamExists = query.data.some((t: { id: string }) => t.id === currentTeamId)
       if (!teamExists) {
         console.log("[useUserTeams] Cached teamId not found, resetting to first team")
         setTeamId(query.data[0].id)
       }
     } else {
       // User has no teams - clear stale teamId
-      if (teamId) {
+      if (teamId()) {
         console.log("[useUserTeams] User has no teams, clearing teamId")
         setTeamId(null)
       }
     }
-  }, [query.status, query.data, teamId, setTeamId])
+  })
 
   return query
 }
@@ -59,16 +60,17 @@ export function useUserTeams(enabled: boolean = true) {
  */
 export function useRemoteChats() {
   const teamId = useAtomValue(selectedTeamIdAtom)
+  const currentTeamId = teamId()
 
   return useQuery({
-    queryKey: ["remote-chats", teamId],
-    queryFn: () => remoteApi.getAgentChats(teamId!),
-    enabled: !!teamId,
+    queryKey: ["remote-chats", currentTeamId],
+    queryFn: () => remoteApi.getAgentChats(currentTeamId!),
+    enabled: !!currentTeamId,
     staleTime: 30 * 1000,       // Consider stale after 30s
     gcTime: 30 * 60 * 1000,     // Keep in cache 30 min
     refetchOnMount: true,       // Revalidate on mount
     refetchOnWindowFocus: true, // Revalidate when window focused
-    placeholderData: (prev) => prev,
+    placeholderData: (prev: RemoteChat[] | undefined) => prev,
   })
 }
 
@@ -91,16 +93,13 @@ export function useRemoteChat(chatId: string | null) {
 export function usePrefetchRemoteChat() {
   const queryClient = useQueryClient()
 
-  return useCallback(
-    (chatId: string) => {
-      queryClient.prefetchQuery({
-        queryKey: ["remote-chat", chatId],
-        queryFn: () => remoteApi.getAgentChat(chatId),
-        staleTime: 60 * 1000,
-      })
-    },
-    [queryClient]
-  )
+  return (chatId: string) => {
+    queryClient.prefetchQuery({
+      queryKey: ["remote-chat", chatId],
+      queryFn: () => remoteApi.getAgentChat(chatId),
+      staleTime: 60 * 1000,
+    })
+  }
 }
 
 /**
@@ -108,11 +107,12 @@ export function usePrefetchRemoteChat() {
  */
 export function useRemoteArchivedChats() {
   const teamId = useAtomValue(selectedTeamIdAtom)
+  const currentTeamId = teamId()
 
   return useQuery({
-    queryKey: ["remote-archived-chats", teamId],
-    queryFn: () => remoteApi.getArchivedChats(teamId!),
-    enabled: !!teamId,
+    queryKey: ["remote-archived-chats", currentTeamId],
+    queryFn: () => remoteApi.getArchivedChats(currentTeamId!),
+    enabled: !!currentTeamId,
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
   })
@@ -128,8 +128,9 @@ export function useArchiveRemoteChat() {
   return useMutation({
     mutationFn: (chatId: string) => remoteApi.archiveChat(chatId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["remote-chats", teamId] })
-      queryClient.invalidateQueries({ queryKey: ["remote-archived-chats", teamId] })
+      const currentTeamId = teamId()
+      queryClient.invalidateQueries({ queryKey: ["remote-chats", currentTeamId] })
+      queryClient.invalidateQueries({ queryKey: ["remote-archived-chats", currentTeamId] })
     },
   })
 }
@@ -144,8 +145,9 @@ export function useArchiveRemoteChatsBatch() {
   return useMutation({
     mutationFn: (chatIds: string[]) => remoteApi.archiveChatsBatch(chatIds),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["remote-chats", teamId] })
-      queryClient.invalidateQueries({ queryKey: ["remote-archived-chats", teamId] })
+      const currentTeamId = teamId()
+      queryClient.invalidateQueries({ queryKey: ["remote-chats", currentTeamId] })
+      queryClient.invalidateQueries({ queryKey: ["remote-archived-chats", currentTeamId] })
     },
   })
 }
@@ -160,8 +162,9 @@ export function useRestoreRemoteChat() {
   return useMutation({
     mutationFn: (chatId: string) => remoteApi.restoreChat(chatId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["remote-chats", teamId] })
-      queryClient.invalidateQueries({ queryKey: ["remote-archived-chats", teamId] })
+      const currentTeamId = teamId()
+      queryClient.invalidateQueries({ queryKey: ["remote-chats", currentTeamId] })
+      queryClient.invalidateQueries({ queryKey: ["remote-archived-chats", currentTeamId] })
     },
   })
 }
@@ -192,7 +195,8 @@ export function useRenameRemoteChat() {
     mutationFn: ({ chatId, name }: { chatId: string; name: string }) =>
       remoteApi.renameChat(chatId, name),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["remote-chats", teamId] })
+      const currentTeamId = teamId()
+      queryClient.invalidateQueries({ queryKey: ["remote-chats", currentTeamId] })
       queryClient.invalidateQueries({ queryKey: ["remote-chat"] })
     },
   })

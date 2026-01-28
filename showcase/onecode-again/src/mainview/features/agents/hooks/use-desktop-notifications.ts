@@ -3,7 +3,7 @@
  * Uses Electron's Notification API via the IPC bridge in desktopApi.
  */
 
-import { useCallback, useRef, useEffect } from "react"
+import { createEffect, onCleanup } from "solid-js"
 import { useAtomValue } from "../../../lib/state/jotai"
 import { isDesktopApp } from "../../../lib/utils/platform"
 import { desktopNotificationsEnabledAtom } from "../../../lib/atoms"
@@ -32,23 +32,23 @@ export function useDesktopNotifications() {
   const notificationsEnabled = useAtomValue(desktopNotificationsEnabledAtom)
 
   // track last notification time to throttle rapid-fire notifications
-  const lastNotificationTime = useRef<number>(0)
-  const pendingNotification = useRef<NotificationOptions | null>(null)
-  const throttleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  let lastNotificationTime = 0
+  let pendingNotification: NotificationOptions | null = null
+  let throttleTimer: ReturnType<typeof setTimeout> | null = null
 
   // Cleanup timer on unmount to prevent memory leak
-  useEffect(() => {
-    return () => {
-      if (throttleTimer.current) {
-        clearTimeout(throttleTimer.current)
-        throttleTimer.current = null
+  createEffect(() => {
+    onCleanup(() => {
+      if (throttleTimer) {
+        clearTimeout(throttleTimer)
+        throttleTimer = null
       }
-    }
-  }, [])
+    })
+  })
 
-  const showNotification = useCallback((title: string, body: string, options?: { silent?: boolean; priority?: NotificationPriority }) => {
+  const showNotification = (title: string, body: string, options?: { silent?: boolean; priority?: NotificationPriority }) => {
     // Check if notifications are enabled
-    if (!notificationsEnabled) {
+    if (!notificationsEnabled()) {
       return
     }
 
@@ -61,29 +61,29 @@ export function useDesktopNotifications() {
     }
 
     const now = Date.now()
-    const timeSinceLastNotification = now - lastNotificationTime.current
+    const timeSinceLastNotification = now - lastNotificationTime
     const currentPriority = options?.priority ? NOTIFICATION_PRIORITY[options.priority] : 0
 
     // if we're within throttle window, check priority
     if (timeSinceLastNotification < NOTIFICATION_THROTTLE_MS) {
-      const pendingPriority = pendingNotification.current?.priority
-        ? NOTIFICATION_PRIORITY[pendingNotification.current.priority]
+      const pendingPriority = pendingNotification?.priority
+        ? NOTIFICATION_PRIORITY[pendingNotification.priority]
         : 0
 
       // Only queue if higher or equal priority than pending
       if (currentPriority >= pendingPriority) {
-        pendingNotification.current = { title, body, silent: options?.silent, priority: options?.priority }
+        pendingNotification = { title, body, silent: options?.silent, priority: options?.priority }
       }
 
       // set up a timer to show the pending notification after throttle period
-      if (!throttleTimer.current) {
-        throttleTimer.current = setTimeout(() => {
-          throttleTimer.current = null
-          if (pendingNotification.current) {
-            const pending = pendingNotification.current
-            pendingNotification.current = null
+      if (!throttleTimer) {
+        throttleTimer = setTimeout(() => {
+          throttleTimer = null
+          if (pendingNotification) {
+            const pending = pendingNotification
+            pendingNotification = null
             // Directly send notification without recursive call to avoid re-throttling
-            lastNotificationTime.current = Date.now()
+            lastNotificationTime = Date.now()
             window.desktopApi?.showNotification({ title: pending.title, body: pending.body })
           }
         }, NOTIFICATION_THROTTLE_MS - timeSinceLastNotification)
@@ -91,13 +91,13 @@ export function useDesktopNotifications() {
       return
     }
 
-    lastNotificationTime.current = now
+    lastNotificationTime = now
 
     // use the IPC bridge to show native notification
     window.desktopApi?.showNotification({ title, body })
-  }, [notificationsEnabled])
+  }
 
-  const notifyAgentComplete = useCallback((chatName: string) => {
+  const notifyAgentComplete = (chatName: string) => {
     // don't notify if window is focused - user is already watching
     if (document.hasFocus()) {
       return
@@ -106,16 +106,16 @@ export function useDesktopNotifications() {
     const title = "Agent Complete"
     const body = chatName ? `Finished working on "${chatName}"` : "Agent has completed its task"
     showNotification(title, body, { priority: "complete" })
-  }, [showNotification])
+  }
 
-  const notifyAgentError = useCallback((errorMessage: string) => {
+  const notifyAgentError = (errorMessage: string) => {
     // always notify on errors, even if window is focused
     const title = "Agent Error"
     const body = errorMessage.length > 100 ? errorMessage.slice(0, 100) + "..." : errorMessage
     showNotification(title, body, { priority: "error" })
-  }, [showNotification])
+  }
 
-  const notifyAgentNeedsInput = useCallback((chatName: string) => {
+  const notifyAgentNeedsInput = (chatName: string) => {
     // don't notify if window is focused
     if (document.hasFocus()) {
       return
@@ -124,9 +124,9 @@ export function useDesktopNotifications() {
     const title = "Input Required"
     const body = chatName ? `"${chatName}" is waiting for your input` : "Agent is waiting for your input"
     showNotification(title, body, { priority: "input" })
-  }, [showNotification])
+  }
 
-  const notifyPlanReady = useCallback((chatName: string) => {
+  const notifyPlanReady = (chatName: string) => {
     // don't notify if window is focused
     if (document.hasFocus()) {
       return
@@ -135,9 +135,9 @@ export function useDesktopNotifications() {
     const title = "Plan Ready"
     const body = chatName ? `"${chatName}" has a plan ready for approval` : "A plan is ready for your approval"
     showNotification(title, body, { priority: "plan" })
-  }, [showNotification])
+  }
 
-  const requestPermission = useCallback(async (): Promise<NotificationPermission> => {
+  const requestPermission = async (): Promise<NotificationPermission> => {
     if (isDesktopApp()) {
       // desktop apps don't need explicit permission for notifications
       return "granted"
@@ -149,7 +149,7 @@ export function useDesktopNotifications() {
     }
 
     return "denied"
-  }, [])
+  }
 
   return {
     showNotification,

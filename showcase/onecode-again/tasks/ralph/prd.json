@@ -335,8 +335,8 @@
         "Cleanup functions use onCleanup() helper"
       ],
       "priority": 25,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted 69 files. Replaced React-style 'return () => { cleanup }' patterns with SolidJS 'onCleanup(() => { cleanup })'. Also converted remaining React hooks (useEffect/useRef/useCallback) to SolidJS equivalents in many hook files."
     },
     {
       "id": "US-026",

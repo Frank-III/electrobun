@@ -58,7 +58,7 @@ export function AgentsRenameSubChatDialog({ isOpen, onClose, onSave, currentName
 	});
 	const handleClose = () => {
 		const canInteract = performance.now() - openAtRef > INTERACTION_DELAY_MS;
-		if (!canInteract || isSaving) return;
+		if (!canInteract || isSaving()) return;
 		onClose();
 	};
 	const handleSave = async () => {

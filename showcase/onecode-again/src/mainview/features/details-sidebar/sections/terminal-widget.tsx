@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createMemo, createSignal } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { useTheme } from "../../../lib/hooks/use-theme";
 import { fullThemeDataAtom } from "@/lib/atoms";
@@ -183,7 +183,7 @@ export function TerminalWidget({ chatId, cwd, workspaceId, onExpand }: TerminalW
 		const timer = setTimeout(() => {
 			setCanRenderTerminal(true);
 		}, 50);
-		return () => clearTimeout(timer);
+		onCleanup(() => clearTimeout(timer));
 	});
 	return <div class="mx-2 mb-2">
       <div class={cn("rounded-lg border border-border/50 overflow-hidden")}>

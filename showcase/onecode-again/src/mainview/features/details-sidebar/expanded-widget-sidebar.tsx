@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createMemo } from "solid-js";
+import { createEffect, createMemo, onCleanup } from "solid-js";
 import { useAtom } from "../../lib/state/jotai";
 import { X } from "lucide-solid";
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar";
@@ -52,7 +52,7 @@ export function ExpandedWidgetSidebar({ chatId, worktreePath, planPath, planRefe
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown, true);
-		return () => window.removeEventListener("keydown", handleKeyDown, true);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown, true));
 	});
 	// Render the appropriate widget content based on expandedWidget
 	const renderWidgetContent = () => {

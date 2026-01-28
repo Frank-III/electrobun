@@ -1,5 +1,5 @@
 "use client";
-import { createSignal, createEffect, createMemo } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup } from "solid-js";
 import { useSetAtom } from "../../../lib/state/jotai";
 import { useCodeTheme } from "../../../lib/hooks/use-code-theme";
 import { highlightCode } from "../../../lib/themes/shiki-theme-loader";
@@ -134,10 +134,10 @@ function useBatchHighlight(lines: DiffLine[], language: string, themeId: string,
 		};
 		// Debounce highlighting after streaming completes
 		const timer = setTimeout(highlightAll, 50);
-		return () => {
+		onCleanup(() => {
 			cancelled = true;
 			clearTimeout(timer);
-		};
+		});
 	});
 	return highlightedMap;
 }
@@ -321,7 +321,7 @@ export function AgentEditTool({ part, messageId, partIndex, chatStatus }: AgentE
 				lastStreamingUpdateRef.current = Date.now();
 				setThrottledStreamingContent(streamingContent);
 			}, 100 - timeSinceLastUpdate);
-			return () => clearTimeout(timer);
+			onCleanup(() => clearTimeout(timer));
 		}
 	});
 	// Convert streaming content to diff lines

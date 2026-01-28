@@ -1078,7 +1078,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	createEffect(() => {
 		const handleChange = () => setOpenSubChatsVersion((v) => v + 1);
 		window.addEventListener(OPEN_SUB_CHATS_CHANGE_EVENT, handleChange);
-		return () => window.removeEventListener(OPEN_SUB_CHATS_CHANGE_EVENT, handleChange);
+		onCleanup(() => window.removeEventListener(OPEN_SUB_CHATS_CHANGE_EVENT, handleChange));
 	});
 	// Store previous value to avoid unnecessary React Query refetches
 	const [prevOpenSubChatIdsRef, setPrevOpenSubChatIdsRef] = createSignal<string[]>([]);
@@ -1248,7 +1248,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
 	// Batch archive mutation
 	const archiveChatsBatchMutation = trpc.chats.archiveBatch.useMutation({ onSuccess: (_, variables) => {
@@ -1938,7 +1938,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 		// Re-check when content might change
 		const resizeObserver = new ResizeObserver(checkScroll);
 		resizeObserver.observe(container);
-		return () => resizeObserver.disconnect();
+		onCleanup(() => resizeObserver.disconnect());
 	}, [filteredChats]);
 	// Direct listener for Cmd+K to focus search input
 	createEffect(() => {
@@ -1953,9 +1953,9 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			}
 		};
 		window.addEventListener("keydown", handleSearchHotkey, true);
-		return () => {
+		onCleanup(() => {
 			window.removeEventListener("keydown", handleSearchHotkey, true);
-		};
+		});
 	});
 	// Multi-select hotkeys
 	// X to toggle selection of hovered or focused chat
@@ -2017,7 +2017,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			}
 		};
 		window.addEventListener("keydown", handleArchiveHotkey);
-		return () => window.removeEventListener("keydown", handleArchiveHotkey);
+		onCleanup(() => window.removeEventListener("keydown", handleArchiveHotkey));
 	});
 	// Clear selection when project changes
 	createEffect(() => {

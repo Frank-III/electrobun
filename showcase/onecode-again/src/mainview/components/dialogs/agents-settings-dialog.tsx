@@ -1,6 +1,6 @@
 import { useAtom } from "../../lib/state/jotai";
 import { ChevronLeft, ChevronRight, FolderOpen, X } from "lucide-solid";
-import { createEffect, createMemo, createSignal, Show, For, type Component, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, Show, For, onCleanup, type Component, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { EyeOpenFilledIcon, ProfileIconFilled, SlidersFilledIcon } from "../../icons";
 import { agentsSettingsDialogActiveTabAtom, devToolsUnlockedAtom, type SettingsTab } from "../../lib/atoms";
@@ -53,7 +53,7 @@ function useIsNarrowScreen() {
 		};
 		checkWidth();
 		window.addEventListener("resize", checkWidth);
-		return () => window.removeEventListener("resize", checkWidth);
+		onCleanup(() => window.removeEventListener("resize", checkWidth));
 	});
 
 	return isNarrow;
@@ -207,7 +207,7 @@ export function AgentsSettingsDialog(props: AgentsSettingsDialogProps) {
 		};
 
 		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
 	});
 
 	// Ensure portal target only accessed on client

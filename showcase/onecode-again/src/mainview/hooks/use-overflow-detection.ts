@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { createSignal, createEffect, onCleanup, type Accessor } from "solid-js"
 
 /**
  * VS Code style overflow detection hook
@@ -9,32 +9,30 @@ import { useEffect, useRef, useState } from "react"
  * - Batching measurements with requestAnimationFrame
  * - Proper cleanup through dispose pattern
  *
- * @param contentRef - Ref to the element to observe
- * @param deps - Additional dependencies that should trigger a re-measurement
- * @returns boolean indicating if the element has overflow
+ * @param contentRef - Accessor to the element to observe
+ * @returns Accessor<boolean> indicating if the element has overflow
  *
  * @example
  * ```tsx
- * const contentRef = useRef<HTMLDivElement>(null)
- * const hasOverflow = useOverflowDetection(contentRef, [textContent])
+ * let contentRef: HTMLDivElement | undefined
+ * const hasOverflow = useOverflowDetection(() => contentRef)
  *
  * return (
- *   <div ref={contentRef} className="max-h-[100px] overflow-hidden">
+ *   <div ref={contentRef} class="max-h-[100px] overflow-hidden">
  *     {textContent}
  *   </div>
- *   {hasOverflow && <div className="gradient-overlay" />}
+ *   {hasOverflow() && <div class="gradient-overlay" />}
  * )
  * ```
  */
 export function useOverflowDetection(
-  contentRef: React.RefObject<HTMLElement | null>,
-  deps: unknown[] = []
-): boolean {
-  const [hasOverflow, setHasOverflow] = useState(false)
-  const rafIdRef = useRef<number>(0)
+  contentRef: Accessor<HTMLElement | null | undefined>
+): Accessor<boolean> {
+  const [hasOverflow, setHasOverflow] = createSignal(false)
+  let rafIdRef = 0
 
-  useEffect(() => {
-    const element = contentRef.current
+  createEffect(() => {
+    const element = contentRef()
     if (!element) return
 
     // Dispose pattern - track if effect has been cleaned up
@@ -42,15 +40,16 @@ export function useOverflowDetection(
 
     const measureOverflow = () => {
       // Cancel any pending animation frame
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current)
+      if (rafIdRef) {
+        cancelAnimationFrame(rafIdRef)
       }
 
       // Schedule measurement at next animation frame to batch with browser paint
-      rafIdRef.current = requestAnimationFrame(() => {
-        if (disposed || !contentRef.current) return
+      rafIdRef = requestAnimationFrame(() => {
+        if (disposed) return
+        const el = contentRef()
+        if (!el) return
 
-        const el = contentRef.current
         // Single synchronous read - batched with browser's paint cycle
         const overflows = el.scrollHeight > el.clientHeight
         setHasOverflow(overflows)
@@ -65,15 +64,14 @@ export function useOverflowDetection(
     observer.observe(element)
 
     // Cleanup (VS Code dispose pattern)
-    return () => {
+    onCleanup(() => {
       disposed = true
       observer.disconnect()
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current)
+      if (rafIdRef) {
+        cancelAnimationFrame(rafIdRef)
       }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps)
+    })
+  })
 
   return hasOverflow
 }

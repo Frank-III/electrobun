@@ -1,5 +1,5 @@
 "use client";
-import { createSignal, createEffect, createMemo } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup } from "solid-js";
 import { useAtom } from "../../../lib/state/jotai";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -92,7 +92,7 @@ export function PlanWidget({ chatId, activeSubChatId, planPath, refetchTrigger, 
 		if (!content) return;
 		content.addEventListener("scroll", updateScrollGradient);
 		updateScrollGradient();
-		return () => content.removeEventListener("scroll", updateScrollGradient);
+		onCleanup(() => content.removeEventListener("scroll", updateScrollGradient));
 	});
 	createEffect(() => {
 		updateScrollGradient();

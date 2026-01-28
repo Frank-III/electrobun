@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, onCleanup } from "solid-js";
 import { toast } from "solid-sonner";
 import { useMessageQueueStore } from "../stores/message-queue-store";
 import { useStreamingStatusStore } from "../stores/streaming-status-store";
@@ -154,7 +154,7 @@ export function QueueProcessor() {
 		// Initial check
 		checkAllQueues();
 		// Cleanup
-		return () => {
+		onCleanup(() => {
 			unsubscribeQueue();
 			unsubscribeStatus();
 			// Clear all timers
@@ -162,7 +162,7 @@ export function QueueProcessor() {
 				clearTimeout(timer);
 			}
 			timersRef.current.clear();
-		};
+		});
 	});
 	// This component doesn't render anything
 	return null;

@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createMemo, createSignal } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 // import { useSearchParams, useRouter } from "next/navigation" // Desktop doesn't use next/navigation
 // Desktop: mock Next.js navigation hooks
@@ -25,7 +25,6 @@ import { AgentPreview } from "./agent-preview";
 import { AgentDiffView } from "./agent-diff-view";
 import { TerminalSidebar, terminalSidebarOpenAtomFamily } from "../../terminal";
 import { useAgentSubChatStore, type SubChatMeta } from "../stores/sub-chat-store";
-import { useShallow } from "zustand/react/shallow";
 import { Motion, Presence } from "solid-motionone";
 // import { ResizableSidebar } from "@/app/(alpha)/canvas/[id]/{components}/resizable-sidebar"
 import { ResizableSidebar } from "../../../components/ui/resizable-sidebar";
@@ -93,13 +92,12 @@ export function AgentsContent() {
 	const [subChatQuickSwitchSelectedIndexRef, setSubChatQuickSwitchSelectedIndexRef] = createSignal(subChatQuickSwitchSelectedIndex);
 	subChatQuickSwitchOpenRef.current = subChatQuickSwitchOpen;
 	subChatQuickSwitchSelectedIndexRef.current = subChatQuickSwitchSelectedIndex;
-	// Get sub-chats from store with shallow comparison
-	const { allSubChats, openSubChatIds, activeSubChatId, setActiveSubChat } = useAgentSubChatStore(useShallow((state) => ({
-		allSubChats: state.allSubChats,
-		openSubChatIds: state.openSubChatIds,
-		activeSubChatId: state.activeSubChatId,
-		setActiveSubChat: state.setActiveSubChat
-	})));
+	// Get sub-chats from store - SolidJS fine-grained reactivity handles this
+	const subChatStore = useAgentSubChatStore();
+	const allSubChats = subChatStore.allSubChats;
+	const openSubChatIds = subChatStore.openSubChatIds;
+	const activeSubChatId = subChatStore.activeSubChatId;
+	const setActiveSubChat = subChatStore.setActiveSubChat;
 	// Update window title when active sub-chat changes
 	const activeSubChatName = createMemo(() => {
 		if (!activeSubChatId) return null;
@@ -361,13 +359,13 @@ export function AgentsContent() {
 		};
 		window.addEventListener("keydown", handleKeyDown);
 		window.addEventListener("keyup", handleKeyUp);
-		return () => {
+		onCleanup(() => {
 			window.removeEventListener("keydown", handleKeyDown);
 			window.removeEventListener("keyup", handleKeyUp);
 			if (holdTimerRef.current) {
 				clearTimeout(holdTimerRef.current);
 			}
-		};
+		});
 	});
 	// Get open sub-chats for quick-switch (only tabs that are open in the selector)
 	// Sorted by position in openSubChatIds, with active first
@@ -515,13 +513,13 @@ export function AgentsContent() {
 		};
 		window.addEventListener("keydown", handleKeyDown);
 		window.addEventListener("keyup", handleKeyUp);
-		return () => {
+		onCleanup(() => {
 			window.removeEventListener("keydown", handleKeyDown);
 			window.removeEventListener("keyup", handleKeyUp);
 			if (subChatHoldTimerRef.current) {
 				clearTimeout(subChatHoldTimerRef.current);
 			}
-		};
+		});
 	});
 	// Note: Cmd+E archive hotkey is handled in AgentsSidebar to share undo stack
 	const handleSignOut = async () => {
@@ -555,7 +553,7 @@ export function AgentsContent() {
 				hasOpenedSubChatsSidebar.current = true;
 				setShouldAnimateSubChatsSidebar(false);
 			}, 150 + 50);
-			return () => clearTimeout(timer);
+			onCleanup(() => clearTimeout(timer));
 		} else if (isSubChatsSidebarOpen && hasOpenedSubChatsSidebar.current) {
 			setShouldAnimateSubChatsSidebar(false);
 		}

@@ -69,9 +69,9 @@ export function IsolatedMessageGroup({ userMsgId, subChatId, chatId, isMobile, s
 	const { textMentions, cleanedText: textContent } = createMemo(() => extractTextMentions(rawTextContent));
 	if (!userMsg) return null;
 	// Show cloning when sandbox is being set up
-	const shouldShowCloning = sandboxSetupStatus === "cloning" && isLastGroup && assistantIds.length === 0;
+	const shouldShowCloning = sandboxSetupStatus === "cloning" && isLastGroup() && assistantIds.length === 0;
 	// Show setup error if sandbox setup failed
-	const shouldShowSetupError = sandboxSetupStatus === "error" && isLastGroup && assistantIds.length === 0;
+	const shouldShowSetupError = sandboxSetupStatus === "error" && isLastGroup() && assistantIds.length === 0;
 	// Check if this is an image-only message (no text content and no text mentions)
 	const isImageOnlyMessage = imageParts.length > 0 && !textContent.trim() && textMentions.length === 0;
 	// Check if this is an attachment-only message (no text but has images or text mentions)
@@ -135,7 +135,7 @@ export function IsolatedMessageGroup({ userMsgId, subChatId, chatId, isMobile, s
       {assistantIds.length > 0 && <MemoizedAssistantMessages assistantMsgIds={assistantIds} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} />}
 
       { /* Planning indicator */}
-      {isStreaming && isLastGroup && assistantIds.length === 0 && sandboxSetupStatus === "ready" && <div class="mt-4">
+      {isStreaming && isLastGroup() && assistantIds.length === 0 && sandboxSetupStatus === "ready" && <div class="mt-4">
             <ToolCallComponent icon={toolRegistry["tool-planning"]?.icon} title={toolRegistry["tool-planning"]?.title({}) || "Planning..."} isPending={true} isError={false} />
           </div>}
     </MessageGroupWrapper>;

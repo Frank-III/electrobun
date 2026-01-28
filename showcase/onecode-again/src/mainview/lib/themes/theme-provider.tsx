@@ -7,7 +7,7 @@
 * - Provides terminal theme for xterm.js
 * - Integrates with Shiki for syntax highlighting
 */
-import { createContext, useContext, createEffect, createMemo, type ParentProps } from "solid-js";
+import { createContext, useContext, createEffect, createMemo, onCleanup, type ParentProps } from "solid-js";
 import { useAtom, useAtomValue, useSetAtom } from "../state/jotai";
 import { useColorMode } from "@kobalte/core";
 import type { ITheme } from "xterm";
@@ -154,10 +154,10 @@ export function VSCodeThemeProvider(props: ParentProps) {
 			// Remove custom CSS variables when no theme is selected
 			removeCSSVariables();
 		}
-		return () => {
-			// Cleanup on unmount
+		// Cleanup on unmount
+		onCleanup(() => {
 			removeCSSVariables();
-		};
+		});
 	});
 	// Get terminal theme
 	const terminalTheme = createMemo((): ITheme => {

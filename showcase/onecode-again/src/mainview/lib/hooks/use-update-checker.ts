@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from "react"
+import { createEffect, onCleanup } from "solid-js"
 import { useAtom } from "../state/jotai"
 import { updateStateAtom, type UpdateState } from "../atoms"
 
@@ -13,15 +13,15 @@ const DISMISS_DURATION = 12 * 60 * 60 * 1000 // 12 hours
  */
 export function useUpdateChecker() {
   const [state, setState] = useAtom(updateStateAtom)
-  const versionRef = useRef<string | undefined>(state.version)
+  let versionRef: string | undefined = state().version
 
   // Keep ref in sync with state
-  useEffect(() => {
-    versionRef.current = state.version
-  }, [state.version])
+  createEffect(() => {
+    versionRef = state().version
+  })
 
   // Check if a version was dismissed recently
-  const isDismissed = useCallback((version: string): boolean => {
+  const isDismissed = (version: string): boolean => {
     try {
       const dismissed = localStorage.getItem(DISMISSED_KEY)
       if (!dismissed) return false
@@ -33,10 +33,10 @@ export function useUpdateChecker() {
     } catch {
       return false
     }
-  }, [])
+  }
 
   // Subscribe to update events from main process
-  useEffect(() => {
+  createEffect(() => {
     const api = window.desktopApi
     if (!api) return
 
@@ -83,7 +83,7 @@ export function useUpdateChecker() {
         console.log(`[Update] Download progress: ${progress.percent.toFixed(1)}%`)
         setState({
           status: "downloading",
-          version: versionRef.current,
+          version: versionRef,
           progress: progress.percent,
           bytesPerSecond: progress.bytesPerSecond,
           transferred: progress.transferred,
@@ -123,39 +123,40 @@ export function useUpdateChecker() {
     )
 
     // Cleanup
-    return () => {
+    onCleanup(() => {
       unsubs.forEach((unsub) => unsub?.())
-    }
-  }, [setState, isDismissed])
+    })
+  })
 
   // Note: Periodic checks removed - main process now checks on window focus
   // This is more natural UX and avoids unnecessary network requests
 
   // Actions
-  const checkForUpdates = useCallback(() => {
+  const checkForUpdates = () => {
     window.desktopApi?.checkForUpdates?.()
-  }, [])
+  }
 
-  const downloadUpdate = useCallback(() => {
+  const downloadUpdate = () => {
     window.desktopApi?.downloadUpdate?.()
-  }, [])
+  }
 
-  const installUpdate = useCallback(() => {
+  const installUpdate = () => {
     window.desktopApi?.installUpdate?.()
-  }, [])
+  }
 
-  const dismissUpdate = useCallback(() => {
-    if (state.version) {
+  const dismissUpdate = () => {
+    const currentState = state()
+    if (currentState.version) {
       localStorage.setItem(
         DISMISSED_KEY,
         JSON.stringify({
-          version: state.version,
+          version: currentState.version,
           timestamp: Date.now(),
         }),
       )
       setState({ status: "idle" })
     }
-  }, [state.version, setState])
+  }
 
   return {
     state,

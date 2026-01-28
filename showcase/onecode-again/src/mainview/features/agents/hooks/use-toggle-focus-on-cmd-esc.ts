@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react"
+import { createEffect, onCleanup } from "solid-js"
 
 /**
  * Hook to toggle focus when Cmd+Esc (or Ctrl+Esc) is pressed.
@@ -9,9 +9,9 @@ import { useEffect, type RefObject } from "react"
  * @param editorRef - Ref to the editor/input element
  */
 export function useToggleFocusOnCmdEsc(
-  editorRef: RefObject<{ focus: () => void; blur: () => void } | null>,
+  editorRef: { focus: () => void; blur: () => void } | undefined,
 ) {
-  useEffect(() => {
+  createEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle Cmd+Esc (or Ctrl+Esc on Windows/Linux)
       if (
@@ -26,7 +26,7 @@ export function useToggleFocusOnCmdEsc(
       e.preventDefault()
       e.stopPropagation()
 
-      const editor = editorRef.current
+      const editor = editorRef
       if (!editor) return
 
       // Check if any input/contenteditable is currently focused
@@ -48,6 +48,6 @@ export function useToggleFocusOnCmdEsc(
     }
 
     window.addEventListener("keydown", handleKeyDown, { capture: true })
-    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true })
-  }, [editorRef])
+    onCleanup(() => window.removeEventListener("keydown", handleKeyDown, { capture: true }))
+  })
 }

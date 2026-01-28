@@ -3,14 +3,13 @@
  * Centralized keyboard shortcut handling
  */
 
-import * as React from "react"
-import { useCallback, useMemo } from "react"
+import { createEffect, createMemo, onCleanup } from "solid-js"
 import {
-  AgentActionContext,
   AGENT_ACTIONS,
   executeAgentAction,
   getAvailableAgentActions,
 } from "./agents-actions"
+import type { AgentActionContext } from "./agents-actions"
 import type { SettingsTab, CustomHotkeysConfig } from "../../../lib/atoms"
 import { getResolvedHotkey, type ShortcutActionId } from "../../../lib/hotkeys"
 
@@ -132,44 +131,29 @@ export function useAgentsHotkeys(
 ) {
   const { enabled = true, preventDefault = true } = options
 
-  const createActionContext = useCallback(
-    (): AgentActionContext => ({
-      setSelectedChatId: config.setSelectedChatId,
-      setSelectedDraftId: config.setSelectedDraftId,
-      setShowNewChatForm: config.setShowNewChatForm,
-      setSidebarOpen: config.setSidebarOpen,
-      setSettingsDialogOpen: config.setSettingsDialogOpen,
-      setSettingsActiveTab: config.setSettingsActiveTab,
-      toggleChatSearch: config.toggleChatSearch,
-      selectedChatId: config.selectedChatId,
-    }),
-    [
-      config.setSelectedChatId,
-      config.setSelectedDraftId,
-      config.setShowNewChatForm,
-      config.setSidebarOpen,
-      config.setSettingsDialogOpen,
-      config.setSettingsActiveTab,
-      config.toggleChatSearch,
-      config.selectedChatId,
-    ],
-  )
+  const createActionContext = (): AgentActionContext => ({
+    setSelectedChatId: config.setSelectedChatId,
+    setSelectedDraftId: config.setSelectedDraftId,
+    setShowNewChatForm: config.setShowNewChatForm,
+    setSidebarOpen: config.setSidebarOpen,
+    setSettingsDialogOpen: config.setSettingsDialogOpen,
+    setSettingsActiveTab: config.setSettingsActiveTab,
+    toggleChatSearch: config.toggleChatSearch,
+    selectedChatId: config.selectedChatId,
+  })
 
-  const handleHotkeyAction = useCallback(
-    async (actionId: string) => {
-      const context = createActionContext()
-      const availableActions = getAvailableAgentActions(context)
-      const action = availableActions.find((a) => a.id === actionId)
+  const handleHotkeyAction = async (actionId: string) => {
+    const context = createActionContext()
+    const availableActions = getAvailableAgentActions(context)
+    const action = availableActions.find((a) => a.id === actionId)
 
-      if (!action) return
+    if (!action) return
 
-      await executeAgentAction(actionId, context, "hotkey")
-    },
-    [createActionContext],
-  )
+    await executeAgentAction(actionId, context, "hotkey")
+  }
 
   // Listen for Cmd+N via IPC from main process (menu accelerator)
-  React.useEffect(() => {
+  createEffect(() => {
     if (!enabled) return
     if (!window.desktopApi?.onShortcutNewAgent) return
 
@@ -178,20 +162,19 @@ export function useAgentsHotkeys(
       handleHotkeyAction("create-new-agent")
     })
 
-    return cleanup
-  }, [enabled, handleHotkeyAction])
+    onCleanup(() => {
+      cleanup?.()
+    })
+  })
 
   // Get the resolved hotkey for a shortcut, respecting custom bindings
-  const getHotkeyForAction = useCallback(
-    (shortcutId: ShortcutActionId): string | null => {
-      const customConfig = config.customHotkeysConfig || { version: 1, bindings: {} }
-      return getResolvedHotkey(shortcutId, customConfig)
-    },
-    [config.customHotkeysConfig]
-  )
+  const getHotkeyForAction = (shortcutId: ShortcutActionId): string | null => {
+    const customConfig = config.customHotkeysConfig || { version: 1, bindings: {} }
+    return getResolvedHotkey(shortcutId, customConfig)
+  }
 
   // Unified hotkey listener that respects custom configurations
-  React.useEffect(() => {
+  createEffect(() => {
     if (!enabled) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -253,32 +236,30 @@ export function useAgentsHotkeys(
     }
 
     window.addEventListener("keydown", handleKeyDown, true)
-    return () => window.removeEventListener("keydown", handleKeyDown, true)
-  }, [enabled, handleHotkeyAction, getHotkeyForAction, config.betaKanbanEnabled])
+    onCleanup(() => window.removeEventListener("keydown", handleKeyDown, true))
+  })
 
   // General hotkey handler for remaining actions
-  const actionsWithHotkeys = useMemo(
-    () =>
-      Object.values(AGENT_ACTIONS).filter(
-        (action) =>
-          action.hotkey !== undefined &&
-          action.id !== "create-new-agent" &&
-          action.id !== "toggle-sidebar" &&
-          action.id !== "open-shortcuts" &&
-          action.id !== "open-settings" &&
-          action.id !== "toggle-chat-search",
-      ),
-    [],
+  const actionsWithHotkeys = createMemo(() =>
+    Object.values(AGENT_ACTIONS).filter(
+      (action) =>
+        action.hotkey !== undefined &&
+        action.id !== "create-new-agent" &&
+        action.id !== "toggle-sidebar" &&
+        action.id !== "open-shortcuts" &&
+        action.id !== "open-settings" &&
+        action.id !== "toggle-chat-search",
+    ),
   )
 
-  const hotkeyMappings = useMemo(() => {
+  const hotkeyMappings = createMemo(() => {
     const mappings: Array<{
       actionId: string
       hotkeys: string[]
       isGlobal: boolean
     }> = []
 
-    for (const action of actionsWithHotkeys) {
+    for (const action of actionsWithHotkeys()) {
       if (!action.hotkey) continue
       const hotkeys = Array.isArray(action.hotkey)
         ? action.hotkey
@@ -292,9 +273,9 @@ export function useAgentsHotkeys(
     }
 
     return mappings
-  }, [actionsWithHotkeys])
+  })
 
-  React.useEffect(() => {
+  createEffect(() => {
     if (!enabled) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -304,7 +285,7 @@ export function useAgentsHotkeys(
         target.tagName === "TEXTAREA" ||
         target.isContentEditable
 
-      for (const mapping of hotkeyMappings) {
+      for (const mapping of hotkeyMappings()) {
         if (isInInput && !mapping.isGlobal) continue
 
         for (const hotkey of mapping.hotkeys) {
@@ -321,8 +302,8 @@ export function useAgentsHotkeys(
     }
 
     window.addEventListener("keydown", handleKeyDown, true)
-    return () => window.removeEventListener("keydown", handleKeyDown, true)
-  }, [enabled, preventDefault, hotkeyMappings, handleHotkeyAction])
+    onCleanup(() => window.removeEventListener("keydown", handleKeyDown, true))
+  })
 
   return {
     executeAction: handleHotkeyAction,

@@ -1,5 +1,5 @@
 "use client";
-import { createMemo, createEffect, createSignal } from "solid-js";
+import { createMemo, createEffect, createSignal, onCleanup } from "solid-js";
 import { useAtomValue } from "../../../lib/state/jotai";
 import { cn } from "../../../lib/utils";
 import { MemoizedMarkdown } from "../../../components/chat-markdown-renderer";
@@ -56,10 +56,10 @@ function subscribeToTextPart(messageId: string, partIndex: number, callback: () 
 			}
 		}
 	});
-	return () => {
+	onCleanup(() => {
 		textPartSubscribers.get(key)?.delete(callback);
 		unsubscribe();
-	};
+	});
 }
 // Hook to get text part with minimal re-renders
 function useTextPart(messageId: string, partIndex: number): string {
@@ -185,11 +185,11 @@ export function IsolatedTextPart({ messageId, partIndex, isFinalText, visibleSte
 	// Apply DOM-based highlighting after render
 	// If currentHighlight exists, use its indexInPart to mark the correct match as current
 	createEffect(() => {
-		if (!contentRef.current || isTextStreaming) return;
+		if (!contentRef.current || isTextStreaming()) return;
 		// Apply highlighting
 		highlightTextInDom(contentRef.current, searchQuery, currentMatchIndexInPart);
 		// Cleanup on unmount or when highlights change
-		return () => {
+		onCleanup(() => {
 			if (contentRef.current) {
 				const existingHighlights = contentRef.current.querySelectorAll(".search-highlight");
 				existingHighlights.forEach((el) => {
@@ -200,7 +200,7 @@ export function IsolatedTextPart({ messageId, partIndex, isFinalText, visibleSte
 					}
 				});
 			}
-		};
+		});
 	});
 	if (!text?.trim()) return null;
 	return <div class={cn("text-foreground px-2", isFinalText && visibleStepsCount > 0 && "pt-3 border-t border-border/50")} data-message-id={messageId} data-part-index={partIndex} data-part-type="text">

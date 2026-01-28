@@ -529,7 +529,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 		const timer = setTimeout(() => {
 			setDebouncedSearchText(searchText);
 		}, 300);
-		return () => clearTimeout(timer);
+		onCleanup(() => clearTimeout(timer));
 	});
 	// For multi-word search, send only first word to API (server filters by that),
 	// then filter results on client by all words

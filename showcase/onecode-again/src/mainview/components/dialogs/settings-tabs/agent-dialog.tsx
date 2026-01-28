@@ -1,4 +1,4 @@
-import { createSignal, createEffect, Show, For } from "solid-js";
+import { createSignal, createEffect, Show, For, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
 import { X } from "lucide-solid";
 import { trpc } from "../../../lib/trpc";
@@ -90,7 +90,7 @@ export function AgentDialog(props: AgentDialogProps) {
 			}
 		};
 		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
 	});
 
 	const resetForm = () => {

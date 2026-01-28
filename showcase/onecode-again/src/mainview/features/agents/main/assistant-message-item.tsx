@@ -84,12 +84,12 @@ function CollapsibleSteps({ stepsCount, children, defaultExpanded = false }: Col
 		setIsExpanded(!isExpanded);
 	}}>
           <div class="relative w-4 h-4">
-            <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
-            <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
+            <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
+            <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
           </div>
         </button>
       </div>
-      {isExpanded && <div class="mt-1 space-y-1.5">{children}</div>}
+      {isExpanded() && <div class="mt-1 space-y-1.5">{children}</div>}
     </div>;
 }
 // ============================================================================
@@ -451,7 +451,7 @@ export function AssistantMessageItem({ message, isLastMessage, isStreaming, stat
           <div class="flex items-center gap-0.5">
             <CopyButton text={getMessageTextContent(message)} isMobile={isMobile} />
             <PlayButton text={getMessageTextContent(message)} isMobile={isMobile} />
-            {onRollback && (message.metadata as any)?.sdkMessageUuid && <button onClick={() => onRollback(message)} disabled={isStreaming || isRollingBack} tabIndex={-1} class={cn("p-1.5 rounded-md transition-[background-color,transform] duration-150 ease-out hover:bg-accent active:scale-[0.97]", (isStreaming || isRollingBack) && "opacity-50 cursor-not-allowed")}>
+            {onRollback && (message.metadata as any)?.sdkMessageUuid && <button onClick={() => onRollback(message)} disabled={isStreaming || isRollingBack()} tabIndex={-1} class={cn("p-1.5 rounded-md transition-[background-color,transform] duration-150 ease-out hover:bg-accent active:scale-[0.97]", (isStreaming || isRollingBack()) && "opacity-50 cursor-not-allowed")}>
                 <IconTextUndo class="w-3.5 h-3.5 text-muted-foreground" />
               </button>}
           </div>

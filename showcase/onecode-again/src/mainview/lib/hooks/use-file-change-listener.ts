@@ -1,19 +1,20 @@
-import { useEffect, useRef } from "react"
+import { createEffect, onCleanup } from "solid-js"
 import { useQueryClient } from "@tanstack/react-query"
 
 /**
  * Hook that listens for file changes from Claude Write/Edit tools
  * and invalidates the git status query to trigger a refetch
  */
-export function useFileChangeListener(worktreePath: string | null | undefined) {
+export function useFileChangeListener(worktreePath: () => string | null | undefined) {
   const queryClient = useQueryClient()
 
-  useEffect(() => {
-    if (!worktreePath) return
+  createEffect(() => {
+    const path = worktreePath()
+    if (!path) return
 
     const cleanup = window.desktopApi?.onFileChanged((data) => {
       // Check if the changed file is within our worktree
-      if (data.filePath.startsWith(worktreePath)) {
+      if (data.filePath.startsWith(path)) {
         // Invalidate git status queries to trigger refetch
         queryClient.invalidateQueries({
           queryKey: [["changes", "getStatus"]],
@@ -21,10 +22,10 @@ export function useFileChangeListener(worktreePath: string | null | undefined) {
       }
     })
 
-    return () => {
+    onCleanup(() => {
       cleanup?.()
-    }
-  }, [worktreePath, queryClient])
+    })
+  })
 }
 
 /**
@@ -32,18 +33,19 @@ export function useFileChangeListener(worktreePath: string | null | undefined) {
  * Uses chokidar on the main process for efficient file watching.
  * Automatically invalidates git status queries when files change.
  */
-export function useGitWatcher(worktreePath: string | null | undefined) {
+export function useGitWatcher(worktreePath: () => string | null | undefined) {
   const queryClient = useQueryClient()
-  const isSubscribedRef = useRef(false)
+  let isSubscribedRef = false
 
-  useEffect(() => {
-    if (!worktreePath) return
+  createEffect(() => {
+    const path = worktreePath()
+    if (!path) return
 
     // Subscribe to git watcher on main process
     const subscribe = async () => {
       try {
-        await window.desktopApi?.subscribeToGitWatcher(worktreePath)
-        isSubscribedRef.current = true
+        await window.desktopApi?.subscribeToGitWatcher(path)
+        isSubscribedRef = true
       } catch (error) {
         console.error("[useGitWatcher] Failed to subscribe:", error)
       }
@@ -53,7 +55,7 @@ export function useGitWatcher(worktreePath: string | null | undefined) {
 
     // Listen for git status changes from the watcher
     const cleanup = window.desktopApi?.onGitStatusChanged((data) => {
-      if (data.worktreePath === worktreePath) {
+      if (data.worktreePath === path) {
         // Invalidate git status queries to trigger refetch
         queryClient.invalidateQueries({
           queryKey: [["changes", "getStatus"]],
@@ -71,16 +73,16 @@ export function useGitWatcher(worktreePath: string | null | undefined) {
       }
     })
 
-    return () => {
+    onCleanup(() => {
       cleanup?.()
 
       // Unsubscribe from git watcher
-      if (isSubscribedRef.current) {
-        window.desktopApi?.unsubscribeFromGitWatcher(worktreePath).catch((error) => {
+      if (isSubscribedRef) {
+        window.desktopApi?.unsubscribeFromGitWatcher(path).catch((error) => {
           console.error("[useGitWatcher] Failed to unsubscribe:", error)
         })
-        isSubscribedRef.current = false
+        isSubscribedRef = false
       }
-    }
-  }, [worktreePath, queryClient])
+    })
+  })
 }

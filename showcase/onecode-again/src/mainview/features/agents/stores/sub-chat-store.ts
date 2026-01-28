@@ -1,4 +1,4 @@
-import { create } from "zustand"
+import { createStore, produce } from "solid-js/store"
 import { useMessageQueueStore } from "./message-queue-store"
 import { useStreamingStatusStore } from "./streaming-status-store"
 import { agentChatStore } from "./agent-chat-store"
@@ -12,49 +12,29 @@ export interface SubChatMeta {
   mode?: "plan" | "agent"
 }
 
-interface AgentSubChatStore {
-  // Current parent chat context
+interface AgentSubChatState {
   chatId: string | null
-
-  // State
-  activeSubChatId: string | null // Currently selected tab
-  openSubChatIds: string[] // Open tabs (preserves order)
-  pinnedSubChatIds: string[] // Pinned sub-chats
-  allSubChats: SubChatMeta[] // All sub-chats for history
-
-  // Actions
-  setChatId: (chatId: string | null) => void
-  setActiveSubChat: (subChatId: string) => void
-  setOpenSubChats: (subChatIds: string[]) => void
-  addToOpenSubChats: (subChatId: string) => void
-  removeFromOpenSubChats: (subChatId: string) => void
-  togglePinSubChat: (subChatId: string) => void
-  setAllSubChats: (subChats: SubChatMeta[]) => void
-  addToAllSubChats: (subChat: SubChatMeta) => void
-  updateSubChatName: (subChatId: string, name: string) => void
-  updateSubChatMode: (subChatId: string, mode: "plan" | "agent") => void
-  updateSubChatTimestamp: (subChatId: string) => void
-  reset: () => void
+  activeSubChatId: string | null
+  openSubChatIds: string[]
+  pinnedSubChatIds: string[]
+  allSubChats: SubChatMeta[]
 }
 
-// localStorage helpers - store open tabs, active tab, and pinned tabs
-// Prefixed with windowId to isolate state per Electron window
+// localStorage helpers
 const getStorageKey = (chatId: string, type: "open" | "active" | "pinned") =>
   `${getWindowId()}:agent-${type}-sub-chats-${chatId}`
 
 const getLegacyStorageKey = (chatId: string, type: "open" | "active" | "pinned") =>
   `agent-${type}-sub-chats-${chatId}`
 
-// Custom event for notifying other components when open sub-chats change
+// Custom event for notifying other components
 export const OPEN_SUB_CHATS_CHANGE_EVENT = "open-sub-chats-change"
 
-// Debounce timer to avoid rapid-fire events
 let openSubChatsChangeTimer: ReturnType<typeof setTimeout> | null = null
 
 const saveToLS = (chatId: string, type: "open" | "active" | "pinned", value: unknown) => {
   if (typeof window === "undefined") return
   localStorage.setItem(getStorageKey(chatId, type), JSON.stringify(value))
-  // Dispatch debounced event when open sub-chats change so sidebar can update
   if (type === "open") {
     if (openSubChatsChangeTimer) clearTimeout(openSubChatsChangeTimer)
     openSubChatsChangeTimer = setTimeout(() => {
@@ -64,16 +44,13 @@ const saveToLS = (chatId: string, type: "open" | "active" | "pinned", value: unk
   }
 }
 
-// Find data from old numeric window IDs (e.g., "1:agent-open-sub-chats-xxx")
 const findNumericWindowIdValue = (legacyKey: string, targetKey: string): string | null => {
-  // Only migrate for "main" window
   if (!targetKey.startsWith("main:")) return null
 
   for (let i = 0; i < localStorage.length; i++) {
     const storageKey = localStorage.key(i)
     if (!storageKey) continue
 
-    // Check if this key matches pattern: <number>:<legacyKey>
     const match = storageKey.match(/^(\d+):(.+)$/)
     if (match && match[2] === legacyKey) {
       const value = localStorage.getItem(storageKey)
@@ -92,7 +69,6 @@ const loadFromLS = <T>(chatId: string, type: "open" | "active" | "pinned", fallb
     const key = getStorageKey(chatId, type)
     let stored = localStorage.getItem(key)
 
-    // Migration 1: check for old numeric window ID keys
     if (stored === null) {
       const legacyKey = getLegacyStorageKey(chatId, type)
       const numericValue = findNumericWindowIdValue(legacyKey, key)
@@ -102,12 +78,10 @@ const loadFromLS = <T>(chatId: string, type: "open" | "active" | "pinned", fallb
       }
     }
 
-    // Migration 2: check legacy key if window-scoped key doesn't exist
     if (stored === null) {
       const legacyKey = getLegacyStorageKey(chatId, type)
       const legacyStored = localStorage.getItem(legacyKey)
       if (legacyStored !== null) {
-        // Migrate to window-scoped key
         localStorage.setItem(key, legacyStored)
         stored = legacyStored
         console.log(`[SubChatStore] Migrated ${legacyKey} to ${key}`)
@@ -120,16 +94,19 @@ const loadFromLS = <T>(chatId: string, type: "open" | "active" | "pinned", fallb
   }
 }
 
-export const useAgentSubChatStore = create<AgentSubChatStore>((set, get) => ({
+const [store, setStore] = createStore<AgentSubChatState>({
   chatId: null,
   activeSubChatId: null,
   openSubChatIds: [],
   pinnedSubChatIds: [],
   allSubChats: [],
+})
 
-  setChatId: (chatId) => {
+// Actions object for imperative access (like getState() pattern)
+const actions = {
+  setChatId: (chatId: string | null) => {
     if (!chatId) {
-      set({
+      setStore({
         chatId: null,
         activeSubChatId: null,
         openSubChatIds: [],
@@ -139,117 +116,84 @@ export const useAgentSubChatStore = create<AgentSubChatStore>((set, get) => ({
       return
     }
 
-    // Load open/active/pinned IDs from localStorage
-    // allSubChats will be populated from DB + placeholders in init effect
     const openSubChatIds = loadFromLS<string[]>(chatId, "open", [])
     const activeSubChatId = loadFromLS<string | null>(chatId, "active", null)
     const pinnedSubChatIds = loadFromLS<string[]>(chatId, "pinned", [])
 
-    set({ chatId, openSubChatIds, activeSubChatId, pinnedSubChatIds, allSubChats: [] })
+    setStore({ chatId, openSubChatIds, activeSubChatId, pinnedSubChatIds, allSubChats: [] })
   },
 
-  setActiveSubChat: (subChatId) => {
-    const { chatId } = get()
-    set({ activeSubChatId: subChatId })
+  setActiveSubChat: (subChatId: string) => {
+    const chatId = store.chatId
+    setStore("activeSubChatId", subChatId)
     if (chatId) saveToLS(chatId, "active", subChatId)
   },
 
-  setOpenSubChats: (subChatIds) => {
-    const { chatId } = get()
-    set({ openSubChatIds: subChatIds })
+  setOpenSubChats: (subChatIds: string[]) => {
+    const chatId = store.chatId
+    setStore("openSubChatIds", subChatIds)
     if (chatId) saveToLS(chatId, "open", subChatIds)
   },
 
-  addToOpenSubChats: (subChatId) => {
-    const { openSubChatIds, chatId } = get()
-    if (openSubChatIds.includes(subChatId)) return
-    const newIds = [...openSubChatIds, subChatId]
-    set({ openSubChatIds: newIds })
-    if (chatId) saveToLS(chatId, "open", newIds)
+  addToOpenSubChats: (subChatId: string) => {
+    if (store.openSubChatIds.includes(subChatId)) return
+    const newIds = [...store.openSubChatIds, subChatId]
+    setStore("openSubChatIds", newIds)
+    if (store.chatId) saveToLS(store.chatId, "open", newIds)
   },
 
-  removeFromOpenSubChats: (subChatId) => {
-    const { openSubChatIds, activeSubChatId, chatId } = get()
-    const newIds = openSubChatIds.filter((id) => id !== subChatId)
-
-    // If closing active tab, switch to last remaining tab
-    let newActive = activeSubChatId
-    if (activeSubChatId === subChatId) {
+  removeFromOpenSubChats: (subChatId: string) => {
+    const newIds = store.openSubChatIds.filter((id) => id !== subChatId)
+    let newActive = store.activeSubChatId
+    if (store.activeSubChatId === subChatId) {
       newActive = newIds[newIds.length - 1] || null
     }
 
-    set({ openSubChatIds: newIds, activeSubChatId: newActive })
-    if (chatId) {
-      saveToLS(chatId, "open", newIds)
-      saveToLS(chatId, "active", newActive)
+    setStore({ openSubChatIds: newIds, activeSubChatId: newActive })
+    if (store.chatId) {
+      saveToLS(store.chatId, "open", newIds)
+      saveToLS(store.chatId, "active", newActive)
     }
 
-    // Cleanup queue, streaming status, and Chat instance to prevent memory leaks
-    // and race conditions (QueueProcessor sending to closed subChat)
-    useMessageQueueStore.getState().clearQueue(subChatId)
-    useStreamingStatusStore.getState().clearStatus(subChatId)
+    // Cleanup
+    useMessageQueueStore().clearQueue(subChatId)
+    useStreamingStatusStore().clearStatus(subChatId)
     agentChatStore.delete(subChatId)
   },
 
-  togglePinSubChat: (subChatId) => {
-    const { pinnedSubChatIds, chatId } = get()
-    const newPinnedIds = pinnedSubChatIds.includes(subChatId)
-      ? pinnedSubChatIds.filter((id) => id !== subChatId)
-      : [...pinnedSubChatIds, subChatId]
+  togglePinSubChat: (subChatId: string) => {
+    const newPinnedIds = store.pinnedSubChatIds.includes(subChatId)
+      ? store.pinnedSubChatIds.filter((id) => id !== subChatId)
+      : [...store.pinnedSubChatIds, subChatId]
     
-    set({ pinnedSubChatIds: newPinnedIds })
-    if (chatId) saveToLS(chatId, "pinned", newPinnedIds)
+    setStore("pinnedSubChatIds", newPinnedIds)
+    if (store.chatId) saveToLS(store.chatId, "pinned", newPinnedIds)
   },
 
-  setAllSubChats: (subChats) => {
-    set({ allSubChats: subChats })
+  setAllSubChats: (subChats: SubChatMeta[]) => {
+    setStore("allSubChats", subChats)
   },
 
-  addToAllSubChats: (subChat) => {
-    const { allSubChats } = get()
-    if (allSubChats.some((sc) => sc.id === subChat.id)) return
-    set({ allSubChats: [...allSubChats, subChat] })
-    // No localStorage persistence - allSubChats is rebuilt from DB + open IDs on init
+  addToAllSubChats: (subChat: SubChatMeta) => {
+    if (store.allSubChats.some((sc) => sc.id === subChat.id)) return
+    setStore("allSubChats", [...store.allSubChats, subChat])
   },
 
-  updateSubChatName: (subChatId, name) => {
-    const { allSubChats } = get()
-    set({
-      allSubChats: allSubChats.map((sc) =>
-        sc.id === subChatId
-          ? { ...sc, name }
-          : sc,
-      ),
-    })
-    // No localStorage modification - just update in-memory state (like Canvas)
+  updateSubChatName: (subChatId: string, name: string) => {
+    setStore("allSubChats", (sc) => sc.id === subChatId, "name", name)
   },
 
-  updateSubChatMode: (subChatId, mode) => {
-    const { allSubChats } = get()
-    set({
-      allSubChats: allSubChats.map((sc) =>
-        sc.id === subChatId
-          ? { ...sc, mode }
-          : sc,
-      ),
-    })
+  updateSubChatMode: (subChatId: string, mode: "plan" | "agent") => {
+    setStore("allSubChats", (sc) => sc.id === subChatId, "mode", mode)
   },
 
   updateSubChatTimestamp: (subChatId: string) => {
-    const { allSubChats } = get()
     const newTimestamp = new Date().toISOString()
-
-    set({
-      allSubChats: allSubChats.map((sc) =>
-        sc.id === subChatId
-          ? { ...sc, updated_at: newTimestamp }
-          : sc,
-      ),
-    })
+    setStore("allSubChats", (sc) => sc.id === subChatId, "updated_at", newTimestamp)
   },
 
   reset: () => {
-    set({
+    setStore({
       chatId: null,
       activeSubChatId: null,
       openSubChatIds: [],
@@ -257,4 +201,31 @@ export const useAgentSubChatStore = create<AgentSubChatStore>((set, get) => ({
       allSubChats: [],
     })
   },
-}))
+}
+
+// Hook-style accessor (for use in components)
+export function useAgentSubChatStore() {
+  return {
+    get chatId() { return store.chatId },
+    get activeSubChatId() { return store.activeSubChatId },
+    get openSubChatIds() { return store.openSubChatIds },
+    get pinnedSubChatIds() { return store.pinnedSubChatIds },
+    get allSubChats() { return store.allSubChats },
+    ...actions,
+  }
+}
+
+// Zustand-compatible getState() for imperative access
+useAgentSubChatStore.getState = () => ({
+  chatId: store.chatId,
+  activeSubChatId: store.activeSubChatId,
+  openSubChatIds: store.openSubChatIds,
+  pinnedSubChatIds: store.pinnedSubChatIds,
+  allSubChats: store.allSubChats,
+  ...actions,
+})
+
+// Direct store access for fine-grained subscriptions
+export function getAgentSubChatState() {
+  return store
+}

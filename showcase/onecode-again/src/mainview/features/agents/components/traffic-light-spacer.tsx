@@ -78,7 +78,7 @@ export function TrafficLightSpacer({ isFullscreen = null, isDesktop = false, cla
 	// Show spacer when desktop and not fullscreen
 	// If isFullscreen is null (not initialized), assume not fullscreen
 	const shouldShow = isDesktop && isFullscreen !== true;
-	return <div class={cn("w-full shrink-0 overflow-hidden", shouldAnimate && "transition-[height] duration-200 ease-out", className)} style={{ height: shouldShow ? 32 : 0 }} />;
+	return <div class={cn("w-full shrink-0 overflow-hidden", shouldAnimate() && "transition-[height] duration-200 ease-out", className)} style={{ height: shouldShow ? 32 : 0 }} />;
 }
 /**
 * Wrapper to make child elements non-draggable within a draggable region

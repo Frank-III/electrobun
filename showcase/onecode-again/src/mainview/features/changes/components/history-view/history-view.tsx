@@ -1,4 +1,4 @@
-import { createMemo, createEffect } from "solid-js";
+import { createMemo, createEffect, onCleanup } from "solid-js";
 import { trpc } from "../../../../lib/trpc";
 import { formatRelativeDate } from "../../utils/date";
 import { FileText, ArrowUp } from "lucide-solid";
@@ -66,7 +66,7 @@ export function HistoryView({ worktreePath, selectedCommitHash, selectedFilePath
 			}
 		};
 		window.addEventListener("focus", handleWindowFocus);
-		return () => window.removeEventListener("focus", handleWindowFocus);
+		onCleanup(() => window.removeEventListener("focus", handleWindowFocus));
 	});
 	const handleCommitClick = (commit: CommitInfo) => {
 		onCommitSelect?.(commit);

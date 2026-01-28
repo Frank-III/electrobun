@@ -1,4 +1,4 @@
-import { createEffect, createSignal, Show, onMount } from "solid-js";
+import { createEffect, createSignal, Show, onMount, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -55,7 +55,7 @@ export function ConfirmArchiveDialog(props: ConfirmArchiveDialogProps) {
 		};
 
 		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
 	});
 
 	const hasProcesses = () => props.activeProcessCount > 0;

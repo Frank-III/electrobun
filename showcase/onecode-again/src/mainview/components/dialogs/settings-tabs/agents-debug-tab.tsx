@@ -166,7 +166,7 @@ export function AgentsDebugTab() {
                 {isLoading ? "..." : systemInfo?.userDataPath}
               </span>
               <Button variant="ghost" size="icon" class="h-6 w-6" onClick={handleCopyPath} disabled={!systemInfo?.userDataPath}>
-                {copiedPath ? <Check class="h-3 w-3 text-green-500" /> : <Copy class="h-3 w-3" />}
+                {copiedPath() ? <Check class="h-3 w-3 text-green-500" /> : <Copy class="h-3 w-3" />}
               </Button>
             </div>
           </div>
@@ -237,7 +237,7 @@ export function AgentsDebugTab() {
             Reload
           </Button>
           <Button variant="outline" size="sm" onClick={handleCopyDebugInfo} disabled={isLoading}>
-            {copiedInfo ? <Check class="h-4 w-4 mr-2 text-green-500" /> : <Copy class="h-4 w-4 mr-2" />}
+            {copiedInfo() ? <Check class="h-4 w-4 mr-2 text-green-500" /> : <Copy class="h-4 w-4 mr-2" />}
             Copy Info
           </Button>
         </div>

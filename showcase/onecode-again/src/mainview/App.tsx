@@ -1,6 +1,6 @@
 import { Provider as JotaiProvider, useAtomValue, useSetAtom } from "./lib/state/jotai";
 import { ColorModeProvider, ColorModeScript, useColorMode } from "@kobalte/core";
-import { createEffect, createMemo } from "solid-js";
+import { createEffect, createMemo, onCleanup } from "solid-js";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { TRPCProvider } from "./contexts/TRPCProvider";
@@ -130,9 +130,9 @@ export function App() {
 		};
 		identifyUser();
 		// Cleanup on unmount
-		return () => {
+		onCleanup(() => {
 			shutdown();
-		};
+		});
 	});
 	return <WindowProvider>
       <ColorModeScript initialColorMode="system" />

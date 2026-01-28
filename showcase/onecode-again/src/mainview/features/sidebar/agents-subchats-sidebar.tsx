@@ -10,7 +10,6 @@ import { selectedTeamIdAtom, selectedSubChatIdsAtom, isSubChatMultiSelectModeAto
 import { trpc } from "../../lib/trpc";
 import { appStore } from "../../lib/jotai-store";
 import { useAgentSubChatStore, type SubChatMeta } from "../agents/stores/sub-chat-store";
-import { useShallow } from "zustand/react/shallow";
 import { PlusIcon, ArchiveIcon, IconDoubleChevronLeft, IconSpinner, LoadingDot, PlanIcon, AgentIcon, IconOpenSidebar, ClockIcon, QuestionIcon } from "../../components/ui/icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { Kbd } from "../../components/ui/kbd";
@@ -88,15 +87,14 @@ interface AgentsSubChatsSidebarProps {
 	agentName?: string;
 }
 export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats, isSidebarOpen = false, isLoading = false, agentName }: AgentsSubChatsSidebarProps) {
-	// Use shallow comparison to prevent re-renders when arrays have same content
-	const { activeSubChatId, openSubChatIds, pinnedSubChatIds, allSubChats, parentChatId, togglePinSubChat } = useAgentSubChatStore(useShallow((state) => ({
-		activeSubChatId: state.activeSubChatId,
-		openSubChatIds: state.openSubChatIds,
-		pinnedSubChatIds: state.pinnedSubChatIds,
-		allSubChats: state.allSubChats,
-		parentChatId: state.chatId,
-		togglePinSubChat: state.togglePinSubChat
-	})));
+	// SolidJS fine-grained reactivity handles this - no useShallow needed
+	const subChatStore = useAgentSubChatStore();
+	const activeSubChatId = subChatStore.activeSubChatId;
+	const openSubChatIds = subChatStore.openSubChatIds;
+	const pinnedSubChatIds = subChatStore.pinnedSubChatIds;
+	const allSubChats = subChatStore.allSubChats;
+	const parentChatId = subChatStore.chatId;
+	const togglePinSubChat = subChatStore.togglePinSubChat;
 	const [loadingSubChats] = useAtom(loadingSubChatsAtom);
 	const subChatFiles = useAtomValue(subChatFilesAtom);
 	const selectedTeamId = useAtomValue(selectedTeamIdAtom);
@@ -481,7 +479,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 	createEffect(() => {
 		const handleResize = () => updateScrollGradients();
 		window.addEventListener("resize", handleResize, { passive: true });
-		return () => window.removeEventListener("resize", handleResize);
+		onCleanup(() => window.removeEventListener("resize", handleResize));
 	});
 	// Check if all selected sub-chats are pinned
 	const areAllSelectedPinned = createMemo(() => {

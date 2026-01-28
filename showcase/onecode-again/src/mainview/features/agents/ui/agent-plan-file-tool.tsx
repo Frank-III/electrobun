@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createMemo, createSignal } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 import { Button } from "../../../components/ui/button";
 import { ExpandIcon, CollapseIcon, PlanIcon } from "../../../components/ui/icons";
@@ -82,7 +82,7 @@ export function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false 
 		content.addEventListener("scroll", updateScrollGradients);
 		// Initial check
 		updateScrollGradients();
-		return () => content.removeEventListener("scroll", updateScrollGradients);
+		onCleanup(() => content.removeEventListener("scroll", updateScrollGradients));
 	});
 	// Also update gradients when content changes
 	createEffect(() => {

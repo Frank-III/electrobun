@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react"
+import { createEffect, onCleanup } from "solid-js"
 import { useAtom } from "../state/jotai"
 import { justUpdatedAtom, justUpdatedVersionAtom } from "../atoms"
 
@@ -15,7 +15,7 @@ export function useJustUpdated() {
   )
 
   // Check for update on mount
-  useEffect(() => {
+  createEffect(() => {
     const checkForUpdate = async () => {
       const api = window.desktopApi
       if (!api) return
@@ -38,24 +38,24 @@ export function useJustUpdated() {
     }
 
     checkForUpdate()
-  }, [setJustUpdated, setJustUpdatedVersion])
+  })
 
   // Dismiss the "What's New" banner
-  const dismissJustUpdated = useCallback(() => {
+  const dismissJustUpdated = () => {
     setJustUpdated(false)
     setJustUpdatedVersion(null)
-  }, [setJustUpdated, setJustUpdatedVersion])
+  }
 
   // Open changelog in browser
-  const openChangelog = useCallback(() => {
+  const openChangelog = () => {
     const api = window.desktopApi
     if (api) {
       // Link to changelog with anchor to current version
-      const version = justUpdatedVersion ? `#v${justUpdatedVersion}` : ""
+      const version = justUpdatedVersion() ? `#v${justUpdatedVersion()}` : ""
       api.openExternal(`https://1code.dev/changelog${version}`)
     }
     dismissJustUpdated()
-  }, [justUpdatedVersion, dismissJustUpdated])
+  }
 
   return {
     justUpdated,

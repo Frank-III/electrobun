@@ -1,4 +1,4 @@
-import { createMemo, createEffect, createSignal } from "solid-js";
+import { createMemo, createEffect, createSignal, onCleanup } from "solid-js";
 import { toast } from "solid-sonner";
 import { trpc } from "../../lib/trpc";
 import { getWindowId } from "../../contexts/WindowContext";
@@ -98,7 +98,7 @@ type Project = NonNullable<typeof projects>[number];
 	createEffect(() => {
 		const handleChange = () => setOpenSubChatsVersion((v) => v + 1);
 		window.addEventListener(OPEN_SUB_CHATS_CHANGE_EVENT, handleChange);
-		return () => window.removeEventListener(OPEN_SUB_CHATS_CHANGE_EVENT, handleChange);
+		onCleanup(() => window.removeEventListener(OPEN_SUB_CHATS_CHANGE_EVENT, handleChange));
 	});
 	// Store previous value to avoid unnecessary React Query refetches
 	const [prevOpenSubChatIdsRef, setPrevOpenSubChatIdsRef] = createSignal<string[]>([]);

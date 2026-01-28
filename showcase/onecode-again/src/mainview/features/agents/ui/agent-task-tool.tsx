@@ -1,5 +1,5 @@
 "use client";
-import { createSignal, createEffect } from "solid-js";
+import { createSignal, createEffect, onCleanup } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 import { AgentToolRegistry, getToolStatus } from "./agent-tool-registry";
 import { AgentToolCall } from "./agent-tool-call";
@@ -42,7 +42,7 @@ export function AgentTaskTool({ part, nestedTools, chatStatus }: AgentTaskToolPr
 			const interval = setInterval(() => {
 				setElapsedMs(Date.now() - startedAt);
 			}, 1e3);
-			return () => clearInterval(interval);
+			onCleanup(() => clearInterval(interval));
 		}
 	});
 	// Use output duration from Claude Code if available, otherwise use our tracked time

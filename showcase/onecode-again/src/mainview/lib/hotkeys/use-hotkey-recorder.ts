@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { createSignal, createEffect, onCleanup, createMemo, type Accessor } from "solid-js"
 
 /**
  * Hook options for hotkey recording
@@ -9,7 +9,7 @@ export interface UseHotkeyRecorderOptions {
   /** Called when recording is cancelled (e.g., Escape pressed) */
   onCancel: () => void
   /** Whether recording is currently active */
-  isRecording: boolean
+  isRecording: Accessor<boolean>
 }
 
 /**
@@ -17,11 +17,13 @@ export interface UseHotkeyRecorderOptions {
  */
 export interface UseHotkeyRecorderResult {
   /** Currently pressed keys during recording */
-  currentKeys: string[]
+  currentKeys: Accessor<string[]>
   /** Current combination as a display string (e.g., "⌘⇧") */
-  currentDisplay: string
-  /** Ref to attach to the recording element */
-  recorderRef: React.RefObject<HTMLDivElement | null>
+  currentDisplay: Accessor<string>
+  /** Ref setter to attach to the recording element */
+  setRecorderRef: (el: HTMLDivElement) => void
+  /** Getter for recorder ref */
+  recorderRef: Accessor<HTMLDivElement | undefined>
 }
 
 /**
@@ -142,10 +144,10 @@ function buildDisplayString(modifiers: Set<string>, key: string | null): string 
  *
  * Usage:
  * ```tsx
- * const { currentKeys, currentDisplay, recorderRef } = useHotkeyRecorder({
+ * const { currentKeys, currentDisplay, setRecorderRef } = useHotkeyRecorder({
  *   onRecord: (hotkey) => console.log("Recorded:", hotkey),
  *   onCancel: () => console.log("Cancelled"),
- *   isRecording: true,
+ *   isRecording: () => true,
  * })
  * ```
  */
@@ -154,111 +156,107 @@ export function useHotkeyRecorder({
   onCancel,
   isRecording,
 }: UseHotkeyRecorderOptions): UseHotkeyRecorderResult {
-  const [modifiers, setModifiers] = useState<Set<string>>(new Set())
-  const [mainKey, setMainKey] = useState<string | null>(null)
-  const recorderRef = useRef<HTMLDivElement>(null)
+  const [modifiers, setModifiers] = createSignal<Set<string>>(new Set())
+  const [mainKey, setMainKey] = createSignal<string | null>(null)
+  const [recorderRef, setRecorderRef] = createSignal<HTMLDivElement | undefined>()
 
   // Track if we've recorded a complete combination
-  const hasRecordedRef = useRef(false)
+  let hasRecordedRef = false
 
   // Reset state when recording starts (not when it stops, to avoid flicker)
-  useEffect(() => {
-    if (isRecording) {
+  createEffect(() => {
+    if (isRecording()) {
       setModifiers(new Set())
       setMainKey(null)
-      hasRecordedRef.current = false
+      hasRecordedRef = false
     }
-  }, [isRecording])
+  })
 
   // Handle keydown
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (!isRecording) return
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (!isRecording()) return
 
-      e.preventDefault()
-      e.stopPropagation()
+    e.preventDefault()
+    e.stopPropagation()
 
-      const key = eventKeyToInternal(e)
+    const key = eventKeyToInternal(e)
 
-      // Handle Escape to cancel (always cancels, even with modifiers held)
-      if (key === "Esc") {
-        onCancel()
-        return
-      }
+    // Handle Escape to cancel (always cancels, even with modifiers held)
+    if (key === "Esc") {
+      onCancel()
+      return
+    }
 
-      if (isModifier(key)) {
-        // Add modifier
-        setModifiers((prev) => new Set([...prev, key]))
-      } else {
-        // Set main key
-        setMainKey(key)
-      }
-    },
-    [isRecording, modifiers, onCancel]
-  )
+    if (isModifier(key)) {
+      // Add modifier
+      setModifiers((prev) => new Set([...prev, key]))
+    } else {
+      // Set main key
+      setMainKey(key)
+    }
+  }
 
   // Handle keyup
-  const handleKeyUp = useCallback(
-    (e: KeyboardEvent) => {
-      if (!isRecording) return
-      // Don't process keyup after recording - keep state frozen
-      if (hasRecordedRef.current) return
+  const handleKeyUp = (e: KeyboardEvent) => {
+    if (!isRecording()) return
+    // Don't process keyup after recording - keep state frozen
+    if (hasRecordedRef) return
 
-      const key = eventKeyToInternal(e)
+    const key = eventKeyToInternal(e)
 
-      if (isModifier(key)) {
-        // If we have a main key, record the combination before removing modifier
-        if (mainKey) {
-          hasRecordedRef.current = true
-          const hotkey = buildHotkeyString(modifiers, mainKey)
-          onRecord(hotkey)
-          // Don't remove modifier - keep display frozen
-          return
-        }
-        // No main key yet, remove modifier
-        setModifiers((prev) => {
-          const next = new Set(prev)
-          next.delete(key)
-          return next
-        })
-      } else {
-        // Main key released - record if we have modifiers or it's a valid single key
-        const validSingleKeys = ["?", "/", "Esc", "Enter", "Tab"]
-        if (modifiers.size > 0 || validSingleKeys.includes(key)) {
-          hasRecordedRef.current = true
-          const hotkey = buildHotkeyString(modifiers, key)
-          onRecord(hotkey)
-        }
+    if (isModifier(key)) {
+      // If we have a main key, record the combination before removing modifier
+      const currentMainKey = mainKey()
+      if (currentMainKey) {
+        hasRecordedRef = true
+        const hotkey = buildHotkeyString(modifiers(), currentMainKey)
+        onRecord(hotkey)
+        // Don't remove modifier - keep display frozen
+        return
       }
-    },
-    [isRecording, mainKey, modifiers, onRecord]
-  )
+      // No main key yet, remove modifier
+      setModifiers((prev) => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    } else {
+      // Main key released - record if we have modifiers or it's a valid single key
+      const validSingleKeys = ["?", "/", "Esc", "Enter", "Tab"]
+      if (modifiers().size > 0 || validSingleKeys.includes(key)) {
+        hasRecordedRef = true
+        const hotkey = buildHotkeyString(modifiers(), key)
+        onRecord(hotkey)
+      }
+    }
+  }
 
   // Attach event listeners
-  useEffect(() => {
-    if (!isRecording) return
+  createEffect(() => {
+    if (!isRecording()) return
 
     // Use capture phase to intercept before other handlers
     window.addEventListener("keydown", handleKeyDown, true)
     window.addEventListener("keyup", handleKeyUp, true)
 
-    return () => {
+    onCleanup(() => {
       window.removeEventListener("keydown", handleKeyDown, true)
       window.removeEventListener("keyup", handleKeyUp, true)
-    }
-  }, [isRecording, handleKeyDown, handleKeyUp])
+    })
+  })
 
   // Build current keys array for display
-  const currentKeys: string[] = [
-    ...MODIFIER_ORDER.filter((mod) => modifiers.has(mod)),
-    ...(mainKey ? [mainKey] : []),
-  ]
+  const currentKeys = createMemo(() => [
+    ...MODIFIER_ORDER.filter((mod) => modifiers().has(mod)),
+    ...(mainKey() ? [mainKey()!] : []),
+  ])
 
-  const currentDisplay = buildDisplayString(modifiers, mainKey)
+  const currentDisplay = createMemo(() => buildDisplayString(modifiers(), mainKey()))
 
   return {
     currentKeys,
     currentDisplay,
+    setRecorderRef,
     recorderRef,
   }
 }

@@ -1,9 +1,27 @@
 // Mock file upload hook for desktop app
-import { useState } from "react"
+import { createSignal } from "solid-js"
+
+export interface UploadedImage {
+  id: string
+  filename: string
+  url: string
+  base64Data?: string
+  mediaType?: string
+  isLoading: boolean
+}
+
+export interface UploadedFile {
+  id: string
+  filename: string
+  url: string
+  size?: number
+  type?: string
+  isLoading: boolean
+}
 
 export function useAgentsFileUpload() {
-  const [isUploading, setIsUploading] = useState(false)
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
+  const [isUploading, setIsUploading] = createSignal(false)
+  const [uploadedFiles, setUploadedFiles] = createSignal<File[]>([])
 
   const uploadFile = async (file: File) => {
     setIsUploading(true)

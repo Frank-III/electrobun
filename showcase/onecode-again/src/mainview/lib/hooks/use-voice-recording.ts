@@ -1,9 +1,9 @@
-import { useState, useRef, useCallback, useEffect } from "react"
+import { createSignal, createEffect, onCleanup } from "solid-js"
 
 interface UseVoiceRecordingReturn {
-  isRecording: boolean
-  error: Error | null
-  audioLevel: number // 0-1 normalized audio level
+  isRecording: () => boolean
+  error: () => Error | null
+  audioLevel: () => number // 0-1 normalized audio level
   startRecording: () => Promise<void>
   stopRecording: () => Promise<Blob>
   cancelRecording: () => void
@@ -24,79 +24,79 @@ interface UseVoiceRecordingReturn {
  * ```
  */
 export function useVoiceRecording(): UseVoiceRecordingReturn {
-  const [isRecording, setIsRecording] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
-  const [audioLevel, setAudioLevel] = useState(0)
+  const [isRecording, setIsRecording] = createSignal(false)
+  const [error, setError] = createSignal<Error | null>(null)
+  const [audioLevel, setAudioLevel] = createSignal(0)
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const streamRef = useRef<MediaStream | null>(null)
-  const isStartingRef = useRef(false) // Prevent race conditions
+  let mediaRecorderRef: MediaRecorder | null = null
+  let chunksRef: Blob[] = []
+  let streamRef: MediaStream | null = null
+  let isStartingRef = false // Prevent race conditions
 
   // Audio analysis refs
-  const audioContextRef = useRef<AudioContext | null>(null)
-  const analyserRef = useRef<AnalyserNode | null>(null)
-  const animationFrameRef = useRef<number | null>(null)
+  let audioContextRef: AudioContext | null = null
+  let analyserRef: AnalyserNode | null = null
+  let animationFrameRef: number | null = null
 
   // Cleanup function to stop all tracks and reset state
-  const cleanup = useCallback(() => {
+  const cleanup = () => {
     // Stop animation frame
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
-      animationFrameRef.current = null
+    if (animationFrameRef) {
+      cancelAnimationFrame(animationFrameRef)
+      animationFrameRef = null
     }
 
     // Clean up audio analysis
-    if (analyserRef.current) {
-      analyserRef.current.disconnect()
-      analyserRef.current = null
+    if (analyserRef) {
+      analyserRef.disconnect()
+      analyserRef = null
     }
-    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
-      audioContextRef.current.close().catch(() => {})
-      audioContextRef.current = null
+    if (audioContextRef && audioContextRef.state !== "closed") {
+      audioContextRef.close().catch(() => {})
+      audioContextRef = null
     }
 
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop())
-      streamRef.current = null
+    if (streamRef) {
+      streamRef.getTracks().forEach((track) => track.stop())
+      streamRef = null
     }
-    if (mediaRecorderRef.current) {
-      if (mediaRecorderRef.current.state !== "inactive") {
+    if (mediaRecorderRef) {
+      if (mediaRecorderRef.state !== "inactive") {
         try {
-          mediaRecorderRef.current.stop()
+          mediaRecorderRef.stop()
         } catch {
           // Ignore errors during cleanup
         }
       }
-      mediaRecorderRef.current = null
+      mediaRecorderRef = null
     }
-    chunksRef.current = []
-    isStartingRef.current = false
+    chunksRef = []
+    isStartingRef = false
     setAudioLevel(0)
-  }, [])
+  }
 
   // Cleanup on unmount
-  useEffect(() => {
-    return () => {
+  createEffect(() => {
+    onCleanup(() => {
       cleanup()
       setIsRecording(false)
-    }
-  }, [cleanup])
+    })
+  })
 
   // Cancel recording without returning a blob
-  const cancelRecording = useCallback(() => {
+  const cancelRecording = () => {
     cleanup()
     setIsRecording(false)
-  }, [cleanup])
+  }
 
-  const startRecording = useCallback(async () => {
+  const startRecording = async () => {
     // Prevent multiple simultaneous starts
-    if (isStartingRef.current || mediaRecorderRef.current) {
+    if (isStartingRef || mediaRecorderRef) {
       console.warn("[VoiceRecording] Already recording or starting")
       return
     }
 
-    isStartingRef.current = true
+    isStartingRef = true
 
     try {
       setError(null)
@@ -110,7 +110,7 @@ export function useVoiceRecording(): UseVoiceRecordingReturn {
         },
       })
 
-      streamRef.current = stream
+      streamRef = stream
 
       // Set up audio analysis for visualization
       try {
@@ -122,15 +122,15 @@ export function useVoiceRecording(): UseVoiceRecordingReturn {
         const source = audioContext.createMediaStreamSource(stream)
         source.connect(analyser)
 
-        audioContextRef.current = audioContext
-        analyserRef.current = analyser
+        audioContextRef = audioContext
+        analyserRef = analyser
 
         // Start audio level monitoring
         const dataArray = new Uint8Array(analyser.frequencyBinCount)
         const updateLevel = () => {
-          if (!analyserRef.current) return
+          if (!analyserRef) return
 
-          analyserRef.current.getByteFrequencyData(dataArray)
+          analyserRef.getByteFrequencyData(dataArray)
 
           // Calculate average amplitude from frequency data
           let sum = 0
@@ -145,7 +145,7 @@ export function useVoiceRecording(): UseVoiceRecordingReturn {
           const normalized = Math.min(1, amplified)
           setAudioLevel(normalized)
 
-          animationFrameRef.current = requestAnimationFrame(updateLevel)
+          animationFrameRef = requestAnimationFrame(updateLevel)
         }
         updateLevel()
       } catch (err) {
@@ -162,20 +162,20 @@ export function useVoiceRecording(): UseVoiceRecordingReturn {
 
       const mediaRecorder = new MediaRecorder(stream, { mimeType })
 
-      chunksRef.current = []
+      chunksRef = []
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          chunksRef.current.push(event.data)
+          chunksRef.push(event.data)
         }
       }
 
-      mediaRecorderRef.current = mediaRecorder
+      mediaRecorderRef = mediaRecorder
       mediaRecorder.start(100) // Collect data every 100ms
       setIsRecording(true)
-      isStartingRef.current = false
+      isStartingRef = false
     } catch (err) {
-      isStartingRef.current = false
+      isStartingRef = false
       cleanup()
 
       // Provide user-friendly error messages
@@ -198,11 +198,11 @@ export function useVoiceRecording(): UseVoiceRecordingReturn {
       console.error("[VoiceRecording] Start error:", error)
       throw error
     }
-  }, [cleanup])
+  }
 
-  const stopRecording = useCallback(async (): Promise<Blob> => {
+  const stopRecording = async (): Promise<Blob> => {
     return new Promise((resolve, reject) => {
-      const mediaRecorder = mediaRecorderRef.current
+      const mediaRecorder = mediaRecorderRef
 
       if (!mediaRecorder || mediaRecorder.state === "inactive") {
         const error = new Error("No active recording")
@@ -215,7 +215,7 @@ export function useVoiceRecording(): UseVoiceRecordingReturn {
       const mimeType = mediaRecorder.mimeType || "audio/webm"
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType })
+        const blob = new Blob(chunksRef, { type: mimeType })
 
         // Clean up
         cleanup()
@@ -233,7 +233,7 @@ export function useVoiceRecording(): UseVoiceRecordingReturn {
 
       mediaRecorder.stop()
     })
-  }, [cleanup])
+  }
 
   return {
     isRecording,

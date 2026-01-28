@@ -1,5 +1,5 @@
 "use client";
-import { createSignal, createEffect, createMemo } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup } from "solid-js";
 import { useAtom } from "../../../lib/state/jotai";
 import { Button } from "../../../components/ui/button";
 import { RotateCw } from "lucide-solid";
@@ -54,7 +54,7 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 			}
 		};
 		window.addEventListener("agent-preview-reload", handleReload as EventListener);
-		return () => window.removeEventListener("agent-preview-reload", handleReload as EventListener);
+		onCleanup(() => window.removeEventListener("agent-preview-reload", handleReload as EventListener));
 	});
 	// Listen for navigation events from external header
 	createEffect(() => {
@@ -67,7 +67,7 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 			}
 		};
 		window.addEventListener("agent-preview-navigate", handleNavigate as EventListener);
-		return () => window.removeEventListener("agent-preview-navigate", handleNavigate as EventListener);
+		onCleanup(() => window.removeEventListener("agent-preview-navigate", handleNavigate as EventListener));
 	});
 	// Dispatch path updates to header
 	createEffect(() => {
@@ -117,7 +117,7 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 			}
 		};
 		window.addEventListener("message", handleMessage);
-		return () => window.removeEventListener("message", handleMessage);
+		onCleanup(() => window.removeEventListener("message", handleMessage));
 	});
 	// Calculate max width on mount and window resize
 	createEffect(() => {
@@ -127,13 +127,11 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 		};
 		updateMaxWidth();
 		window.addEventListener("resize", updateMaxWidth);
-		return () => window.removeEventListener("resize", updateMaxWidth);
+		onCleanup(() => window.removeEventListener("resize", updateMaxWidth));
 	});
 	// Cleanup resize handlers on unmount
-	createEffect(() => {
-		return () => {
-			resizeCleanupRef.current?.();
-		};
+	onCleanup(() => {
+		resizeCleanupRef()?.();
 	});
 	const handleReload = () => {
 		if (isRefreshing) return;

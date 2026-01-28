@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react"
+import { createSignal, type Accessor } from "solid-js"
 import { trpc } from "../../../lib/trpc"
 
 export interface PastedTextFile {
@@ -11,56 +11,53 @@ export interface PastedTextFile {
 }
 
 export interface UsePastedTextFilesReturn {
-  pastedTexts: PastedTextFile[]
+  pastedTexts: Accessor<PastedTextFile[]>
   addPastedText: (text: string) => Promise<void>
   removePastedText: (id: string) => void
   clearPastedTexts: () => void
-  pastedTextsRef: React.RefObject<PastedTextFile[]>
+  pastedTextsRef: { current: PastedTextFile[] }
 }
 
 export function usePastedTextFiles(subChatId: string): UsePastedTextFilesReturn {
-  const [pastedTexts, setPastedTexts] = useState<PastedTextFile[]>([])
-  const pastedTextsRef = useRef<PastedTextFile[]>([])
+  const [pastedTexts, setPastedTexts] = createSignal<PastedTextFile[]>([])
+  const pastedTextsRef = { current: [] as PastedTextFile[] }
 
   // Keep ref in sync with state
-  pastedTextsRef.current = pastedTexts
+  pastedTextsRef.current = pastedTexts()
 
   const writePastedTextMutation = trpc.files.writePastedText.useMutation()
 
-  const addPastedText = useCallback(
-    async (text: string) => {
-      try {
-        const result = await writePastedTextMutation.mutateAsync({
-          subChatId,
-          text,
-        })
+  const addPastedText = async (text: string) => {
+    try {
+      const result = await writePastedTextMutation.mutateAsync({
+        subChatId,
+        text,
+      })
 
-        // Create preview from first 50 chars, replace newlines with spaces
-        const preview = text.slice(0, 50).replace(/\n/g, " ")
-        const newPasted: PastedTextFile = {
-          id: `pasted_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-          filePath: result.filePath,
-          filename: result.filename,
-          size: result.size,
-          preview: preview.length < text.length ? `${preview}...` : preview,
-          createdAt: new Date(),
-        }
-
-        setPastedTexts((prev) => [...prev, newPasted])
-      } catch (error) {
-        console.error("[usePastedTextFiles] Failed to write:", error)
+      // Create preview from first 50 chars, replace newlines with spaces
+      const preview = text.slice(0, 50).replace(/\n/g, " ")
+      const newPasted: PastedTextFile = {
+        id: `pasted_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        filePath: result.filePath,
+        filename: result.filename,
+        size: result.size,
+        preview: preview.length < text.length ? `${preview}...` : preview,
+        createdAt: new Date(),
       }
-    },
-    [subChatId, writePastedTextMutation]
-  )
 
-  const removePastedText = useCallback((id: string) => {
+      setPastedTexts((prev) => [...prev, newPasted])
+    } catch (error) {
+      console.error("[usePastedTextFiles] Failed to write:", error)
+    }
+  }
+
+  const removePastedText = (id: string) => {
     setPastedTexts((prev) => prev.filter((p) => p.id !== id))
-  }, [])
+  }
 
-  const clearPastedTexts = useCallback(() => {
+  const clearPastedTexts = () => {
     setPastedTexts([])
-  }, [])
+  }
 
   return {
     pastedTexts,

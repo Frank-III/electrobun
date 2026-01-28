@@ -1,5 +1,5 @@
 // File upload hook for desktop app with base64 conversion for Claude API
-import { useState, useCallback } from "react"
+import { createSignal } from "solid-js"
 
 export interface UploadedImage {
   id: string
@@ -56,11 +56,11 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 export function useAgentsFileUpload() {
-  const [images, setImages] = useState<UploadedImage[]>([])
-  const [files, setFiles] = useState<UploadedFile[]>([])
-  const [isUploading, setIsUploading] = useState(false)
+  const [images, setImages] = createSignal<UploadedImage[]>([])
+  const [files, setFiles] = createSignal<UploadedFile[]>([])
+  const [isUploading, setIsUploading] = createSignal(false)
 
-  const handleAddAttachments = useCallback(async (inputFiles: File[]) => {
+  const handleAddAttachments = async (inputFiles: File[]) => {
     setIsUploading(true)
 
     const imageFiles = inputFiles.filter((f) => f.type.startsWith("image/"))
@@ -105,37 +105,37 @@ export function useAgentsFileUpload() {
     setImages((prev) => [...prev, ...newImages])
     setFiles((prev) => [...prev, ...newFiles])
     setIsUploading(false)
-  }, [])
+  }
 
-  const removeImage = useCallback((id: string) => {
+  const removeImage = (id: string) => {
     setImages((prev) => prev.filter((img) => img.id !== id))
-  }, [])
+  }
 
-  const removeFile = useCallback((id: string) => {
+  const removeFile = (id: string) => {
     setFiles((prev) => prev.filter((f) => f.id !== id))
-  }, [])
+  }
 
-  const clearImages = useCallback(() => {
+  const clearImages = () => {
     setImages([])
-  }, [])
+  }
 
-  const clearFiles = useCallback(() => {
+  const clearFiles = () => {
     setFiles([])
-  }, [])
+  }
 
-  const clearAll = useCallback(() => {
+  const clearAll = () => {
     setImages([])
     setFiles([])
-  }, [])
+  }
 
   // Direct state setters for restoring from draft
-  const setImagesFromDraft = useCallback((draftImages: UploadedImage[]) => {
+  const setImagesFromDraft = (draftImages: UploadedImage[]) => {
     setImages(draftImages)
-  }, [])
+  }
 
-  const setFilesFromDraft = useCallback((draftFiles: UploadedFile[]) => {
+  const setFilesFromDraft = (draftFiles: UploadedFile[]) => {
     setFiles(draftFiles)
-  }, [])
+  }
 
   return {
     images,

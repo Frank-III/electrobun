@@ -30,7 +30,7 @@ export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, posi
 		const timer = setTimeout(() => {
 			setDebouncedSearchText(searchText);
 		}, 300);
-		return () => clearTimeout(timer);
+		onCleanup(() => clearTimeout(timer));
 	});
 	// Fetch custom commands from filesystem
 	const { data: fileCommands = [], isLoading } = trpc.commands.list.useQuery({ projectPath }, {

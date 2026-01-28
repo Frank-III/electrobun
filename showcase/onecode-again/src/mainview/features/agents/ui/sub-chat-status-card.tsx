@@ -1,5 +1,5 @@
 "use client";
-import { createSignal, createMemo, createEffect } from "solid-js";
+import { createSignal, createMemo, createEffect, onCleanup } from "solid-js";
 import { useSetAtom, useAtom } from "../../../lib/state/jotai";
 import { ChevronDown } from "lucide-solid";
 import { Motion, Presence } from "solid-motionone";
@@ -17,7 +17,7 @@ function AnimatedDots() {
 		const interval = setInterval(() => {
 			setDotCount((prev) => prev % 3 + 1);
 		}, 400);
-		return () => clearInterval(interval);
+		onCleanup(() => clearInterval(interval));
 	});
 	return <span class="inline-block w-[1em] text-left">{".".repeat(dotCount)}</span>;
 }

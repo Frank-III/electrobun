@@ -1,4 +1,4 @@
-import { createEffect, createSignal, createMemo } from "solid-js";
+import { createEffect, createSignal, createMemo, onCleanup } from "solid-js";
 import { useAtom, useAtomValue, useSetAtom } from "../../lib/state/jotai";
 import { isDesktopApp } from "../../lib/utils/platform";
 import { useIsMobile } from "../../lib/hooks/use-mobile";
@@ -49,11 +49,12 @@ export function AgentsLayout() {
 			const interval = setInterval(() => {
 				window.desktopApi?.windowIsFullscreen?.().then(setIsFullscreen);
 			}, 300);
-			return () => clearInterval(interval);
+			onCleanup(() => clearInterval(interval));
+			return;
 		}
 		// In production, use events (more efficient)
 		const unsubscribe = window.desktopApi.onFullscreenChange?.(setIsFullscreen);
-		return unsubscribe;
+		onCleanup(() => unsubscribe?.());
 	});
 	// Check for updates on mount and periodically
 	useUpdateChecker();

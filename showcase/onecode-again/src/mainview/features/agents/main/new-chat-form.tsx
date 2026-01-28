@@ -1,6 +1,6 @@
 "use client";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { createSignal, createEffect, createMemo, Show } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup, Show } from "solid-js";
 import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 import { AlignJustify, Plus, Zap } from "lucide-solid";
 import { Portal } from "solid-js/web";
@@ -51,8 +51,8 @@ const CodexIcon = (props: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg viewBox="
 function useAvailableModels() {
 	const showOfflineFeatures = useAtomValue(showOfflineModeFeaturesAtom);
 	const { data: ollamaStatus } = trpc.ollama.getStatus.useQuery(undefined, {
-		refetchInterval: showOfflineFeatures ? 3e4 : false,
-		enabled: showOfflineFeatures
+		refetchInterval: showOfflineFeatures() ? 3e4 : false,
+		enabled: showOfflineFeatures()
 	});
 	const baseModels = CLAUDE_MODELS;
 	const isOffline = ollamaStatus ? !ollamaStatus.internet.online : false;
@@ -63,7 +63,7 @@ function useAvailableModels() {
 	// 1. Debug flag is enabled (showOfflineFeatures)
 	// 2. Ollama is available with models
 	// 3. User is actually offline
-	if (showOfflineFeatures && hasOllama && isOffline) {
+	if (showOfflineFeatures() && hasOllama && isOffline) {
 		return {
 			models: baseModels,
 			ollamaModels,
@@ -133,7 +133,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	});
 	// Clear invalid project from storage
 	createEffect(() => {
-		if (selectedProject && projectsList && !validatedProject) {
+		if (selectedProject && projectsList && !validatedProject()) {
 			setSelectedProject(null);
 		}
 	});
@@ -167,7 +167,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	});
 	// Check if project has worktree config
 	const { data: worktreeConfigData } = trpc.worktreeConfig.get.useQuery({ projectId: validatedProject?.id ?? "" }, { enabled: !!validatedProject?.id && workMode === "worktree" && !worktreeBannerDismissed });
-	const showWorktreeBanner = workMode === "worktree" && validatedProject && !worktreeBannerDismissed && worktreeConfigData && !worktreeConfigData.config;
+	const showWorktreeBanner = workMode === "worktree" && validatedProject && !worktreeBannerDismissed() && worktreeConfigData && !worktreeConfigData.config;
 	const handleDismissWorktreeBanner = () => {
 		setWorktreeBannerDismissed(true);
 		try {
@@ -272,7 +272,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	const isVoiceAvailable = voiceAvailability?.available ?? false;
 	// Voice input handlers
 	const handleVoiceMouseDown = async () => {
-		if (isUploading || isTranscribing || isVoiceRecording) return;
+		if (isUploading || isTranscribing || isVoiceRecording()) return;
 		try {
 			await startRecording();
 		} catch (err) {
@@ -390,10 +390,10 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 		};
 		window.addEventListener("keydown", handleKeyDown, true);
 		window.addEventListener("keyup", handleKeyUp, true);
-		return () => {
+		onCleanup(() => {
 			window.removeEventListener("keydown", handleKeyDown, true);
 			window.removeEventListener("keyup", handleKeyUp, true);
-		};
+		});
 	});
 	// Shift+Tab handler for mode switching (now handled inside input component via onShiftTab prop)
 	// Keyboard shortcut: Enter to focus input when not already focused
@@ -536,12 +536,12 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	});
 	// Force virtualizer to re-measure when popover opens
 	createEffect(() => {
-		if (branchPopoverOpen) {
+		if (branchPopoverOpen()) {
 			// Small delay to ensure ref is attached
 			const timer = setTimeout(() => {
 				branchVirtualizer.measure();
 			}, 0);
-			return () => clearTimeout(timer);
+			onCleanup(() => clearTimeout(timer));
 		}
 	});
 	// Format relative time for branches (reuse shared utility)
@@ -568,7 +568,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 		const timeoutId = setTimeout(() => {
 			editorRef.current?.focus();
 		}, 150);
-		return () => clearTimeout(timeoutId);
+		onCleanup(() => clearTimeout(timeoutId));
 	});
 	// Track last saved text to avoid unnecessary updates
 	const [lastSavedTextRef, setLastSavedTextRef] = createSignal<string>("");
@@ -611,19 +611,19 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 					editorRef.current?.setValue(draft.text);
 					setHasContent(true);
 				}, 50);
-				return () => clearTimeout(timeoutId);
+				onCleanup(() => clearTimeout(timeoutId));
 			}
 		}
 	});
 	// Mark draft as visible when component unmounts (user navigates away)
 	// This ensures the draft only appears in the sidebar after leaving the form
 	createEffect(() => {
-		return () => {
+		onCleanup(() => {
 			// On unmount, mark current draft as visible so it appears in sidebar
 			if (currentDraftIdRef.current) {
 				markDraftVisible(currentDraftIdRef.current);
 			}
-		};
+		});
 	});
 	// Filter all repos by search (combined list) and sort by preview status
 	const filteredRepos = repos.filter((repo) => repo.name.toLowerCase().includes(repoSearchQuery.toLowerCase()) || repo.full_name.toLowerCase().includes(repoSearchQuery.toLowerCase())).sort((a, b) => {
@@ -882,7 +882,7 @@ type MessagePart = {
 		searchText: string;
 		rect: DOMRect;
 	}) => {
-		if (validatedProject) {
+		if (validatedProject()) {
 			setMentionSearchText(searchText);
 			setMentionPosition({
 				top: rect.top,
@@ -1183,7 +1183,7 @@ type MessagePart = {
               </button>
             </div> : <div class="relative w-full" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
               <div class="relative w-full cursor-text" onClick={handleContainerClick}>
-                <PromptInput class={cn("border bg-input-background relative z-10 p-2 rounded-xl transition-[border-color,box-shadow] duration-150", isDragOver && "ring-2 ring-primary/50 border-primary/50", isFocused && !isDragOver && "ring-2 ring-primary/50")} maxHeight={240} onSubmit={handleSend} contextItems={contextItems}>
+                <PromptInput class={cn("border bg-input-background relative z-10 p-2 rounded-xl transition-[border-color,box-shadow] duration-150", isDragOver() && "ring-2 ring-primary/50 border-primary/50", isFocused() && !isDragOver() && "ring-2 ring-primary/50")} maxHeight={240} onSubmit={handleSend} contextItems={contextItems}>
                   <PromptInputContextItems />
                   <div class="relative">
                     <AgentsMentionsEditor ref={editorRef} onTrigger={handleMentionTrigger} onCloseTrigger={handleCloseTrigger} onSlashTrigger={handleSlashTrigger} onCloseSlashTrigger={handleCloseSlashTrigger} onContentChange={handleContentChange} onSubmit={handleSend} onShiftTab={toggleMode} placeholder="Plan, @ for context, / for commands" class={cn("bg-transparent max-h-[240px] overflow-y-auto p-1", isMobileFullscreen ? "min-h-[56px]" : "min-h-[44px]")} onPaste={handlePaste} disabled={createChatMutation.isPending} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} />
@@ -1402,10 +1402,10 @@ type MessagePart = {
                   <ProjectSelector />
 
                   { /* Work mode selector - between project and branch */}
-                  {validatedProject && <WorkModeSelector value={workMode} onChange={setWorkMode} disabled={createChatMutation.isPending} />}
+                  {validatedProject() && <WorkModeSelector value={workMode} onChange={setWorkMode} disabled={createChatMutation.isPending} />}
 
                   { /* Branch selector - only visible when worktree mode is selected */}
-                  {validatedProject && workMode === "worktree" && <Popover open={branchPopoverOpen} onOpenChange={(open) => {
+                  {validatedProject() && workMode === "worktree" && <Popover open={branchPopoverOpen()} onOpenChange={(open) => {
  if (!open) {
 			setBranchSearch("");
 		}
@@ -1514,7 +1514,7 @@ type MessagePart = {
 
                 {	/* File mention dropdown */}
                 { /* Desktop: use projectPath for local file search */}
-                <AgentsFileMention isOpen={showMentionDropdown && !!validatedProject} onClose={() => {
+                <AgentsFileMention isOpen={showMentionDropdown() && !!validatedProject()} onClose={() => {
  setShowMentionDropdown(false);
 		// Reset subpage state when dropdown closes
 		setShowingFilesList(false);

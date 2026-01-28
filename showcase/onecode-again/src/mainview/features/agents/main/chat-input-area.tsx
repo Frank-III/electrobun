@@ -1,7 +1,7 @@
 "use client";
 import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { ChevronDown, Zap } from "lucide-solid";
-import { createEffect, createMemo, createSignal, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Button } from "../../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
@@ -37,8 +37,8 @@ import { customHotkeysAtom } from "../../../lib/atoms";
 function useAvailableModels() {
 	const showOfflineFeatures = useAtomValue(showOfflineModeFeaturesAtom);
 	const { data: ollamaStatus } = trpc.ollama.getStatus.useQuery(undefined, {
-		refetchInterval: showOfflineFeatures ? 3e4 : false,
-		enabled: showOfflineFeatures
+		refetchInterval: showOfflineFeatures() ? 3e4 : false,
+		enabled: showOfflineFeatures()
 	});
 	const baseModels = CLAUDE_MODELS;
 	const isOffline = ollamaStatus ? !ollamaStatus.internet.online : false;
@@ -49,7 +49,7 @@ function useAvailableModels() {
 	// 1. Debug flag is enabled (showOfflineFeatures)
 	// 2. Ollama is available with models
 	// 3. User is actually offline
-	if (showOfflineFeatures && hasOllama && isOffline) {
+	if (showOfflineFeatures() && hasOllama && isOffline) {
 		return {
 			models: baseModels,
 			ollamaModels,
@@ -299,9 +299,9 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 	const [voiceMountedRef, setVoiceMountedRef] = createSignal(true);
 	createEffect(() => {
 		voiceMountedRef.current = true;
-		return () => {
+		onCleanup(() => {
 			voiceMountedRef.current = false;
-		};
+		});
 	});
 	const transcribeMutation = trpc.voice.transcribe.useMutation();
 	// Check if voice input is available (authenticated OR has OPENAI_API_KEY)
@@ -328,11 +328,11 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown, true);
-		return () => window.removeEventListener("keydown", handleKeyDown, true);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown, true));
 	});
 	// Voice input handlers
 	const handleVoiceMouseDown = async () => {
-		if (isStreaming || isTranscribing || isVoiceRecording) return;
+		if (isStreaming || isTranscribing || isVoiceRecording()) return;
 		try {
 			await startVoiceRecording();
 		} catch (err) {
@@ -457,10 +457,10 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 		};
 		window.addEventListener("keydown", handleKeyDown, true);
 		window.addEventListener("keyup", handleKeyUp, true);
-		return () => {
+		onCleanup(() => {
 			window.removeEventListener("keydown", handleKeyDown, true);
 			window.removeEventListener("keyup", handleKeyUp, true);
-		};
+		});
 	});
 	// Save draft on blur (with attachments and text contexts)
 	const handleEditorBlur = async () => {
@@ -777,7 +777,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
       <div class="w-full max-w-2xl mx-auto">
         <div class="relative w-full" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
           <div class="relative w-full cursor-text" onClick={() => editorRef.current?.focus()}>
-            <PromptInput class={cn("border bg-input-background relative z-10 p-2 rounded-xl transition-[border-color,box-shadow] duration-150", isDragOver && "ring-2 ring-primary/50 border-primary/50", isFocused && !isDragOver && "ring-2 ring-primary/50")} maxHeight={200} onSubmit={onSend} contextItems={images.length > 0 || files.length > 0 || textContexts.length > 0 || (diffTextContexts?.length ?? 0) > 0 || pastedTexts.length > 0 ? <div class="flex flex-wrap gap-[6px]">
+            <PromptInput class={cn("border bg-input-background relative z-10 p-2 rounded-xl transition-[border-color,box-shadow] duration-150", isDragOver() && "ring-2 ring-primary/50 border-primary/50", isFocused() && !isDragOver() && "ring-2 ring-primary/50")} maxHeight={200} onSubmit={onSend} contextItems={images.length > 0 || files.length > 0 || textContexts.length > 0 || (diffTextContexts?.length ?? 0) > 0 || pastedTexts.length > 0 ? <div class="flex flex-wrap gap-[6px]">
                     {(() => {
 		// Build allImages array for gallery navigation
 		const allImages = images.filter((img): img is typeof img & {
@@ -1058,7 +1058,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 
       {	/* File mention dropdown */}
       { /* Desktop: use projectPath for local file search */}
-      <AgentsFileMention isOpen={showMentionDropdown && (!!projectPath || !!repository || !!sandboxId)} onClose={() => {
+      <AgentsFileMention isOpen={showMentionDropdown() && (!!projectPath || !!repository || !!sandboxId)} onClose={() => {
  setShowMentionDropdown(false);
 		// Reset subpage state when closing
 		setShowingFilesList(false);

@@ -9,8 +9,8 @@ const LightningIcon = ({ className }: {
 export function NetworkStatus() {
 	const showOfflineFeatures = useAtomValue(showOfflineModeFeaturesAtom);
 	const { data } = trpc.ollama.getStatus.useQuery(undefined, {
-		refetchInterval: showOfflineFeatures ? 3e4 : false,
-		enabled: showOfflineFeatures
+		refetchInterval: showOfflineFeatures() ? 3e4 : false,
+		enabled: showOfflineFeatures()
 	});
 	const online = data?.internet.online ?? true;
 	// Don't show anything when online or when offline features are disabled

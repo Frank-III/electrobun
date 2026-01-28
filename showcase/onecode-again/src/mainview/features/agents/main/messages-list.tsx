@@ -375,7 +375,7 @@ export function MessageItemWrapper({ messageId, subChatId, chatId, isMobile, san
 	// StreamingMessageItem and NonStreamingMessageItem will subscribe to message themselves
 	const isLast = useAtomValue(isLastMessageAtomFamily(messageId));
 	// Only the last message subscribes to streaming status
-	if (isLast) {
+	if (isLast()) {
 		// StreamingMessageItem subscribes to messageAtomFamily internally
 		return <StreamingMessageItem messageId={messageId} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} />;
 	}

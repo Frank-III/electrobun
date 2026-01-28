@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, createSignal, createEffect, createMemo, type JSX } from "solid-js";
+import { createContext, useContext, createSignal, createEffect, createMemo, onCleanup, type JSX } from "solid-js";
 // Discriminated union for selection source
 export type TextSelectionSource = {
 	type: "assistant-message";
@@ -211,12 +211,12 @@ export function TextSelectionProvider({ children }: TextSelectionProviderProps) 
 			});
 		};
 		document.addEventListener("selectionchange", handleSelectionChange);
-		return () => {
+		onCleanup(() => {
 			document.removeEventListener("selectionchange", handleSelectionChange);
 			if (rafId !== null) {
 				cancelAnimationFrame(rafId);
 			}
-		};
+		});
 	});
 	// Compute legacy selectedMessageId for backwards compatibility
 	const selectedMessageId = state.source?.type === "assistant-message" ? state.source.messageId : null;

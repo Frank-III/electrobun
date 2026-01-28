@@ -1,5 +1,5 @@
 "use client";
-import { createSignal, createEffect, createMemo } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup } from "solid-js";
 import { cn } from "../../../lib/utils";
 import { useOverflowDetection } from "../../../hooks/use-overflow-detection";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
@@ -118,11 +118,11 @@ export function AgentUserMessageBubble({ messageId, textContent, imageParts = []
 	});
 	// Apply DOM-based highlighting after render
 	createEffect(() => {
-		if (!contentRef.current) return;
-		highlightTextInDom(contentRef.current, searchQuery, currentHighlight?.offset ?? null, currentHighlight?.length ?? null);
-		return () => {
-			if (contentRef.current) {
-				const existingHighlights = contentRef.current.querySelectorAll(".search-highlight");
+		if (!contentRef()) return;
+		highlightTextInDom(contentRef()!, searchQuery, currentHighlight?.offset ?? null, currentHighlight?.length ?? null);
+		onCleanup(() => {
+			if (contentRef()) {
+				const existingHighlights = contentRef()!.querySelectorAll(".search-highlight");
 				existingHighlights.forEach((el) => {
 					const parent = el.parentNode;
 					if (parent) {
@@ -131,7 +131,7 @@ export function AgentUserMessageBubble({ messageId, textContent, imageParts = []
 					}
 				});
 			}
-		};
+		});
 	});
 	return <>
       <div class="flex justify-start drop-shadow-[0_10px_20px_hsl(var(--background))]" data-user-bubble>

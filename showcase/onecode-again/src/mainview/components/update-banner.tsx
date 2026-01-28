@@ -1,4 +1,4 @@
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, onCleanup } from "solid-js";
 import { flushSync } from "solid-js/web";
 import { useUpdateChecker } from "../lib/hooks/use-update-checker";
 import { useJustUpdated } from "../lib/hooks/use-just-updated";
@@ -30,7 +30,7 @@ export function UpdateBanner() {
 					return prev + 5;
 				});
 			}, 200);
-			return () => clearInterval(interval);
+			onCleanup(() => clearInterval(interval));
 		}
 	});
 	// Just updated state (show "What's New" banner)
@@ -161,7 +161,7 @@ export function UpdateBanner() {
       {isUpdating && <>
           <IconSpinner class="h-4 w-4 text-muted-foreground" />
           <span class="text-foreground">
-            {isPending ? "Starting update..." : "Updating..."}
+            {isPending() ? "Starting update..." : "Updating..."}
           </span>
           {progress !== undefined && !isPending && <span class="text-muted-foreground ml-1">
               {Math.round(progress)}%

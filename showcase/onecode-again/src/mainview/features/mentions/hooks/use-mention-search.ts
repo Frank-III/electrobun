@@ -1,7 +1,7 @@
 /**
  * useMentionSearch Hook
  *
- * React hook for searching mentions with debouncing, cancellation,
+ * SolidJS hook for searching mentions with debouncing, cancellation,
  * and stale-while-revalidate pattern to prevent UI flickering.
  *
  * Key features:
@@ -11,7 +11,7 @@
  * - No state updates after unmount
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { createSignal, createEffect, createMemo, onCleanup } from "solid-js"
 import { mentionSearchEngine } from "../search"
 import type { MentionItem, AggregatedSearchResult } from "../types"
 
@@ -84,27 +84,27 @@ export interface UseMentionSearchResult {
    * Search results (items from all providers)
    * Uses stale data while fetching to prevent flicker
    */
-  items: MentionItem[]
+  items: () => MentionItem[]
 
   /**
    * Error message if search failed
    */
-  error: string | null
+  error: () => string | null
 
   /**
    * Whether more results are available
    */
-  hasMore: boolean
+  hasMore: () => boolean
 
   /**
    * Warnings from providers
    */
-  warnings: string[]
+  warnings: () => string[]
 
   /**
    * Full aggregated result (current)
    */
-  result: AggregatedSearchResult | null
+  result: () => AggregatedSearchResult | null
 
   /**
    * Clear all results and reset state
@@ -117,7 +117,7 @@ export interface UseMentionSearchResult {
  *
  * @example
  * ```tsx
- * const { items } = useMentionSearch(query, {
+ * const { items } = useMentionSearch(() => query, {
  *   projectPath: '/path/to/project',
  *   trigger: '@',
  * })
@@ -125,13 +125,13 @@ export interface UseMentionSearchResult {
  * // Items always available (stale data shown during fetch)
  * return (
  *   <div>
- *     {items.map(item => <Item key={item.id} {...item} />)}
+ *     <For each={items()}>{item => <Item {...item} />}</For>
  *   </div>
  * )
  * ```
  */
 export function useMentionSearch(
-  query: string,
+  query: () => string,
   options: UseMentionSearchOptions = {}
 ): UseMentionSearchResult {
   const {
@@ -147,49 +147,47 @@ export function useMentionSearch(
   } = options
 
   // Current result
-  const [result, setResult] = useState<AggregatedSearchResult | null>(null)
+  const [result, setResult] = createSignal<AggregatedSearchResult | null>(null)
 
   // Previous result for stale-while-revalidate
-  const [previousResult, setPreviousResult] = useState<AggregatedSearchResult | null>(null)
+  const [previousResult, setPreviousResult] = createSignal<AggregatedSearchResult | null>(null)
 
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = createSignal<string | null>(null)
 
   // Refs for cleanup and tracking
-  const debounceRef = useRef<NodeJS.Timeout | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
-  const mountedRef = useRef(true)
-  const resultRef = useRef<AggregatedSearchResult | null>(null)
+  let debounceTimeout: ReturnType<typeof setTimeout> | undefined
+  let abortController: AbortController | undefined
+  let mounted = true
 
-  // Keep resultRef in sync with result state
-  resultRef.current = result
-
-  // Track mounted state
-  useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
+  onCleanup(() => {
+    mounted = false
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout)
     }
-  }, [])
+    if (abortController) {
+      abortController.abort()
+    }
+  })
 
   // Clear all results
-  const clear = useCallback(() => {
+  const clear = () => {
     setResult(null)
     setPreviousResult(null)
     setError(null)
 
     // Clear timeouts
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current)
-      debounceRef.current = null
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout)
+      debounceTimeout = undefined
     }
-    if (abortRef.current) {
-      abortRef.current.abort()
-      abortRef.current = null
+    if (abortController) {
+      abortController.abort()
+      abortController = undefined
     }
-  }, [])
+  }
 
   // Normalize changedFiles to use consistent field name, filter invalid entries
-  const normalizedChangedFiles = useMemo(() => {
+  const normalizedChangedFiles = createMemo(() => {
     if (!changedFiles) return undefined
     return changedFiles
       .filter((f) => f.filePath || f.path) // Filter out entries without path
@@ -198,20 +196,22 @@ export function useMentionSearch(
         additions: f.additions,
         deletions: f.deletions,
       }))
-  }, [changedFiles])
+  })
 
   // Perform search
-  useEffect(() => {
+  createEffect(() => {
+    const currentQuery = query()
+
     // Clear previous debounce
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current)
-      debounceRef.current = null
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout)
+      debounceTimeout = undefined
     }
 
     // Abort previous search
-    if (abortRef.current) {
-      abortRef.current.abort()
-      abortRef.current = null
+    if (abortController) {
+      abortController.abort()
+      abortController = undefined
     }
 
     // If disabled, clear and skip
@@ -220,25 +220,26 @@ export function useMentionSearch(
       return
     }
 
-    // Save current result as previous via ref (avoids infinite loop)
-    if (resultRef.current) {
-      setPreviousResult(resultRef.current)
+    // Save current result as previous
+    const currentResult = result()
+    if (currentResult) {
+      setPreviousResult(currentResult)
     }
 
     // Debounce the search
-    debounceRef.current = setTimeout(async () => {
+    debounceTimeout = setTimeout(async () => {
       // Create abort controller for this search
       const controller = new AbortController()
-      abortRef.current = controller
+      abortController = controller
 
       try {
         const searchResult = await mentionSearchEngine.search(
           trigger,
-          query,
+          currentQuery,
           {
             projectPath,
             sessionId,
-            changedFiles: normalizedChangedFiles,
+            changedFiles: normalizedChangedFiles(),
             // Pass MCP context for tools provider
             ...(mcpTools && { mcpTools }),
             ...(mcpServers && { mcpServers }),
@@ -249,7 +250,7 @@ export function useMentionSearch(
         )
 
         // Check if aborted or unmounted
-        if (controller.signal.aborted || !mountedRef.current) return
+        if (controller.signal.aborted || !mounted) return
 
         // Update state
         setResult(searchResult)
@@ -264,51 +265,25 @@ export function useMentionSearch(
         if (err instanceof Error && err.name === "AbortError") return
 
         // Don't update state if unmounted
-        if (!mountedRef.current) return
+        if (!mounted) return
 
         console.error("[useMentionSearch] Error:", err)
         setError(err instanceof Error ? err.message : "Search failed")
         // Don't clear result on error - keep stale data visible
       }
     }, debounceMs)
-
-    // Cleanup on unmount or deps change
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current)
-        debounceRef.current = null
-      }
-      if (abortRef.current) {
-        abortRef.current.abort()
-        abortRef.current = null
-      }
-    }
-  }, [
-    query,
-    trigger,
-    projectPath,
-    sessionId,
-    debounceMs,
-    enabled,
-    providerIds,
-    normalizedChangedFiles,
-    mcpTools,
-    mcpServers,
-    clear,
-    // NOTE: result intentionally NOT in deps to avoid infinite loop
-    // We use resultRef.current instead
-  ])
+  })
 
   // Return items: prefer current result, fall back to previous (stale)
-  const items = useMemo(() => {
-    return result?.items ?? previousResult?.items ?? []
-  }, [result, previousResult])
+  const items = createMemo(() => {
+    return result()?.items ?? previousResult()?.items ?? []
+  })
 
   return {
     items,
     error,
-    hasMore: result?.hasMore ?? previousResult?.hasMore ?? false,
-    warnings: result?.warnings ?? [],
+    hasMore: () => result()?.hasMore ?? previousResult()?.hasMore ?? false,
+    warnings: () => result()?.warnings ?? [],
     result,
     clear,
   }

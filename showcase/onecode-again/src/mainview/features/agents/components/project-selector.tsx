@@ -22,13 +22,13 @@ function ProjectIcon({ gitOwner, gitProvider, className = "h-4 w-4", isOffline =
 	const handleLoad = () => setIsLoaded(true);
 	const handleError = () => setHasError(true);
 	// In offline mode or on error, don't try to load remote images
-	if (isOffline || hasError || !gitOwner || gitProvider !== "github") {
+	if (isOffline || hasError() || !gitOwner || gitProvider !== "github") {
 		return <FolderOpen class={`${className} text-muted-foreground flex-shrink-0`} />;
 	}
 	return <div class={`${className} relative flex-shrink-0`}>
       {	/* Placeholder background while loading */}
-      {!isLoaded && <div class="absolute inset-0 rounded-sm bg-muted" />}
-      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={`${className} rounded-sm flex-shrink-0 ${isLoaded ? "opacity-100" : "opacity-0"}`} onLoad={handleLoad} onError={handleError} />
+      {!isLoaded() && <div class="absolute inset-0 rounded-sm bg-muted" />}
+      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={`${className} rounded-sm flex-shrink-0 ${isLoaded() ? "opacity-100" : "opacity-0"}`} onLoad={handleLoad} onError={handleError} />
     </div>;
  }
 export function ProjectSelector() {
@@ -39,8 +39,8 @@ export function ProjectSelector() {
 	const [githubUrl, setGithubUrl] = createSignal("");
 	// Check if offline mode is enabled and if we're actually offline
 	const showOfflineFeatures = useAtomValue(showOfflineModeFeaturesAtom);
-	const { data: ollamaStatus } = trpc.ollama.getStatus.useQuery(undefined, { enabled: showOfflineFeatures });
-	const isOffline = showOfflineFeatures && ollamaStatus ? !ollamaStatus.internet.online : false;
+	const { data: ollamaStatus } = trpc.ollama.getStatus.useQuery(undefined, { enabled: showOfflineFeatures() });
+	const isOffline = showOfflineFeatures() && ollamaStatus ? !ollamaStatus.internet.online : false;
 	// Fetch projects from DB
 	const { data: projects, isLoading: isLoadingProjects } = trpc.projects.list.useQuery();
 	// Filter projects by search query

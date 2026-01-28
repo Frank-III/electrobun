@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { createSignal, createEffect, onCleanup } from "solid-js"
 import type {
   UploadedImage,
   UploadedFile,
@@ -230,10 +230,10 @@ export function buildDraftsCache(): Record<string, string> {
  * Hook to get new chat drafts with automatic updates
  * Uses custom events for same-tab sync and storage events for cross-tab sync
  */
-export function useNewChatDrafts(): NewChatDraft[] {
-  const [drafts, setDrafts] = useState<NewChatDraft[]>(() => getNewChatDrafts())
+export function useNewChatDrafts(): () => NewChatDraft[] {
+  const [drafts, setDrafts] = createSignal<NewChatDraft[]>(getNewChatDrafts())
 
-  useEffect(() => {
+  createEffect(() => {
     const handleChange = (e?: Event) => {
       // For storage events, only react to draft-related keys
       // This prevents re-renders when other localStorage keys change (e.g., sub-chat active state)
@@ -245,17 +245,23 @@ export function useNewChatDrafts(): NewChatDraft[] {
 
       const newDrafts = getNewChatDrafts()
       // Only update state if drafts actually changed (compare by content)
-      setDrafts((prev) => {
-        if (prev.length !== newDrafts.length) return newDrafts
-        const prevIds = prev.map((d) => d.id).sort().join(",")
-        const newIds = newDrafts.map((d) => d.id).sort().join(",")
-        if (prevIds !== newIds) return newDrafts
-        // Also compare text content
-        const prevTexts = prev.map((d) => `${d.id}:${d.text}`).sort().join("|")
-        const newTexts = newDrafts.map((d) => `${d.id}:${d.text}`).sort().join("|")
-        if (prevTexts !== newTexts) return newDrafts
-        return prev // No change, return previous reference
-      })
+      const prev = drafts()
+      if (prev.length !== newDrafts.length) {
+        setDrafts(newDrafts)
+        return
+      }
+      const prevIds = prev.map((d) => d.id).sort().join(",")
+      const newIds = newDrafts.map((d) => d.id).sort().join(",")
+      if (prevIds !== newIds) {
+        setDrafts(newDrafts)
+        return
+      }
+      // Also compare text content
+      const prevTexts = prev.map((d) => `${d.id}:${d.text}`).sort().join("|")
+      const newTexts = newDrafts.map((d) => `${d.id}:${d.text}`).sort().join("|")
+      if (prevTexts !== newTexts) {
+        setDrafts(newDrafts)
+      }
     }
 
     // Listen for custom event (same-tab changes)
@@ -263,11 +269,11 @@ export function useNewChatDrafts(): NewChatDraft[] {
     // Listen for storage event (cross-tab changes)
     window.addEventListener("storage", handleChange)
 
-    return () => {
+    onCleanup(() => {
       window.removeEventListener(DRAFTS_CHANGE_EVENT, handleChange)
       window.removeEventListener("storage", handleChange)
-    }
-  }, [])
+    })
+  })
 
   return drafts
 }
@@ -276,13 +282,12 @@ export function useNewChatDrafts(): NewChatDraft[] {
  * Hook to get sub-chat drafts cache with automatic updates
  * Returns a Record<key, text> for quick lookups
  */
-export function useSubChatDraftsCache(): Record<string, string> {
-  const [draftsCache, setDraftsCache] = useState<Record<string, string>>(() => {
-    if (typeof window === "undefined") return {}
-    return buildDraftsCache()
-  })
+export function useSubChatDraftsCache(): () => Record<string, string> {
+  const [draftsCache, setDraftsCache] = createSignal<Record<string, string>>(
+    typeof window === "undefined" ? {} : buildDraftsCache()
+  )
 
-  useEffect(() => {
+  createEffect(() => {
     const handleChange = () => {
       const newCache = buildDraftsCache()
       setDraftsCache(newCache)
@@ -293,11 +298,11 @@ export function useSubChatDraftsCache(): Record<string, string> {
     // Listen for storage event (cross-tab changes)
     window.addEventListener("storage", handleChange)
 
-    return () => {
+    onCleanup(() => {
       window.removeEventListener(DRAFTS_CHANGE_EVENT, handleChange)
       window.removeEventListener("storage", handleChange)
-    }
-  }, [])
+    })
+  })
 
   return draftsCache
 }
@@ -306,14 +311,17 @@ export function useSubChatDraftsCache(): Record<string, string> {
  * Hook to get a specific sub-chat draft
  */
 export function useSubChatDraft(
-  parentChatId: string | null,
-  subChatId: string
-): string | null {
+  parentChatId: () => string | null,
+  subChatId: () => string
+): () => string | null {
   const draftsCache = useSubChatDraftsCache()
 
-  if (!parentChatId) return null
-  const key = getSubChatDraftKey(parentChatId, subChatId)
-  return draftsCache[key] || null
+  return () => {
+    const chatId = parentChatId()
+    if (!chatId) return null
+    const key = getSubChatDraftKey(chatId, subChatId())
+    return draftsCache()[key] || null
+  }
 }
 
 // ============================================
@@ -631,4 +639,3 @@ export async function saveSubChatDraftWithAttachments(
     return { success: false, error: "save_failed" }
   }
 }
-

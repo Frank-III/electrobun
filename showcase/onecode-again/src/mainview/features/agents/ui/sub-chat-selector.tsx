@@ -10,7 +10,6 @@ import { IconSpinner, PlanIcon, AgentIcon, IconOpenSidebarRight, PinFilledIcon, 
 import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/utils";
 import { useAgentSubChatStore, type SubChatMeta } from "../stores/sub-chat-store";
-import { useShallow } from "zustand/react/shallow";
 import { PopoverTrigger } from "../../../components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { Kbd } from "../../../components/ui/kbd";
@@ -99,15 +98,14 @@ interface SubChatSelectorProps {
 	chatId?: string;
 }
 export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, onOpenPreview, canOpenPreview = false, onOpenDiff, canOpenDiff = false, isDiffSidebarOpen = false, diffStats, onOpenTerminal, canOpenTerminal = false, chatId }: SubChatSelectorProps) {
-	// Use shallow comparison to prevent re-renders when arrays have same content
-	const { activeSubChatId, openSubChatIds, pinnedSubChatIds, allSubChats, parentChatId, togglePinSubChat } = useAgentSubChatStore(useShallow((state) => ({
-		activeSubChatId: state.activeSubChatId,
-		openSubChatIds: state.openSubChatIds,
-		pinnedSubChatIds: state.pinnedSubChatIds,
-		allSubChats: state.allSubChats,
-		parentChatId: state.chatId,
-		togglePinSubChat: state.togglePinSubChat
-	})));
+	// SolidJS fine-grained reactivity handles this - no useShallow needed
+	const subChatStore = useAgentSubChatStore();
+	const activeSubChatId = subChatStore.activeSubChatId;
+	const openSubChatIds = subChatStore.openSubChatIds;
+	const pinnedSubChatIds = subChatStore.pinnedSubChatIds;
+	const allSubChats = subChatStore.allSubChats;
+	const parentChatId = subChatStore.chatId;
+	const togglePinSubChat = subChatStore.togglePinSubChat;
 	const [loadingSubChats] = useAtom(loadingSubChatsAtom);
 	const subChatUnseenChanges = useAtomValue(agentsSubChatUnseenChangesAtom);
 	const [subChatsSidebarMode, setSubChatsSidebarMode] = useAtom(agentsSubChatsSidebarModeAtom);
@@ -283,7 +281,7 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 			}
 		};
 		window.addEventListener("keydown", handleHistoryHotkey, true);
-		return () => window.removeEventListener("keydown", handleHistoryHotkey, true);
+		onCleanup(() => window.removeEventListener("keydown", handleHistoryHotkey, true));
 	});
 	// Keyboard shortcut: Cmd+Shift+T / Ctrl+Shift+T for new sub-chat
 	// Scroll to active tab when it changes

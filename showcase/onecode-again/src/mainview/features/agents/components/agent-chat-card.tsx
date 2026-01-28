@@ -13,13 +13,13 @@ function GitHubAvatar({ gitOwner, className = "h-4 w-4" }: {
 	const [hasError, setHasError] = createSignal(false);
 	const handleLoad = () => setIsLoaded(true);
 	const handleError = () => setHasError(true);
-	if (hasError) {
+	if (hasError()) {
 		return <GitHubLogo class={cn(className, "text-muted-foreground flex-shrink-0")} />;
 	}
 	return <div class={cn(className, "relative flex-shrink-0")}>
       {	/* Placeholder background while loading */}
-      {!isLoaded && <div class="absolute inset-0 rounded-sm bg-muted" />}
-      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={cn(className, "rounded-sm flex-shrink-0", isLoaded ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
+      {!isLoaded() && <div class="absolute inset-0 rounded-sm bg-muted" />}
+      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={cn(className, "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
     </div>;
  }
 interface AgentChatCardProps {

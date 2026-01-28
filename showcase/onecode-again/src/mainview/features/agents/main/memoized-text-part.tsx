@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, onCleanup } from "solid-js";
 import { cn } from "../../../lib/utils";
 import { MemoizedMarkdown } from "../../../components/chat-markdown-renderer";
 import { useSearchQuery, useSearchHighlight } from "../search";
@@ -98,7 +98,7 @@ export function MemoizedTextPart({ text, messageId, partIndex, isFinalText, visi
 	createEffect(() => {
 		if (!containerRef.current || isStreaming || !searchQuery) return;
 		highlightTextInDom(containerRef.current, searchQuery, currentMatchIndexInPart);
-		return () => {
+		onCleanup(() => {
 			if (containerRef.current) {
 				const existingHighlights = containerRef.current.querySelectorAll(".search-highlight");
 				existingHighlights.forEach((el) => {
@@ -109,7 +109,7 @@ export function MemoizedTextPart({ text, messageId, partIndex, isFinalText, visi
 					}
 				});
 			}
-		};
+		});
 	});
 	if (!text?.trim()) return null;
 	return <div ref={containerRef}>

@@ -477,3 +477,26 @@ Thread: https://ampcode.com/threads/T-019c067b-691a-772d-8700-62acb7995c08
   - Kobalte Select component type errors are pre-existing issues with the component's TypeScript definitions, not related to jotai migration
   - When a derived value depends on a signal, make it a function: `const canSave = () => Boolean(...)` not `const canSave = Boolean(...)`
 ---
+
+## 2026-01-28 - US-025
+Thread: https://ampcode.com/threads/T-019c0681-e024-74d5-9617-507dca3f83de
+- Fixed React effect dependency array patterns and cleanup functions
+- Converted `return () => { cleanup }` to `onCleanup(() => { cleanup })` in 69 files
+- Files changed:
+  - App.tsx, mermaid-block.tsx - component-level cleanup patterns
+  - theme-provider.tsx - CSS variable cleanup
+  - All settings dialog tabs (agent-dialog, agents-profile-tab, agents-worktrees-tab, agents-project-worktree-tab, agents-settings-dialog)
+  - Terminal components (terminal.tsx was already fixed, terminal-widget, terminal-section)
+  - Agent UI components (agent-diff-view, agent-edit-tool, agent-preview, agent-task-tool, sub-chat-selector, sub-chat-status-card, agents-content)
+  - Agent main components (active-chat, chat-input-area, new-chat-form, isolated-text-part, memoized-text-part)
+  - Sidebar components (agents-sidebar, agents-subchats-sidebar)
+  - Details sidebar (details-sidebar, expanded-widget-sidebar, plan-section, plan-widget, terminal-section, terminal-widget)
+  - Kanban, changes (history-view, kanban-view)
+  - Various hooks files converted from React to SolidJS patterns
+- **Learnings for future iterations:**
+  - React cleanup: `return () => { cleanup() }` in effects → SolidJS: `onCleanup(() => { cleanup() })`
+  - For createEffect that only returns cleanup (no reactive body), just use `onCleanup()` at component level without createEffect wrapper
+  - Functions that intentionally return cleanup callbacks (like `subscribe()` methods) should NOT be converted
+  - SolidJS auto-tracks dependencies - no need for dependency arrays
+  - Many hook files still had React imports (useEffect, useRef, useCallback) which were also converted
+---

@@ -1,4 +1,4 @@
-import { createSignal, createEffect } from "solid-js";
+import { createSignal, createEffect, onCleanup } from "solid-js";
 import { useSetAtom } from "../../../lib/state/jotai";
 import { trpc } from "../../../lib/trpc";
 import { Button, buttonVariants } from "../../ui/button";
@@ -19,7 +19,7 @@ function useIsNarrowScreen(): boolean {
 		};
 		checkWidth();
 		window.addEventListener("resize", checkWidth);
-		return () => window.removeEventListener("resize", checkWidth);
+		onCleanup(() => window.removeEventListener("resize", checkWidth));
 	});
 	return isNarrow;
 }
@@ -268,10 +268,10 @@ export function AgentsProjectWorktreeTab({ projectId }: AgentsProjectWorktreeTab
           <div class="border-t">
             <button type="button" class="w-full p-3 flex items-center justify-between text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors" onClick={() => setShowPlatformSpecific(!showPlatformSpecific)}>
               <span>Platform-specific overrides</span>
-              <ChevronDown class={`h-4 w-4 transition-transform ${showPlatformSpecific ? "rotate-180" : ""}`} />
+              <ChevronDown class={`h-4 w-4 transition-transform ${showPlatformSpecific() ? "rotate-180" : ""}`} />
             </button>
 
-            {showPlatformSpecific && <div class="p-4 pt-0 space-y-4">
+            {showPlatformSpecific() && <div class="p-4 pt-0 space-y-4">
                 { /* Unix Commands */}
                 <div class="space-y-2">
                   <span class="text-xs font-medium text-muted-foreground">

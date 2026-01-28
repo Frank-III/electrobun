@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createMemo, For, Show, Switch, Match } from "solid-js";
+import { createEffect, createMemo, For, Show, Switch, Match, onCleanup } from "solid-js";
 import { useAtom, useAtomValue } from "../../lib/state/jotai";
 import { ArrowUpRight, TerminalSquare, Box, ListTodo } from "lucide-solid";
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar";
@@ -114,7 +114,7 @@ export function DetailsSidebar({ chatId, worktreePath, planPath, mode, onBuildPl
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown, true);
-		return () => window.removeEventListener("keydown", handleKeyDown, true);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown, true));
 	});
 	// Get icon for widget
 	const getWidgetIcon = (widgetId: WidgetId) => {

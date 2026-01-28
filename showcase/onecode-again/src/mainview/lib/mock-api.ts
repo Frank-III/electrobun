@@ -3,7 +3,7 @@
  * Wraps real tRPC calls and provides stubs for web-only features
  */
 
-import { useMemo } from "react"
+import { createMemo } from "solid-js"
 import { trpc, trpcClient } from "./trpc"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -16,10 +16,10 @@ export const api = {
     getAgentChats: {
       useQuery: (_args?: AnyObj, _opts?: AnyObj) => {
         // Use real tRPC
-        const result = trpc.chats.list.useQuery({})
+        const result = trpc.chats.list.useQuery(() => ({}))
         return {
-          data: result.data ?? [],
-          isLoading: result.isLoading,
+          get data() { return result.data ?? [] },
+          get isLoading() { return result.isLoading },
         }
       },
     },
@@ -27,12 +27,12 @@ export const api = {
       useQuery: (args?: { chatId: string }, opts?: AnyObj) => {
         const chatId = args?.chatId
         const result = trpc.chats.get.useQuery(
-          { id: chatId! },
-          { enabled: !!chatId && opts?.enabled !== false },
+          () => ({ id: chatId! }),
+          () => ({ enabled: !!chatId && opts?.enabled !== false }),
         )
 
         // Memoize transformation to prevent infinite re-renders
-        const transformedData = useMemo(() => {
+        const transformedData = createMemo(() => {
           if (!result.data) return null
           return {
             ...result.data,
@@ -97,20 +97,20 @@ export const api = {
               }
             }),
           }
-        }, [result.data])
+        })
 
         return {
-          data: transformedData,
-          isLoading: result.isLoading,
+          get data() { return transformedData() },
+          get isLoading() { return result.isLoading },
         }
       },
     },
     getArchivedChats: {
       useQuery: (_args?: AnyObj, _opts?: AnyObj) => {
-        const result = trpc.chats.listArchived.useQuery({})
+        const result = trpc.chats.listArchived.useQuery(() => ({}))
         return {
-          data: result.data ?? [],
-          isLoading: result.isLoading,
+          get data() { return result.data ?? [] },
+          get isLoading() { return result.isLoading },
         }
       },
     },
@@ -120,10 +120,10 @@ export const api = {
         onError?: AnyFn
         onSettled?: AnyFn
       }) => {
-        const mutation = trpc.chats.archive.useMutation({
+        const mutation = trpc.chats.archive.useMutation(() => ({
           onSuccess: () => opts?.onSettled?.(),
-          onError: (err) => opts?.onError?.(err),
-        })
+          onError: (err: unknown) => opts?.onError?.(err),
+        }))
         return {
           mutate: async (args?: { chatId: string }) => {
             const context = await opts?.onMutate?.(args)
@@ -132,7 +132,7 @@ export const api = {
             }
             return context
           },
-          isPending: mutation.isPending,
+          get isPending() { return mutation.isPending },
         }
       },
     },
@@ -142,10 +142,10 @@ export const api = {
         onError?: AnyFn
         onSettled?: AnyFn
       }) => {
-        const mutation = trpc.chats.restore.useMutation({
+        const mutation = trpc.chats.restore.useMutation(() => ({
           onSuccess: () => opts?.onSettled?.(),
-          onError: (err) => opts?.onError?.(err),
-        })
+          onError: (err: unknown) => opts?.onError?.(err),
+        }))
         return {
           mutate: async (args?: { chatId: string }) => {
             const context = await opts?.onMutate?.(args)
@@ -154,16 +154,16 @@ export const api = {
             }
             return context
           },
-          isPending: mutation.isPending,
+          get isPending() { return mutation.isPending },
         }
       },
     },
     renameChat: {
       useMutation: (opts?: { onSuccess?: AnyFn; onError?: AnyFn }) => {
-        const mutation = trpc.chats.rename.useMutation({
-          onSuccess: (data) => opts?.onSuccess?.(data),
-          onError: (err) => opts?.onError?.(err),
-        })
+        const mutation = trpc.chats.rename.useMutation(() => ({
+          onSuccess: (data: unknown) => opts?.onSuccess?.(data),
+          onError: (err: unknown) => opts?.onError?.(err),
+        }))
         return {
           mutate: (args?: { chatId: string; name: string }) => {
             if (args?.chatId && args?.name) {
@@ -184,10 +184,10 @@ export const api = {
         onError?: AnyFn
         onMutate?: AnyFn
       }) => {
-        const mutation = trpc.chats.renameSubChat.useMutation({
-          onSuccess: (data) => opts?.onSuccess?.(data),
-          onError: (err) => opts?.onError?.(err),
-        })
+        const mutation = trpc.chats.renameSubChat.useMutation(() => ({
+          onSuccess: (data: unknown) => opts?.onSuccess?.(data),
+          onError: (err: unknown) => opts?.onError?.(err),
+        }))
         return {
           mutate: (
             args?: { subChatId: string; name: string },
@@ -208,7 +208,7 @@ export const api = {
               })
             }
           },
-          isPending: mutation.isPending,
+          get isPending() { return mutation.isPending },
         }
       },
     },
@@ -219,23 +219,23 @@ export const api = {
           mutateAsync: async (args: { userMessage: string; ollamaModel?: string | null }) => {
             return mutation.mutateAsync({ userMessage: args.userMessage, ollamaModel: args.ollamaModel })
           },
-          isPending: mutation.isPending,
+          get isPending() { return mutation.isPending },
         }
       },
     },
     updateSubChatMode: {
       useMutation: (opts?: { onSuccess?: AnyFn; onError?: AnyFn }) => {
-        const mutation = trpc.chats.updateSubChatMode.useMutation({
-          onSuccess: (data) => opts?.onSuccess?.(data),
-          onError: (err) => opts?.onError?.(err),
-        })
+        const mutation = trpc.chats.updateSubChatMode.useMutation(() => ({
+          onSuccess: (data: unknown) => opts?.onSuccess?.(data),
+          onError: (err: unknown) => opts?.onError?.(err),
+        }))
         return {
           mutate: (args?: { subChatId: string; mode: "plan" | "agent" }) => {
             if (args?.subChatId && args?.mode) {
               mutation.mutate({ id: args.subChatId, mode: args.mode })
             }
           },
-          isPending: mutation.isPending,
+          get isPending() { return mutation.isPending },
         }
       },
     },
@@ -253,10 +253,15 @@ export const api = {
       }),
     },
     archiveChatsBatch: {
-      useMutation: (opts?: { onSuccess?: AnyFn }) => {
-        const mutation = trpc.chats.archiveBatch.useMutation({
-          onSuccess: () => opts?.onSuccess?.(),
-        })
+      useMutation: (opts?: {
+        onMutate?: AnyFn
+        onError?: AnyFn
+        onSettled?: AnyFn
+      }) => {
+        const mutation = trpc.chats.archiveBatch.useMutation(() => ({
+          onSuccess: () => opts?.onSettled?.(),
+          onError: (err: unknown) => opts?.onError?.(err),
+        }))
         return {
           mutate: (
             args?: { chatIds: string[] },
@@ -269,7 +274,7 @@ export const api = {
               )
             }
           },
-          isPending: mutation.isPending,
+          get isPending() { return mutation.isPending },
         }
       },
     },
@@ -433,23 +438,23 @@ export const api = {
       ) => {
         // Use real tRPC to search local files
         const result = trpc.files.search.useQuery(
-          {
+          () => ({
             projectPath: args?.projectPath || "",
             query: args?.query || "",
             limit: args?.limit || 50,
-          },
-          {
+          }),
+          () => ({
             enabled: !!args?.projectPath && opts?.enabled !== false,
             staleTime: opts?.staleTime ?? 5000,
             refetchOnWindowFocus: opts?.refetchOnWindowFocus ?? false,
             placeholderData: opts?.placeholderData,
-          },
+          }),
         )
         return {
-          data: result.data ?? [],
-          isLoading: result.isLoading,
-          isFetching: result.isFetching,
-          error: result.error,
+          get data() { return result.data ?? [] },
+          get isLoading() { return result.isLoading },
+          get isFetching() { return result.isFetching },
+          get error() { return result.error },
         }
       },
     },

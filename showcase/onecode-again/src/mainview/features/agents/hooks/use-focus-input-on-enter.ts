@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react"
+import { createEffect, onCleanup } from "solid-js"
 
 /**
  * Hook to focus an input element when Enter key is pressed (without modifiers)
@@ -7,9 +7,9 @@ import { useEffect, type RefObject } from "react"
  * @param editorRef - Ref to the editor/input element that should be focused
  */
 export function useFocusInputOnEnter(
-  editorRef: RefObject<{ focus: () => void } | null>,
+  editorRef: { focus: () => void } | undefined,
 ) {
-  useEffect(() => {
+  createEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle Enter without modifiers
       if (
@@ -45,10 +45,10 @@ export function useFocusInputOnEnter(
 
       // Focus the editor
       e.preventDefault()
-      editorRef.current?.focus()
+      editorRef?.focus()
     }
 
     window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [editorRef])
+    onCleanup(() => window.removeEventListener("keydown", handleKeyDown))
+  })
 }

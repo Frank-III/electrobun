@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createMemo, createSignal, ErrorBoundary, For, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, ErrorBoundary, For, onCleanup, type JSX } from "solid-js";
 import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 import { createStoredSignal } from "../../../lib/state/signal-storage";
 import { agentsFocusedDiffFileAtom, filteredDiffFilesAtom, viewedFilesAtomFamily, type ViewedFileState } from "../atoms";
@@ -598,9 +598,9 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 				});
 			});
 		});
-		return () => {
+		onCleanup(() => {
 			cancelled = true;
-		};
+		});
 	});
 	const [diff, setDiff] = createSignal(initialDiff ?? null);
 	// Loading if initialDiff not provided, or if it's null AND no parsed files array provided
@@ -734,10 +734,8 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 	const filteredDiffFiles = useAtomValue(filteredDiffFilesAtom);
 	const setFilteredDiffFiles = useSetAtom(filteredDiffFilesAtom);
 	// Clear filter when component unmounts (not during close animation, only on actual unmount)
-	createEffect(() => {
-		return () => {
-			setFilteredDiffFiles(null);
-		};
+	onCleanup(() => {
+		setFilteredDiffFiles(null);
 	});
 	const allFileDiffs = createMemo(() => {
 		// Use pre-parsed files if provided (avoids duplicate parsing)
@@ -1436,7 +1434,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
 	// Keyboard shortcut: Cmd+Z to undo last viewed action
 	createEffect(() => {
@@ -1456,7 +1454,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
 	if (!isHydrated) {
 		return <div class="flex h-full items-center justify-center">

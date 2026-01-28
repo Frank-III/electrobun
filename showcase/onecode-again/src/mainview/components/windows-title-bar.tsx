@@ -1,5 +1,5 @@
 "use client";
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, createSignal, onCleanup } from "solid-js";
 import { Minus, Square, X } from "lucide-solid";
 import { Button } from "./ui/button";
 /**
@@ -35,10 +35,10 @@ export function WindowsTitleBar() {
 		checkMaximized();
 		const handleFocus = () => checkMaximized();
 		window.addEventListener("focus", handleFocus);
-		return () => window.removeEventListener("focus", handleFocus);
+		onCleanup(() => window.removeEventListener("focus", handleFocus));
 	});
 	// Don't render on non-Windows or when using native frame
-	if (!isWindows || hasNativeFrame) return null;
+	if (!isWindows || hasNativeFrame()) return null;
 	const handleMinimize = async () => {
 		await window.desktopApi?.windowMinimize();
 	};
@@ -63,7 +63,7 @@ export function WindowsTitleBar() {
         <Button variant="ghost" size="icon" onClick={handleMinimize} class="h-full w-10 rounded-none hover:bg-foreground/10" aria-label="Minimize">
           <Minus class="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={handleMaximize} class="h-full w-10 rounded-none hover:bg-foreground/10" aria-label={isMaximized ? "Restore" : "Maximize"}>
+        <Button variant="ghost" size="icon" onClick={handleMaximize} class="h-full w-10 rounded-none hover:bg-foreground/10" aria-label={isMaximized() ? "Restore" : "Maximize"}>
           <Square class="h-3.5 w-3.5" />
         </Button>
         <Button variant="ghost" size="icon" onClick={handleClose} class="h-full w-10 rounded-none hover:bg-red-500/20 hover:text-red-500" aria-label="Close">

@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/
 // import { clearSubChatSelectionAtom, isSubChatMultiSelectModeAtom, selectedSubChatIdsAtom } from "@/lib/atoms/agent-subchat-selection"
 import { Chat, useChat } from "@ai-sdk/react";
 import { DiffModeEnum } from "@git-diff-view/react";
-import { createContext, createMemo, createSignal, createEffect, For, Index, Show, useContext } from "solid-js";
+import { createContext, createMemo, createSignal, createEffect, For, Index, onCleanup, Show, useContext } from "solid-js";
 import { ReactiveSet } from "@solid-primitives/set";
 import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 import { ArrowDown, ChevronDown, GitFork, ListTree, TerminalSquare } from "lucide-solid";
@@ -222,8 +222,8 @@ function CopyButton({ onCopy, isMobile = false }: {
 	};
 	return <button onClick={handleCopy} tabIndex={-1} class="p-1.5 rounded-md transition-[background-color,transform] duration-150 ease-out hover:bg-accent active:scale-[0.97]">
       <div class="relative w-3.5 h-3.5">
-        <CopyIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", copied ? "opacity-0 scale-50" : "opacity-100 scale-100")} />
-        <CheckIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", copied ? "opacity-100 scale-100" : "opacity-0 scale-50")} />
+        <CopyIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", copied() ? "opacity-0 scale-50" : "opacity-100 scale-100")} />
+        <CheckIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", copied() ? "opacity-100 scale-100" : "opacity-0 scale-50")} />
       </div>
     </button>;
 }
@@ -529,11 +529,11 @@ function ScrollToBottomButton({ containerRef, onScrollToBottom, hasStackedCards 
 			setIsVisible(!atBottom);
 		}, 50);
 		container.addEventListener("scroll", checkVisibility, { passive: true });
-		return () => {
+		onCleanup(() => {
 			clearTimeout(timeoutId);
 			if (rafId !== null) cancelAnimationFrame(rafId);
 			container.removeEventListener("scroll", checkVisibility);
-		};
+		});
 	});
 	return <Presence>
       <Show when={isVisible}>
@@ -599,7 +599,7 @@ function MessageGroup({ children, isLastGroup }: MessageGroupProps) {
 		updateHeight();
 		const observer = new ResizeObserver(updateHeight);
 		observer.observe(bubbleEl);
-		return () => observer.disconnect();
+		onCleanup(() => observer.disconnect());
 	});
 	return <div ref={groupRef} class="relative" style={{
 		contentVisibility: "auto",
@@ -632,12 +632,12 @@ function CollapsibleSteps({ stepsCount, children, defaultExpanded = false }: Col
 		setIsExpanded(!isExpanded);
 	}}>
           <div class="relative w-4 h-4">
-            <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
-            <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
+            <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
+            <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
           </div>
         </button>
       </div>
-      {isExpanded && <div class="mt-1 space-y-1.5">{children}</div>}
+      {isExpanded() && <div class="mt-1 space-y-1.5">{children}</div>}
     </div>;
 }
 // ============================================================================
@@ -778,9 +778,9 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
 	// This prevents React 19 ref cleanup issues with HistoryView's ContextMenu components
 	createEffect(() => {
 		resetActiveTabRef.current = () => setActiveTab("changes");
-		return () => {
+		onCleanup(() => {
 			resetActiveTabRef.current = null;
-		};
+		});
 	});
 	// Selected commit for History tab
 	const [selectedCommit, setSelectedCommit] = useAtom(selectedCommitAtom);
@@ -868,7 +868,7 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
         { /* Both views are always mounted but hidden via CSS to prevent expensive re-mounts */}
         <div class="flex-1 overflow-hidden flex flex-col relative">
           { /* History view - files in commit */}
-          <div class={cn("absolute inset-0 overflow-y-auto", activeTab === "history" && selectedCommit ? "z-10" : "z-0 invisible")}>
+          <div class={cn("absolute inset-0 overflow-y-auto", activeTab() === "history" && selectedCommit ? "z-10" : "z-0 invisible")}>
             {selectedCommit && (!commitFiles ? <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
                   Loading files...
                 </div> : commitFiles.length === 0 ? <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
@@ -902,7 +902,7 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
                 </>)}
           </div>
           {		/* Diff view - always mounted to prevent expensive re-initialization */}
-          <div class={cn("absolute inset-0 overflow-hidden", activeTab === "history" && selectedCommit ? "z-0 invisible" : "z-10")}>
+          <div class={cn("absolute inset-0 overflow-hidden", activeTab() === "history" && selectedCommit ? "z-0 invisible" : "z-10")}>
             <AgentDiffView ref={diffViewRef} chatId={chatId} sandboxId={sandboxId} worktreePath={worktreePath || undefined} repository={repository} onStatsChange={setDiffStats} initialDiff={effectiveDiff} initialParsedFiles={effectiveParsedFiles} prefetchedFileContents={effectivePrefetchedContents} showFooter={false} onCollapsedStateChange={setDiffCollapseState} onSelectNextFile={handleSelectNextFile} onViewedCountChange={handleViewedCountChange} initialSelectedFile={initialSelectedFile} />
           </div>
         </div>
@@ -924,7 +924,7 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
       { /* Both views are always mounted but hidden via CSS to prevent expensive re-mounts */}
       <div class={cn("flex-1 h-full min-w-0 overflow-hidden relative", "border-l border-border/50")}>
         { /* History view - files in commit */}
-        <div class={cn("absolute inset-0 overflow-y-auto", activeTab === "history" && selectedCommit ? "z-10" : "z-0 invisible")}>
+        <div class={cn("absolute inset-0 overflow-y-auto", activeTab() === "history" && selectedCommit ? "z-10" : "z-0 invisible")}>
           {selectedCommit && (!commitFiles ? <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
                 Loading files...
               </div> : commitFiles.length === 0 ? <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
@@ -958,7 +958,7 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
               </>)}
         </div>
         {	/* Diff view - always mounted to prevent expensive re-initialization */}
-        <div class={cn("absolute inset-0 overflow-hidden", activeTab === "history" && selectedCommit ? "z-0 invisible" : "z-10")}>
+        <div class={cn("absolute inset-0 overflow-hidden", activeTab() === "history" && selectedCommit ? "z-0 invisible" : "z-10")}>
           <AgentDiffView ref={diffViewRef} chatId={chatId} sandboxId={sandboxId} worktreePath={worktreePath || undefined} repository={repository} onStatsChange={setDiffStats} initialDiff={effectiveDiff} initialParsedFiles={effectiveParsedFiles} prefetchedFileContents={effectivePrefetchedContents} showFooter={true} onCollapsedStateChange={setDiffCollapseState} onSelectNextFile={handleSelectNextFile} onViewedCountChange={handleViewedCountChange} initialSelectedFile={initialSelectedFile} />
         </div>
       </div>
@@ -1244,9 +1244,9 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	const [chatContainerRef, setChatContainerRef] = createSignal<HTMLElement | null>(null);
 	// Cleanup isAutoScrollingRef on unmount to prevent stuck state
 	createEffect(() => {
-		return () => {
+		onCleanup(() => {
 			isAutoScrollingRef.current = false;
-		};
+		});
 	});
 	// Track chat container height via CSS custom property (no re-renders)
 	const [chatContainerObserverRef, setChatContainerObserverRef] = createSignal<ResizeObserver | null>(null);
@@ -1407,7 +1407,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	// (e.g., React StrictMode, HMR, or parent re-render causing component remount)
 	createEffect(() => {
 		const currentSubChatId = subChatId;
-		return () => {
+		onCleanup(() => {
 			// Delay cache clearing to allow remount to happen first
 			// If the component remounts with the same subChatId, the sync will repopulate the atoms
 			// If it truly unmounts, the timeout will clear the caches
@@ -1416,7 +1416,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 			}, 100);
 			(window as any).__pendingCacheCleanups = (window as any).__pendingCacheCleanups || new Map();
 			(window as any).__pendingCacheCleanups.set(currentSubChatId, timeoutId);
-		};
+		});
 	});
 	// Cancel pending cleanup if we remount with the same subChatId
 	createEffect(() => {
@@ -1748,12 +1748,13 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 						return current;
 					});
 				}, 150);
-				return () => {
+				onCleanup(() => {
 					clearTimeout(timeout);
 					clearTimeout(flagTimeout);
-				};
+				});
+				return;
 			}
-			return () => clearTimeout(flagTimeout);
+			onCleanup(() => clearTimeout(flagTimeout));
 		}
 	});
 	// Sync pending questions with messages state
@@ -2061,7 +2062,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	// Rollback handler - truncates messages to the clicked assistant message and restores git state
 	// The SDK UUID from the last assistant message will be used for resumeSessionAt on next send
 	const handleRollback = async (assistantMsg: (typeof messages)[0]) => {
-		if (isRollingBack) {
+		if (isRollingBack()) {
 			toast.error("Rollback already in progress");
 			return;
 		}
@@ -2101,7 +2102,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	const setRollbackHandler = useSetAtom(rollbackHandlerAtom);
 	createEffect(() => {
 		setRollbackHandler(() => handleRollback);
-		return () => setRollbackHandler(null);
+		onCleanup(() => setRollbackHandler(null));
 	});
 	const setIsRollingBackAtom = useSetAtom(isRollingBackAtom);
 	createEffect(() => {
@@ -2161,7 +2162,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
 	// Keyboard shortcut: Enter to focus input when not already focused
 	useFocusInputOnEnter(editorRef);
@@ -2232,9 +2233,9 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 			childList: true,
 			subtree: true
 		});
-		return () => {
+		onCleanup(() => {
 			observer.disconnect();
-		};
+		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	});
 	// Attach scroll listener (separate effect)
@@ -2242,9 +2243,9 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 		const container = chatContainerRef.current;
 		if (!container) return;
 		container.addEventListener("scroll", handleScroll, { passive: true });
-		return () => {
+		onCleanup(() => {
 			container.removeEventListener("scroll", handleScroll);
-		};
+		});
 	});
 	// Auto scroll to bottom when messages change during streaming
 	// Only kicks in after content fills the viewport (overflow behavior)
@@ -2688,7 +2689,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	createEffect(() => {
 		setPendingPlanApprovals((prev: Map<string, string>) => {
 			const newMap = new Map(prev);
-			if (hasUnapprovedPlan) {
+			if (hasUnapprovedPlan()) {
 				newMap.set(subChatId, parentChatId);
 			} else {
 				newMap.delete(subChatId);
@@ -2704,13 +2705,13 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	createEffect(() => {
 		if (!isActive) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Enter" && e.metaKey && !e.shiftKey && hasUnapprovedPlan && !isStreaming) {
+			if (e.key === "Enter" && e.metaKey && !e.shiftKey && hasUnapprovedPlan() && !isStreaming) {
 				e.preventDefault();
 				handleApprovePlan();
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
 	// Cmd/Ctrl + Arrow Down to scroll to bottom (works even when focused in input)
 	// But don't intercept if input has content - let native cursor navigation work
@@ -2727,11 +2728,11 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
 	// Clean up pending plan approval when unmounting
 	createEffect(() => {
-		return () => {
+		onCleanup(() => {
 			setPendingPlanApprovals((prev: Map<string, string>) => {
 				if (prev.has(subChatId)) {
 					const newMap = new Map(prev);
@@ -2740,7 +2741,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 				}
 				return prev;
 			});
-		};
+		});
 	});
 	// Compute sticky top class for user messages
 	const stickyTopClass = isMobile ? CHAT_LAYOUT.stickyTopMobile : isSubChatsSidebarOpen ? CHAT_LAYOUT.stickyTopSidebarOpen : CHAT_LAYOUT.stickyTopSidebarClosed;
@@ -2983,28 +2984,28 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 	});
 	// Track previous states to detect opens/closes
 	const [prevSidebarStatesRef, setPrevSidebarStatesRef] = createSignal({
-		details: isDetailsSidebarOpen,
-		plan: isPlanSidebarOpen && !!currentPlanPath,
-		terminal: isTerminalSidebarOpen
+		details: isDetailsSidebarOpen(),
+		plan: isPlanSidebarOpen() && !!currentPlanPath,
+		terminal: isTerminalSidebarOpen()
 	});
 	createEffect(() => {
 		const prev = prevSidebarStatesRef.current;
 		const auto = autoClosedStateRef.current;
-		const isPlanOpen = isPlanSidebarOpen && !!currentPlanPath;
+		const isPlanOpen = isPlanSidebarOpen() && !!currentPlanPath;
 		// Detect state changes
-		const detailsJustOpened = isDetailsSidebarOpen && !prev.details;
-		const detailsJustClosed = !isDetailsSidebarOpen && prev.details;
+		const detailsJustOpened = isDetailsSidebarOpen() && !prev.details;
+		const detailsJustClosed = !isDetailsSidebarOpen() && prev.details;
 		const planJustOpened = isPlanOpen && !prev.plan;
 		const planJustClosed = !isPlanOpen && prev.plan;
-		const terminalJustOpened = isTerminalSidebarOpen && !prev.terminal;
-		const terminalJustClosed = !isTerminalSidebarOpen && prev.terminal;
+		const terminalJustOpened = isTerminalSidebarOpen() && !prev.terminal;
+		const terminalJustClosed = !isTerminalSidebarOpen() && prev.terminal;
 		// Details opened → close conflicting sidebars and remember
 		if (detailsJustOpened) {
 			if (isPlanOpen) {
 				auto.planClosedByDetails = true;
 				setIsPlanSidebarOpen(false);
 			}
-			if (isTerminalSidebarOpen) {
+			if (isTerminalSidebarOpen()) {
 				auto.terminalClosedByDetails = true;
 				setIsTerminalSidebarOpen(false);
 			}
@@ -3017,13 +3018,13 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 				auto.terminalClosedByDetails = false;
 				setIsTerminalSidebarOpen(true);
 			}
-		} else if (planJustOpened && isDetailsSidebarOpen) {
+		} else if (planJustOpened && isDetailsSidebarOpen()) {
 			auto.detailsClosedBy = "plan";
 			setIsDetailsSidebarOpen(false);
 		} else if (planJustClosed && auto.detailsClosedBy === "plan") {
 			auto.detailsClosedBy = null;
 			setIsDetailsSidebarOpen(true);
-		} else if (terminalJustOpened && isDetailsSidebarOpen) {
+		} else if (terminalJustOpened && isDetailsSidebarOpen()) {
 			auto.detailsClosedBy = "terminal";
 			setIsDetailsSidebarOpen(false);
 		} else if (terminalJustClosed && auto.detailsClosedBy === "terminal") {
@@ -3031,7 +3032,7 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 			setIsDetailsSidebarOpen(true);
 		}
 		prevSidebarStatesRef.current = {
-			details: isDetailsSidebarOpen,
+			details: isDetailsSidebarOpen(),
 			plan: isPlanOpen,
 			terminal: isTerminalSidebarOpen
 		};
@@ -3097,19 +3098,19 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 	}>({
 		isOpen: isDiffSidebarOpen,
 		mode: diffDisplayMode,
-		detailsOpen: isDetailsSidebarOpen
+		detailsOpen: isDetailsSidebarOpen()
 	});
 	// Flag to skip center-peek switch when restoring Diff after Details closes
 	const [isRestoringDiffRef, setIsRestoringDiffRef] = createSignal(false);
 	createEffect(() => {
 		const prev = prevDiffStateRef.current;
 		const auto = autoClosedStateRef.current;
-		const isNowSidePeek = isDiffSidebarOpen && diffDisplayMode === "side-peek";
+		const isNowSidePeek = isDiffSidebarOpen() && diffDisplayMode === "side-peek";
 		const wasSidePeek = prev.isOpen && prev.mode === "side-peek";
-		const detailsJustOpened = isDetailsSidebarOpen && !prev.detailsOpen;
-		const detailsJustClosed = !isDetailsSidebarOpen && prev.detailsOpen;
+		const detailsJustOpened = isDetailsSidebarOpen() && !prev.detailsOpen;
+		const detailsJustClosed = !isDetailsSidebarOpen() && prev.detailsOpen;
 		const diffSidePeekJustClosed = wasSidePeek && !isNowSidePeek;
-		if (isNowSidePeek && isDetailsSidebarOpen) {
+		if (isNowSidePeek && isDetailsSidebarOpen()) {
 			// Details just opened while Diff is in side-peek → close Diff and remember
 			if (detailsJustOpened) {
 				auto.diffClosedByDetails = true;
@@ -3133,16 +3134,16 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 			});
 		}
 		prevDiffStateRef.current = {
-			isOpen: isDiffSidebarOpen,
+			isOpen: isDiffSidebarOpen(),
 			mode: diffDisplayMode,
-			detailsOpen: isDetailsSidebarOpen
+			detailsOpen: isDetailsSidebarOpen()
 		};
 	});
 	// Hide traffic lights when full-page diff is open (they would overlap with content)
 	createEffect(() => {
-		if (!isDesktop || isFullscreen) return;
+		if (!isDesktop || isFullscreen()) return;
 		if (typeof window === "undefined" || !window.desktopApi?.setTrafficLightVisibility) return;
-		if (isDiffSidebarOpen && diffDisplayMode === "full-page") {
+		if (isDiffSidebarOpen() && diffDisplayMode === "full-page") {
 			window.desktopApi.setTrafficLightVisibility(false);
 		}
 	});
@@ -3185,10 +3186,10 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 			observer.observe(element);
 		};
 		checkRef();
-		return () => {
+		onCleanup(() => {
 			if (rafId !== null) cancelAnimationFrame(rafId);
 			if (observer) observer.disconnect();
-		};
+		});
 	});
 	// Track changed files across all sub-chats for throttled diff refresh
 	const subChatFiles = useAtomValue(subChatFilesAtom);
@@ -3510,7 +3511,7 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 	});
 	// Close preview sidebar if preview becomes unavailable
 	createEffect(() => {
-		if (!canOpenPreview && isPreviewSidebarOpen) {
+		if (!canOpenPreview && isPreviewSidebarOpen()) {
 			setIsPreviewSidebarOpen(false);
 		}
 	});
@@ -3696,7 +3697,7 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 	// Refresh diff stats when diff sidebar opens (background refresh - don't block UI)
 	// Keep existing data visible while fetching, only update if data changed
 	createEffect(() => {
-		if (isDiffSidebarOpen) {
+		if (isDiffSidebarOpen()) {
 			// Fetch in background - existing parsedFileDiffs will be shown immediately
 			fetchDiffStats();
 		}
@@ -3727,7 +3728,7 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 				lastDiffFetchTimeRef.current = Date.now();
 				fetchDiffStats();
 			}, delay);
-			return () => clearTimeout(timer);
+			onCleanup(() => clearTimeout(timer));
 		}
 	});
 	// Handle Create PR - sends a message to Claude to create the PR
@@ -3835,7 +3836,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 			fetchDiffStats();
 		};
 		window.addEventListener("focus", handleWindowFocus);
-		return () => window.removeEventListener("focus", handleWindowFocus);
+		onCleanup(() => window.removeEventListener("focus", handleWindowFocus));
 	});
 	// Sync parsedFileDiffs with git status - clear diff data when all files are committed
 	// This fixes the issue where diff sidebar shows stale files after external git commit
@@ -4236,7 +4237,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
 	// NOTE: Desktop notifications for pending questions are now triggered directly
 	// in ipc-chat-transport.ts when the ask-user-question chunk arrives.
@@ -4271,7 +4272,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 				e.preventDefault();
 				const store = useAgentSubChatStore.getState();
 				// If multi-select mode, bulk close selected sub-chats
-				if (isSubChatMultiSelectMode && selectedSubChatIds.size > 0) {
+				if (isSubChatMultiSelectMode() && selectedSubChatIds.size > 0) {
 					const idsToClose = Array.from(selectedSubChatIds);
 					const remainingOpenIds = store.openSubChatIds.filter((id) => !idsToClose.includes(id));
 					// Don't close all tabs via hotkey - user should use sidebar dialog for last tab
@@ -4296,7 +4297,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
 	// Keyboard shortcut: Navigate between sub-chats
 	// Web: Opt+Cmd+[ and Opt+Cmd+] (browser uses Cmd+[ for back)
@@ -4364,7 +4365,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
 	// Keyboard shortcut: Cmd + D to toggle diff sidebar
 	createEffect(() => {
@@ -4378,7 +4379,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown, true);
-		return () => window.removeEventListener("keydown", handleKeyDown, true);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown, true));
 	});
 	// Keyboard shortcut: Create PR (preview)
 	// Web: Opt+Cmd+P (browser uses Cmd+P for print)
@@ -4400,7 +4401,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown, true);
-		return () => window.removeEventListener("keydown", handleKeyDown, true);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown, true));
 	});
 	// Keyboard shortcut: Cmd + Shift + E to restore archived workspace
 	createEffect(() => {
@@ -4414,7 +4415,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown, true);
-		return () => window.removeEventListener("keydown", handleKeyDown, true);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown, true));
 	});
 	// Handle auto-rename for sub-chat and parent chat
 	// Receives subChatId as param to avoid stale closure issues
@@ -4507,7 +4508,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 		return getFirstSubChatId(agentSubChats) === activeSubChatId;
 	});
 	// Determine if chat header should be hidden
-	const shouldHideChatHeader = subChatsSidebarMode === "sidebar" && isPreviewSidebarOpen && isDiffSidebarOpen && !isMobileFullscreen;
+	const shouldHideChatHeader = subChatsSidebarMode === "sidebar" && isPreviewSidebarOpen() && isDiffSidebarOpen() && !isMobileFullscreen;
 	// No early return - let the UI render with loading state handled by activeChat check below
 	return <TextSelectionProvider>
     <div class="flex h-full flex-col">
@@ -4560,7 +4561,7 @@ Make sure to preserve all functionality from both branches when resolving confli
                       </span>
                     </PreviewSetupHoverCard>)}
                 { /* Overview/Terminal Button - shows when sidebar is closed and worktree/sandbox exists (desktop only) */}
-                {!isMobileFullscreen && (worktreePath || sandboxId) && (isUnifiedSidebarEnabled ? !isDetailsSidebarOpen && <Tooltip delayDuration={500}>
+                {!isMobileFullscreen && (worktreePath || sandboxId) && (isUnifiedSidebarEnabled ? !isDetailsSidebarOpen() && <Tooltip delayDuration={500}>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="icon" onClick={() => setIsDetailsSidebarOpen(true)} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2" aria-label="View details">
                               <IconOpenSidebarRight class="h-4 w-4" />
@@ -4570,7 +4571,7 @@ Make sure to preserve all functionality from both branches when resolving confli
                             View details
                             {toggleDetailsHotkey && <Kbd>{toggleDetailsHotkey}</Kbd>}
                           </TooltipContent>
-                        </Tooltip> : !isTerminalSidebarOpen && <Tooltip delayDuration={500}>
+                        </Tooltip> : !isTerminalSidebarOpen() && <Tooltip delayDuration={500}>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="icon" onClick={() => setIsTerminalSidebarOpen(true)} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2" aria-label="Open terminal">
                               <TerminalSquare class="h-4 w-4" />
@@ -4677,7 +4678,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 
         { /* Plan Sidebar - shows plan files on the right (leftmost right sidebar) */}
         { /* Only show when we have an active sub-chat with a plan */}
-        {!isMobileFullscreen && activeSubChatIdForPlan && <ResizableSidebar isOpen={isPlanSidebarOpen && !!currentPlanPath} onClose={() => setIsPlanSidebarOpen(false)} widthAtom={agentsPlanSidebarWidthAtom} minWidth={400} maxWidth={800} side="right" animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{ borderLeftWidth: "0.5px" }}>
+        {!isMobileFullscreen && activeSubChatIdForPlan && <ResizableSidebar isOpen={isPlanSidebarOpen() && !!currentPlanPath} onClose={() => setIsPlanSidebarOpen(false)} widthAtom={agentsPlanSidebarWidthAtom} minWidth={400} maxWidth={800} side="right" animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{ borderLeftWidth: "0.5px" }}>
             <AgentPlanSidebar chatId={activeSubChatIdForPlan} planPath={currentPlanPath} onClose={() => setIsPlanSidebarOpen(false)} onBuildPlan={handleApprovePlanFromSidebar} refetchTrigger={planEditRefetchTrigger} mode={currentMode} />
           </ResizableSidebar>}
 
@@ -4724,7 +4725,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 
         { /* Unified Details Sidebar - combines all right sidebars into one (rightmost) */}
         { /* Show for both local (worktreePath) and remote (sandboxId) chats */}
-        {isUnifiedSidebarEnabled && !isMobileFullscreen && (worktreePath || sandboxId) && <DetailsSidebar chatId={chatId} worktreePath={worktreePath} planPath={currentPlanPath} mode={currentMode} onBuildPlan={handleApprovePlanFromSidebar} planRefetchTrigger={planEditRefetchTrigger} activeSubChatId={activeSubChatIdForPlan} isPlanSidebarOpen={isPlanSidebarOpen && !!currentPlanPath} isTerminalSidebarOpen={isTerminalSidebarOpen} isDiffSidebarOpen={isDiffSidebarOpen} diffDisplayMode={diffDisplayMode} canOpenDiff={canOpenDiff} setIsDiffSidebarOpen={setIsDiffSidebarOpen} diffStats={diffStats} parsedFileDiffs={parsedFileDiffs} onCommit={handleCommitToPr} isCommitting={isCommittingToPr} onExpandTerminal={() => setIsTerminalSidebarOpen(true)} onExpandPlan={() => setIsPlanSidebarOpen(true)} onExpandDiff={() => setIsDiffSidebarOpen(true)} onFileSelect={(filePath) => {
+        {isUnifiedSidebarEnabled && !isMobileFullscreen && (worktreePath || sandboxId) && <DetailsSidebar chatId={chatId} worktreePath={worktreePath} planPath={currentPlanPath} mode={currentMode} onBuildPlan={handleApprovePlanFromSidebar} planRefetchTrigger={planEditRefetchTrigger} activeSubChatId={activeSubChatIdForPlan} isPlanSidebarOpen={isPlanSidebarOpen() && !!currentPlanPath} isTerminalSidebarOpen={isTerminalSidebarOpen()} isDiffSidebarOpen={isDiffSidebarOpen()} diffDisplayMode={diffDisplayMode} canOpenDiff={canOpenDiff} setIsDiffSidebarOpen={setIsDiffSidebarOpen} diffStats={diffStats} parsedFileDiffs={parsedFileDiffs} onCommit={handleCommitToPr} isCommitting={isCommittingToPr} onExpandTerminal={() => setIsTerminalSidebarOpen(true)} onExpandPlan={() => setIsPlanSidebarOpen(true)} onExpandDiff={() => setIsDiffSidebarOpen(true)} onFileSelect={(filePath) => {
  // Set the selected file path
 		setSelectedFilePath(filePath);
 		// Set filtered files to just this file

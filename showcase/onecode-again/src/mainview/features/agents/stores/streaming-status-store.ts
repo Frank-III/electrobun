@@ -1,57 +1,47 @@
-import { create } from "zustand"
-import { subscribeWithSelector } from "zustand/middleware"
+import { createStore, produce } from "solid-js/store"
 
 export type StreamingStatus = "ready" | "streaming" | "submitted" | "error"
 
 interface StreamingStatusState {
-  // Map: subChatId -> streaming status
   statuses: Record<string, StreamingStatus>
-
-  // Actions
-  setStatus: (subChatId: string, status: StreamingStatus) => void
-  getStatus: (subChatId: string) => StreamingStatus
-  isStreaming: (subChatId: string) => boolean
-  clearStatus: (subChatId: string) => void
-
-  // Get all sub-chats that are ready (not streaming)
-  getReadySubChats: () => string[]
 }
 
-export const useStreamingStatusStore = create<StreamingStatusState>()(
-  subscribeWithSelector((set, get) => ({
-    statuses: {},
+const [store, setStore] = createStore<StreamingStatusState>({
+  statuses: {},
+})
 
-    setStatus: (subChatId, status) => {
-      set((state) => ({
-        statuses: {
-          ...state.statuses,
-          [subChatId]: status,
-        },
-      }))
+export function useStreamingStatusStore() {
+  return {
+    get statuses() { return store.statuses },
+
+    setStatus: (subChatId: string, status: StreamingStatus) => {
+      setStore("statuses", subChatId, status)
     },
 
-    getStatus: (subChatId) => {
-      return get().statuses[subChatId] ?? "ready"
+    getStatus: (subChatId: string): StreamingStatus => {
+      return store.statuses[subChatId] ?? "ready"
     },
 
-    isStreaming: (subChatId) => {
-      const status = get().statuses[subChatId] ?? "ready"
+    isStreaming: (subChatId: string): boolean => {
+      const status = store.statuses[subChatId] ?? "ready"
       return status === "streaming" || status === "submitted"
     },
 
-    clearStatus: (subChatId) => {
-      set((state) => {
-        const newStatuses = { ...state.statuses }
-        delete newStatuses[subChatId]
-        return { statuses: newStatuses }
-      })
+    clearStatus: (subChatId: string) => {
+      setStore(produce((state) => {
+        delete state.statuses[subChatId]
+      }))
     },
 
-    getReadySubChats: () => {
-      const { statuses } = get()
-      return Object.entries(statuses)
+    getReadySubChats: (): string[] => {
+      return Object.entries(store.statuses)
         .filter(([_, status]) => status === "ready")
         .map(([subChatId]) => subChatId)
     },
-  }))
-)
+  }
+}
+
+// For direct state access (e.g., from other stores or effects)
+export function getStreamingStatusState() {
+  return store
+}

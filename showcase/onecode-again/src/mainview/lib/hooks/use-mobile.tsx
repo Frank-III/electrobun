@@ -1,4 +1,4 @@
-import * as React from "solid-js";
+import { createSignal, createEffect, onCleanup } from "solid-js";
 // Breakpoint for narrow/mobile layout in desktop app
 const NARROW_BREAKPOINT = 600;
 export function useIsMobile() {
@@ -13,7 +13,7 @@ export function useIsMobile() {
 		};
 		mql.addEventListener("change", onChange);
 		setIsMobile(window.innerWidth < NARROW_BREAKPOINT);
-		return () => mql.removeEventListener("change", onChange);
-	}, []);
+		onCleanup(() => mql.removeEventListener("change", onChange));
+	});
 	return isMobile;
 }
