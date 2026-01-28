@@ -56,8 +56,8 @@
         "Timeout refs use let timeoutRef: ReturnType<typeof setTimeout> | undefined"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted agents-keyboard-tab.tsx: createSignal for ref -> let ref, .current -> direct access, return cleanup -> onCleanup(), ref={signal} -> ref={el => ref = el}"
     },
     {
       "id": "US-005",
@@ -70,8 +70,8 @@
         "TerminalSearch.tsx uses signal() for all reads"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted all files: terminal.tsx (refs to let, fullThemeData() accessor, DragEvent types), terminal-tabs.tsx (removed memo/forwardRef, For component, props pattern), terminal-sidebar.tsx (removed motion/react, signal accessors for atoms, Show components), TerminalSearch.tsx (props pattern, Show component)"
     },
     {
       "id": "US-006",

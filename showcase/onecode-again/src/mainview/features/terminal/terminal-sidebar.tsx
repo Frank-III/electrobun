@@ -1,8 +1,7 @@
-import { createEffect, createMemo, createSignal } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
 import { useAtom, useAtomValue } from "../../lib/state/jotai";
 import { useTheme } from "../../lib/hooks/use-theme";
 import { fullThemeDataAtom } from "@/lib/atoms";
-import { motion } from "motion/react";
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -58,7 +57,7 @@ function getNextTerminalName(terminals: TerminalInstance[]): string {
 export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialCommands, isMobileFullscreen = false, onClose }: TerminalSidebarProps) {
 	// Per-chat terminal sidebar state
 	const terminalSidebarAtom = createMemo(() => terminalSidebarOpenAtomFamily(chatId));
-	const [isOpen, setIsOpen] = useAtom(terminalSidebarAtom);
+	const [isOpen, setIsOpen] = useAtom(terminalSidebarAtom());
 	const [allTerminals, setAllTerminals] = useAtom(terminalsAtom);
 	const [allActiveIds, setAllActiveIds] = useAtom(activeTerminalIdAtom);
 	const terminalCwds = useAtomValue(terminalCwdAtom);
@@ -69,34 +68,28 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 	const toggleTerminalHotkey = useResolvedHotkeyDisplay("toggle-terminal");
 	const fullThemeData = useAtomValue(fullThemeDataAtom);
 	const terminalBg = createMemo(() => {
+		const themeData = fullThemeData();
 		// Use VS Code theme terminal background if available
-		if (fullThemeData?.colors?.["terminal.background"]) {
-			return fullThemeData.colors["terminal.background"];
+		if (themeData?.colors?.["terminal.background"]) {
+			return themeData.colors["terminal.background"];
 		}
-		if (fullThemeData?.colors?.["editor.background"]) {
-			return fullThemeData.colors["editor.background"];
+		if (themeData?.colors?.["editor.background"]) {
+			return themeData.colors["editor.background"];
 		}
 		return getDefaultTerminalBg(isDark);
 	});
 	// Get terminals for this chat
-	const terminals = createMemo(() => allTerminals[chatId] || []);
+	const terminals = createMemo(() => allTerminals()[chatId] || []);
 	// Get active terminal ID for this chat
-	const activeTerminalId = createMemo(() => allActiveIds[chatId] || null);
+	const activeTerminalId = createMemo(() => allActiveIds()[chatId] || null);
 	// Get the active terminal instance
-	const activeTerminal = createMemo(() => terminals.find((t) => t.id === activeTerminalId) || null);
+	const activeTerminal = createMemo(() => terminals().find((t) => t.id === activeTerminalId()) || null);
 	// tRPC mutation for killing terminal sessions
 	const killMutation = trpc.terminal.kill.useMutation();
-	// Refs to avoid callback recreation
-	const [chatIdRef, setChatIdRef] = createSignal(chatId);
-	chatIdRef.current = chatId;
-	const [terminalsRef, setTerminalsRef] = createSignal(terminals);
-	terminalsRef.current = terminals;
-	const [activeTerminalIdRef, setActiveTerminalIdRef] = createSignal(activeTerminalId);
-	activeTerminalIdRef.current = activeTerminalId;
 	// Create a new terminal - stable callback
 	const createTerminal = () => {
-		const currentChatId = chatIdRef.current;
-		const currentTerminals = terminalsRef.current;
+		const currentChatId = chatId;
+		const currentTerminals = terminals();
 		const id = generateTerminalId();
 		const paneId = generatePaneId(currentChatId, id);
 		const name = getNextTerminalName(currentTerminals);
@@ -118,17 +111,15 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 	};
 	// Select a terminal - stable callback
 	const selectTerminal = (id: string) => {
-		const currentChatId = chatIdRef.current;
 		setAllActiveIds((prev) => ({
 			...prev,
-			[currentChatId]: id
+			[chatId]: id
 		}));
 	};
 	// Close a terminal - stable callback
 	const closeTerminal = (id: string) => {
-		const currentChatId = chatIdRef.current;
-		const currentTerminals = terminalsRef.current;
-		const currentActiveId = activeTerminalIdRef.current;
+		const currentTerminals = terminals();
+		const currentActiveId = activeTerminalId();
 		const terminal = currentTerminals.find((t) => t.id === id);
 		if (!terminal) return;
 		// Kill the session on the backend
@@ -137,23 +128,22 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 		const newTerminals = currentTerminals.filter((t) => t.id !== id);
 		setAllTerminals((prev) => ({
 			...prev,
-			[currentChatId]: newTerminals
+			[chatId]: newTerminals
 		}));
 		// If we closed the active terminal, switch to another
 		if (currentActiveId === id) {
 			const newActive = newTerminals[newTerminals.length - 1]?.id || null;
 			setAllActiveIds((prev) => ({
 				...prev,
-				[currentChatId]: newActive
+				[chatId]: newActive
 			}));
 		}
 	};
 	// Rename a terminal - stable callback
 	const renameTerminal = (id: string, name: string) => {
-		const currentChatId = chatIdRef.current;
 		setAllTerminals((prev) => ({
 			...prev,
-			[currentChatId]: (prev[currentChatId] || []).map((t) => t.id === id ? {
+			[chatId]: (prev[chatId] || []).map((t) => t.id === id ? {
 				...t,
 				name
 			} : t)
@@ -161,8 +151,7 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 	};
 	// Close other terminals - stable callback
 	const closeOtherTerminals = (id: string) => {
-		const currentChatId = chatIdRef.current;
-		const currentTerminals = terminalsRef.current;
+		const currentTerminals = terminals();
 		// Kill all terminals except the one with the given id
 		currentTerminals.forEach((terminal) => {
 			if (terminal.id !== id) {
@@ -173,18 +162,17 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 		const remainingTerminal = currentTerminals.find((t) => t.id === id);
 		setAllTerminals((prev) => ({
 			...prev,
-			[currentChatId]: remainingTerminal ? [remainingTerminal] : []
+			[chatId]: remainingTerminal ? [remainingTerminal] : []
 		}));
 		// Set the remaining terminal as active
 		setAllActiveIds((prev) => ({
 			...prev,
-			[currentChatId]: id
+			[chatId]: id
 		}));
 	};
 	// Close terminals to the right - stable callback
 	const closeTerminalsToRight = (id: string) => {
-		const currentChatId = chatIdRef.current;
-		const currentTerminals = terminalsRef.current;
+		const currentTerminals = terminals();
 		const index = currentTerminals.findIndex((t) => t.id === id);
 		if (index === -1) return;
 		// Kill terminals to the right
@@ -196,14 +184,14 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 		const remainingTerminals = currentTerminals.slice(0, index + 1);
 		setAllTerminals((prev) => ({
 			...prev,
-			[currentChatId]: remainingTerminals
+			[chatId]: remainingTerminals
 		}));
 		// If active terminal was closed, switch to the last remaining one
-		const currentActiveId = activeTerminalIdRef.current;
+		const currentActiveId = activeTerminalId();
 		if (currentActiveId && !remainingTerminals.find((t) => t.id === currentActiveId)) {
 			setAllActiveIds((prev) => ({
 				...prev,
-				[currentChatId]: remainingTerminals[remainingTerminals.length - 1]?.id || null
+				[chatId]: remainingTerminals[remainingTerminals.length - 1]?.id || null
 			}));
 		}
 	};
@@ -213,25 +201,25 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 	};
 	// Delay terminal rendering until animation completes to avoid xterm.js sizing issues
 	const [canRenderTerminal, setCanRenderTerminal] = createSignal(false);
-	const [wasOpenRef, setWasOpenRef] = createSignal(false);
+	let wasOpenRef = false;
 	createEffect(() => {
-		if (isOpen && !wasOpenRef.current) {
+		if (isOpen() && !wasOpenRef) {
 			// Sidebar just opened - delay terminal render until animation completes
 			setCanRenderTerminal(false);
 			const timer = setTimeout(() => {
 				setCanRenderTerminal(true);
 			}, SIDEBAR_ANIMATION_DURATION_MS + ANIMATION_BUFFER_MS);
-			wasOpenRef.current = true;
-			return () => clearTimeout(timer);
-		} else if (!isOpen) {
+			wasOpenRef = true;
+			onCleanup(() => clearTimeout(timer));
+		} else if (!isOpen()) {
 			// Sidebar closed - reset state
-			wasOpenRef.current = false;
+			wasOpenRef = false;
 			setCanRenderTerminal(false);
 		}
 	});
 	// Auto-create first terminal when sidebar opens and no terminals exist
 	createEffect(() => {
-		if (isOpen && terminals.length === 0) {
+		if (isOpen() && terminals().length === 0) {
 			createTerminal();
 		}
 	});
@@ -245,7 +233,7 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown, true);
-		return () => window.removeEventListener("keydown", handleKeyDown, true);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown, true));
 	});
 	// Handle mobile close - also close the sidebar atom to prevent re-opening as desktop sidebar
 	const handleMobileClose = () => {
@@ -257,39 +245,43 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
 		return <div class="flex flex-col h-full w-full bg-background">
         {		/* Mobile header with back button and tabs */}
         <div class="flex items-center gap-1.5 px-2 py-2 flex-shrink-0 border-b" style={{
- backgroundColor: terminalBg,
-			WebkitAppRegion: "drag",
-			borderBottomWidth: "0.5px"
+ "background-color": terminalBg(),
+			"-webkit-app-region": "drag",
+			"border-bottom-width": "0.5px"
 		}}>
           {		/* Back button */}
-          <Button variant="ghost" size="icon" onClick={handleMobileClose} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="Back to chat" style={{ WebkitAppRegion: "no-drag" }}>
+          <Button variant="ghost" size="icon" onClick={handleMobileClose} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="Back to chat" style={{ "-webkit-app-region": "no-drag" }}>
             <AlignJustify class="h-4 w-4" />
           </Button>
 
           { /* Terminal Tabs - directly after back button, inherits drag from parent */}
           <div class="flex items-center gap-1 flex-1 min-w-0">
-            {terminals.length > 0 && <TerminalTabs terminals={terminals} activeTerminalId={activeTerminalId} cwds={terminalCwds} initialCwd={cwd} terminalBg={terminalBg} onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />}
+            <Show when={terminals().length > 0}>
+              <TerminalTabs terminals={terminals()} activeTerminalId={activeTerminalId()} cwds={terminalCwds()} initialCwd={cwd} terminalBg={terminalBg()} onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />
+            </Show>
           </div>
         </div>
 
         { /* Terminal Content */}
-        <div class="flex-1 min-h-0 min-w-0 overflow-hidden" style={{ backgroundColor: terminalBg }}>
-          {activeTerminal && canRenderTerminal ? <motion.div key={activeTerminal.paneId} class="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0 }}>
-              <Terminal paneId={activeTerminal.paneId} cwd={cwd} workspaceId={workspaceId} tabId={tabId} initialCommands={initialCommands} initialCwd={cwd} />
-            </motion.div> : <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
-              {!canRenderTerminal ? "" : "No terminal open"}
-            </div>}
+        <div class="flex-1 min-h-0 min-w-0 overflow-hidden" style={{ "background-color": terminalBg() }}>
+          <Show when={activeTerminal() && canRenderTerminal()} fallback={<div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+              {!canRenderTerminal() ? "" : "No terminal open"}
+            </div>}>
+            <div class="h-full">
+              <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} workspaceId={workspaceId} tabId={tabId} initialCommands={initialCommands} initialCwd={cwd} />
+            </div>
+          </Show>
         </div>
       </div>;
- }
+	}
 	// Desktop sidebar layout
-	return <ResizableSidebar isOpen={isOpen} onClose={closeSidebar} widthAtom={terminalSidebarWidthAtom} side="right" minWidth={300} maxWidth={800} animationDuration={SIDEBAR_ANIMATION_DURATION_SECONDS} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-background border-l" style={{
-		borderLeftWidth: "0.5px",
+	return <ResizableSidebar isOpen={isOpen()} onClose={closeSidebar} widthAtom={terminalSidebarWidthAtom} side="right" minWidth={300} maxWidth={800} animationDuration={SIDEBAR_ANIMATION_DURATION_SECONDS} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-background border-l" style={{
+		"border-left-width": "0.5px",
 		overflow: "hidden"
 	}}>
       <div class="flex flex-col h-full min-w-0 overflow-hidden">
         {	/* Header with tabs */}
-        <div class="flex items-center gap-1 pl-1 pr-2 py-1.5 flex-shrink-0" style={{ backgroundColor: terminalBg }}>
+        <div class="flex items-center gap-1 pl-1 pr-2 py-1.5 flex-shrink-0" style={{ "background-color": terminalBg() }}>
           { /* Close button - on the left */}
           <div class="flex items-center flex-shrink-0">
             <Tooltip>
@@ -306,17 +298,21 @@ export function TerminalSidebar({ chatId, cwd, workspaceId, tabId, initialComman
           </div>
 
           { /* Terminal Tabs */}
-          {terminals.length > 0 && <TerminalTabs terminals={terminals} activeTerminalId={activeTerminalId} cwds={terminalCwds} initialCwd={cwd} terminalBg={terminalBg} onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />}
+          <Show when={terminals().length > 0}>
+            <TerminalTabs terminals={terminals()} activeTerminalId={activeTerminalId()} cwds={terminalCwds()} initialCwd={cwd} terminalBg={terminalBg()} onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />
+          </Show>
         </div>
 
         { /* Terminal Content */}
-        <div class="flex-1 min-h-0 min-w-0 overflow-hidden" style={{ backgroundColor: terminalBg }}>
-          {activeTerminal && canRenderTerminal ? <motion.div key={activeTerminal.paneId} class="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0 }}>
-              <Terminal paneId={activeTerminal.paneId} cwd={cwd} workspaceId={workspaceId} tabId={tabId} initialCommands={initialCommands} initialCwd={cwd} />
-            </motion.div> : <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
-              {!canRenderTerminal ? "" : "No terminal open"}
-            </div>}
+        <div class="flex-1 min-h-0 min-w-0 overflow-hidden" style={{ "background-color": terminalBg() }}>
+          <Show when={activeTerminal() && canRenderTerminal()} fallback={<div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+              {!canRenderTerminal() ? "" : "No terminal open"}
+            </div>}>
+            <div class="h-full">
+              <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} workspaceId={workspaceId} tabId={tabId} initialCommands={initialCommands} initialCwd={cwd} />
+            </div>
+          </Show>
         </div>
       </div>
     </ResizableSidebar>;
- }
+}

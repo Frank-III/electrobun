@@ -19,6 +19,8 @@ Started: 2026-01-28
 - Use `onCleanup()` in effects instead of returning a cleanup function
 - Use `import type { X }` for type-only imports (verbatimModuleSyntax)
 - tRPC still uses React Query wrapper - `isLoading` and `data` are not SolidJS signals yet
+- useAtomValue returns an accessor: `const value = useAtomValue(atom); value().someProperty` not `value.someProperty`
+- Replace React.DragEvent/React.MouseEvent with native DOM types (DragEvent, MouseEvent)
 
 ---
 
@@ -66,4 +68,31 @@ Thread: https://ampcode.com/threads/T-019c05f2-5d5e-77dd-a3e9-d7bca63d6165
   - agents-mcp-tab.tsx and agents-skills-tab.tsx already had proper onCleanup usage
   - Type imports should use `import type { X }` for verbatimModuleSyntax compliance
   - Remaining type errors are about Kobalte Select component props (different migration story)
+---
+
+## 2026-01-28 - US-004
+Thread: https://ampcode.com/threads/T-019c05f7-0402-7535-989e-2b8347ea9fc4
+- Converted React refs to SolidJS direct-value pattern in settings dialog tabs
+- Files changed:
+  - src/mainview/components/dialogs/settings-tabs/agents-keyboard-tab.tsx - replaced createSignal for ref with let ref pattern, removed .current access, fixed onCleanup usage, fixed ref assignment callback
+- **Learnings for future iterations:**
+  - Only agents-keyboard-tab.tsx had React ref patterns (.current usage) in the settings tabs - other files were already clean or only had `e.currentTarget` which is correct
+  - setTimeout calls in these files don't use ref patterns (they're inline), no conversion needed
+  - The file already had createSignal import, just needed to add onCleanup
+---
+
+## 2026-01-28 - US-005
+Thread: https://ampcode.com/threads/T-019c05f9-b10e-775c-9a8a-6aa4d6ddb077
+- Fixed signal accessors in terminal components
+- Files changed:
+  - src/mainview/features/terminal/terminal.tsx - converted createSignal refs to let refs, removed .current patterns, fixed fullThemeData() accessor, used DragEvent type instead of React.DragEvent, onCleanup() in effects
+  - src/mainview/features/terminal/terminal-tabs.tsx - removed memo() and forwardRef(), converted to props pattern, used For component instead of .map(), fixed signal accessors
+  - src/mainview/features/terminal/terminal-sidebar.tsx - removed motion/react import (replaced with plain div), fixed useAtom/useAtomValue signal accessors, used Show components, kebab-case CSS
+  - src/mainview/features/terminal/TerminalSearch.tsx - converted to props pattern, let refs, Show component instead of early return
+- **Learnings for future iterations:**
+  - motion/react (Framer Motion) is not installed - solid-motionone should be used for SolidJS, but for simple opacity animations just use CSS or plain divs
+  - useAtomValue returns an accessor that must be called: `fullThemeData()` not `fullThemeData?.colors`
+  - When using createMemo with atom values, call the atom accessor inside: `createMemo(() => allTerminals()[chatId])`
+  - React.DragEvent should be replaced with native DragEvent type
+  - Kobalte asChild prop issues are pre-existing and not part of this migration story
 ---

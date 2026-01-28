@@ -1,5 +1,5 @@
 "use client";
-import { createMemo, createSignal, createEffect } from "solid-js";
+import { createMemo, createSignal, createEffect, onCleanup } from "solid-js";
 import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { X, RotateCcw, Search, Settings2 } from "lucide-solid";
 import { cn } from "../../../lib/utils";
@@ -110,7 +110,7 @@ function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, on
 }) {
 	const isCustom = isCustomHotkey(action.id, config);
 	let currentHotkey = getResolvedHotkey(action.id, config);
-	const [recorderButtonRef, setRecorderButtonRef] = createSignal<HTMLButtonElement>(null);
+	let recorderButtonRef: HTMLButtonElement | undefined;
 	// Handle dynamic shortcuts for ctrl+tab
 	if (action.isDynamic && !isCustom) {
 		if (action.id === "quick-switch-workspaces") {
@@ -131,12 +131,12 @@ function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, on
 	createEffect(() => {
 		if (!isRecording) return;
 		const handleClickOutside = (e: MouseEvent) => {
-			if (recorderButtonRef.current && !recorderButtonRef.current.contains(e.target as Node)) {
+			if (recorderButtonRef && !recorderButtonRef.contains(e.target as Node)) {
 				onCancel();
 			}
 		};
 		document.addEventListener("mousedown", handleClickOutside);
-		return () => document.removeEventListener("mousedown", handleClickOutside);
+		onCleanup(() => document.removeEventListener("mousedown", handleClickOutside));
 	});
 	return <div class="flex flex-col items-center justify-center h-full p-8">
       {	/* Title */}
@@ -146,7 +146,7 @@ function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, on
       </p>
 
       { /* Hotkey display / recorder */}
-      <button ref={recorderButtonRef} type="button" onClick={onStartRecording} class={cn("flex items-center justify-center gap-1 px-6 py-3 h-[52px] rounded-lg border-2 transition-shadow", isRecording ? "border-primary bg-secondary ring-[3px] ring-primary/20" : conflictMessage ? "border-red-500 bg-red-500/10" : "border-border bg-background hover:border-muted-foreground/50 hover:bg-secondary/50")}>
+      <button ref={el => recorderButtonRef = el} type="button" onClick={onStartRecording} class={cn("flex items-center justify-center gap-1 px-6 py-3 h-[52px] rounded-lg border-2 transition-shadow", isRecording ? "border-primary bg-secondary ring-[3px] ring-primary/20" : conflictMessage ? "border-red-500 bg-red-500/10" : "border-border bg-background hover:border-muted-foreground/50 hover:bg-secondary/50")}>
         {(() => {
  // During recording, show currentKeys or "Press keys..."
 		if (isRecording) {

@@ -1,4 +1,4 @@
-import { createEffect, createSignal, createMemo } from "solid-js";
+import { createEffect, createSignal, createMemo, onCleanup } from "solid-js";
 import type { Terminal as XTerm } from "xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
@@ -18,13 +18,13 @@ import { TerminalSearch } from "./TerminalSearch";
 import type { TerminalProps, TerminalStreamEvent } from "./types";
 import "xterm/css/xterm.css";
 export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, initialCwd }: TerminalProps) {
-	const [containerRef, setContainerRef] = createSignal<HTMLDivElement>(null);
-	const [xtermRef, setXtermRef] = createSignal<XTerm | null>(null);
-	const [fitAddonRef, setFitAddonRef] = createSignal<FitAddon | null>(null);
-	const [searchAddonRef, setSearchAddonRef] = createSignal<SearchAddon | null>(null);
-	const [serializeAddonRef, setSerializeAddonRef] = createSignal<SerializeAddon | null>(null);
-	const [isExitedRef, setIsExitedRef] = createSignal(false);
-	const [commandBufferRef, setCommandBufferRef] = createSignal("");
+	let containerRef: HTMLDivElement | undefined;
+	let xtermRef: XTerm | undefined;
+	let fitAddonRef: FitAddon | undefined;
+	let searchAddonRef: SearchAddon | undefined;
+	let serializeAddonRef: SerializeAddon | undefined;
+	let isExitedRef = false;
+	let commandBufferRef = "";
 	const [isSearchOpen, setIsSearchOpen] = createSignal(false);
 	const [terminalCwd, setTerminalCwd] = createSignal(initialCwd || cwd);
 	const setGlobalCwds = useSetAtom(terminalCwdAtom);
@@ -33,29 +33,12 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 	const isDark = resolvedTheme() === "dark";
 	// VS Code theme data (if a full theme is selected)
 	const fullThemeData = useAtomValue(fullThemeDataAtom);
-	// Ref for terminalCwd to avoid effect re-runs when cwd changes
-	const [terminalCwdRef, setTerminalCwdRef] = createSignal(terminalCwd);
-	terminalCwdRef.current = terminalCwd;
-	// Ref for paneId to use in callbacks
-	const [paneIdRef, setPaneIdRef] = createSignal(paneId);
-	paneIdRef.current = paneId;
 	// Mutations
 	const createOrAttachMutation = trpc.terminal.createOrAttach.useMutation();
 	const writeMutation = trpc.terminal.write.useMutation();
 	const resizeMutation = trpc.terminal.resize.useMutation();
 	const detachMutation = trpc.terminal.detach.useMutation();
 	const clearScrollbackMutation = trpc.terminal.clearScrollback.useMutation();
-	// Refs for mutations to avoid effect re-runs
-	const [createOrAttachRef, setCreateOrAttachRef] = createSignal(createOrAttachMutation.mutate);
-	const [writeRef, setWriteRef] = createSignal(writeMutation.mutate);
-	const [resizeRef, setResizeRef] = createSignal(resizeMutation.mutate);
-	const [detachRef, setDetachRef] = createSignal(detachMutation.mutate);
-	const [clearScrollbackRef, setClearScrollbackRef] = createSignal(clearScrollbackMutation.mutate);
-	createOrAttachRef.current = createOrAttachMutation.mutate;
-	writeRef.current = writeMutation.mutate;
-	resizeRef.current = resizeMutation.mutate;
-	detachRef.current = detachMutation.mutate;
-	clearScrollbackRef.current = clearScrollbackMutation.mutate;
 	// Parse terminal data for cwd (OSC 7 sequences)
 	const updateCwdFromData = (data: string) => {
 		const parsedCwd = parseCwd(data);
@@ -65,22 +48,20 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 			// Also update global atom for the tabs to show
 			setGlobalCwds((prev) => ({
 				...prev,
-				[paneIdRef.current]: parsedCwd
+				[paneId]: parsedCwd
 			}));
 		}
 	};
-	const [updateCwdRef, setUpdateCwdRef] = createSignal(updateCwdFromData);
-	updateCwdRef.current = updateCwdFromData;
 	// Handle stream data
 	const handleStreamData = (event: TerminalStreamEvent) => {
-		if (!xtermRef.current) return;
+		if (!xtermRef) return;
 		if (event.type === "data" && event.data) {
-			xtermRef.current.write(event.data);
-			updateCwdRef.current(event.data);
+			xtermRef.write(event.data);
+			updateCwdFromData(event.data);
 		} else if (event.type === "exit") {
-			isExitedRef.current = true;
-			xtermRef.current.writeln(`\r\n\r\n[Process exited with code ${event.exitCode}]`);
-			xtermRef.current.writeln("[Press any key to restart]");
+			isExitedRef = true;
+			xtermRef.writeln(`\r\n\r\n[Process exited with code ${event.exitCode}]`);
+			xtermRef.writeln("[Press any key to restart]");
 		}
 	};
 	// Subscribe to terminal output
@@ -88,13 +69,13 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 		onData: handleStreamData,
 		onError: (err) => {
 			console.error("[Terminal] Stream error:", err);
-			xtermRef.current?.write(`\r\n\x1b[31m[Connection error: ${err.message}]\x1b[0m\r\n`);
+			xtermRef?.write(`\r\n\x1b[31m[Connection error: ${err.message}]\x1b[0m\r\n`);
 		},
 		enabled: true
 	});
 	// Initialize terminal
 	createEffect(() => {
-		const container = containerRef.current;
+		const container = containerRef;
 		if (!container) return;
 		console.log("[Terminal:useEffect] MOUNT - paneId:", paneId);
 		console.log("[Terminal:useEffect] Container rect:", container.getBoundingClientRect());
@@ -102,7 +83,7 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 		// Create xterm instance
 		console.log("[Terminal:useEffect] Creating terminal instance...", { isDark });
 		const { xterm, fitAddon, serializeAddon, cleanup } = createTerminalInstance(container, {
-			cwd: terminalCwdRef.current || cwd,
+			cwd: terminalCwd() || cwd,
 			isDark,
 			onFileLinkClick: (path, line, column) => {
 				console.log("[Terminal] File link clicked:", path, line, column);
@@ -113,16 +94,16 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 				window.desktopApi.openExternal(url);
 			}
 		});
-		xtermRef.current = xterm;
-		fitAddonRef.current = fitAddon;
-		serializeAddonRef.current = serializeAddon;
-		isExitedRef.current = false;
+		xtermRef = xterm;
+		fitAddonRef = fitAddon;
+		serializeAddonRef = serializeAddon;
+		isExitedRef = false;
 		// Lazy load search addon
 		import("@xterm/addon-search").then(({ SearchAddon }) => {
-			if (isUnmounted || !xtermRef.current) return;
+			if (isUnmounted || !xtermRef) return;
 			const searchAddon = new SearchAddon();
-			xtermRef.current.loadAddon(searchAddon);
-			searchAddonRef.current = searchAddon;
+			xtermRef.loadAddon(searchAddon);
+			searchAddonRef = searchAddon;
 		});
 		// Apply serialized state from server
 		const applySerializedState = (serializedState: string) => {
@@ -132,26 +113,26 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 		};
 		// Restart terminal after exit
 		const restartTerminal = () => {
-			isExitedRef.current = false;
+			isExitedRef = false;
 			xterm.clear();
-			createOrAttachRef.current({
+			createOrAttachMutation.mutate({
 				paneId,
 				tabId,
 				workspaceId,
 				cols: xterm.cols,
 				rows: xterm.rows,
-				cwd: terminalCwdRef.current || cwd
+				cwd: terminalCwd() || cwd
 			}, { onSuccess: (result) => {
 				applySerializedState(result.serializedState);
 			} });
 		};
 		// Input handler
 		const handleTerminalInput = (data: string) => {
-			if (isExitedRef.current) {
+			if (isExitedRef) {
 				restartTerminal();
 				return;
 			}
-			writeRef.current({
+			writeMutation.mutate({
 				paneId,
 				data
 			});
@@ -163,19 +144,19 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 		}) => {
 			const { domEvent } = event;
 			if (domEvent.key === "Enter") {
-				const title = sanitizeForTitle(commandBufferRef.current);
+				const title = sanitizeForTitle(commandBufferRef);
 				if (title) {}
-				commandBufferRef.current = "";
+				commandBufferRef = "";
 			} else if (domEvent.key === "Backspace") {
-				commandBufferRef.current = commandBufferRef.current.slice(0, -1);
+				commandBufferRef = commandBufferRef.slice(0, -1);
 			} else if (domEvent.key === "c" && domEvent.ctrlKey) {
-				commandBufferRef.current = "";
+				commandBufferRef = "";
 			} else if (domEvent.key.length === 1 && !domEvent.ctrlKey && !domEvent.metaKey) {
-				commandBufferRef.current += domEvent.key;
+				commandBufferRef += domEvent.key;
 			}
 		};
 		// Create or attach to session
-		createOrAttachRef.current({
+		createOrAttachMutation.mutate({
 			paneId,
 			tabId,
 			workspaceId,
@@ -197,11 +178,11 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 		const keyDisposable = xterm.onKey(handleKeyPress);
 		const handleClear = () => {
 			xterm.clear();
-			clearScrollbackRef.current({ paneId });
+			clearScrollbackMutation.mutate({ paneId });
 		};
 		const handleWrite = (data: string) => {
-			if (!isExitedRef.current) {
-				writeRef.current({
+			if (!isExitedRef) {
+				writeMutation.mutate({
 					paneId,
 					data
 				});
@@ -216,21 +197,21 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 			// TODO: Set focused pane
 		});
 		const cleanupResize = setupResizeHandlers(container, xterm, fitAddon, (cols, rows) => {
-			resizeRef.current({
+			resizeMutation.mutate({
 				paneId,
 				cols,
 				rows
 			});
 		});
 		const cleanupPaste = setupPasteHandler(xterm, { onPaste: (text) => {
-			commandBufferRef.current += text;
+			commandBufferRef += text;
 		} });
 		const cleanupContextMenu = setupContextMenuHandler(xterm, {
 			onCopy: () => {
 				toast.success("Copied to clipboard");
 			},
 			onPaste: (text) => {
-				commandBufferRef.current += text;
+				commandBufferRef += text;
 			},
 			onCopyError: () => {
 				toast.error("Failed to copy to clipboard");
@@ -240,7 +221,7 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 			}
 		});
 		// Cleanup on unmount
-		return () => {
+		onCleanup(() => {
 			console.log("[Terminal:useEffect] UNMOUNT - paneId:", paneId);
 			isUnmounted = true;
 			inputDisposable.dispose();
@@ -256,26 +237,25 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 			console.log("[Terminal:useEffect] Serializing state before detach...");
 			const serializedState = serializeAddon.serialize();
 			// Detach instead of kill - keeps session alive for reattach
-			detachRef.current({
+			detachMutation.mutate({
 				paneId,
 				serializedState
 			});
 			console.log("[Terminal:useEffect] Disposing xterm...");
 			xterm.dispose();
-			xtermRef.current = null;
-			fitAddonRef.current = null;
-			searchAddonRef.current = null;
-			serializeAddonRef.current = null;
+			xtermRef = undefined;
+			fitAddonRef = undefined;
+			searchAddonRef = undefined;
+			serializeAddonRef = undefined;
 			console.log("[Terminal:useEffect] UNMOUNT complete");
-		};
-		// Note: terminalCwd is accessed via ref to avoid remounting on cwd changes
-		// eslint-disable-next-line react-hooks/exhaustive-deps
+		});
 	});
 	// Update theme when isDark changes or VS Code theme changes (without recreating terminal)
 	createEffect(() => {
-		if (xtermRef.current) {
-			const newTheme = getTerminalThemeFromVSCode(fullThemeData?.colors, isDark);
-			xtermRef.current.options.theme = newTheme;
+		if (xtermRef) {
+			const themeData = fullThemeData();
+			const newTheme = getTerminalThemeFromVSCode(themeData?.colors, isDark);
+			xtermRef.options.theme = newTheme;
 		}
 	});
 	// Keyboard shortcut for search
@@ -287,16 +267,18 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
 	// Drag and drop files
-	const handleDragOver = (event: React.DragEvent) => {
+	const handleDragOver = (event: DragEvent) => {
 		event.preventDefault();
-		event.dataTransfer.dropEffect = "copy";
+		if (event.dataTransfer) {
+			event.dataTransfer.dropEffect = "copy";
+		}
 	};
-	const handleDrop = (event: React.DragEvent) => {
+	const handleDrop = (event: DragEvent) => {
 		event.preventDefault();
-		const files = Array.from(event.dataTransfer.files);
+		const files = Array.from(event.dataTransfer?.files || []);
 		if (files.length === 0) return;
 		// Get file paths (Electron exposes webUtils)
 		const paths = files.map((file) => {
@@ -304,25 +286,26 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 			return window.webUtils?.getPathForFile?.(file) || file.name;
 		});
 		const text = shellEscapePaths(paths);
-		if (!isExitedRef.current) {
-			writeRef.current({
+		if (!isExitedRef) {
+			writeMutation.mutate({
 				paneId,
 				data: text
 			});
 		}
 	};
 	const terminalBg = createMemo(() => {
+		const themeData = fullThemeData();
 		// Use VS Code theme terminal background if available
-		if (fullThemeData?.colors?.["terminal.background"]) {
-			return fullThemeData.colors["terminal.background"];
+		if (themeData?.colors?.["terminal.background"]) {
+			return themeData.colors["terminal.background"];
 		}
-		if (fullThemeData?.colors?.["editor.background"]) {
-			return fullThemeData.colors["editor.background"];
+		if (themeData?.colors?.["editor.background"]) {
+			return themeData.colors["editor.background"];
 		}
 		return getDefaultTerminalBg(isDark);
 	});
-	return <div role="application" class="relative h-full w-full overflow-hidden" style={{ backgroundColor: terminalBg }} onDragOver={handleDragOver} onDrop={handleDrop}>
-      <TerminalSearch searchAddon={searchAddonRef.current} isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
-      <div ref={containerRef} class="h-full w-full" style={{ padding: "8px" }} />
+	return <div role="application" class="relative h-full w-full overflow-hidden" style={{ "background-color": terminalBg() }} onDragOver={handleDragOver} onDrop={handleDrop}>
+      <TerminalSearch searchAddon={searchAddonRef} isOpen={isSearchOpen()} onClose={() => setIsSearchOpen(false)} />
+      <div ref={el => containerRef = el} class="h-full w-full" style={{ padding: "8px" }} />
     </div>;
 }
