@@ -1,7 +1,8 @@
 "use client";
-import { AnimatePresence, motion } from "motion/react";
-import { createEffect, createSignal } from "solid-js";
-import { createPortal } from "solid-js/web";
+import { Motion, Presence } from "solid-motionone";
+import { Show } from "solid-js";
+import { createEffect, createSignal, onCleanup } from "solid-js";
+import { Portal } from "solid-js/web";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 interface AgentsRenameSubChatDialogProps {
@@ -22,22 +23,22 @@ export function AgentsRenameSubChatDialog({ isOpen, onClose, onSave, currentName
 	const [mounted, setMounted] = createSignal(false);
 	const [name, setName] = createSignal(currentName);
 	const [isSaving, setIsSaving] = createSignal(false);
-	const [openAtRef, setOpenAtRef] = createSignal<number>(0);
-	const [inputRef, setInputRef] = createSignal<HTMLInputElement>(null);
+	let openAtRef = 0;
+	let inputRef: HTMLInputElement | undefined;
 	createEffect(() => {
 		setMounted(true);
 	});
 	createEffect(() => {
 		if (isOpen) {
-			openAtRef.current = performance.now();
+			openAtRef = performance.now();
 			setName(currentName);
 		}
 	});
 	const handleAnimationComplete = () => {
 		// Focus and select input after animation completes (only if still open)
 		if (isOpen) {
-			inputRef.current?.focus();
-			inputRef.current?.select();
+			inputRef?.focus();
+			inputRef?.select();
 		}
 	};
 	createEffect(() => {
@@ -53,10 +54,10 @@ export function AgentsRenameSubChatDialog({ isOpen, onClose, onSave, currentName
 			}
 		};
 		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
 	});
 	const handleClose = () => {
-		const canInteract = performance.now() - openAtRef.current > INTERACTION_DELAY_MS;
+		const canInteract = performance.now() - openAtRef > INTERACTION_DELAY_MS;
 		if (!canInteract || isSaving) return;
 		onClose();
 	};
@@ -74,64 +75,67 @@ export function AgentsRenameSubChatDialog({ isOpen, onClose, onSave, currentName
 			setIsSaving(false);
 		}
 	};
-	if (!mounted) return null;
-	const portalTarget = typeof document !== "undefined" ? document.body : null;
-	if (!portalTarget) return null;
-	return createPortal(<AnimatePresence mode="wait" initial={false}>
-      {isOpen && <>
-          {	/* Overlay */}
-          <motion.div initial={{ opacity: 0 }} animate={{
- opacity: 1,
-		transition: {
-			duration: .18,
-			ease: EASING_CURVE
-		}
-	}} exit={{
-		opacity: 0,
-		pointerEvents: "none" as const,
-		transition: {
-			duration: .15,
-			ease: EASING_CURVE
-		}
-	}} class="fixed inset-0 z-[45] bg-black/25" onClick={handleClose} style={{ pointerEvents: "auto" }} data-modal="agents-rename-subchat" />
+	if (!mounted()) return null;
+	if (typeof document === "undefined") return null;
+	return (
+		<Portal mount={document.body}>
+			<Presence exitBeforeEnter>
+				<Show when={isOpen}>
+					{/* Overlay */}
+					<Motion.div
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						exit={{ opacity: 0 }}
+						transition={{ duration: 0.18, easing: EASING_CURVE }}
+						class="fixed inset-0 z-[45] bg-black/25"
+						onClick={handleClose}
+						style={{ "pointer-events": "auto" }}
+						data-modal="agents-rename-subchat"
+					/>
 
-          {	/* Main Dialog */}
-          <div class="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] z-[46] pointer-events-none">
-            <motion.div initial={{
- scale: .95,
-		opacity: 0
-	}} animate={{
-		scale: 1,
-		opacity: 1
-	}} exit={{
-		scale: .95,
-		opacity: 0
-	}} transition={{
-		duration: .2,
-		ease: EASING_CURVE
-	}} onAnimationComplete={handleAnimationComplete} class="w-[90vw] max-w-[400px] pointer-events-auto" onClick={(e) => e.stopPropagation()}>
-              <div class="bg-background rounded-2xl border shadow-2xl overflow-hidden" data-canvas-dialog>
-                <div class="p-6">
-                  <h2 class="text-xl font-semibold mb-4">
-                    Rename agent
-                  </h2>
+					{/* Main Dialog */}
+					<div class="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] z-[46] pointer-events-none">
+						<Motion.div
+							initial={{ scale: 0.95, opacity: 0 }}
+							animate={{ scale: 1, opacity: 1 }}
+							exit={{ scale: 0.95, opacity: 0 }}
+							transition={{ duration: 0.2, easing: EASING_CURVE }}
+							class="w-[90vw] max-w-[400px] pointer-events-auto"
+							onClick={(e) => e.stopPropagation()}
+						>
+							<div class="bg-background rounded-2xl border shadow-2xl overflow-hidden" data-canvas-dialog>
+								<div class="p-6">
+									<h2 class="text-xl font-semibold mb-4">Rename agent</h2>
+									{/* Input */}
+									<Input
+										ref={el => inputRef = el}
+										value={name()}
+										onInput={(e) => setName(e.currentTarget.value)}
+										placeholder="Chat name"
+										class="w-full h-11 text-sm"
+										disabled={isSaving() || isLoading}
+									/>
+								</div>
 
-                  {	/* Input */}
-                  <Input ref={inputRef} value={name} onInput={(e) => setName(e.currentTarget.value)} placeholder="Chat name" class="w-full h-11 text-sm" disabled={isSaving || isLoading} />
-                </div>
-
-                { /* Footer with buttons */}
-                <div class="bg-muted p-4 flex justify-between border-t border-border rounded-b-xl">
-                  <Button onClick={handleClose} variant="ghost" disabled={isSaving || isLoading} class="rounded-md">
-                    Cancel
-                  </Button>
-                  <Button onClick={handleSave} variant="default" disabled={!name.trim() || name.trim() === currentName || isSaving || isLoading} class="rounded-md">
-                    {isSaving || isLoading ? "Saving..." : "Save"}
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </>}
-    </AnimatePresence>, portalTarget);
- }
+								{/* Footer with buttons */}
+								<div class="bg-muted p-4 flex justify-between border-t border-border rounded-b-xl">
+									<Button onClick={handleClose} variant="ghost" disabled={isSaving() || isLoading} class="rounded-md">
+										Cancel
+									</Button>
+									<Button
+										onClick={handleSave}
+										variant="default"
+										disabled={!name().trim() || name().trim() === currentName || isSaving() || isLoading}
+										class="rounded-md"
+									>
+										{isSaving() || isLoading ? "Saving..." : "Save"}
+									</Button>
+								</div>
+							</div>
+						</Motion.div>
+					</div>
+				</Show>
+			</Presence>
+		</Portal>
+	);
+}

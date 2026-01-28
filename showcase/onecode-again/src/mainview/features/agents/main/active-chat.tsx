@@ -10,12 +10,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/
 // import { clearSubChatSelectionAtom, isSubChatMultiSelectModeAtom, selectedSubChatIdsAtom } from "@/lib/atoms/agent-subchat-selection"
 import { Chat, useChat } from "@ai-sdk/react";
 import { DiffModeEnum } from "@git-diff-view/react";
-import { createMemo, createSignal, createEffect, For, Index, Show } from "solid-js";
+import { createContext, createMemo, createSignal, createEffect, For, Index, Show, useContext } from "solid-js";
 import { ReactiveSet } from "@solid-primitives/set";
 import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 import { ArrowDown, ChevronDown, GitFork, ListTree, TerminalSquare } from "lucide-solid";
-import { AnimatePresence, motion } from "motion/react";
-import { createContext, useContext, createEffect, createEffect, createMemo, createSignal } from "solid-js";
+import { Motion, Presence } from "solid-motionone";
 import { flushSync } from "solid-js/web";
 import { toast } from "solid-sonner";
 import type { FileStatus } from "../../../../shared/changes-types";
@@ -536,10 +535,11 @@ function ScrollToBottomButton({ containerRef, onScrollToBottom, hasStackedCards 
 			container.removeEventListener("scroll", checkVisibility);
 		};
 	});
-	return <AnimatePresence>
-      {isVisible && <Tooltip delayDuration={300}>
+	return <Presence>
+      <Show when={isVisible}>
+        <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
-            <motion.button initial={{
+            <Motion.button initial={{
 		opacity: 0,
 		scale: .96,
 		y: 8
@@ -553,7 +553,7 @@ function ScrollToBottomButton({ containerRef, onScrollToBottom, hasStackedCards 
 		y: 8
 	}} transition={{
 		duration: .2,
-		ease: [
+		easing: [
 			.23,
 			1,
 			.32,
@@ -561,7 +561,7 @@ function ScrollToBottomButton({ containerRef, onScrollToBottom, hasStackedCards 
 		]
 	}} onClick={onScrollToBottom} class={cn("absolute right-4 p-2 rounded-full bg-background border border-border shadow-md hover:bg-accent active:scale-[0.97] transition-colors z-20", hasStackedCards ? "bottom-44 sm:bottom-36" : "bottom-32 sm:bottom-24")} aria-label="Scroll to bottom">
               <ArrowDown class="h-4 w-4 text-muted-foreground" />
-            </motion.button>
+            </Motion.button>
           </TooltipTrigger>
           <TooltipContent side="top">
             Scroll to bottom
@@ -572,8 +572,9 @@ function ScrollToBottomButton({ containerRef, onScrollToBottom, hasStackedCards 
               </Kbd>
             </span>
           </TooltipContent>
-        </Tooltip>}
-    </AnimatePresence>;
+        </Tooltip>
+      </Show>
+    </Presence>;
 }
 // Message group wrapper - measures user message height for sticky todo positioning
 interface MessageGroupProps {
@@ -2843,7 +2844,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 			chatContainerObserverRef.current = observer;
 		}
 	}} class="flex-1 overflow-y-auto w-full relative allow-text-selection outline-none" tabIndex={-1} data-chat-container>
-        <div class="px-2 max-w-2xl mx-auto -mb-4 space-y-4" style={{ paddingBottom: "32px" }}>
+        <div class="px-2 max-w-2xl mx-auto -mb-4 space-y-4" style={{ "padding-bottom": "32px" }}>
           <div>
             {	/* ISOLATED: Messages rendered via Jotai atom subscription
 	Each component subscribes to specific atoms and only re-renders when those change
@@ -4513,7 +4514,7 @@ Make sure to preserve all functionality from both branches when resolving confli
       {	/* Main content */}
       <div class="flex-1 overflow-hidden flex">
         { /* Chat Panel */}
-        <div class="flex-1 flex flex-col overflow-hidden relative" style={{ minWidth: "350px" }}>
+        <div class="flex-1 flex flex-col overflow-hidden relative" style={{ "min-width": "350px" }}>
           { /* SubChatSelector header - absolute when sidebar open (desktop only), regular div otherwise */}
           {!shouldHideChatHeader && <div class={cn(
  "relative z-20 pointer-events-none",

@@ -1,7 +1,8 @@
 "use client";
 import { createSignal, createEffect } from "solid-js";
 import { ChevronDown, ArrowUp, X } from "lucide-solid";
-import { motion, AnimatePresence } from "motion/react";
+import { Motion, Presence } from "solid-motionone";
+import { Show } from "solid-js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { cn } from "../../../lib/utils";
 import type { AgentQueueItem } from "../lib/queue-utils";
@@ -97,8 +98,9 @@ export function AgentQueueIndicator({ queue, onRemoveItem, onSendNow, isStreamin
       </div>
 
       {	/* Expanded content - queue items */}
-      <AnimatePresence initial={false}>
-        {isExpanded && <motion.div initial={{
+      <Presence>
+        <Show when={isExpanded()}>
+          <Motion.div initial={{
  height: 0,
 		opacity: 0
 	}} animate={{
@@ -108,18 +110,19 @@ export function AgentQueueIndicator({ queue, onRemoveItem, onSendNow, isStreamin
 		height: 0,
 		opacity: 0
 	}} transition={{
-		duration: .2,
-		ease: [
-			.23,
+		duration: 0.2,
+		easing: [
+			0.23,
 			1,
-			.32,
+			0.32,
 			1
 		]
 	}} class="overflow-hidden">
             <div class="border-t border-border max-h-[200px] overflow-y-auto">
               {queue.map((item) => <QueueItemRow key={item.id} item={item} onRemove={onRemoveItem} onSendNow={onSendNow} />)}
             </div>
-          </motion.div>}
-      </AnimatePresence>
+          </Motion.div>
+        </Show>
+      </Presence>
     </div>;
 }

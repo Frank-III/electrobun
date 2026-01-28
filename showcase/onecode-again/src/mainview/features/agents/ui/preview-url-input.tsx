@@ -1,7 +1,8 @@
 "use client";
 import { cn } from "../../../lib/utils";
-import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "motion/react";
-import { createEffect, createSignal } from "solid-js";
+import { Motion, Presence } from "solid-motionone";
+import { Show, createEffect, createSignal, onCleanup } from "solid-js";
+
 interface PreviewUrlInputProps {
 	/** The base host (e.g., "sandbox-3000.21st.sh") */
 	baseHost: string | null;
@@ -16,67 +17,49 @@ interface PreviewUrlInputProps {
 	/** Variant for different contexts */
 	variant?: "default" | "mobile";
 }
+
 export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading = false, className, variant = "default" }: PreviewUrlInputProps) {
 	const [isEditing, setIsEditing] = createSignal(false);
 	const [inputValue, setInputValue] = createSignal("");
-	const [inputRef, setInputRef] = createSignal<HTMLInputElement>(null);
-	// Progress bar animation
-	const progress = useMotionValue(0);
-	const width = useTransform(progress, [0, 100], ["0%", "100%"]);
-	const glowOpacity = useTransform(progress, [
-		0,
-		95,
-		100
-	], [
-		1,
-		1,
-		0
-	]);
-	const [animationRef, setAnimationRef] = createSignal<ReturnType<typeof animate> | null>(null);
+	let inputRef: HTMLInputElement | undefined;
+	
+	// Progress bar state using CSS transitions
+	const [progress, setProgress] = createSignal(0);
+	const [transitionDuration, setTransitionDuration] = createSignal("0s");
+	
 	// Handle loading state changes for progress animation
 	createEffect(() => {
 		if (isLoading) {
-			// Reset and start loading animation
-			progress.jump(0);
-			// Animate to ~90% with decreasing speed (simulating uncertain progress)
-			animationRef.current = animate(progress, 90, {
-				duration: 12,
-				ease: [
-					.1,
-					.4,
-					.2,
-					1
-				]
-			});
+			// Reset progress
+			setTransitionDuration("0s");
+			setProgress(0);
+			// After a tick, start the slow animation to 90%
+			const startTimer = setTimeout(() => {
+				setTransitionDuration("12s");
+				setProgress(90);
+			}, 10);
+			
 			// Safety timeout: if still loading after 15s, force completion
-			const timeoutId = setTimeout(() => {
-				animationRef.current?.stop();
-				animationRef.current = animate(progress, 100, {
-					duration: .15,
-					ease: "easeOut"
-				});
-			}, 15e3);
-			return () => {
-				clearTimeout(timeoutId);
-				animationRef.current?.stop();
-			};
-		} else {
-			// Stop the slow animation
-			animationRef.current?.stop();
-			// Quickly complete to 100%
-			animationRef.current = animate(progress, 100, {
-				duration: .15,
-				ease: "easeOut"
+			const safetyTimer = setTimeout(() => {
+				setTransitionDuration("0.15s");
+				setProgress(100);
+			}, 15000);
+			
+			onCleanup(() => {
+				clearTimeout(startTimer);
+				clearTimeout(safetyTimer);
 			});
-			return () => {
-				animationRef.current?.stop();
-			};
+		} else {
+			// Quickly complete to 100%
+			setTransitionDuration("0.15s");
+			setProgress(100);
 		}
 	});
+	
 	// Focus and select when entering edit mode
 	createEffect(() => {
-		if (isEditing && inputRef.current) {
-			const input = inputRef.current;
+		if (isEditing() && inputRef) {
+			const input = inputRef;
 			input.focus();
 			const value = input.value;
 			// Display format is "~{currentPath}", e.g. "~/community/components"
@@ -91,8 +74,9 @@ export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading
 			}
 		}
 	});
+	
 	const handleSubmit = () => {
-		let input = inputValue.trim();
+		let input = inputValue().trim();
 		// Handle ~ prefix format (our display format)
 		if (input.startsWith("~")) {
 			input = input.slice(1);
@@ -126,7 +110,8 @@ export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading
 		}
 		setIsEditing(false);
 	};
-	const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+	
+	const handleKeyDown = (e: KeyboardEvent) => {
 		if (e.key === "Enter") {
 			e.preventDefault();
 			handleSubmit();
@@ -136,36 +121,63 @@ export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading
 			setIsEditing(false);
 		}
 	};
+	
 	const startEditing = () => {
 		setInputValue(`~${currentPath}`);
 		setIsEditing(true);
 	};
+	
 	if (!baseHost) {
 		return null;
 	}
+	
 	// Shared styling for consistent height/positioning between button and input
 	const sharedStyles = "font-mono text-xs rounded-md px-3 h-7 leading-7 w-full max-w-[350px] text-center";
+	
+	// Compute glow opacity based on progress (fades from 1 to 0 between 95-100%)
+	const glowOpacity = () => {
+		const p = progress();
+		if (p < 95) return 1;
+		return 1 - (p - 95) / 5;
+	};
+	
 	return <div class={cn("min-w-0 flex-1 text-center flex items-center justify-center relative", className)}>
-      {	/* URL input/button container */}
+      {/* URL input/button container */}
       <div class="relative max-w-[350px] w-full">
-        {isEditing ? <input ref={inputRef} type="text" value={inputValue} onInput={(e) => setInputValue(e.currentTarget.value)} onKeyDown={handleKeyDown} onBlur={handleSubmit} spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off" class={cn(sharedStyles, variant === "mobile" ? "bg-muted shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 text-foreground" : "bg-background shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 text-foreground")} placeholder="~/" /> : <button type="button" onClick={startEditing} class={cn(sharedStyles, variant === "mobile" ? "truncate text-muted-foreground hover:text-foreground transition-all cursor-pointer bg-muted hover:bg-muted/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" : "truncate text-muted-foreground hover:text-foreground transition-all cursor-pointer hover:bg-background hover:shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:hover:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70")}>
+        <Show when={isEditing()} fallback={
+          <button type="button" onClick={startEditing} class={cn(sharedStyles, variant === "mobile" ? "truncate text-muted-foreground hover:text-foreground transition-all cursor-pointer bg-muted hover:bg-muted/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" : "truncate text-muted-foreground hover:text-foreground transition-all cursor-pointer hover:bg-background hover:shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:hover:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70")}>
             ~{currentPath}
-          </button>}
+          </button>
+        }>
+          <input ref={inputRef} type="text" value={inputValue()} onInput={(e) => setInputValue(e.currentTarget.value)} onKeyDown={handleKeyDown} onBlur={handleSubmit} spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off" class={cn(sharedStyles, variant === "mobile" ? "bg-muted shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 text-foreground" : "bg-background shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 text-foreground")} placeholder="~/" />
+        </Show>
 
-        { /* Progress bar at bottom with upward glow */}
-        <AnimatePresence>
-          {isLoading && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: .15 }} class="absolute bottom-0 left-0 right-0 pointer-events-none z-0 rounded-md overflow-hidden">
-              { /* Glow effect - uniform along progress, fades at edges via blur */}
-              <motion.div class="absolute -bottom-2 left-0 h-4" style={{
- width,
-		opacity: glowOpacity,
-		background: "hsl(var(--primary) / 0.15)",
-		filter: "blur(4px)"
-	}} />
-              {	/* Progress bar line */}
-              <motion.div class="absolute bottom-0 left-0 h-[0.5px] bg-primary/60" style={{ width }} />
-            </motion.div>}
-        </AnimatePresence>
+        {/* Progress bar at bottom with upward glow */}
+        <Presence>
+          <Show when={isLoading}>
+            <Motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} class="absolute bottom-0 left-0 right-0 pointer-events-none z-0 rounded-md overflow-hidden">
+              {/* Glow effect - uniform along progress, fades at edges via blur */}
+              <div 
+                class="absolute -bottom-2 left-0 h-4" 
+                style={{
+                  width: `${progress()}%`,
+                  opacity: glowOpacity(),
+                  background: "hsl(var(--primary) / 0.15)",
+                  filter: "blur(4px)",
+                  transition: `width ${transitionDuration()} cubic-bezier(0.1, 0.4, 0.2, 1)`
+                }} 
+              />
+              {/* Progress bar line */}
+              <div 
+                class="absolute bottom-0 left-0 h-[0.5px] bg-primary/60" 
+                style={{ 
+                  width: `${progress()}%`,
+                  transition: `width ${transitionDuration()} cubic-bezier(0.1, 0.4, 0.2, 1)`
+                }} 
+              />
+            </Motion.div>
+          </Show>
+        </Presence>
       </div>
     </div>;
- }
+}

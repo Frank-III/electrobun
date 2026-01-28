@@ -9,7 +9,7 @@ interface FrameworkIconProps {
 // Next.js - Black circle with N arrow
 export function NextjsIcon({ className }: FrameworkIconProps) {
 	return <svg viewBox="0 0 180 180" class={cn("w-4 h-4", className)}>
-      <mask height="180" id="nextjs_mask" maskUnits="userSpaceOnUse" width="180" x="0" y="0" style={{ maskType: "alpha" }}>
+      <mask height="180" id="nextjs_mask" maskUnits="userSpaceOnUse" width="180" x="0" y="0" style={{ "mask-type": "alpha" }}>
         <circle cx="90" cy="90" fill="black" r="90" />
       </mask>
       <g mask="url(#nextjs_mask)">

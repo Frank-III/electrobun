@@ -3,7 +3,6 @@ import { createEffect, createMemo, createSignal } from "solid-js";
 import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { useTheme } from "../../../lib/hooks/use-theme";
 import { fullThemeDataAtom } from "@/lib/atoms";
-import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-solid";
 import { Terminal } from "@/features/terminal/terminal";
@@ -191,34 +190,34 @@ export function TerminalSection({ chatId, cwd, workspaceId, isExpanded = false, 
 	// If renderHeader is provided, only render content (header is handled by parent)
 	if (renderHeader) {
 		return <div class="min-h-0 overflow-hidden" style={{
-			backgroundColor: terminalBg,
+			"background-color": terminalBg,
 			height: "200px"
 		}}>
-        {activeTerminal && canRenderTerminal ? <motion.div key={activeTerminal.paneId} class="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0 }}>
+        {activeTerminal && canRenderTerminal ? <div class="h-full">
             <Terminal paneId={activeTerminal.paneId} cwd={cwd} workspaceId={workspaceId} initialCwd={cwd} />
-          </motion.div> : <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+          </div> : <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
             {!canRenderTerminal ? "" : "No terminal open"}
           </div>}
       </div>;
 	}
 	// Standard render with tabs inside
 	return <div class="flex flex-col" style={{
-		minHeight: isExpanded ? "400px" : "200px",
+		"min-height": isExpanded ? "400px" : "200px",
 		height: isExpanded ? "100%" : undefined
 	}}>
       {	/* Tabs */}
-      <div class="flex items-center gap-1 px-1 py-1 flex-shrink-0" style={{ backgroundColor: terminalBg }}>
+      <div class="flex items-center gap-1 px-1 py-1 flex-shrink-0" style={{ "background-color": terminalBg }}>
         {tabsHeader}
       </div>
 
       { /* Terminal Content */}
       <div class="flex-1 min-h-0 overflow-hidden" style={{
- backgroundColor: terminalBg,
+ "background-color": terminalBg,
 		height: isExpanded ? "100%" : "200px"
 	}}>
-        {activeTerminal && canRenderTerminal ? <motion.div key={activeTerminal.paneId} class="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0 }}>
+        {activeTerminal && canRenderTerminal ? <div class="h-full">
             <Terminal paneId={activeTerminal.paneId} cwd={cwd} workspaceId={workspaceId} initialCwd={cwd} />
-          </motion.div> : <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+          </div> : <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
             {!canRenderTerminal ? "" : "No terminal open"}
           </div>}
       </div>

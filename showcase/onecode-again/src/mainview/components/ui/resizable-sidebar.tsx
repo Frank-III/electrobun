@@ -1,6 +1,7 @@
 "use client";
 import { useAtom, type WritableAtom } from "../../lib/state/jotai";
-import { AnimatePresence, motion } from "motion/react";
+import { Motion, Presence } from "solid-motionone";
+import { Show } from "solid-js";
 import { createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Kbd } from "./kbd";
@@ -205,17 +206,17 @@ export function ResizableSidebar({ isOpen, onClose, widthAtom, minWidth = DEFAUL
 			return {
 				right: "0px",
 				width: "4px",
-				marginRight: "-2px",
-				paddingLeft: "2px",
-				paddingRight: "2px"
+				"margin-right": "-2px",
+				"padding-left": "2px",
+				"padding-right": "2px"
 			};
 		} else {
 			return {
 				left: "0px",
 				width: "4px",
-				marginLeft: "-2px",
-				paddingLeft: "2px",
-				paddingRight: "2px"
+				"margin-left": "-2px",
+				"padding-left": "2px",
+				"padding-right": "2px"
 			};
 		}
 	});
@@ -233,25 +234,26 @@ export function ResizableSidebar({ isOpen, onClose, widthAtom, minWidth = DEFAUL
 		}
 	});
 	return <>
-      <AnimatePresence>
-        {isOpen && <motion.div ref={(el: HTMLDivElement) => sidebarRef = el} initial={!shouldAnimate() ? {
-		width: currentWidth(),
+      <Presence>
+        <Show when={isOpen}>
+          <Motion.div ref={(el: HTMLDivElement) => sidebarRef = el} initial={!shouldAnimate() ? {
+		width: `${currentWidth()}px`,
 		opacity: 1
 	} : {
-		width: initialWidth,
+		width: typeof initialWidth === 'number' ? `${initialWidth}px` : initialWidth,
 		opacity: 0
 	}} animate={{
-		width: currentWidth(),
+		width: `${currentWidth()}px`,
 		opacity: 1
 	}} exit={{
-		width: exitWidth,
+		width: typeof exitWidth === 'number' ? `${exitWidth}px` : exitWidth,
 		opacity: 0
 	}} transition={{
 		duration: isResizing() ? 0 : animationDuration,
-		ease: [
-			.4,
+		easing: [
+			0.4,
 			0,
-			.2,
+			0.2,
 			1
 		]
 	}} class={`bg-transparent flex flex-col text-xs h-full relative ${className}`} style={{
@@ -316,53 +318,58 @@ export function ResizableSidebar({ isOpen, onClose, widthAtom, minWidth = DEFAUL
 		setIsTooltipDismissed(false);
 	}} class={`absolute top-0 bottom-0 cursor-col-resize z-10`} style={resizeHandleStyle()} />
 
-            {showResizeTooltip && isHoveringResizeHandle() && !isResizing() && !isTooltipDismissed() && tooltipPosition() && typeof window !== "undefined" && (
+            <Show when={showResizeTooltip && isHoveringResizeHandle() && !isResizing() && !isTooltipDismissed() && tooltipPosition() && typeof window !== "undefined"}>
               <Portal mount={document.body}>
-                <AnimatePresence>
-                  {tooltipPosition() && <motion.div key="tooltip" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{
-                    duration: .05,
-                    ease: "easeOut"
-                  }} class="fixed z-10" style={{
-                    left: `${tooltipPosition()!.x}px`,
-                    top: `${tooltipPosition()!.y}px`,
-                    transform: side === "left" ? "translateY(-50%)" : "translateX(-100%) translateY(-50%)",
-                    "transform-origin": side === "left" ? "left center" : "right center",
-                    "pointer-events": "none"
-                  }}>
-                    <div ref={(el) => tooltipRef = el} role="dialog" data-tooltip="true" class="relative rounded-md border border-border bg-popover px-2 py-1 flex flex-col items-start gap-0.5 text-xs text-popover-foreground shadow-lg dark pointer-events-auto" onPointerDown={(e) => {
-                      e.stopPropagation();
-                      if (e.button === 0) {
+                <Presence>
+                  <Show when={tooltipPosition()}>
+                    <Motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{
+                      duration: 0.05,
+                      easing: "ease-out"
+                    }} class="fixed z-10" style={{
+                      left: `${tooltipPosition()!.x}px`,
+                      top: `${tooltipPosition()!.y}px`,
+                      transform: side === "left" ? "translateY(-50%)" : "translateX(-100%) translateY(-50%)",
+                      "transform-origin": side === "left" ? "left center" : "right center",
+                      "pointer-events": "none"
+                    }}>
+                      <div ref={(el) => tooltipRef = el} role="dialog" data-tooltip="true" class="relative rounded-md border border-border bg-popover px-2 py-1 flex flex-col items-start gap-0.5 text-xs text-popover-foreground shadow-lg dark pointer-events-auto" onPointerDown={(e) => {
+                        e.stopPropagation();
+                        if (e.button === 0) {
+                          setIsTooltipDismissed(true);
+                          handleClose();
+                        }
+                      }} onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
                         setIsTooltipDismissed(true);
                         handleClose();
-                      }
-                    }} onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      setIsTooltipDismissed(true);
-                      handleClose();
-                    }}>
-                      {!disableClickToClose && <div class="flex items-center gap-1 text-xs">
-                        <span>Close</span>
-                        <span class="text-muted-foreground inline-flex items-center gap-1">
-                          <span>Click</span>
-                          {closeHotkey && <>
-                            <span>or</span>
-                            <Kbd>{closeHotkey}</Kbd>
-                          </>}
-                        </span>
-                      </div>}
-                      <div class="flex items-center gap-1 text-xs">
-                        <span>Resize</span>
-                        <span class="text-muted-foreground">Drag</span>
+                      }}>
+                        <Show when={!disableClickToClose}>
+                          <div class="flex items-center gap-1 text-xs">
+                            <span>Close</span>
+                            <span class="text-muted-foreground inline-flex items-center gap-1">
+                              <span>Click</span>
+                              <Show when={closeHotkey}>
+                                <span>or</span>
+                                <Kbd>{closeHotkey}</Kbd>
+                              </Show>
+                            </span>
+                          </div>
+                        </Show>
+                        <div class="flex items-center gap-1 text-xs">
+                          <span>Resize</span>
+                          <span class="text-muted-foreground">Drag</span>
+                        </div>
                       </div>
-                    </div>
-                  </motion.div>}
-                </AnimatePresence>
+                    </Motion.div>
+                  </Show>
+                </Presence>
               </Portal>
-            )}
+            </Show>
 
             {children}
-          </motion.div>}
-      </AnimatePresence>
+          </Motion.div>
+        </Show>
+      </Presence>
     </>;
 }

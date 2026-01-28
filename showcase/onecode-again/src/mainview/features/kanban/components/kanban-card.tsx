@@ -1,5 +1,6 @@
 
-import { AnimatePresence, motion } from "motion/react";
+import { Motion, Presence } from "solid-motionone";
+import { Show } from "solid-js";
 import { formatTimeAgo } from "../../../lib/utils/format-time-ago";
 import { cn } from "../../../lib/utils";
 import type { SubChatStatus } from "../lib/derive-status";
@@ -81,62 +82,31 @@ export function KanbanCard({ card, isMultiSelectMode, onClick, onCheckboxClick, 
           {!isMultiSelectMode && <div class="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center relative">
               { /* Indicator - absolute, скрывается при hover */}
               {showStatusIndicator && <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover:opacity-0">
-                  <AnimatePresence mode="wait">
-                    {hasPendingQuestion ? <motion.div key="question" initial={{
- opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }}>
+                  <Presence>
+                    <Show when={hasPendingQuestion}>
+                      <Motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
                         <QuestionIcon class="w-2.5 h-2.5 text-blue-500" />
-                      </motion.div> : isLoading ? <motion.div key="loading" initial={{
-		opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }}>
+                      </Motion.div>
+                    </Show>
+                    <Show when={!hasPendingQuestion && isLoading}>
+                      <Motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
                         <LoadingDot isLoading={true} class="w-2.5 h-2.5 text-muted-foreground" />
-                      </motion.div> : hasPendingPlan ? <motion.div key="plan" initial={{
-		opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }} class="w-1.5 h-1.5 rounded-full bg-amber-500" /> : hasUnseenChanges ? <motion.div key="unseen" initial={{
-		opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }}>
+                      </Motion.div>
+                    </Show>
+                    <Show when={!hasPendingQuestion && !isLoading && hasPendingPlan}>
+                      <Motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} class="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    </Show>
+                    <Show when={!hasPendingQuestion && !isLoading && !hasPendingPlan && hasUnseenChanges}>
+                      <Motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
                         <LoadingDot isLoading={false} class="w-2.5 h-2.5 text-muted-foreground" />
-                      </motion.div> : card.isPinned ? <motion.div key="pinned" initial={{
-		opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }}>
+                      </Motion.div>
+                    </Show>
+                    <Show when={!hasPendingQuestion && !isLoading && !hasPendingPlan && !hasUnseenChanges && card.isPinned}>
+                      <Motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
                         <Pin class="w-2.5 h-2.5 text-muted-foreground/60" />
-                      </motion.div> : null}
-                  </AnimatePresence>
+                      </Motion.div>
+                    </Show>
+                  </Presence>
                 </div>}
 
               {	/* Archive button - absolute, appears on hover */}

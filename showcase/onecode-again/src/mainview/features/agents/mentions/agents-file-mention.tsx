@@ -3,8 +3,8 @@ import { cn } from "../../../lib/utils";
 import { api } from "../../../lib/mock-api";
 import { trpc } from "../../../lib/trpc";
 import { keepPreviousData } from "@tanstack/react-query";
-import { createEffect, createEffect, createMemo, createSignal } from "solid-js";
-import { flushSync, createPortal } from "solid-js/web";
+import { createEffect, createMemo, createSignal, onCleanup, Show, For } from "solid-js";
+import { flushSync, Portal } from "solid-js/web";
 import { createRoot } from "solid-js/web";
 import { useAtomValue } from "../../../lib/state/jotai";
 import type { FileMentionOption } from "./agents-mentions-editor";
@@ -379,7 +379,7 @@ function renderFolderTree(path: string) {
 	return <div class="flex flex-col gap-1 min-w-[220px]">
       {parts.map((part, index) => {
 		const isLast = index === lastIndex;
-		return <div key={index} class={cn("flex items-center gap-1.5 text-xs", isLast ? "text-foreground" : "text-muted-foreground")} style={{ paddingLeft: `${index * 20}px` }}>
+		return <div key={index} class={cn("flex items-center gap-1.5 text-xs", isLast ? "text-foreground" : "text-muted-foreground")} style={{ "padding-left": `${index * 20}px` }}>
             <FolderOpenIcon class={cn("h-3.5 w-3.5 flex-shrink-0", isLast ? "text-foreground/70" : "text-muted-foreground")} />
             <span class={isLast ? "font-medium" : ""}>{part}</span>
           </div>;
@@ -507,9 +507,9 @@ function renderTooltipContent(option: FileMentionOption) {
 }
 // Memoized to prevent re-renders when parent re-renders
 export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, position, teamId, repository, sandboxId, branch, projectPath, changedFiles = [], showingFilesList = false, showingSkillsList = false, showingAgentsList = false, showingToolsList = false }: AgentsFileMentionProps) {
-	const [dropdownRef, setDropdownRef] = createSignal<HTMLDivElement>(null);
+	let dropdownRef: HTMLDivElement | undefined;
 	const [selectedIndex, setSelectedIndex] = createSignal(0);
-	const [placementRef, setPlacementRef] = createSignal<"above" | "below" | null>(null);
+	let placementValue: "above" | "below" | null = null;
 	const [debouncedSearchText, setDebouncedSearchText] = createSignal(searchText);
 	const [hoverIndex, setHoverIndex] = createSignal(null);
 	// Get session info (MCP servers, tools) from atom
@@ -732,35 +732,35 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 		return [...changedFileOptions, ...availableCategoryOptions];
 	});
 	// Track previous values for smarter selection reset
-	const [prevIsOpenRef, setPrevIsOpenRef] = createSignal(isOpen);
-	const [prevSearchRef, setPrevSearchRef] = createSignal(debouncedSearchText);
-	const [prevShowingFilesListRef, setPrevShowingFilesListRef] = createSignal(showingFilesList);
-	const [prevShowingSkillsListRef, setPrevShowingSkillsListRef] = createSignal(showingSkillsList);
-	const [prevShowingAgentsListRef, setPrevShowingAgentsListRef] = createSignal(showingAgentsList);
-	const [prevShowingToolsListRef, setPrevShowingToolsListRef] = createSignal(showingToolsList);
+	let prevIsOpenRef = isOpen;
+	let prevSearchRef = debouncedSearchText();
+	let prevShowingFilesListRef = showingFilesList;
+	let prevShowingSkillsListRef = showingSkillsList;
+	let prevShowingAgentsListRef = showingAgentsList;
+	let prevShowingToolsListRef = showingToolsList;
 	// CONSOLIDATED: Single useLayoutEffect for selection management (was 3 separate)
 	createEffect(() => {
-		const didJustOpen = isOpen && !prevIsOpenRef.current;
-		const didSearchChange = debouncedSearchText !== prevSearchRef.current;
-		const didSubpageChange = showingFilesList !== prevShowingFilesListRef.current || showingSkillsList !== prevShowingSkillsListRef.current || showingAgentsList !== prevShowingAgentsListRef.current || showingToolsList !== prevShowingToolsListRef.current;
+		const didJustOpen = isOpen && !prevIsOpenRef;
+		const didSearchChange = debouncedSearchText() !== prevSearchRef;
+		const didSubpageChange = showingFilesList !== prevShowingFilesListRef || showingSkillsList !== prevShowingSkillsListRef || showingAgentsList !== prevShowingAgentsListRef || showingToolsList !== prevShowingToolsListRef;
 		// Reset to 0 when opening, search changes, or subpage changes
 		if (didJustOpen || didSearchChange || didSubpageChange) {
 			setSelectedIndex(0);
-		} else if (options.length > 0 && selectedIndex >= options.length) {
-			setSelectedIndex(Math.max(0, options.length - 1));
+		} else if (options().length > 0 && selectedIndex() >= options().length) {
+			setSelectedIndex(Math.max(0, options().length - 1));
 		}
 		// Update refs
-		prevIsOpenRef.current = isOpen;
-		prevSearchRef.current = debouncedSearchText;
-		prevShowingFilesListRef.current = showingFilesList;
-		prevShowingSkillsListRef.current = showingSkillsList;
-		prevShowingAgentsListRef.current = showingAgentsList;
-		prevShowingToolsListRef.current = showingToolsList;
+		prevIsOpenRef = isOpen;
+		prevSearchRef = debouncedSearchText();
+		prevShowingFilesListRef = showingFilesList;
+		prevShowingSkillsListRef = showingSkillsList;
+		prevShowingAgentsListRef = showingAgentsList;
+		prevShowingToolsListRef = showingToolsList;
 	});
 	// Reset placement when closed
 	createEffect(() => {
 		if (!isOpen) {
-			placementRef.current = null;
+			placementValue = null;
 		}
 	});
 	// Keyboard navigation
@@ -772,21 +772,21 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 					e.preventDefault();
 					e.stopPropagation();
 					e.stopImmediatePropagation();
-					setSelectedIndex((prev) => (prev + 1) % options.length);
+					setSelectedIndex((prev) => (prev + 1) % options().length);
 					break;
 				case "ArrowUp":
 					e.preventDefault();
 					e.stopPropagation();
 					e.stopImmediatePropagation();
-					setSelectedIndex((prev) => (prev - 1 + options.length) % options.length);
+					setSelectedIndex((prev) => (prev - 1 + options().length) % options().length);
 					break;
 				case "Enter":
 					if (e.shiftKey) return;
 					e.preventDefault();
 					e.stopPropagation();
 					e.stopImmediatePropagation();
-					if (options[selectedIndex]) {
-						onSelect(options[selectedIndex]);
+					if (options()[selectedIndex()]) {
+						onSelect(options()[selectedIndex()]);
 					}
 					break;
 				case "Escape":
@@ -798,22 +798,22 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown, { capture: true });
-		return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown, { capture: true }));
 	});
 	// Auto-scroll selected item into view
 	createEffect(() => {
-		if (!isOpen || !dropdownRef.current) return;
+		if (!isOpen || !dropdownRef) return;
 		// Account for header element
 		const headerOffset = 1;
-		if (selectedIndex === 0) {
-			dropdownRef.current.scrollTo({
+		if (selectedIndex() === 0) {
+			dropdownRef.scrollTo({
 				top: 0,
 				behavior: "auto"
 			});
 			return;
 		}
-		const elements = dropdownRef.current.querySelectorAll("[data-option-index]");
-		const selectedElement = elements[selectedIndex] as HTMLElement;
+		const elements = dropdownRef.querySelectorAll("[data-option-index]");
+		const selectedElement = elements[selectedIndex()] as HTMLElement;
 		if (selectedElement) {
 			selectedElement.scrollIntoView({ block: "nearest" });
 		}
@@ -822,12 +822,12 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	createEffect(() => {
 		if (!isOpen) return;
 		const handleClickOutside = (e: MouseEvent) => {
-			if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+			if (dropdownRef && !dropdownRef.contains(e.target as Node)) {
 				onClose();
 			}
 		};
 		document.addEventListener("mousedown", handleClickOutside);
-		return () => document.removeEventListener("mousedown", handleClickOutside);
+		onCleanup(() => document.removeEventListener("mousedown", handleClickOutside));
 	});
 	if (!isOpen) return null;
 	// Calculate dropdown dimensions (matching canvas style)
@@ -852,13 +852,13 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	const availableAbove = position.top - safeMargin;
 	// Compute desired placement, but lock it for the duration of the open state
 	// Prefer above if there's more space above, or if below doesn't fit
-	if (placementRef.current === null) {
+	if (placementValue === null) {
 		const condition1 = availableAbove >= requestedHeight && availableBelow < requestedHeight;
 		const condition2 = availableAbove > availableBelow && availableAbove >= requestedHeight;
 		const shouldPlaceAbove = condition1 || condition2;
-		placementRef.current = shouldPlaceAbove ? "above" : "below";
+		placementValue = shouldPlaceAbove ? "above" : "below";
 	}
-	const placeAbove = placementRef.current === "above";
+	const placeAbove = placementValue === "above";
 	// Compute final top based on placement
 	// Use line height for better positioning relative to cursor
 	let finalTop = placeAbove ? position.top - gap : position.top + lineHeight + gap;
@@ -874,96 +874,129 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	// Compute actual maxHeight based on available space on the chosen side
 	const computedMaxHeight = Math.max(80, Math.min(requestedHeight, placeAbove ? availableAbove - gap : availableBelow - gap));
 	const transformY = placeAbove ? "translateY(-100%)" : "translateY(0)";
-	return createPortal(<TooltipProvider delayDuration={300}>
-      <div ref={dropdownRef} class="fixed z-[99999] overflow-y-auto rounded-[10px] border border-border bg-popover py-1 text-xs text-popover-foreground shadow-lg dark [&::-webkit-scrollbar]:hidden" style={{
-		top: finalTop,
-		left: finalLeft,
-		width: `${dropdownWidth}px`,
-		maxHeight: `${computedMaxHeight}px`,
-		transform: transformY,
-		scrollbarWidth: "none",
-		msOverflowStyle: "none"
-	} as JSX.CSSProperties}>
-        {	/* Initial loading state (no previous data) */}
-        {isLoading && options.length === 0 && <div class="flex items-center gap-1.5 h-7 px-1.5 mx-1 text-xs text-muted-foreground">
-            <IconSpinner class="h-3.5 w-3.5" />
-            <span>Loading files...</span>
-          </div>}
+	const opts = options();
+	return (
+		<Portal mount={document.body}>
+			<TooltipProvider delayDuration={300}>
+				<div
+					ref={el => dropdownRef = el}
+					class="fixed z-[99999] overflow-y-auto rounded-[10px] border border-border bg-popover py-1 text-xs text-popover-foreground shadow-lg dark [&::-webkit-scrollbar]:hidden"
+					style={{
+						top: `${finalTop}px`,
+						left: `${finalLeft}px`,
+						width: `${dropdownWidth}px`,
+						"max-height": `${computedMaxHeight}px`,
+						transform: transformY,
+						"scrollbar-width": "none"
+					}}
+				>
+					{/* Initial loading state (no previous data) */}
+					<Show when={isLoading && opts.length === 0}>
+						<div class="flex items-center gap-1.5 h-7 px-1.5 mx-1 text-xs text-muted-foreground">
+							<IconSpinner class="h-3.5 w-3.5" />
+							<span>Loading files...</span>
+						</div>
+					</Show>
 
-        { /* Error state */}
-        {error && <div class="h-7 px-1.5 mx-1 flex items-center text-xs text-muted-foreground">
-            Error loading files
-          </div>}
+					{/* Error state */}
+					<Show when={error}>
+						<div class="h-7 px-1.5 mx-1 flex items-center text-xs text-muted-foreground">
+							Error loading files
+						</div>
+					</Show>
 
-        { /* Empty state (only show when not fetching) */}
-        {!isLoading && !isFetching && !error && options.length === 0 && <div class="h-7 px-1.5 mx-1 flex items-center text-xs text-muted-foreground">
-            {debouncedSearchText ? `No files matching "${debouncedSearchText}"` : "No files found"}
-          </div>}
+					{/* Empty state (only show when not fetching) */}
+					<Show when={!isLoading && !isFetching && !error && opts.length === 0}>
+						<div class="h-7 px-1.5 mx-1 flex items-center text-xs text-muted-foreground">
+							{debouncedSearchText() ? `No files matching "${debouncedSearchText()}"` : "No files found"}
+						</div>
+					</Show>
 
-        { /* File list */}
-        {!isLoading && !error && options.length > 0 && <>
-            { /* Flat list sorted by relevance */}
-            <>
-              { /* Header - only show in subpages or when searching, not in root view */}
-                {(isInSubpage || debouncedSearchText) && <div class="px-2.5 py-1.5 mx-1 text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                    <span>
-                      {showingFilesList || hasOnlyFiles ? "Files & Folders" : showingSkillsList ? "Skills" : showingAgentsList ? "Agents" : showingToolsList ? "MCP Tools" : "Results"}
-                    </span>
-                    {isFetching && !isLoading && <IconSpinner class="h-2.5 w-2.5" />}
-                  </div>}
-                {options.map((option, index) => {
- const isSelected = selectedIndex === index;
-		const OptionIcon = getOptionIcon(option);
-		const isCategory = option.type === "category";
-		const showTooltip = !isCategory && option.path;
-		const itemContent = <div data-option-index={index} onClick={() => onSelect(option)} onMouseEnter={() => {
-			setHoverIndex(index);
-			setSelectedIndex(index);
-		}} onMouseLeave={() => {
-			setHoverIndex((prev) => prev === index ? null : prev);
-		}} class={cn("group inline-flex w-[calc(100%-8px)] mx-1 items-center whitespace-nowrap outline-none", "h-7 px-1.5 justify-start text-xs rounded-md", "transition-colors cursor-pointer select-none gap-1.5", isSelected ? "dark:bg-neutral-800 bg-accent text-foreground" : "text-muted-foreground dark:hover:bg-neutral-800 hover:bg-accent hover:text-foreground")}>
-                      <OptionIcon class="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                      <span class="flex items-center gap-1 w-full min-w-0">
-                        <span class={cn("shrink-0 whitespace-nowrap", isCategory && "font-medium")}>
-                          {option.label}
-                        </span>
-                        {		/* Diff stats for changed files */}
-                        {(option.additions || option.deletions) && <span class="shrink-0 flex items-center gap-1 text-[10px] font-mono">
-                            {option.additions ? <span class="text-green-500">
-                                +{option.additions}
-                              </span> : null}
-                            {option.deletions ? <span class="text-red-500">
-                                -{option.deletions}
-                              </span> : null}
-                          </span>}
-                        { /* Show truncated path for files only, not for skills/agents (they show in tooltip) */}
-                        {option.truncatedPath && !isCategory && option.type !== "skill" && option.type !== "agent" && <span class="text-muted-foreground flex-1 min-w-0 ml-2 font-mono overflow-hidden text-[10px]" style={{
- direction: "rtl",
-			textAlign: "left",
-			whiteSpace: "nowrap"
-		}}>
-                            <span style={{ direction: "ltr" }}>
-                              {option.truncatedPath}
-                            </span>
-                          </span>}
-                      </span>
-                      {		/* ChevronRight for category items (navigate to subpage) */}
-                      {isCategory && <ChevronRight class="ml-auto h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
-                    </div>;
- if (showTooltip) {
-			return <Tooltip key={option.id} open={isSelected}>
-                        <TooltipTrigger asChild>
-                          {itemContent}
-                        </TooltipTrigger>
-                        <TooltipContent side="left" align="start" sideOffset={8} collisionPadding={16} avoidCollisions class="overflow-hidden">
-                          {renderTooltipContent(option)}
-                        </TooltipContent>
-                      </Tooltip>;
-		}
-		return <div key={option.id}>{itemContent}</div>;
-	})}
-              </>
-          </>}
-      </div>
-    </TooltipProvider>, document.body);
+					{/* File list */}
+					<Show when={!isLoading && !error && opts.length > 0}>
+						{/* Header - only show in subpages or when searching, not in root view */}
+						<Show when={isInSubpage || debouncedSearchText()}>
+							<div class="px-2.5 py-1.5 mx-1 text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+								<span>
+									{showingFilesList || hasOnlyFiles ? "Files & Folders" : showingSkillsList ? "Skills" : showingAgentsList ? "Agents" : showingToolsList ? "MCP Tools" : "Results"}
+								</span>
+								<Show when={isFetching && !isLoading}>
+									<IconSpinner class="h-2.5 w-2.5" />
+								</Show>
+							</div>
+						</Show>
+						<For each={opts}>
+							{(option, index) => {
+								const isSelected = () => selectedIndex() === index();
+								const OptionIcon = getOptionIcon(option);
+								const isCategory = option.type === "category";
+								const showTooltip = !isCategory && option.path;
+								const itemContent = (
+									<div
+										data-option-index={index()}
+										onClick={() => onSelect(option)}
+										onMouseEnter={() => {
+											setHoverIndex(index());
+											setSelectedIndex(index());
+										}}
+										onMouseLeave={() => {
+											setHoverIndex((prev) => prev === index() ? null : prev);
+										}}
+										class={cn(
+											"group inline-flex w-[calc(100%-8px)] mx-1 items-center whitespace-nowrap outline-none",
+											"h-7 px-1.5 justify-start text-xs rounded-md",
+											"transition-colors cursor-pointer select-none gap-1.5",
+											isSelected() ? "dark:bg-neutral-800 bg-accent text-foreground" : "text-muted-foreground dark:hover:bg-neutral-800 hover:bg-accent hover:text-foreground"
+										)}
+									>
+										<OptionIcon class="h-3 w-3 text-muted-foreground flex-shrink-0" />
+										<span class="flex items-center gap-1 w-full min-w-0">
+											<span class={cn("shrink-0 whitespace-nowrap", isCategory && "font-medium")}>
+												{option.label}
+											</span>
+											{/* Diff stats for changed files */}
+											<Show when={option.additions || option.deletions}>
+												<span class="shrink-0 flex items-center gap-1 text-[10px] font-mono">
+													<Show when={option.additions}>
+														<span class="text-green-500">+{option.additions}</span>
+													</Show>
+													<Show when={option.deletions}>
+														<span class="text-red-500">-{option.deletions}</span>
+													</Show>
+												</span>
+											</Show>
+											{/* Show truncated path for files only, not for skills/agents (they show in tooltip) */}
+											<Show when={option.truncatedPath && !isCategory && option.type !== "skill" && option.type !== "agent"}>
+												<span
+													class="text-muted-foreground flex-1 min-w-0 ml-2 font-mono overflow-hidden text-[10px]"
+													style={{ direction: "rtl", "text-align": "left", "white-space": "nowrap" }}
+												>
+													<span style={{ direction: "ltr" }}>{option.truncatedPath}</span>
+												</span>
+											</Show>
+										</span>
+										{/* ChevronRight for category items (navigate to subpage) */}
+										<Show when={isCategory}>
+											<ChevronRight class="ml-auto h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+										</Show>
+									</div>
+								);
+								if (showTooltip) {
+									return (
+										<Tooltip open={isSelected()}>
+											<TooltipTrigger asChild>{itemContent}</TooltipTrigger>
+											<TooltipContent side="left" align="start" sideOffset={8} collisionPadding={16} avoidCollisions class="overflow-hidden">
+												{renderTooltipContent(option)}
+											</TooltipContent>
+										</Tooltip>
+									);
+								}
+								return <div>{itemContent}</div>;
+							}}
+						</For>
+					</Show>
+				</div>
+			</TooltipProvider>
+		</Portal>
+	);
 }

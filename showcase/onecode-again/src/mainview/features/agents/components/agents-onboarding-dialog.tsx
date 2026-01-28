@@ -1,7 +1,7 @@
 "use client";
-import { createEffect, createSignal } from "solid-js";
-import { AnimatePresence, motion } from "motion/react";
-import { createPortal } from "solid-js/web";
+import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { Motion, Presence } from "solid-motionone";
+import { Portal } from "solid-js/web";
 // Desktop: stub for next/image
 const Image = ({ src, alt, width, height, className }: any) => <img src={src} alt={alt} width={width} height={height} class={className} />;
 import { useTheme } from "../../../lib/hooks/use-theme";
@@ -21,7 +21,7 @@ const ONBOARDING_STORAGE_KEY = "agents-onboarding-seen";
 export function AgentsOnboardingDialog() {
 	const [mounted, setMounted] = createSignal(false);
 	const [isOpen, setIsOpen] = createSignal(false);
-	const [openAtRef, setOpenAtRef] = createSignal<number>(0);
+	let openAtRef = 0;
 	const { resolvedTheme } = useTheme();
 	const [debugMode, setDebugMode] = useAtom(agentsDebugModeAtom);
 	createEffect(() => {
@@ -42,12 +42,12 @@ export function AgentsOnboardingDialog() {
 		}
 	});
 	createEffect(() => {
-		if (isOpen) {
-			openAtRef.current = performance.now();
+		if (isOpen()) {
+			openAtRef = performance.now();
 		}
 	});
 	const handleClose = () => {
-		const canInteract = performance.now() - openAtRef.current > 250;
+		const canInteract = performance.now() - openAtRef > 250;
 		if (!canInteract) return;
 		// Mark onboarding as seen
 		localStorage.setItem(ONBOARDING_STORAGE_KEY, "true");
@@ -55,7 +55,7 @@ export function AgentsOnboardingDialog() {
 	};
 	// Handle ESC key to close dialog
 	createEffect(() => {
-		if (!isOpen) return;
+		if (!isOpen()) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
 				e.preventDefault();
@@ -66,91 +66,75 @@ export function AgentsOnboardingDialog() {
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
-	if (!mounted) return null;
-	const portalTarget = typeof document !== "undefined" ? document.body : null;
-	if (!portalTarget) return null;
-	return createPortal(<AnimatePresence mode="wait" initial={false}>
-      {isOpen && <>
-          {	/* Overlay */}
-          <motion.div initial={{ opacity: 0 }} animate={{
- opacity: 1,
-		transition: {
-			duration: .18,
-			ease: EASING_CURVE
-		}
-	}} exit={{
-		opacity: 0,
-		pointerEvents: "none" as const,
-		transition: {
-			duration: .15,
-			ease: EASING_CURVE
-		}
-	}} class="fixed inset-0 z-[45] bg-black/40" onClick={handleClose} style={{ pointerEvents: "auto" }} data-modal="agents-onboarding" />
+	if (!mounted()) return null;
+	if (typeof document === "undefined") return null;
+	return (
+		<Portal mount={document.body}>
+			<Presence exitBeforeEnter>
+				<Show when={isOpen()}>
+					{/* Overlay */}
+					<Motion.div
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						exit={{ opacity: 0 }}
+						transition={{ duration: 0.18, easing: EASING_CURVE }}
+						class="fixed inset-0 z-[45] bg-black/40"
+						onClick={handleClose}
+						style={{ "pointer-events": "auto" }}
+						data-modal="agents-onboarding"
+					/>
 
-          {	/* Main Dialog */}
-          <div class="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] z-[46] pointer-events-none">
-            <motion.div initial={{
- scale: .95,
-		opacity: 0
-	}} animate={{
-		scale: 1,
-		opacity: 1
-	}} exit={{
-		scale: .95,
-		opacity: 0
-	}} transition={{
-		duration: .2,
-		ease: EASING_CURVE
-	}} class="w-[90vw] max-w-[384px] pointer-events-auto relative" onClick={(e) => e.stopPropagation()}>
-              <div class="bg-background rounded-2xl border shadow-2xl overflow-hidden" data-canvas-dialog>
-                {	/* Close Button */}
-                <button type="button" onClick={handleClose} class="absolute appearance-none outline-none select-none top-4 right-4 rounded-full cursor-pointer flex items-center justify-center ring-offset-background focus:ring-ring bg-secondary h-8 w-8 text-foreground/70 hover:text-foreground focus:outline-hidden disabled:pointer-events-none active:scale-95 transition-all duration-200 ease-in-out z-[60] focus:outline-none focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-2">
-                  <X class="h-4 w-4" />
-                  <span class="sr-only">Close</span>
-                </button>
+					{/* Main Dialog */}
+					<div class="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] z-[46] pointer-events-none">
+						<Motion.div
+							initial={{ scale: 0.95, opacity: 0 }}
+							animate={{ scale: 1, opacity: 1 }}
+							exit={{ scale: 0.95, opacity: 0 }}
+							transition={{ duration: 0.2, easing: EASING_CURVE }}
+							class="w-[90vw] max-w-[384px] pointer-events-auto relative"
+							onClick={(e) => e.stopPropagation()}
+						>
+							<div class="bg-background rounded-2xl border shadow-2xl overflow-hidden" data-canvas-dialog>
+								{/* Close Button */}
+								<button type="button" onClick={handleClose} class="absolute appearance-none outline-none select-none top-4 right-4 rounded-full cursor-pointer flex items-center justify-center ring-offset-background focus:ring-ring bg-secondary h-8 w-8 text-foreground/70 hover:text-foreground focus:outline-hidden disabled:pointer-events-none active:scale-95 transition-all duration-200 ease-in-out z-[60] focus:outline-none focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-2">
+									<X class="h-4 w-4" />
+									<span class="sr-only">Close</span>
+								</button>
 
-                  <div class="flex flex-col">
-                    { /* Images Section */}
-                    <div class="bg-primary px-5 pt-10 flex items-start justify-center">
-                      <div class="relative w-full flex items-start justify-center pt-4">
-                        { /* Container showing only top 70% of image (16/7 aspect ratio = 70% of 16/10) */}
-                        <div class="relative w-full overflow-hidden rounded-t-lg border" style={{
- aspectRatio: "16/7",
-		maxHeight: "126px"
-	}}>
-                          <div class="absolute inset-0" style={{
-		height: "142.86%",
-		top: 0
-	}}>
-                            <Image src={resolvedTheme() === "dark" ? "/agents-onboarding-dark.webp" : "/agents-onboarding-light.webp"} alt="Agents interface" fill class="object-cover" style={{ objectPosition: "top" }} />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+								<div class="flex flex-col">
+									{/* Images Section */}
+									<div class="bg-primary px-5 pt-10 flex items-start justify-center">
+										<div class="relative w-full flex items-start justify-center pt-4">
+											{/* Container showing only top 70% of image */}
+											<div class="relative w-full overflow-hidden rounded-t-lg border" style={{ "aspect-ratio": "16/7", "max-height": "126px" }}>
+												<div class="absolute inset-0" style={{ height: "142.86%", top: 0 }}>
+													<Image src={resolvedTheme() === "dark" ? "/agents-onboarding-dark.webp" : "/agents-onboarding-light.webp"} alt="Agents interface" fill class="object-cover" style={{ "object-position": "top" }} />
+												</div>
+											</div>
+										</div>
+									</div>
 
-                    {	/* Content */}
-                    <div class="p-5 space-y-2">
-                      <h2 class="text-base font-semibold">
-                        Welcome to Agents
-                      </h2>
-                      <p class="text-[13px] text-muted-foreground leading-relaxed">
-                      This tool makes you significantly more productive in your
-                      daily routine.
-                      </p>
-
-                      { /* Button - bottom right */}
-                      <div class="flex justify-end pt-1">
-                        <Button size="sm" onClick={handleClose} class="h-7 text-xs rounded-md">
-                          Let's go
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-              </div>
-            </motion.div>
-          </div>
-        </>}
-    </AnimatePresence>, portalTarget);
- }
+									{/* Content */}
+									<div class="p-5 space-y-2">
+										<h2 class="text-base font-semibold">Welcome to Agents</h2>
+										<p class="text-[13px] text-muted-foreground leading-relaxed">
+											This tool makes you significantly more productive in your daily routine.
+										</p>
+										{/* Button - bottom right */}
+										<div class="flex justify-end pt-1">
+											<Button size="sm" onClick={handleClose} class="h-7 text-xs rounded-md">
+												Let's go
+											</Button>
+										</div>
+									</div>
+								</div>
+							</div>
+						</Motion.div>
+					</div>
+				</Show>
+			</Presence>
+		</Portal>
+	);
+}

@@ -1,7 +1,8 @@
 "use client";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
-import { motion, AnimatePresence } from "motion/react";
+import { Motion, Presence } from "solid-motionone";
+import { Show } from "solid-js";
 import { Button as ButtonCustom } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
 import { useSetAtom, useAtom, useAtomValue } from "../../lib/state/jotai";
@@ -102,65 +103,43 @@ const ChatIcon = function ChatIcon({ isSelected, isLoading, hasUnseenChanges = f
         {renderMainIcon()}
       </div>
       { /* Badge in bottom-right corner: question > loader > amber dot > blue dot - hidden during multi-select or when icon is hidden */}
-      <AnimatePresence mode="wait">
-        {(hasPendingQuestion || isLoading || hasUnseenChanges || hasPendingPlan) && !isMultiSelectMode && showIcon && <motion.div initial={{
+      <Presence exitBeforeEnter>
+        <Show when={(hasPendingQuestion || isLoading || hasUnseenChanges || hasPendingPlan) && !isMultiSelectMode && showIcon}>
+          <Motion.div initial={{
  opacity: 0,
-		scale: .5
+		scale: 0.5
 	}} animate={{
 		opacity: 1,
 		scale: 1
 	}} exit={{
 		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }} class={cn("absolute -bottom-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center", isSelected ? "bg-[#E8E8E8] dark:bg-[#1B1B1B]" : "bg-[#F4F4F4] group-hover:bg-[#E8E8E8] dark:bg-[#101010] dark:group-hover:bg-[#1B1B1B]")}>
+		scale: 0.5
+	}} transition={{ duration: 0.15 }} class={cn("absolute -bottom-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center", isSelected ? "bg-[#E8E8E8] dark:bg-[#1B1B1B]" : "bg-[#F4F4F4] group-hover:bg-[#E8E8E8] dark:bg-[#101010] dark:group-hover:bg-[#1B1B1B]")}>
             {	/* Priority: question > loader > amber dot (pending plan) > blue dot (unseen) */}
-            <AnimatePresence mode="wait">
-              {hasPendingQuestion ? <motion.div key="question" initial={{
- opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }}>
+            <Presence exitBeforeEnter>
+              <Show when={hasPendingQuestion} fallback={
+                <Show when={isLoading} fallback={
+                  <Show when={hasPendingPlan} fallback={
+                    <Motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
+                      <LoadingDot isLoading={false} class="w-2.5 h-2.5 text-muted-foreground" />
+                    </Motion.div>
+                  }>
+                    <Motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }} class="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  </Show>
+                }>
+                  <Motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
+                    <LoadingDot isLoading={true} class="w-2.5 h-2.5 text-muted-foreground" />
+                  </Motion.div>
+                </Show>
+              }>
+                <Motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
                   <QuestionIcon class="w-2.5 h-2.5 text-blue-500" />
-                </motion.div> : isLoading ? <motion.div key="loading" initial={{
-		opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }}>
-                  <LoadingDot isLoading={true} class="w-2.5 h-2.5 text-muted-foreground" />
-                </motion.div> : hasPendingPlan ? <motion.div key="plan" initial={{
-		opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }} class="w-1.5 h-1.5 rounded-full bg-amber-500" /> : <motion.div key="unseen" initial={{
-		opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }}>
-                  <LoadingDot isLoading={false} class="w-2.5 h-2.5 text-muted-foreground" />
-                </motion.div>}
-            </AnimatePresence>
-          </motion.div>}
-      </AnimatePresence>
+                </Motion.div>
+              </Show>
+            </Presence>
+          </Motion.div>
+        </Show>
+      </Presence>
     </div>;
 }
 // Memoized Draft Item component to prevent re-renders on hover
@@ -318,51 +297,27 @@ const AgentChatItem = function AgentChatItem({ chatId, chatName, chatBranch, cha
                 {!isMultiSelectMode && !isMobileFullscreen && <div class="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center relative">
                     { /* Inline loader/status when icon is hidden - always visible, hides on hover */}
                     {!showIcon && (hasPendingQuestion || isLoading || hasUnseenChanges || hasPendingPlan) && <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover:opacity-0">
-                        <AnimatePresence mode="wait">
-                          {hasPendingQuestion ? <motion.div key="question" initial={{
- opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }}>
+                        <Presence exitBeforeEnter>
+                          <Show when={hasPendingQuestion} fallback={
+                            <Show when={isLoading} fallback={
+                              <Show when={hasPendingPlan} fallback={
+                                <Motion.div initial={{ opacity: 0, scale: .5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .5 }} transition={{ duration: .15 }}>
+                                  <LoadingDot isLoading={false} class="w-2.5 h-2.5 text-muted-foreground" />
+                                </Motion.div>
+                              }>
+                                <Motion.div initial={{ opacity: 0, scale: .5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .5 }} transition={{ duration: .15 }} class="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              </Show>
+                            }>
+                              <Motion.div initial={{ opacity: 0, scale: .5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .5 }} transition={{ duration: .15 }}>
+                                <LoadingDot isLoading={true} class="w-2.5 h-2.5 text-muted-foreground" />
+                              </Motion.div>
+                            </Show>
+                          }>
+                            <Motion.div initial={{ opacity: 0, scale: .5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .5 }} transition={{ duration: .15 }}>
                               <QuestionIcon class="w-2.5 h-2.5 text-blue-500" />
-                            </motion.div> : isLoading ? <motion.div key="loading" initial={{
-		opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }}>
-                              <LoadingDot isLoading={true} class="w-2.5 h-2.5 text-muted-foreground" />
-                            </motion.div> : hasPendingPlan ? <motion.div key="plan" initial={{
-		opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }} class="w-1.5 h-1.5 rounded-full bg-amber-500" /> : <motion.div key="unseen" initial={{
-		opacity: 0,
-		scale: .5
-	}} animate={{
-		opacity: 1,
-		scale: 1
-	}} exit={{
-		opacity: 0,
-		scale: .5
-	}} transition={{ duration: .15 }}>
-                              <LoadingDot isLoading={false} class="w-2.5 h-2.5 text-muted-foreground" />
-                            </motion.div>}
-                        </AnimatePresence>
+                            </Motion.div>
+                          </Show>
+                        </Presence>
                       </div>}
                     {	/* Archive button - appears on hover */}
                     <button onClick={(e) => {
@@ -2188,48 +2143,9 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
       </div>
 
       { /* Footer - Multi-select toolbar or normal footer */}
-      <AnimatePresence mode="wait">
-        {isMultiSelectMode ? <motion.div key="multi-select-footer" initial={hasFooterAnimated.current ? {
- opacity: 0,
-		y: 8
-	} : false} animate={{
-		opacity: 1,
-		y: 0
-	}} exit={{
-		opacity: 0,
-		y: 8
-	}} transition={{ duration: 0 }} onAnimationComplete={() => {
-		hasFooterAnimated.current = true;
-	}} class="p-2 flex flex-col gap-2">
-            {	/* Selection info */}
-            <div class="flex items-center justify-between px-1">
-              <span class="text-xs text-muted-foreground">
-                {selectedChatsCount} selected
-              </span>
-              <button onClick={clearChatSelection} class="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                Cancel
-              </button>
-            </div>
-
-            { /* Action buttons */}
-            <div class="flex items-center gap-1.5">
-              <Button variant="outline" size="sm" onClick={handleBulkArchive} disabled={archiveChatsBatchMutation.isPending} class="flex-1 h-8 gap-1.5 text-xs rounded-lg">
-                <ArchiveIcon class="h-3.5 w-3.5" />
-                {archiveChatsBatchMutation.isPending ? "Archiving..." : "Archive"}
-              </Button>
-            </div>
-          </motion.div> : <motion.div key="normal-footer" initial={hasFooterAnimated.current ? {
- opacity: 0,
-		y: 8
-	} : false} animate={{
-		opacity: 1,
-		y: 0
-	}} exit={{
-		opacity: 0,
-		y: 8
-	}} transition={{ duration: 0 }} onAnimationComplete={() => {
-		hasFooterAnimated.current = true;
-	}} class="p-2 pt-2 flex flex-col gap-2">
+      <Presence exitBeforeEnter>
+        <Show when={isMultiSelectMode} fallback={
+          <Motion.div initial={hasFooterAnimated ? { opacity: 0, y: 8 } : false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0 }} class="p-2 pt-2 flex flex-col gap-2">
             <div class="flex items-center">
               <div class="flex items-center gap-1">
                 {	/* Settings Button */}
@@ -2262,17 +2178,39 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
             <ButtonCustom onClick={() => window.open(FEEDBACK_URL, "_blank")} variant="outline" size="sm" class={cn("px-2 w-full hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground rounded-lg gap-1.5", isMobileFullscreen ? "h-10" : "h-7")}>
               <span class="text-sm font-medium">Feedback</span>
             </ButtonCustom>
-          </motion.div>}
-      </AnimatePresence>
+          </Motion.div>
+        }>
+          <Motion.div initial={hasFooterAnimated ? { opacity: 0, y: 8 } : false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0 }} class="p-2 flex flex-col gap-2">
+            {	/* Selection info */}
+            <div class="flex items-center justify-between px-1">
+              <span class="text-xs text-muted-foreground">
+                {selectedChatsCount} selected
+              </span>
+              <button onClick={clearChatSelection} class="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Cancel
+              </button>
+            </div>
+
+            { /* Action buttons */}
+            <div class="flex items-center gap-1.5">
+              <Button variant="outline" size="sm" onClick={handleBulkArchive} disabled={archiveChatsBatchMutation.isPending} class="flex-1 h-8 gap-1.5 text-xs rounded-lg">
+                <ArchiveIcon class="h-3.5 w-3.5" />
+                {archiveChatsBatchMutation.isPending ? "Archiving..." : "Archive"}
+              </Button>
+            </div>
+          </Motion.div>
+        </Show>
+      </Presence>
     </div>;
  return <>
       {sidebarContent}
 
       {	/* Agent name tooltip portal - always rendered, visibility controlled via ref/DOM */}
-      {typeof document !== "undefined" && createPortal(<div ref={agentTooltipRef} class="fixed z-[100000] max-w-xs px-2 py-1 text-xs bg-popover border border-border rounded-md shadow-lg dark pointer-events-none text-foreground/90 whitespace-nowrap" style={{
- display: "none",
-		transform: "translateY(-50%)"
-	}} />, document.body)}
+      <Show when={typeof document !== "undefined"}>
+        <Portal mount={document.body}>
+          <div ref={agentTooltipRef} class="fixed z-[100000] max-w-xs px-2 py-1 text-xs bg-popover border border-border rounded-md shadow-lg dark pointer-events-none text-foreground/90 whitespace-nowrap" style={{ display: "none", transform: "translateY(-50%)" }} />
+        </Portal>
+      </Show>
 
       {	/* Auth Dialog */}
       <AuthDialog open={showAuthDialog} onOpenChange={setShowAuthDialog} />

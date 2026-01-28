@@ -31,6 +31,9 @@ Started: 2026-01-28
 - Use `innerHTML={htmlString}` instead of `dangerouslySetInnerHTML={{__html: htmlString}}`
 - <Index each={}> for primitive arrays (strings) - item is accessor `item()`, index is number
 - <For each={}> for object arrays - item is value directly, index is accessor `index()`
+- Use solid-motionone: `Motion.div` (capitalized), `Presence` instead of React's `motion.div` and `AnimatePresence`
+- solid-motionone transition uses `easing` prop, not `ease` (Framer Motion style)
+- Use `<Presence exitBeforeEnter>` for AnimatePresence mode="wait" behavior
 
 ---
 
@@ -350,4 +353,79 @@ Thread: https://ampcode.com/threads/T-019c0650-c052-758d-aea9-772e3dc83d4f
   - Index callback gives (item, index) where item is an accessor: `item()`, and index is a number (not accessor)
   - For callback gives (item, index) where item is the value directly, index is an accessor: `index()`
   - Can combine with <Switch>/<Match> for type-safe conditional rendering based on item values
+---
+
+## 2026-01-28 - US-019
+Thread: https://ampcode.com/threads/T-019c0665-1180-7629-b767-7e9e51b435f4
+- Replaced motion/react (Framer Motion) patterns with solid-motionone equivalents
+- Files changed:
+  - src/mainview/features/agents/main/active-chat.tsx - converted AnimatePresence→Presence, motion.button→Motion.button, fixed duplicate solid-js imports
+  - src/mainview/features/sidebar/agents-sidebar.tsx - converted AnimatePresence→Presence, motion.div→Motion.div for status indicators and footer, replaced createPortal with Portal
+- **Learnings for future iterations:**
+  - solid-motionone was already installed as dependency (v1.0.4)
+  - AnimatePresence → Presence (from solid-motionone)
+  - motion.div → Motion.div (capitalized)
+  - motion.button → Motion.button (capitalized)
+  - Framer Motion's `ease` transition prop becomes `easing` in solid-motionone
+  - Use <Presence exitBeforeEnter> for AnimatePresence mode="wait" behavior
+  - Use nested <Show when={} fallback={}> to replace ternary chains inside Presence
+  - Many files already had correct solid-motionone imports (Motion, Presence) - only needed to fix remaining React-style lowercase motion.* patterns
+---
+
+## 2026-01-28 - US-020
+Thread: https://ampcode.com/threads/T-019c0668-d23a-737b-beb8-f01dc3b4a0e8
+- Converted all createPortal patterns to SolidJS Portal component
+- Files changed:
+  - src/mainview/features/agents/ui/text-selection-popover.tsx - Portal, let ref, onCleanup, Show component
+  - src/mainview/features/agents/ui/agent-image-item.tsx - Portal with Show, For component, onCleanup, signal accessor
+  - src/mainview/features/agents/components/agents-rename-subchat-dialog.tsx - Portal, let refs, onCleanup
+  - src/mainview/features/agents/components/agents-onboarding-dialog.tsx - Portal, let ref, onCleanup, signal accessors
+  - src/mainview/features/agents/components/open-locally-dialog.tsx - Portal, let ref, onCleanup, For component
+  - src/mainview/features/agents/commands/agents-slash-command.tsx - Portal, let refs, onCleanup, For/Show, signal accessors
+  - src/mainview/features/agents/mentions/agents-file-mention.tsx - Portal, let refs, onCleanup, For/Show, signal accessors
+  - src/mainview/features/agents/main/chat-input-area.tsx - Portal with Show wrapper for inline tooltip
+  - src/mainview/features/agents/main/new-chat-form.tsx - Portal with Show wrapper for inline tooltip
+- **Learnings for future iterations:**
+  - createPortal(children, container) becomes <Portal mount={container}><children></Portal>
+  - Portal wraps children rather than passing as function argument
+  - Style properties in Portal content should use kebab-case and string values for numeric properties: `top: "10px"` not `top: 10`
+  - When converting, also fix associated .current patterns and cleanup functions at the same time
+  - Large dropdown components like agents-file-mention.tsx have many signal accessor patterns that need options() calls
+---
+
+## 2026-01-28 - US-021
+Thread: https://ampcode.com/threads/T-019c0672-11b7-7418-a9d1-a5e14f6a53df
+- Verified SVG and JSX attribute types are already correctly using SolidJS patterns
+- No files changed - codebase already complete
+- Verification performed:
+  - canvas-icons.tsx uses `JSX.SvgSVGAttributes<SVGSVGElement>` for IconProps
+  - icons.tsx uses same pattern
+  - All HTML attributes use JSX.HTMLAttributes<T>, JSX.ButtonHTMLAttributes<T>, etc.
+  - No React namespace references (React.SVGProps, React.HTMLAttributes) found in TSX files
+- **Learnings for future iterations:**
+  - Previous migration work (US-015) already converted all React namespace references
+  - JSX types from solid-js are the correct replacements for React types
+  - LucideProps from lucide-solid is compatible with SolidJS
+---
+
+## 2026-01-28 - US-022
+Thread: https://ampcode.com/threads/T-019c0672-11b7-7418-a9d1-a5e14f6a53df
+- Converted camelCase CSS properties to kebab-case in inline style objects
+- Files changed:
+  - resizable-sidebar.tsx - marginRight, paddingLeft, paddingRight, marginLeft -> kebab-case
+  - details-sidebar.tsx - backgroundColor -> "background-color", borderLeftWidth -> "border-left-width"
+  - terminal-widget.tsx - backgroundColor -> "background-color" (2 occurrences)
+  - terminal-section.tsx - backgroundColor -> "background-color" (3), minHeight -> "min-height"
+  - agents-file-mention.tsx - paddingLeft -> "padding-left"
+  - agents-subchats-sidebar.tsx - borderRightWidth -> "border-right-width"
+  - active-chat.tsx - paddingBottom -> "padding-bottom", minWidth -> "min-width"
+  - agents-content.tsx - minWidth -> "min-width"
+  - agents-layout.tsx - borderRightWidth -> "border-right-width"
+  - expanded-widget-sidebar.tsx - borderLeftWidth -> "border-left-width"
+  - framework-icons.tsx - maskType -> "mask-type"
+- **Learnings for future iterations:**
+  - SolidJS requires kebab-case for CSS properties in style objects: "background-color" not backgroundColor
+  - WebkitAppRegion is a special vendor prefix used for Electron window dragging - can keep camelCase with `as JSX.CSSProperties` cast
+  - Many files already use correct kebab-case (terminal.tsx, terminal-sidebar.tsx) from previous migrations
+  - Pre-existing type errors in src/bun/ are unrelated to CSS migration (electrobun/drizzle type issues)
 ---

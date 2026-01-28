@@ -1,7 +1,7 @@
 "use client";
-import { createMemo } from "solid-js";
-import { AnimatePresence } from "motion/react";
-import { createPortal } from "solid-js/web";
+import { createMemo, Show } from "solid-js";
+import { Presence } from "solid-motionone";
+import { Portal } from "solid-js/web";
 import { useAtomValue } from "../../../lib/state/jotai";
 import { loadingSubChatsAtom } from "../atoms";
 import { AgentChatCard } from "./agent-chat-card";
@@ -29,31 +29,39 @@ export function AgentsQuickSwitchDialog({ isOpen, chats, selectedIndex, projects
 	// Derive loading parent chat IDs from loadingSubChats Map
 	const loadingSubChats = useAtomValue(loadingSubChatsAtom);
 	const loadingChatIds = createMemo(() => new Set([...loadingSubChats.values()]));
-	return createPortal(<AnimatePresence>
-      {isOpen && <>
-          {	/* Backdrop */}
-          <div class="fixed inset-0 z-[10000]" />
+	return (
+		<Portal>
+			<Presence>
+				<Show when={isOpen}>
+					{/* Backdrop */}
+					<div class="fixed inset-0 z-[10000]" />
 
-          { /* Dialog */}
-          <div class="fixed inset-0 flex items-center justify-center z-[10001] p-4 pointer-events-none">
-            <div class="pointer-events-auto">
-              <div class="max-w-5xl mx-auto">
-                { /* Chat List or Empty State */}
-                {chats.length === 0 ? <div class="px-4 py-12 text-center bg-background rounded-xl border-[0.5px]">
-                    <p class="text-sm text-muted-foreground">
-                      No recent agents
-                    </p>
-                  </div> : <div class="flex gap-3 overflow-x-auto p-3 bg-background rounded-3xl border-[0.5px]" style={{ boxShadow: "0 8px 32px 0 rgba(0,0,0,0.07), 0 0px 16px 0 rgba(0,0,0,0.04), 0 -8px 24px 0 rgba(0,0,0,0.03)" }}>
-                    {chats.map((chat, index) => {
- const isSelected = index === selectedIndex;
-		const isLoading = loadingChatIds.has(chat.id);
-		const project = projectsMap.get(chat.projectId);
-		return <AgentChatCard key={chat.id} chat={chat} isSelected={isSelected} isLoading={isLoading} variant="quick-switch" gitOwner={project?.gitOwner} gitProvider={project?.gitProvider} repoName={project?.gitRepo || project?.name} onMouseEnter={() => onHover?.(index)} />;
-	})}
-                  </div>}
-              </div>
-            </div>
-          </div>
-        </>}
-    </AnimatePresence>, document.body);
+					{/* Dialog */}
+					<div class="fixed inset-0 flex items-center justify-center z-[10001] p-4 pointer-events-none">
+						<div class="pointer-events-auto">
+							<div class="max-w-5xl mx-auto">
+								{/* Chat List or Empty State */}
+								{chats.length === 0 ? (
+									<div class="px-4 py-12 text-center bg-background rounded-xl border-[0.5px]">
+										<p class="text-sm text-muted-foreground">
+											No recent agents
+										</p>
+									</div>
+								) : (
+									<div class="flex gap-3 overflow-x-auto p-3 bg-background rounded-3xl border-[0.5px]" style={{ "box-shadow": "0 8px 32px 0 rgba(0,0,0,0.07), 0 0px 16px 0 rgba(0,0,0,0.04), 0 -8px 24px 0 rgba(0,0,0,0.03)" }}>
+										{chats.map((chat, index) => {
+											const isSelected = index === selectedIndex;
+											const isLoading = loadingChatIds().has(chat.id);
+											const project = projectsMap.get(chat.projectId);
+											return <AgentChatCard chat={chat} isSelected={isSelected} isLoading={isLoading} variant="quick-switch" gitOwner={project?.gitOwner} gitProvider={project?.gitProvider} repoName={project?.gitRepo || project?.name} onMouseEnter={() => onHover?.(index)} />;
+										})}
+									</div>
+								)}
+							</div>
+						</div>
+					</div>
+				</Show>
+			</Presence>
+		</Portal>
+	);
 }

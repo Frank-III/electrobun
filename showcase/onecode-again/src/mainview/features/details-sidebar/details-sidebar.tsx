@@ -145,7 +145,7 @@ export function DetailsSidebar({ chatId, worktreePath, planPath, mode, onBuildPl
 		return <div class="mx-2 mb-2">
           <div class={cn("rounded-lg border border-border/50 overflow-hidden")}>
             {		/* Widget Header - fixed height h-8 for consistency */}
-            <div class={cn("flex items-center gap-2 px-2 h-8 select-none group", !headerBg && "bg-muted/30")} style={headerBg ? { backgroundColor: headerBg } : undefined}>
+            <div class={cn("flex items-center gap-2 px-2 h-8 select-none group", !headerBg && "bg-muted/30")} style={headerBg ? { "background-color": headerBg } : undefined}>
               {customHeader ? <div class="flex-1 min-w-0 flex items-center gap-1">
                   {customHeader}
                 </div> : <>
@@ -173,7 +173,7 @@ export function DetailsSidebar({ chatId, worktreePath, planPath, mode, onBuildPl
         </div>;
  };
 	return <ResizableSidebar isOpen={isOpen} onClose={closeSidebar} widthAtom={detailsSidebarWidthAtom} side="right" minWidth={350} maxWidth={700} animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{
-		borderLeftWidth: "0.5px",
+		"border-left-width": "0.5px",
 		overflow: "hidden"
 	}}>
       <div class="flex flex-col h-full min-w-0 overflow-hidden">

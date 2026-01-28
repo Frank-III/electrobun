@@ -1,7 +1,7 @@
 "use client";
-import { createMemo } from "solid-js";
-import { AnimatePresence } from "motion/react";
-import { createPortal } from "solid-js/web";
+import { createMemo, Show } from "solid-js";
+import { Presence } from "solid-motionone";
+import { Portal } from "solid-js/web";
 import { useAtomValue } from "../../../lib/state/jotai";
 import { cn } from "../../../lib/utils";
 import { loadingSubChatsAtom, agentsSubChatUnseenChangesAtom, subChatFilesAtom, type SubChatFileChange } from "../atoms";
@@ -90,32 +90,40 @@ export function SubChatsQuickSwitchDialog({ isOpen, subChats, selectedIndex, onH
 	const unseenChanges = useAtomValue(agentsSubChatUnseenChangesAtom);
 	// File changes per sub-chat
 	const subChatFiles = useAtomValue(subChatFilesAtom);
-	return createPortal(<AnimatePresence>
-      {isOpen && <>
-          {	/* Backdrop */}
-          <div class="fixed inset-0 z-[10000]" />
+	return (
+		<Portal>
+			<Presence>
+				<Show when={isOpen}>
+					{/* Backdrop */}
+					<div class="fixed inset-0 z-[10000]" />
 
-          { /* Dialog */}
-          <div class="fixed inset-0 flex items-center justify-center z-[10001] p-4 pointer-events-none">
-            <div class="pointer-events-auto">
-              <div class="max-w-5xl mx-auto">
-                { /* Sub-chat List or Empty State */}
-                {subChats.length === 0 ? <div class="px-4 py-12 text-center bg-background rounded-xl border-[0.5px]">
-                    <p class="text-sm text-muted-foreground">
-                      No chats in this agent
-                    </p>
-                  </div> : <div class="flex gap-3 overflow-x-auto p-3 bg-background rounded-3xl border-[0.5px]" style={{ boxShadow: "0 8px 32px 0 rgba(0,0,0,0.07), 0 0px 16px 0 rgba(0,0,0,0.04), 0 -8px 24px 0 rgba(0,0,0,0.03)" }}>
-                    {subChats.map((subChat, index) => {
- const isSelected = index === selectedIndex;
-		const isLoading = loadingSubChatIds.has(subChat.id);
-		const hasUnseenChanges = unseenChanges().has(subChat.id);
-		const fileChanges = subChatFiles.get(subChat.id) || [];
-		return <SubChatCard key={subChat.id} subChat={subChat} isSelected={isSelected} isLoading={isLoading} hasUnseenChanges={hasUnseenChanges} fileChanges={fileChanges} onMouseEnter={() => onHover?.(index)} />;
-	})}
-                  </div>}
-              </div>
-            </div>
-          </div>
-        </>}
-    </AnimatePresence>, document.body);
+					{/* Dialog */}
+					<div class="fixed inset-0 flex items-center justify-center z-[10001] p-4 pointer-events-none">
+						<div class="pointer-events-auto">
+							<div class="max-w-5xl mx-auto">
+								{/* Sub-chat List or Empty State */}
+								{subChats.length === 0 ? (
+									<div class="px-4 py-12 text-center bg-background rounded-xl border-[0.5px]">
+										<p class="text-sm text-muted-foreground">
+											No chats in this agent
+										</p>
+									</div>
+								) : (
+									<div class="flex gap-3 overflow-x-auto p-3 bg-background rounded-3xl border-[0.5px]" style={{ "box-shadow": "0 8px 32px 0 rgba(0,0,0,0.07), 0 0px 16px 0 rgba(0,0,0,0.04), 0 -8px 24px 0 rgba(0,0,0,0.03)" }}>
+										{subChats.map((subChat, index) => {
+											const isSelected = index === selectedIndex;
+											const isLoading = loadingSubChatIds().has(subChat.id);
+											const hasUnseenChanges = unseenChanges().has(subChat.id);
+											const fileChanges = subChatFiles.get(subChat.id) || [];
+											return <SubChatCard subChat={subChat} isSelected={isSelected} isLoading={isLoading} hasUnseenChanges={hasUnseenChanges} fileChanges={fileChanges} onMouseEnter={() => onHover?.(index)} />;
+										})}
+									</div>
+								)}
+							</div>
+						</div>
+					</div>
+				</Show>
+			</Presence>
+		</Portal>
+	);
 }

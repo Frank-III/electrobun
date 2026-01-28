@@ -29,6 +29,7 @@
     "remark-gfm": "^4.0.0",
     "shiki": "^3.21.0",
     "solid-js": "^1.9.6",
+    "solid-motionone": "^1.0.4",
     "solid-sonner": "^0.2.8",
     "streamdown": "^0.0.1"
   },

@@ -3,7 +3,6 @@ import { createEffect, createMemo, createSignal } from "solid-js";
 import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { useTheme } from "../../../lib/hooks/use-theme";
 import { fullThemeDataAtom } from "@/lib/atoms";
-import { motion } from "motion/react";
 import { ArrowUpRight } from "lucide-solid";
 import { Button } from "@/components/ui/button";
 import { PlusIcon } from "@/components/ui/icons";
@@ -189,7 +188,7 @@ export function TerminalWidget({ chatId, cwd, workspaceId, onExpand }: TerminalW
 	return <div class="mx-2 mb-2">
       <div class={cn("rounded-lg border border-border/50 overflow-hidden")}>
         {	/* Widget Header with Tabs - like terminal-sidebar.tsx */}
-        <div class="flex items-center gap-1 pl-1 pr-2 py-1.5 select-none group" style={{ backgroundColor: terminalBg }}>
+        <div class="flex items-center gap-1 pl-1 pr-2 py-1.5 select-none group" style={{ "background-color": terminalBg }}>
           { /* Terminal Tabs - directly without wrapper, like in terminal-sidebar.tsx */}
           {terminals.length > 0 && <TerminalTabs terminals={terminals} activeTerminalId={activeTerminalId} cwds={terminalCwds} initialCwd={cwd} terminalBg={terminalBg} hidePlusButton small onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />}
 
@@ -219,12 +218,12 @@ export function TerminalWidget({ chatId, cwd, workspaceId, onExpand }: TerminalW
 
         { /* Terminal Content */}
         <div class="min-h-0 overflow-hidden" style={{
- backgroundColor: terminalBg,
+ "background-color": terminalBg,
 		height: "200px"
 	}}>
-          {activeTerminal && canRenderTerminal ? <motion.div key={activeTerminal.paneId} class="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0 }}>
+          {activeTerminal && canRenderTerminal ? <div class="h-full">
               <Terminal paneId={activeTerminal.paneId} cwd={cwd} workspaceId={workspaceId} initialCwd={cwd} />
-            </motion.div> : <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+            </div> : <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
               {!canRenderTerminal ? "" : "No terminal open"}
             </div>}
         </div>

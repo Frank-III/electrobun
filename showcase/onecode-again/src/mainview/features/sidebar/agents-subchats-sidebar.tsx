@@ -668,7 +668,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
         <TooltipContent side="bottom">Close chats pane</TooltipContent>
       </Tooltip>
     </div>;
-	return <div class="flex flex-col h-full bg-background border-r overflow-hidden relative" style={{ borderRightWidth: "0.5px" }}>
+	return <div class="flex flex-col h-full bg-background border-r overflow-hidden relative" style={{ "border-right-width": "0.5px" }}>
       {	/* Draggable area for window movement - background layer (hidden in fullscreen) */}
       {isDesktop && !isFullscreen && <div class="absolute inset-0 z-0" style={{ WebkitAppRegion: "drag" }} />}
 

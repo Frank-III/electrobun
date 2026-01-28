@@ -1,6 +1,6 @@
 "use client";
-import { createEffect, createSignal } from "solid-js";
-import { createPortal } from "solid-js/web";
+import { createEffect, createSignal, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import { useTextSelection, type TextSelectionSource } from "../context/text-selection-context";
 interface TextSelectionPopoverProps {
 	onAddToContext: (text: string, source: TextSelectionSource) => void;
@@ -11,7 +11,7 @@ export function TextSelectionPopover({ onAddToContext, onQuickComment, onFocusIn
 	const { selectedText, source, selectionRect, clearSelection } = useTextSelection();
 	const [isVisible, setIsVisible] = createSignal(false);
 	const [isMouseDown, setIsMouseDown] = createSignal(false);
-	const [popoverRef, setPopoverRef] = createSignal<HTMLDivElement>(null);
+	let popoverRef: HTMLDivElement | undefined;
 	const handleAddToContext = () => {
 		if (selectedText && source) {
 			onAddToContext(selectedText, source);
@@ -33,7 +33,7 @@ export function TextSelectionPopover({ onAddToContext, onQuickComment, onFocusIn
 	createEffect(() => {
 		const handleMouseDown = (e: MouseEvent) => {
 			// Ignore clicks on the popover itself
-			if (popoverRef.current?.contains(e.target as Node)) {
+			if (popoverRef?.contains(e.target as Node)) {
 				return;
 			}
 			setIsMouseDown(true);
@@ -41,7 +41,7 @@ export function TextSelectionPopover({ onAddToContext, onQuickComment, onFocusIn
 		};
 		const handleMouseUp = (e: MouseEvent) => {
 			// Ignore clicks on the popover itself
-			if (popoverRef.current?.contains(e.target as Node)) {
+			if (popoverRef?.contains(e.target as Node)) {
 				return;
 			}
 			setIsMouseDown(false);
@@ -87,19 +87,22 @@ export function TextSelectionPopover({ onAddToContext, onQuickComment, onFocusIn
 	};
 	// Animation: scale from direction of selection
 	const animationClass = showAbove ? "animate-in fade-in-0 zoom-in-95 origin-bottom duration-100" : "animate-in fade-in-0 zoom-in-95 origin-top duration-100";
-	const popoverContent = <div ref={popoverRef} style={style} class={animationClass}>
-      <div class="flex items-center gap-0.5 rounded-md border border-border bg-popover px-0.5 py-0.5 shadow-lg">
-        <button onClick={handleAddToContext} class="rounded px-1.5 py-0.5 text-xs text-popover-foreground hover:bg-white/15 transition-colors duration-100 active:scale-[0.97]">
-          Add to context
-        </button>
-        {	/* Quick comment button shows for diff and tool-edit selections */}
-        {onQuickComment && (source.type === "diff" || source.type === "tool-edit") && <>
-            <div class="w-px h-3 bg-border" />
-            <button onClick={handleQuickComment} class="rounded px-1.5 py-0.5 text-xs text-popover-foreground hover:bg-white/15 transition-colors duration-100 active:scale-[0.97]">
-              Reply
-            </button>
-          </>}
-      </div>
-    </div>;
- return createPortal(popoverContent, document.body);
+	return (
+		<Portal mount={document.body}>
+			<div ref={el => popoverRef = el} style={style} class={animationClass}>
+				<div class="flex items-center gap-0.5 rounded-md border border-border bg-popover px-0.5 py-0.5 shadow-lg">
+					<button onClick={handleAddToContext} class="rounded px-1.5 py-0.5 text-xs text-popover-foreground hover:bg-white/15 transition-colors duration-100 active:scale-[0.97]">
+						Add to context
+					</button>
+					{/* Quick comment button shows for diff and tool-edit selections */}
+					<Show when={onQuickComment && (source.type === "diff" || source.type === "tool-edit")}>
+						<div class="w-px h-3 bg-border" />
+						<button onClick={handleQuickComment} class="rounded px-1.5 py-0.5 text-xs text-popover-foreground hover:bg-white/15 transition-colors duration-100 active:scale-[0.97]">
+							Reply
+						</button>
+					</Show>
+				</div>
+			</div>
+		</Portal>
+	);
 }

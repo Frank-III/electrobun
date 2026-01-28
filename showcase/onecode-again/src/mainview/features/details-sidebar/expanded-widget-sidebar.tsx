@@ -65,7 +65,7 @@ export function ExpandedWidgetSidebar({ chatId, worktreePath, planPath, planRefe
 		}
 	};
 	return <ResizableSidebar isOpen={expandedWidget !== null} onClose={closeSidebar} widthAtom={expandedWidgetSidebarWidthAtom} side="right" minWidth={400} maxWidth={800} animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{
-		borderLeftWidth: "0.5px",
+		"border-left-width": "0.5px",
 		overflow: "hidden"
 	}}>
       <div class="flex flex-col h-full min-w-0 overflow-hidden">

@@ -1,10 +1,9 @@
 "use client";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { createSignal, createEffect, createMemo } from "solid-js";
+import { createSignal, createEffect, createMemo, Show } from "solid-js";
 import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 import { AlignJustify, Plus, Zap } from "lucide-solid";
-import { createEffect, createMemo, createSignal } from "solid-js";
-import { createPortal } from "solid-js/web";
+import { Portal } from "solid-js/web";
 import { Button } from "../../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { AgentIcon, AttachIcon, BranchIcon, CheckIcon, ClaudeCodeIcon, CursorIcon, IconChevronDown, PlanIcon, SearchIcon } from "../../../components/ui/icons";
@@ -1300,17 +1299,21 @@ type MessagePart = {
                             {agentMode === "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
-                        {modeTooltip?.visible && createPortal(<div class="fixed z-[100000]" style={{
-		top: modeTooltip.position.top + 14,
-		left: modeTooltip.position.left,
-		transform: "translateY(-50%)"
-	}}>
+                        <Show when={modeTooltip?.visible}>
+                          <Portal mount={document.body}>
+                            <div class="fixed z-[100000]" style={{
+                              top: `${modeTooltip.position.top + 14}px`,
+                              left: `${modeTooltip.position.left}px`,
+                              transform: "translateY(-50%)"
+                            }}>
                               <div data-tooltip="true" class="relative rounded-[12px] bg-popover px-2.5 py-1.5 text-xs text-popover-foreground dark max-w-[150px]">
                                 <span>
                                   {modeTooltip.mode === "agent" ? "Apply changes directly without a plan" : "Create a plan before making changes"}
                                 </span>
                               </div>
-                            </div>, document.body)}
+                            </div>
+                          </Portal>
+                        </Show>
                       </DropdownMenu>
 
                       {	/* Model selector - shows Ollama models when offline, Claude models when online */}

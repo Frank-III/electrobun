@@ -26,7 +26,7 @@ import { AgentDiffView } from "./agent-diff-view";
 import { TerminalSidebar, terminalSidebarOpenAtomFamily } from "../../terminal";
 import { useAgentSubChatStore, type SubChatMeta } from "../stores/sub-chat-store";
 import { useShallow } from "zustand/react/shallow";
-import { motion, AnimatePresence } from "motion/react";
+import { Motion, Presence } from "solid-motionone";
 // import { ResizableSidebar } from "@/app/(alpha)/canvas/[id]/{components}/resizable-sidebar"
 import { ResizableSidebar } from "../../../components/ui/resizable-sidebar";
 // import { useClerk, useUser } from "@clerk/nextjs"
@@ -607,7 +607,7 @@ export function AgentsContent() {
         </ResizableSidebar>
 
         {	/* Main content */}
-        <div class="flex-1 min-w-0 overflow-hidden" style={{ minWidth: "350px" }}>
+        <div class="flex-1 min-w-0 overflow-hidden" style={{ "min-width": "350px" }}>
           {selectedChatId ? <div class="h-full flex flex-col relative overflow-hidden">
               <ChatView key={`${chatSourceMode}-${selectedChatId}`} chatId={selectedChatId} isSidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} selectedTeamName={selectedTeam?.name} selectedTeamImageUrl={selectedTeam?.image_url} />
             </div> : selectedDraftId || showNewChatForm ? <div class="h-full flex flex-col relative overflow-hidden">

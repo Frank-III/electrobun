@@ -2,7 +2,8 @@
 import { createSignal, createMemo, createEffect } from "solid-js";
 import { useSetAtom, useAtom } from "../../../lib/state/jotai";
 import { ChevronDown } from "lucide-solid";
-import { motion, AnimatePresence } from "motion/react";
+import { Motion, Presence } from "solid-motionone";
+import { Show } from "solid-js";
 import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/utils";
 import { trpc } from "../../../lib/trpc";
@@ -184,8 +185,9 @@ export function SubChatStatusCard({ chatId, subChatId, isStreaming, isCompacting
       </div>
 
       {	/* Expanded content - files */}
-      <AnimatePresence initial={false}>
-        {isExpanded && hasExpandableContent && <motion.div initial={{
+      <Presence>
+        <Show when={isExpanded() && hasExpandableContent}>
+          <Motion.div initial={{
  height: 0,
 		opacity: 0
 	}} animate={{
@@ -195,25 +197,21 @@ export function SubChatStatusCard({ chatId, subChatId, isStreaming, isCompacting
 		height: 0,
 		opacity: 0
 	}} transition={{
-		duration: .2,
-		ease: [
-			.23,
+		duration: 0.2,
+		easing: [
+			0.23,
 			1,
-			.32,
+			0.32,
 			1
 		]
 	}} class="overflow-hidden">
             <div class="border-t border-border max-h-[200px] overflow-y-auto">
-              {uncommittedFiles.map((file) => {
+              {uncommittedFiles().map((file) => {
 		const FileIcon = getFileIconByExtension(file.displayPath);
 		const handleFileClick = () => {
-			// Set filter to only show files from this sub-chat
-			// Use displayPath (relative path) to match git diff paths
-			const filePaths = uncommittedFiles.map((f) => f.displayPath);
+			const filePaths = uncommittedFiles().map((f) => f.displayPath);
 			setFilteredDiffFiles(filePaths.length > 0 ? filePaths : null);
-			// Set focus on this specific file
 			setFocusedDiffFile(file.displayPath);
-			// Open diff sidebar
 			setDiffSidebarOpen(true);
 		};
 		const handleKeyDown = (e: KeyboardEvent) => {
@@ -236,7 +234,8 @@ export function SubChatStatusCard({ chatId, subChatId, isStreaming, isCompacting
                   </div>;
 	})}
             </div>
-          </motion.div>}
-      </AnimatePresence>
+          </Motion.div>
+        </Show>
+      </Presence>
     </div>;
 }

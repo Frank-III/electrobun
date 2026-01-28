@@ -1,8 +1,8 @@
 "use client";
 import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { ChevronDown, Zap } from "lucide-solid";
-import { createEffect, createMemo, createSignal } from "solid-js";
-import { createPortal } from "solid-js/web";
+import { createEffect, createMemo, createSignal, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import { Button } from "../../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { AgentIcon, AttachIcon, CheckIcon, ClaudeCodeIcon, PlanIcon, ThinkingIcon } from "../../../components/ui/icons";
@@ -928,17 +928,21 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
                         {subChatMode === "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
-                    {modeTooltip?.visible && createPortal(<div class="fixed z-[100000]" style={{
-		top: modeTooltip.position.top + 14,
-		left: modeTooltip.position.left,
-		transform: "translateY(-50%)"
-	}}>
+                    <Show when={modeTooltip?.visible}>
+                      <Portal mount={document.body}>
+                        <div class="fixed z-[100000]" style={{
+                          top: `${modeTooltip.position.top + 14}px`,
+                          left: `${modeTooltip.position.left}px`,
+                          transform: "translateY(-50%)"
+                        }}>
                           <div data-tooltip="true" class="relative rounded-[12px] bg-popover px-2.5 py-1.5 text-xs text-popover-foreground dark max-w-[150px]">
                             <span>
                               {modeTooltip.mode === "agent" ? "Apply changes directly without a plan" : "Create a plan before making changes"}
                             </span>
                           </div>
-                        </div>, document.body)}
+                        </div>
+                      </Portal>
+                    </Show>
                   </DropdownMenu>
 
                   {	/* Model selector - shows Ollama models when offline, Claude models when online */}

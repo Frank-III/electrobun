@@ -1,7 +1,8 @@
 "use client";
-import { AnimatePresence, motion } from "motion/react";
-import { createEffect, createSignal } from "solid-js";
-import { createPortal } from "solid-js/web";
+import { Motion, Presence } from "solid-motionone";
+import { Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, For } from "solid-js";
+import { Portal } from "solid-js/web";
 import { Button } from "../../../components/ui/button";
 import { trpc } from "../../../lib/trpc";
 import { toast } from "solid-sonner";
@@ -35,7 +36,7 @@ const EASING_CURVE = [
 const INTERACTION_DELAY_MS = 250;
 export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProjects, allProjects, remoteSubChatId }: OpenLocallyDialogProps) {
 	const [mounted, setMounted] = createSignal(false);
-	const [openAtRef, setOpenAtRef] = createSignal<number>(0);
+	let openAtRef = 0;
 	const setSelectedChatId = useSetAtom(selectedAgentChatIdAtom);
 	const setChatSourceMode = useSetAtom(chatSourceModeAtom);
 	const utils = trpc.useUtils();
@@ -88,7 +89,7 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 	});
 	createEffect(() => {
 		if (isOpen) {
-			openAtRef.current = performance.now();
+			openAtRef = performance.now();
 			setSelectedProjectId(null);
 		}
 	});
@@ -98,17 +99,17 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
 				event.preventDefault();
-				const canInteract = performance.now() - openAtRef.current > INTERACTION_DELAY_MS;
+				const canInteract = performance.now() - openAtRef > INTERACTION_DELAY_MS;
 				if (canInteract && !isAnyLoading) {
 					onClose();
 				}
 			}
 		};
 		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
+		onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
 	});
 	const handleClose = () => {
-		const canInteract = performance.now() - openAtRef.current > INTERACTION_DELAY_MS;
+		const canInteract = performance.now() - openAtRef > INTERACTION_DELAY_MS;
 		if (!canInteract || isAnyLoading) return;
 		onClose();
 	};
@@ -164,141 +165,142 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 			chatName: remoteChat.name
 		});
 	};
-	if (!mounted) return null;
-	const portalTarget = typeof document !== "undefined" ? document.body : null;
-	if (!portalTarget) return null;
+	if (!mounted()) return null;
+	if (typeof document === "undefined") return null;
 	const mode = matchingProjects.length === 0 ? "no-projects" : "multiple-projects";
 	const repository = remoteChat?.meta?.repository;
-	return createPortal(<AnimatePresence mode="wait" initial={false}>
-      {isOpen && remoteChat && <>
-          {	/* Overlay */}
-          <motion.div initial={{ opacity: 0 }} animate={{
- opacity: 1,
-		transition: {
-			duration: .18,
-			ease: EASING_CURVE
-		}
-	}} exit={{
-		opacity: 0,
-		pointerEvents: "none" as const,
-		transition: {
-			duration: .15,
-			ease: EASING_CURVE
-		}
-	}} class="fixed inset-0 z-[45] bg-black/25" onClick={handleClose} style={{ pointerEvents: "auto" }} data-modal="open-locally" />
+	return (
+		<Portal mount={document.body}>
+			<Presence exitBeforeEnter>
+				<Show when={isOpen && remoteChat}>
+					{/* Overlay */}
+					<Motion.div
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						exit={{ opacity: 0 }}
+						transition={{ duration: 0.18, easing: EASING_CURVE }}
+						class="fixed inset-0 z-[45] bg-black/25"
+						onClick={handleClose}
+						style={{ "pointer-events": "auto" }}
+						data-modal="open-locally"
+					/>
 
-          {	/* Main Dialog */}
-          <div class="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] z-[46] pointer-events-none">
-            <motion.div initial={{
- scale: .95,
-		opacity: 0
-	}} animate={{
-		scale: 1,
-		opacity: 1
-	}} exit={{
-		scale: .95,
-		opacity: 0
-	}} transition={{
-		duration: .2,
-		ease: EASING_CURVE
-	}} class="w-[90vw] max-w-[400px] pointer-events-auto" onClick={(e) => e.stopPropagation()}>
-              <div class="bg-background rounded-2xl border shadow-2xl overflow-hidden" data-canvas-dialog>
-                {mode === "no-projects" ? <>
-                    <div class="p-6">
-                      <h2 class="text-lg font-semibold mb-2">Project not found locally</h2>
-                      <p class="text-sm text-muted-foreground mb-5">
-                        This sandbox is working on{" "}
-                        <code class="px-1.5 py-0.5 bg-muted rounded text-foreground text-xs">
-                          {repository}
-                        </code>
-                        , but we couldn't find it on your machine.
-                      </p>
+					{/* Main Dialog */}
+					<div class="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] z-[46] pointer-events-none">
+						<Motion.div
+							initial={{ scale: 0.95, opacity: 0 }}
+							animate={{ scale: 1, opacity: 1 }}
+							exit={{ scale: 0.95, opacity: 0 }}
+							transition={{ duration: 0.2, easing: EASING_CURVE }}
+							class="w-[90vw] max-w-[400px] pointer-events-auto"
+							onClick={(e) => e.stopPropagation()}
+						>
+							<div class="bg-background rounded-2xl border shadow-2xl overflow-hidden" data-canvas-dialog>
+								<Show
+									when={mode === "no-projects"}
+									fallback={
+										<>
+											<div class="p-6">
+												<h2 class="text-lg font-semibold mb-2">Multiple copies found</h2>
+												<p class="text-sm text-muted-foreground mb-5">
+													You have{" "}
+													<code class="px-1.5 py-0.5 bg-muted rounded text-foreground text-xs">{repository}</code>{" "}
+													in multiple locations. Which one should we use?
+												</p>
 
-                      <div class="space-y-2">
-                        {	/* Option 1: Locate existing clone */}
-                        <button onClick={handleLocateProject} disabled={isAnyLoading} class="w-full p-3 rounded-lg text-left bg-muted/50 hover:bg-muted transition-colors group disabled:opacity-50 disabled:cursor-not-allowed">
-                          <div class="flex items-center gap-3">
-                            <div class="flex items-center justify-center w-8 h-8 rounded-lg bg-background border">
-                              <Folder class="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                            </div>
-                            <div class="flex-1 min-w-0">
-                              <div class="text-sm font-medium">I have it cloned</div>
-                              <div class="text-xs text-muted-foreground">
-                                Point us to your local copy
-                              </div>
-                            </div>
-                          </div>
-                        </button>
+												<div class="space-y-2">
+													<For each={matchingProjects}>
+														{(project) => (
+															<button
+																type="button"
+																class={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${selectedProjectId() === project.id ? "bg-muted ring-1 ring-primary" : "bg-muted/50 hover:bg-muted"}`}
+																onClick={() => setSelectedProjectId(project.id)}
+															>
+																<div class={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${selectedProjectId() === project.id ? "border-primary bg-primary" : "border-muted-foreground/30"}`}>
+																	<Show when={selectedProjectId() === project.id}>
+																		<Check class="w-2.5 h-2.5 text-primary-foreground" />
+																	</Show>
+																</div>
+																<div class="flex-1 min-w-0">
+																	<div class="text-sm font-medium">{project.name}</div>
+																	<div class="text-xs text-muted-foreground font-mono truncate">{project.path}</div>
+																</div>
+															</button>
+														)}
+													</For>
+												</div>
+											</div>
 
-                        { /* Option 2: Clone from sandbox */}
-                        <button onClick={handleCloneFromSandbox} disabled={isAnyLoading} class="w-full p-3 rounded-lg text-left bg-muted/50 hover:bg-muted transition-colors group disabled:opacity-50 disabled:cursor-not-allowed">
-                          <div class="flex items-center gap-3">
-                            <div class="flex items-center justify-center w-8 h-8 rounded-lg bg-background border">
-                              <Download class="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                            </div>
-                            <div class="flex-1 min-w-0">
-                              <div class="text-sm font-medium">Clone from sandbox</div>
-                              <div class="text-xs text-muted-foreground">
-                                Download the repository (may take a while)
-                              </div>
-                            </div>
-                          </div>
-                        </button>
-                      </div>
+											<div class="bg-muted/50 px-6 py-4 flex justify-between border-t border-border">
+												<Button variant="ghost" size="sm" onClick={handleClose} disabled={isAnyLoading}>
+													Cancel
+												</Button>
+												<Button size="sm" onClick={handleSelectProject} disabled={!selectedProjectId() || isAnyLoading}>
+													{importMutation.isPending ? "Opening..." : "Open Locally"}
+												</Button>
+											</div>
+										</>
+									}
+								>
+									<div class="p-6">
+										<h2 class="text-lg font-semibold mb-2">Project not found locally</h2>
+										<p class="text-sm text-muted-foreground mb-5">
+											This sandbox is working on{" "}
+											<code class="px-1.5 py-0.5 bg-muted rounded text-foreground text-xs">{repository}</code>
+											, but we couldn't find it on your machine.
+										</p>
 
-                      { /* Loading indicator */}
-                      {isAnyLoading && <div class="mt-4 text-xs text-muted-foreground text-center">
-                          {locateMutation.isPending && "Opening folder picker..."}
-                          {pickDestMutation.isPending && "Opening folder picker..."}
-                          {importMutation.isPending && "Importing..."}
-                          {cloneMutation.isPending && "Cloning repository..."}
-                        </div>}
-                    </div>
+										<div class="space-y-2">
+											{/* Option 1: Locate existing clone */}
+											<button onClick={handleLocateProject} disabled={isAnyLoading} class="w-full p-3 rounded-lg text-left bg-muted/50 hover:bg-muted transition-colors group disabled:opacity-50 disabled:cursor-not-allowed">
+												<div class="flex items-center gap-3">
+													<div class="flex items-center justify-center w-8 h-8 rounded-lg bg-background border">
+														<Folder class="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+													</div>
+													<div class="flex-1 min-w-0">
+														<div class="text-sm font-medium">I have it cloned</div>
+														<div class="text-xs text-muted-foreground">Point us to your local copy</div>
+													</div>
+												</div>
+											</button>
 
-                    { /* Footer with Cancel */}
-                    <div class="bg-muted/50 px-6 py-4 flex justify-end border-t border-border">
-                      <Button variant="ghost" size="sm" onClick={handleClose} disabled={isAnyLoading}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </> : <>
-                    <div class="p-6">
-                      <h2 class="text-lg font-semibold mb-2">Multiple copies found</h2>
-                      <p class="text-sm text-muted-foreground mb-5">
-                        You have{" "}
-                        <code class="px-1.5 py-0.5 bg-muted rounded text-foreground text-xs">
-                          {repository}
-                        </code>{" "}
-                        in multiple locations. Which one should we use?
-                      </p>
+											{/* Option 2: Clone from sandbox */}
+											<button onClick={handleCloneFromSandbox} disabled={isAnyLoading} class="w-full p-3 rounded-lg text-left bg-muted/50 hover:bg-muted transition-colors group disabled:opacity-50 disabled:cursor-not-allowed">
+												<div class="flex items-center gap-3">
+													<div class="flex items-center justify-center w-8 h-8 rounded-lg bg-background border">
+														<Download class="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+													</div>
+													<div class="flex-1 min-w-0">
+														<div class="text-sm font-medium">Clone from sandbox</div>
+														<div class="text-xs text-muted-foreground">Download the repository (may take a while)</div>
+													</div>
+												</div>
+											</button>
+										</div>
 
-                      <div class="space-y-2">
-                        {matchingProjects.map((project) => <button key={project.id} type="button" class={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${selectedProjectId === project.id ? "bg-muted ring-1 ring-primary" : "bg-muted/50 hover:bg-muted"}`} onClick={() => setSelectedProjectId(project.id)}>
-                            <div class={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${selectedProjectId === project.id ? "border-primary bg-primary" : "border-muted-foreground/30"}`}>
-                              {selectedProjectId === project.id && <Check class="w-2.5 h-2.5 text-primary-foreground" />}
-                            </div>
-                            <div class="flex-1 min-w-0">
-                              <div class="text-sm font-medium">{project.name}</div>
-                              <div class="text-xs text-muted-foreground font-mono truncate">
-                                {project.path}
-                              </div>
-                            </div>
-                          </button>)}
-                      </div>
-                    </div>
+										{/* Loading indicator */}
+										<Show when={isAnyLoading}>
+											<div class="mt-4 text-xs text-muted-foreground text-center">
+												{locateMutation.isPending && "Opening folder picker..."}
+												{pickDestMutation.isPending && "Opening folder picker..."}
+												{importMutation.isPending && "Importing..."}
+												{cloneMutation.isPending && "Cloning repository..."}
+											</div>
+										</Show>
+									</div>
 
-                    <div class="bg-muted/50 px-6 py-4 flex justify-between border-t border-border">
-                      <Button variant="ghost" size="sm" onClick={handleClose} disabled={isAnyLoading}>
-                        Cancel
-                      </Button>
-                      <Button size="sm" onClick={handleSelectProject} disabled={!selectedProjectId || isAnyLoading}>
-                        {importMutation.isPending ? "Opening..." : "Open Locally"}
-                      </Button>
-                    </div>
-                  </>}
-              </div>
-            </motion.div>
-          </div>
-        </>}
-    </AnimatePresence>, portalTarget);
- }
+									{/* Footer with Cancel */}
+									<div class="bg-muted/50 px-6 py-4 flex justify-end border-t border-border">
+										<Button variant="ghost" size="sm" onClick={handleClose} disabled={isAnyLoading}>
+											Cancel
+										</Button>
+									</div>
+								</Show>
+							</div>
+						</Motion.div>
+					</div>
+				</Show>
+			</Presence>
+		</Portal>
+	);
+}

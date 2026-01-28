@@ -1,6 +1,6 @@
 "use client";
-import { createSignal, createEffect } from "solid-js";
-import { createPortal } from "solid-js/web";
+import { createSignal, createEffect, Show, For, onCleanup } from "solid-js";
+import { Portal } from "solid-js/web";
 import { X, ImageOff, ChevronLeft, ChevronRight } from "lucide-solid";
 import { IconSpinner } from "../../../components/ui/icons";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "../../../components/ui/hover-card";
@@ -54,7 +54,7 @@ export function AgentImageItem({ id, filename, url, isLoading = false, onRemove,
 	};
 	// Handle keyboard navigation
 	createEffect(() => {
-		if (!isFullscreen) return;
+		if (!isFullscreen()) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
 			switch (e.key) {
 				case "Escape":
@@ -72,7 +72,7 @@ export function AgentImageItem({ id, filename, url, isLoading = false, onRemove,
 		};
 		// Use capture phase to intercept before other handlers
 		window.addEventListener("keydown", handleKeyDown, true);
-		return () => window.removeEventListener("keydown", handleKeyDown, true);
+		onCleanup(() => window.removeEventListener("keydown", handleKeyDown, true));
 	});
 	return <>
       <div class="relative" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
@@ -102,40 +102,59 @@ export function AgentImageItem({ id, filename, url, isLoading = false, onRemove,
           </button>}
       </div>
 
-      {	/* Fullscreen overlay with gallery navigation - rendered via portal to escape stacking context */}
-      {isFullscreen && currentImage?.url && createPortal(<div role="dialog" aria-modal="true" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={closeFullscreen}>
-          { /* Close button */}
-          <button onClick={closeFullscreen} class="absolute top-4 right-4 p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors text-white z-10" type="button" aria-label="Close fullscreen (Esc)">
-            <X class="size-6" />
-          </button>
+      {/* Fullscreen overlay with gallery navigation - rendered via portal to escape stacking context */}
+      <Show when={isFullscreen() && currentImage?.url}>
+        <Portal mount={document.body}>
+          <div role="dialog" aria-modal="true" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={closeFullscreen}>
+            {/* Close button */}
+            <button onClick={closeFullscreen} class="absolute top-4 right-4 p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors text-white z-10" type="button" aria-label="Close fullscreen (Esc)">
+              <X class="size-6" />
+            </button>
 
-          { /* Previous button */}
-          {hasMultipleImages && <button onClick={goToPrevious} class="absolute left-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors text-white z-10" type="button" aria-label="Previous image (←)">
-              <ChevronLeft class="size-8" />
-            </button>}
+            {/* Previous button */}
+            <Show when={hasMultipleImages}>
+              <button onClick={goToPrevious} class="absolute left-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors text-white z-10" type="button" aria-label="Previous image (←)">
+                <ChevronLeft class="size-8" />
+              </button>
+            </Show>
 
-          { /* Image */}
-          <img src={currentImage.url} alt={currentImage.filename} class="max-w-[90vw] max-h-[85vh] object-contain" onClick={(e) => e.stopPropagation()} />
+            {/* Image */}
+            <img src={currentImage.url} alt={currentImage.filename} class="max-w-[90vw] max-h-[85vh] object-contain" onClick={(e) => e.stopPropagation()} />
 
-          { /* Next button */}
-          {hasMultipleImages && <button onClick={goToNext} class="absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors text-white z-10" type="button" aria-label="Next image (→)">
-              <ChevronRight class="size-8" />
-            </button>}
+            {/* Next button */}
+            <Show when={hasMultipleImages}>
+              <button onClick={goToNext} class="absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/50 hover:bg-black/70 transition-colors text-white z-10" type="button" aria-label="Next image (→)">
+                <ChevronRight class="size-8" />
+              </button>
+            </Show>
 
-          { /* Image counter and dots */}
-          {hasMultipleImages && <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3">
-              { /* Dots indicator */}
-              <div class="flex gap-2">
-                {images.map((_, idx) => <button key={idx} onClick={(e) => {
- e.stopPropagation();
-		setCurrentIndex(idx);
-	}} class={`size-2 rounded-full transition-all ${idx === currentIndex ? "bg-white scale-125" : "bg-white/40 hover:bg-white/60"}`} type="button" aria-label={`Go to image ${idx + 1}`} />)}
+            {/* Image counter and dots */}
+            <Show when={hasMultipleImages}>
+              <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3">
+                {/* Dots indicator */}
+                <div class="flex gap-2">
+                  <For each={images}>
+                    {(_, idx) => (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentIndex(idx());
+                        }}
+                        class={`size-2 rounded-full transition-all ${idx() === currentIndex() ? "bg-white scale-125" : "bg-white/40 hover:bg-white/60"}`}
+                        type="button"
+                        aria-label={`Go to image ${idx() + 1}`}
+                      />
+                    )}
+                  </For>
+                </div>
+                {/* Counter text */}
+                <span class="text-white/70 text-sm">
+                  {currentIndex() + 1} / {images.length}
+                </span>
               </div>
-              {	/* Counter text */}
-              <span class="text-white/70 text-sm">
-                {currentIndex + 1} / {images.length}
-              </span>
-            </div>}
-        </div>, document.body)}
+            </Show>
+          </div>
+        </Portal>
+      </Show>
     </>;
- }
+}

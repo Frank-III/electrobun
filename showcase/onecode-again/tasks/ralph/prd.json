@@ -256,8 +256,8 @@
         "solid-motionone added as dependency"
       ],
       "priority": 19,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted AnimatePresence to Presence, motion.div to Motion.div in active-chat.tsx (scroll-to-bottom button) and agents-sidebar.tsx (inline status indicators, footer animations). Fixed createPortal to Portal. Fixed duplicate solid-js imports in active-chat.tsx. solid-motionone was already installed."
     },
     {
       "id": "US-020",
@@ -269,8 +269,8 @@
         "All portal patterns working correctly"
       ],
       "priority": 20,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted 9 files: text-selection-popover.tsx, agent-image-item.tsx, agents-rename-subchat-dialog.tsx, agents-onboarding-dialog.tsx, open-locally-dialog.tsx, agents-slash-command.tsx, agents-file-mention.tsx, chat-input-area.tsx, new-chat-form.tsx. Replaced createPortal(children, container) with <Portal mount={container}><children></Portal>. Fixed associated ref patterns (.current -> direct access) and effect cleanups (return cleanup -> onCleanup)."
     },
     {
       "id": "US-021",
@@ -282,8 +282,8 @@
         "canvas-icons.tsx fully typed for SolidJS"
       ],
       "priority": 21,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Already complete - codebase uses JSX.SvgSVGAttributes<SVGSVGElement>, JSX.HTMLAttributes<T>, JSX.ButtonHTMLAttributes<T> etc. No React namespace references remain in TSX files."
     },
     {
       "id": "US-022",
@@ -295,8 +295,8 @@
         "WebkitAppRegion and vendor prefixes handled"
       ],
       "priority": 22,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted camelCase CSS properties to kebab-case in 12 TSX files: resizable-sidebar.tsx, details-sidebar.tsx, terminal-widget.tsx, terminal-section.tsx, agents-file-mention.tsx, agents-subchats-sidebar.tsx, active-chat.tsx, agents-content.tsx, agents-layout.tsx, expanded-widget-sidebar.tsx, framework-icons.tsx. WebkitAppRegion vendor prefix kept with type casts where needed."
     },
     {
       "id": "US-023",

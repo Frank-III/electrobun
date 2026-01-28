@@ -175,7 +175,7 @@ export function AgentsLayout() {
         <WindowsTitleBar />
         <div class="flex flex-1 overflow-hidden">
           { /* Left Sidebar (Agents) */}
-          <ResizableSidebar isOpen={!isMobile && sidebarOpen} onClose={handleCloseSidebar} widthAtom={agentsSidebarWidthAtom} minWidth={SIDEBAR_MIN_WIDTH} maxWidth={SIDEBAR_MAX_WIDTH} side="left" closeHotkey={SIDEBAR_CLOSE_HOTKEY} animationDuration={SIDEBAR_ANIMATION_DURATION} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="overflow-hidden bg-background border-r" style={{ borderRightWidth: "0.5px" }}>
+          <ResizableSidebar isOpen={!isMobile && sidebarOpen} onClose={handleCloseSidebar} widthAtom={agentsSidebarWidthAtom} minWidth={SIDEBAR_MIN_WIDTH} maxWidth={SIDEBAR_MAX_WIDTH} side="left" closeHotkey={SIDEBAR_CLOSE_HOTKEY} animationDuration={SIDEBAR_ANIMATION_DURATION} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="overflow-hidden bg-background border-r" style={{ "border-right-width": "0.5px" }}>
           <AgentsSidebar desktopUser={desktopUser} onSignOut={handleSignOut} onToggleSidebar={handleCloseSidebar} />
         </ResizableSidebar>
 

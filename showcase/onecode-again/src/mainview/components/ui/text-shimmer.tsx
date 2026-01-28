@@ -1,5 +1,5 @@
-import { type JSX, createEffect, createSignal, createMemo } from "solid-js";
-import { motion } from "motion/react";
+import { type JSX, createEffect, createSignal, createMemo, onCleanup } from "solid-js";
+import { Motion } from "solid-motionone";
 import { cn } from "../../lib/utils";
 
 interface TextShimmerProps {
@@ -12,8 +12,6 @@ interface TextShimmerProps {
 }
 
 export function TextShimmer(props: TextShimmerProps) {
-	const Component = props.as ?? "p";
-	const MotionComponent = motion(Component);
 	const [shouldAnimate, setShouldAnimate] = createSignal(props.delay === 0 || props.delay === undefined);
 	
 	createEffect(() => {
@@ -22,7 +20,7 @@ export function TextShimmer(props: TextShimmerProps) {
 			const timer = setTimeout(() => {
 				setShouldAnimate(true);
 			}, delay * 1e3);
-			return () => clearTimeout(timer);
+			onCleanup(() => clearTimeout(timer));
 		}
 	});
 
@@ -36,7 +34,7 @@ export function TextShimmer(props: TextShimmerProps) {
 	});
 
 	return (
-		<MotionComponent
+		<Motion.div
 			class={cn(
 				"relative inline-block bg-[length:250%_100%,auto] bg-clip-text",
 				"text-transparent [--base-color:#a1a1aa] [--base-gradient-color:#000]",
@@ -49,7 +47,7 @@ export function TextShimmer(props: TextShimmerProps) {
 			transition={{
 				repeat: shouldAnimate() ? Infinity : 0,
 				duration: props.duration ?? 2,
-				ease: "linear"
+				easing: "linear"
 			}}
 			style={{
 				"--spread": `${dynamicSpread()}px`,
@@ -57,6 +55,6 @@ export function TextShimmer(props: TextShimmerProps) {
 			}}
 		>
 			{props.children}
-		</MotionComponent>
+		</Motion.div>
 	);
 }
