@@ -21,6 +21,7 @@ Started: 2026-01-28
 - tRPC still uses React Query wrapper - `isLoading` and `data` are not SolidJS signals yet
 - useAtomValue returns an accessor: `const value = useAtomValue(atom); value().someProperty` not `value.someProperty`
 - Replace React.DragEvent/React.MouseEvent with native DOM types (DragEvent, MouseEvent)
+- Delete stale .js files in src/ folders - they may be old transpiled output from before migration
 
 ---
 
@@ -95,4 +96,20 @@ Thread: https://ampcode.com/threads/T-019c05f9-b10e-775c-9a8a-6aa4d6ddb077
   - When using createMemo with atom values, call the atom accessor inside: `createMemo(() => allTerminals()[chatId])`
   - React.DragEvent should be replaced with native DragEvent type
   - Kobalte asChild prop issues are pre-existing and not part of this migration story
+---
+
+## 2026-01-28 - US-006
+Thread: https://ampcode.com/threads/T-019c0602-9aef-744b-8815-de2712e6f0fb
+- Verified terminal TSX files were already converted to SolidJS ref patterns in US-005
+- Deleted stale .js transpiled files that contained old React .current patterns:
+  - terminal.js, terminal-tabs.js, terminal-sidebar.js, TerminalSearch.js
+- Files changed:
+  - Deleted: src/mainview/features/terminal/terminal.js
+  - Deleted: src/mainview/features/terminal/terminal-tabs.js
+  - Deleted: src/mainview/features/terminal/terminal-sidebar.js
+  - Deleted: src/mainview/features/terminal/TerminalSearch.js
+- **Learnings for future iterations:**
+  - Check for stale .js files in src/ folders that may be old transpiled output
+  - The tsx source files may already be migrated from previous stories - verify before making changes
+  - Pre-existing type errors (xterm missing types, Kobalte asChild issues) are separate from migration work
 ---

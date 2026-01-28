@@ -83,8 +83,8 @@
         "Complex refs (Terminal instance, ResizeObserver) properly typed"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "TSX files were already converted in US-005. Deleted stale .js transpiled files (terminal.js, terminal-tabs.js, terminal-sidebar.js, TerminalSearch.js) that contained old React patterns."
     },
     {
       "id": "US-007",
