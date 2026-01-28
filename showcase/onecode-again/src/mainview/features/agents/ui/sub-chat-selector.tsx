@@ -1,5 +1,5 @@
 "use client";
-import { createMemo, createEffect, createSignal } from "solid-js";
+import { createMemo, createEffect, createSignal, onCleanup } from "solid-js";
 import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 import { loadingSubChatsAtom, agentsSubChatUnseenChangesAtom, agentsSubChatsSidebarModeAtom, pendingUserQuestionsAtom } from "../atoms";
 import { widgetVisibilityAtomFamily, unifiedSidebarEnabledAtom } from "../../details-sidebar/atoms";
@@ -45,17 +45,16 @@ interface SearchHistoryPopoverProps {
 export interface SearchHistoryPopoverRef {
 	open: () => void;
 }
-const SearchHistoryPopover = memo(forwardRef<SearchHistoryPopoverRef, SearchHistoryPopoverProps>(function SearchHistoryPopover({ sortedSubChats, loadingSubChats, subChatUnseenChanges, pendingQuestionsMap, pendingPlanApprovals, allSubChatsLength, onSelect }, ref) {
+function SearchHistoryPopover(props: SearchHistoryPopoverProps & { ref?: (ref: SearchHistoryPopoverRef | undefined) => void }) {
 	const [isHistoryOpen, setIsHistoryOpen] = createSignal(false);
-	// Expose open function to parent
-	useImperativeHandle(ref, () => ({ open: () => setIsHistoryOpen(true) }), []);
+	props.ref?.({ open: () => setIsHistoryOpen(true) });
 	const renderItem = (subChat: SubChatMeta) => {
 		const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
-		const isLoading = loadingSubChats.has(subChat.id);
-		const hasUnseen = subChatUnseenChanges.has(subChat.id);
+		const isLoading = props.loadingSubChats.has(subChat.id);
+		const hasUnseen = props.subChatUnseenChanges.has(subChat.id);
 		const mode = subChat.mode || "agent";
-		const hasPendingQuestion = pendingQuestionsMap.has(subChat.id);
-		const hasPendingPlan = pendingPlanApprovals.has(subChat.id);
+		const hasPendingQuestion = props.pendingQuestionsMap.has(subChat.id);
+		const hasPendingPlan = props.pendingPlanApprovals.has(subChat.id);
 		return <div class="flex items-center gap-2 flex-1 min-w-0">
         <div class="flex-shrink-0 w-4 h-4 flex items-center justify-center relative">
           {hasPendingQuestion ? <QuestionIcon class="w-4 h-4 text-blue-500" /> : isLoading ? <IconSpinner class="w-4 h-4 text-muted-foreground" /> : mode === "plan" ? <PlanIcon class="w-4 h-4 text-muted-foreground" /> : <AgentIcon class="w-4 h-4 text-muted-foreground" />}
@@ -71,10 +70,10 @@ const SearchHistoryPopover = memo(forwardRef<SearchHistoryPopoverRef, SearchHist
         </span>
       </div>;
 	};
-	return <SearchCombobox isOpen={isHistoryOpen} onOpenChange={setIsHistoryOpen} items={sortedSubChats} onSelect={onSelect} placeholder="Search chats..." emptyMessage="No results" getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={renderItem} trigger={<Tooltip>
+	return <SearchCombobox isOpen={isHistoryOpen} onOpenChange={setIsHistoryOpen} items={props.sortedSubChats} onSelect={props.onSelect} placeholder="Search chats..." emptyMessage="No results" getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={renderItem} trigger={<Tooltip>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md flex items-center justify-center" disabled={allSubChatsLength === 0}>
+              <Button variant="ghost" size="icon" class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md flex items-center justify-center" disabled={props.allSubChatsLength === 0}>
                 <ClockIcon class="h-4 w-4" />
               </Button>
             </PopoverTrigger>
@@ -84,7 +83,7 @@ const SearchHistoryPopover = memo(forwardRef<SearchHistoryPopoverRef, SearchHist
             <Kbd>/</Kbd>
           </TooltipContent>
         </Tooltip>} />;
-}));
+}
 interface SubChatSelectorProps {
 	onCreateNew: () => void;
 	isMobile?: boolean;
@@ -144,14 +143,13 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 		}
 		return set;
 	});
-	const [tabsContainerRef, setTabsContainerRef] = createSignal<HTMLDivElement>(null);
-	const [tabRefs, setTabRefs] = createSignal<Map<string, HTMLButtonElement>>(new Map());
-	const [textRefs, setTextRefs] = createSignal<Map<string, HTMLSpanElement>>(new Map());
-	// Using refs instead of state for gradients and truncation to avoid re-renders
-	const [leftGradientRef, setLeftGradientRef] = createSignal<HTMLDivElement>(null);
-	const [rightGradientRef, setRightGradientRef] = createSignal<HTMLDivElement>(null);
-	const [truncatedTabsRef, setTruncatedTabsRef] = createSignal<Set<string>>(new Set());
-	const [searchHistoryPopoverRef, setSearchHistoryPopoverRef] = createSignal<SearchHistoryPopoverRef>(null);
+	let tabsContainerRef: HTMLDivElement | undefined;
+	const tabRefs = new Map<string, HTMLButtonElement>();
+	const textRefs = new Map<string, HTMLSpanElement>();
+	let leftGradientRef: HTMLDivElement | undefined;
+	let rightGradientRef: HTMLDivElement | undefined;
+	let truncatedTabs = new Set<string>();
+	let searchHistoryPopoverRef: SearchHistoryPopoverRef | undefined;
 	// Map open IDs to metadata and sort: pinned first, then preserve user's tab order
 	const openSubChats = createMemo(() => {
 		const pinnedChats: SubChatMeta[] = [];
@@ -317,14 +315,13 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 	createEffect(() => {
 		const checkTruncation = () => {
 			const newTruncated = new Set<string>();
-			textRefs.current.forEach((el, subChatId) => {
+			textRefs.forEach((el, subChatId) => {
 				if (el && el.scrollWidth > el.clientWidth) {
 					newTruncated.add(subChatId);
 				}
 			});
-			truncatedTabsRef.current = newTruncated;
-			// Update gradient visibility for each tab via DOM
-			tabRefs.current.forEach((tabEl, subChatId) => {
+			truncatedTabs = newTruncated;
+			tabRefs.forEach((tabEl, subChatId) => {
 				const gradientEl = tabEl.querySelector("[data-truncate-gradient]") as HTMLElement;
 				if (gradientEl) {
 					gradientEl.style.display = newTruncated.has(subChatId) ? "block" : "none";
@@ -333,8 +330,8 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 		};
 		checkTruncation();
 		const resizeObserver = new ResizeObserver(() => checkTruncation());
-		textRefs.current.forEach((el) => el && resizeObserver.observe(el));
-		return () => resizeObserver.disconnect();
+		textRefs.forEach((el) => el && resizeObserver.observe(el));
+		onCleanup(() => resizeObserver.disconnect());
 	});
 	// Sort sub-chats by most recent first for history
 	const sortedSubChats = createMemo(() => [...allSubChats].sort((a, b) => {
@@ -344,47 +341,40 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 	}));
 	const hasNoChats = openSubChats.length === 0;
 	const hasSingleChat = openSubChats.length === 1;
-	// Check scroll position for gradients - uses direct DOM manipulation
 	const checkScrollPosition = () => {
-		const container = tabsContainerRef.current;
-		if (!container) return;
-		const { scrollLeft, scrollWidth, clientWidth } = container;
+		if (!tabsContainerRef) return;
+		const { scrollLeft, scrollWidth, clientWidth } = tabsContainerRef;
 		const isScrollable = scrollWidth > clientWidth;
 		const showLeft = isScrollable && scrollLeft > 0;
 		const showRight = isScrollable && scrollLeft < scrollWidth - clientWidth - 1;
-		if (leftGradientRef.current) {
-			leftGradientRef.current.style.display = showLeft ? "block" : "none";
+		if (leftGradientRef) {
+			leftGradientRef.style.display = showLeft ? "block" : "none";
 		}
-		if (rightGradientRef.current) {
-			rightGradientRef.current.style.display = showRight ? "block" : "none";
+		if (rightGradientRef) {
+			rightGradientRef.style.display = showRight ? "block" : "none";
 		}
 	};
-	// Update gradients on scroll
 	createEffect(() => {
-		const container = tabsContainerRef.current;
-		if (!container) return;
+		if (!tabsContainerRef) return;
 		checkScrollPosition();
-		container.addEventListener("scroll", checkScrollPosition, { passive: true });
-		return () => container.removeEventListener("scroll", checkScrollPosition);
+		tabsContainerRef.addEventListener("scroll", checkScrollPosition, { passive: true });
+		onCleanup(() => tabsContainerRef?.removeEventListener("scroll", checkScrollPosition));
 	});
 	// Update gradients when tabs change
 	createEffect(() => {
 		checkScrollPosition();
 	});
-	// Update gradients on window resize
 	createEffect(() => {
 		const handleResize = () => checkScrollPosition();
 		window.addEventListener("resize", handleResize);
-		return () => window.removeEventListener("resize", handleResize);
+		onCleanup(() => window.removeEventListener("resize", handleResize));
 	});
-	// Cleanup refs for closed tabs to prevent memory leaks
 	createEffect(() => {
 		const openIds = new Set(openSubChatIds);
-		// Remove refs for tabs that are no longer open
-		tabRefs.current.forEach((_, id) => {
+		tabRefs.forEach((_, id) => {
 			if (!openIds.has(id)) {
-				tabRefs.current.delete(id);
-				textRefs.current.delete(id);
+				tabRefs.delete(id);
+				textRefs.delete(id);
 			}
 		});
 	});
@@ -407,10 +397,10 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 
       <div class="relative flex-1 min-w-0 flex items-center" style={{ WebkitAppRegion: "no-drag" }}>
         { /* Left gradient - visibility controlled via ref */}
-        <div ref={leftGradientRef} class="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-background to-transparent pointer-events-none z-30" style={{ display: "none" }} />
+        <div ref={(el) => leftGradientRef = el} class="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-background to-transparent pointer-events-none z-30" style={{ display: "none" }} />
 
         { /* Scrollable tabs container - with padding-right for plus button */}
-        <div ref={tabsContainerRef} class={cn(
+        <div ref={(el) => tabsContainerRef = el} class={cn(
  "flex items-center px-1 py-1 -my-1 gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-hide pr-12",
 		// Hide tabs when sidebar is open (desktop) or when only one chat exists
 		subChatsSidebarMode === "sidebar" && !isMobile && "hidden",
@@ -432,9 +422,9 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
                     <ContextMenuTrigger asChild>
                       <button ref={(el) => {
 			if (el) {
-				tabRefs.current.set(subChat.id, el);
+				tabRefs.set(subChat.id, el);
 			} else {
-				tabRefs.current.delete(subChat.id);
+				tabRefs.delete(subChat.id);
 			}
 		}} onClick={(e) => {
 			e.stopPropagation();
@@ -474,18 +464,18 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
                               </>}
                           </div>}
 
-                        {editingSubChatId === subChat.id ? <InlineEdit value={editName} onChange={setEditName} onSave={() => handleEditSave(subChat)} onCancel={() => handleEditCancel(subChat)} isEditing={true} disabled={editLoading} class="text-sm !px-1 !py-0 !h-6 min-w-[100px] border border-input rounded-md !ring-0 !shadow-none focus-visible:!ring-0 focus-visible:!ring-offset-0 focus-visible:!border-input" /> : <span ref={(el) => {
- if (el) {
-				textRefs.current.set(subChat.id, el);
-			} else {
-				textRefs.current.delete(subChat.id);
-			}
-		}} class="relative z-0 text-left flex-1 min-w-0 pr-1 overflow-hidden block whitespace-nowrap">
-                            {subChat.name || "New Chat"}
-                          </span>}
+                        {editingSubChatId === subChat.id ? <InlineEdit value={editName()} onChange={setEditName} onSave={() => handleEditSave(subChat)} onCancel={() => handleEditCancel(subChat)} isEditing={true} disabled={editLoading()} className="text-sm !px-1 !py-0 !h-6 min-w-[100px] border border-input rounded-md !ring-0 !shadow-none focus-visible:!ring-0 focus-visible:!ring-offset-0 focus-visible:!border-input" /> : <span ref={(el) => {
+                        if (el) {
+                        textRefs.set(subChat.id, el);
+                        } else {
+                        textRefs.delete(subChat.id);
+                        }
+                        }} class="relative z-0 text-left flex-1 min-w-0 pr-1 overflow-hidden block whitespace-nowrap">
+                        {subChat.name || "New Chat"}
+                        </span>}
 
                         {		/* Gradient fade on the right when text is truncated and not editing - visibility controlled via DOM */}
-                        {editingSubChatId !== subChat.id && <div data-truncate-gradient class={cn("absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-[1] rounded-r-md opacity-100 group-hover:opacity-0 transition-opacity duration-200", isActive ? "bg-gradient-to-l from-muted to-transparent" : "bg-gradient-to-l from-background to-transparent")} style={{ display: truncatedTabsRef.current.has(subChat.id) ? "block" : "none" }} />}
+                        {editingSubChatId !== subChat.id && <div data-truncate-gradient class={cn("absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-[1] rounded-r-md opacity-100 group-hover:opacity-0 transition-opacity duration-200", isActive ? "bg-gradient-to-l from-muted to-transparent" : "bg-gradient-to-l from-background to-transparent")} style={{ display: truncatedTabs.has(subChat.id) ? "block" : "none" }} />}
 
                         { /* Close button - only show when hovered and multiple tabs and not editing */}
                         {openSubChats.length > 1 && editingSubChatId !== subChat.id && <div class="absolute right-0 top-0 bottom-0 flex items-center justify-end pr-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
@@ -526,7 +516,7 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 
       { /* Action buttons - always visible on mobile, on desktop only in tabs mode */}
       {(isMobile || !isMobile && subChatsSidebarMode === "tabs") && <div class="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" }}>
-          <SearchHistoryPopover ref={searchHistoryPopoverRef} sortedSubChats={sortedSubChats} loadingSubChats={loadingSubChats} subChatUnseenChanges={subChatUnseenChanges} pendingQuestionsMap={pendingQuestionsMap} pendingPlanApprovals={pendingPlanApprovals} allSubChatsLength={allSubChats.length} onSelect={handleSelectFromHistory} />
+          <SearchHistoryPopover ref={(r) => searchHistoryPopoverRef = r} sortedSubChats={sortedSubChats()} loadingSubChats={loadingSubChats()} subChatUnseenChanges={subChatUnseenChanges()} pendingQuestionsMap={pendingQuestionsMap()} pendingPlanApprovals={pendingPlanApprovals()} allSubChatsLength={allSubChats.length} onSelect={handleSelectFromHistory} />
         </div>}
 
       { /* Diff button - visible on desktop when unified sidebar is disabled OR diff widget is hidden */}

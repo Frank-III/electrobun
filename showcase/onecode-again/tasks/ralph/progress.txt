@@ -22,6 +22,9 @@ Started: 2026-01-28
 - useAtomValue returns an accessor: `const value = useAtomValue(atom); value().someProperty` not `value.someProperty`
 - Replace React.DragEvent/React.MouseEvent with native DOM types (DragEvent, MouseEvent)
 - Delete stale .js files in src/ folders - they may be old transpiled output from before migration
+- Replace `React.KeyboardEvent` with native `KeyboardEvent`, `React.CSSProperties` with `JSX.CSSProperties`
+- For ref collections, use `Map<string, HTMLElement>` directly, not `createSignal<Map<...>>`
+- Replace `memo(forwardRef(...))` with plain function + `props.ref?.(element)` pattern
 
 ---
 
@@ -112,4 +115,22 @@ Thread: https://ampcode.com/threads/T-019c0602-9aef-744b-8815-de2712e6f0fb
   - Check for stale .js files in src/ folders that may be old transpiled output
   - The tsx source files may already be migrated from previous stories - verify before making changes
   - Pre-existing type errors (xterm missing types, Kobalte asChild issues) are separate from migration work
+---
+
+## 2026-01-28 - US-007
+Thread: https://ampcode.com/threads/T-019c0604-7f4b-7133-b127-5f76fb46ff21
+- Fixed signal accessors in agent UI components
+- Files changed:
+  - src/mainview/features/agents/ui/inline-edit.tsx - converted to props pattern, let refs, onCleanup(), KeyboardEvent (not React.KeyboardEvent)
+  - src/mainview/features/agents/ui/chat-title-editor.tsx - removed memo() wrapper, props pattern, let refs, onCleanup(), createMemo for derived values, Show component
+  - src/mainview/features/agents/ui/quick-comment-input.tsx - Portal component (not createPortal), onCleanup(), JSX.CSSProperties, createMemo for derived values
+  - src/mainview/features/agents/ui/sub-chat-selector.tsx - removed memo(forwardRef()) pattern, added onCleanup import, converted signal-based refs to direct let/Map pattern, fixed all .current patterns
+  - Deleted: inline-edit.js, chat-title-editor.js, quick-comment-input.js, sub-chat-selector.js
+- **Learnings for future iterations:**
+  - Replace memo(forwardRef()) with plain function and props.ref callback for SolidJS
+  - Use Map<string, HTMLElement> directly instead of createSignal<Map> for ref collections
+  - Portal from solid-js/web wraps children, createPortal is React pattern
+  - JSX.CSSProperties for style objects, not React.CSSProperties
+  - Convert `return () => cleanup()` to `onCleanup(() => cleanup())` in all effects
+  - agent-diff-view.tsx has React class component (DiffErrorBoundary) that needs more complex migration (separate story)
 ---

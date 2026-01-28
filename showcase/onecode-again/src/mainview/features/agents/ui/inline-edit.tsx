@@ -1,6 +1,6 @@
 "use client";
 import { Input } from "../../../components/ui/input";
-import { createEffect, createSignal } from "solid-js";
+import { createEffect, onCleanup, Show } from "solid-js";
 interface InlineEditProps {
 	value: string;
 	onChange: (value: string) => void;
@@ -11,59 +11,52 @@ interface InlineEditProps {
 	className?: string;
 	placeholder?: string;
 }
-export function InlineEdit({ value, onChange, onSave, onCancel, isEditing, disabled = false, className = "", placeholder = "" }: InlineEditProps) {
-	const [inputRef, setInputRef] = createSignal<HTMLInputElement>(null);
-	// Use refs to avoid stale closures and effect re-runs
-	const [onSaveRef, setOnSaveRef] = createSignal(onSave);
-	const [onCancelRef, setOnCancelRef] = createSignal(onCancel);
-	// Keep refs up to date
+export function InlineEdit(props: InlineEditProps) {
+	let inputRef: HTMLInputElement | undefined;
+	let currentOnSave = props.onSave;
+	let currentOnCancel = props.onCancel;
 	createEffect(() => {
-		onSaveRef.current = onSave;
-		onCancelRef.current = onCancel;
+		currentOnSave = props.onSave;
+		currentOnCancel = props.onCancel;
 	});
-	// Auto-focus and select text when editing starts
 	createEffect(() => {
-		if (isEditing && inputRef.current) {
-			// Use setTimeout to ensure the input is rendered first
+		if (props.isEditing && inputRef) {
 			const timeoutId = setTimeout(() => {
-				if (inputRef.current) {
-					inputRef.current.focus();
-					inputRef.current.select();
+				if (inputRef) {
+					inputRef.focus();
+					inputRef.select();
 				}
 			}, 0);
-			return () => clearTimeout(timeoutId);
+			onCleanup(() => clearTimeout(timeoutId));
 		}
 	});
-	// Handle clicks outside to save and exit editing mode
 	createEffect(() => {
-		if (!isEditing) return;
+		if (!props.isEditing) return;
 		const handleClickOutside = (event: MouseEvent) => {
-			if (inputRef.current && !inputRef.current.contains(event.target as Node)) {
-				onSaveRef.current();
+			if (inputRef && !inputRef.contains(event.target as Node)) {
+				currentOnSave();
 			}
 		};
-		// Add delay to avoid immediate trigger
 		const timeoutId = setTimeout(() => {
 			document.addEventListener("mousedown", handleClickOutside);
 		}, 100);
-		return () => {
+		onCleanup(() => {
 			clearTimeout(timeoutId);
 			document.removeEventListener("mousedown", handleClickOutside);
-		};
+		});
 	});
-	const handleKeyDown = (e: React.KeyboardEvent) => {
+	const handleKeyDown = (e: KeyboardEvent) => {
 		if (e.key === "Enter") {
 			e.preventDefault();
 			e.stopPropagation();
-			onSaveRef.current();
+			currentOnSave();
 		} else if (e.key === "Escape") {
 			e.preventDefault();
 			e.stopPropagation();
-			onCancelRef.current();
+			currentOnCancel();
 		}
 	};
-	if (!isEditing) {
-		return null;
-	}
-	return <Input ref={inputRef} value={value} onChange={(e) => onChange(e.target.value)} class={`ring-1 ring-[#3182ED] focus-visible:ring-1 focus-visible:ring-[#3182ED] focus-visible:ring-offset-0 rounded-[2px] shadow-none min-w-0 text-foreground border-0 h-auto px-1 py-0 leading-4 inline-flex ${className}`} onKeyDown={handleKeyDown} disabled={disabled} placeholder={placeholder} />;
+	return <Show when={props.isEditing}>
+		<Input ref={(el) => inputRef = el} value={props.value} onInput={(e) => props.onChange(e.currentTarget.value)} class={`ring-1 ring-[#3182ED] focus-visible:ring-1 focus-visible:ring-[#3182ED] focus-visible:ring-offset-0 rounded-[2px] shadow-none min-w-0 text-foreground border-0 h-auto px-1 py-0 leading-4 inline-flex ${props.className || ""}`} onKeyDown={handleKeyDown} disabled={props.disabled} placeholder={props.placeholder} />
+	</Show>;
 }

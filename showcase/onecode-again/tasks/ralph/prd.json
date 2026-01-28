@@ -98,8 +98,8 @@
         "quick-comment-input.tsx uses signal() for all reads"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted inline-edit.tsx (props pattern, onCleanup, native KeyboardEvent), chat-title-editor.tsx (removed memo, props pattern, onCleanup, Show component), quick-comment-input.tsx (Portal instead of createPortal, onCleanup, JSX.CSSProperties), sub-chat-selector.tsx (removed memo/forwardRef/useImperativeHandle, direct ref pattern, Map refs instead of signal-based). Deleted stale .js files."
     },
     {
       "id": "US-008",

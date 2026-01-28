@@ -1,5 +1,5 @@
 "use client";
-import { createSignal, createEffect } from "solid-js";
+import { createSignal, createEffect, onCleanup, Show, createMemo } from "solid-js";
 import { useAtomValue } from "../../../lib/state/jotai";
 import { cn } from "../../../lib/utils";
 import { TypewriterText } from "../../../components/ui/typewriter-text";
@@ -13,77 +13,72 @@ interface ChatTitleEditorProps {
 	chatId?: string;
 	hasMessages?: boolean;
 }
-// Custom comparison to prevent re-renders during streaming
-function areTitlePropsEqual(prev: ChatTitleEditorProps, next: ChatTitleEditorProps): boolean {
-	return prev.name === next.name && prev.placeholder === next.placeholder && prev.isMobile === next.isMobile && prev.disabled === next.disabled && prev.chatId === next.chatId && prev.hasMessages === next.hasMessages;
-}
-export const ChatTitleEditor = memo(function ChatTitleEditor({ name, placeholder = "New Chat", onSave, isMobile = false, disabled = false, chatId, hasMessages = false }: ChatTitleEditorProps) {
+export function ChatTitleEditor(props: ChatTitleEditorProps) {
+	const placeholder = () => props.placeholder ?? "New Chat";
+	const isMobile = () => props.isMobile ?? false;
+	const disabled = () => props.disabled ?? false;
+	const hasMessages = () => props.hasMessages ?? false;
+	
 	const [isEditing, setIsEditing] = createSignal(false);
-	const [editValue, setEditValue] = createSignal(name);
+	const [editValue, setEditValue] = createSignal(props.name);
 	const [isSaving, setIsSaving] = createSignal(false);
-	const [inputRef, setInputRef] = createSignal<HTMLInputElement>(null);
-	const [containerRef, setContainerRef] = createSignal<HTMLDivElement>(null);
+	let inputRef: HTMLInputElement | undefined;
+	let containerRef: HTMLDivElement | undefined;
 	const justCreatedIds = useAtomValue(justCreatedIdsAtom);
-	// Sync editValue when name changes externally
 	createEffect(() => {
-		if (!isEditing) {
-			setEditValue(name);
+		if (!isEditing()) {
+			setEditValue(props.name);
 		}
 	});
-	// Auto-focus and select text when editing starts
 	createEffect(() => {
-		if (isEditing && inputRef.current) {
+		if (isEditing() && inputRef) {
 			const timeoutId = setTimeout(() => {
-				if (inputRef.current) {
-					inputRef.current.focus();
-					inputRef.current.select();
+				if (inputRef) {
+					inputRef.focus();
+					inputRef.select();
 				}
 			}, 0);
-			return () => clearTimeout(timeoutId);
+			onCleanup(() => clearTimeout(timeoutId));
 		}
 	});
 	const handleSave = async () => {
-		const trimmedValue = editValue.trim();
-		// If empty or unchanged, just cancel
-		if (!trimmedValue || trimmedValue === name) {
-			setEditValue(name);
+		const trimmedValue = editValue().trim();
+		if (!trimmedValue || trimmedValue === props.name) {
+			setEditValue(props.name);
 			setIsEditing(false);
 			return;
 		}
 		setIsSaving(true);
 		try {
-			await onSave(trimmedValue);
+			await props.onSave(trimmedValue);
 			setIsEditing(false);
 		} catch {
-			// On error, revert to original name
-			setEditValue(name);
+			setEditValue(props.name);
 			setIsEditing(false);
 		} finally {
 			setIsSaving(false);
 		}
 	};
 	const handleCancel = () => {
-		setEditValue(name);
+		setEditValue(props.name);
 		setIsEditing(false);
 	};
-	// Handle clicks outside to save
 	createEffect(() => {
-		if (!isEditing) return;
+		if (!isEditing()) return;
 		const handleClickOutside = (event: MouseEvent) => {
-			if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+			if (containerRef && !containerRef.contains(event.target as Node)) {
 				handleSave();
 			}
 		};
-		// Add delay to avoid immediate trigger
 		const timeoutId = setTimeout(() => {
 			document.addEventListener("mousedown", handleClickOutside);
 		}, 100);
-		return () => {
+		onCleanup(() => {
 			clearTimeout(timeoutId);
 			document.removeEventListener("mousedown", handleClickOutside);
-		};
+		});
 	});
-	const handleKeyDown = (e: React.KeyboardEvent) => {
+	const handleKeyDown = (e: KeyboardEvent) => {
 		if (e.key === "Enter") {
 			e.preventDefault();
 			e.stopPropagation();
@@ -94,21 +89,23 @@ export const ChatTitleEditor = memo(function ChatTitleEditor({ name, placeholder
 			handleCancel();
 		}
 	};
-	const isJustCreated = chatId ? justCreatedIds().has(chatId) : false;
-	const hasRealName = name && name !== placeholder;
+	const isJustCreated = createMemo(() => props.chatId ? justCreatedIds().has(props.chatId) : false);
+	const hasRealName = createMemo(() => props.name && props.name !== placeholder());
 	const handleClick = () => {
-		// Don't allow editing if disabled or if it's a placeholder (not saved to DB yet)
-		if (!disabled && !isEditing && hasRealName) {
+		if (!disabled() && !isEditing() && hasRealName()) {
 			setIsEditing(true);
 		}
 	};
-	// Fixed height to prevent layout shift when switching between view/edit modes
-	const heightClass = isMobile ? "h-7" : "h-7";
-	return <div ref={containerRef} class={cn("max-w-2xl mx-auto px-4", heightClass)}>
-      {isEditing ? <input ref={inputRef} type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} onKeyDown={handleKeyDown} disabled={isSaving} placeholder={placeholder} class={cn("w-full h-full bg-transparent border-0 outline-none", isMobile ? "text-base" : "text-lg", "font-medium text-foreground")} /> : <div onClick={handleClick} class={cn("text-left w-full h-full", isMobile ? "text-base" : "text-lg", "font-medium", hasRealName ? "text-foreground cursor-pointer" : "cursor-default")}>
-          <span class="block truncate">
-            <TypewriterText text={name} placeholder={placeholder} id={chatId} isJustCreated={isJustCreated} showPlaceholder={hasMessages} />
-          </span>
-        </div>}
-    </div>;
-}, areTitlePropsEqual);
+	const heightClass = isMobile() ? "h-7" : "h-7";
+	return <div ref={(el) => containerRef = el} class={cn("max-w-2xl mx-auto px-4", heightClass)}>
+		<Show when={isEditing()} fallback={
+			<div onClick={handleClick} class={cn("text-left w-full h-full", isMobile() ? "text-base" : "text-lg", "font-medium", hasRealName() ? "text-foreground cursor-pointer" : "cursor-default")}>
+				<span class="block truncate">
+					<TypewriterText text={props.name} placeholder={placeholder()} id={props.chatId} isJustCreated={isJustCreated()} showPlaceholder={hasMessages()} />
+				</span>
+			</div>
+		}>
+			<input ref={(el) => inputRef = el} type="text" value={editValue()} onInput={(e) => setEditValue(e.currentTarget.value)} onKeyDown={handleKeyDown} disabled={isSaving()} placeholder={placeholder()} class={cn("w-full h-full bg-transparent border-0 outline-none", isMobile() ? "text-base" : "text-lg", "font-medium text-foreground")} />
+		</Show>
+	</div>;
+}
