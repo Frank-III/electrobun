@@ -162,8 +162,8 @@
         "Diff viewer refs properly typed"
       ],
       "priority": 12,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "TSX files were already converted in US-011. Deleted 45 stale .js transpiled files containing old React .current patterns."
     },
     {
       "id": "US-013",

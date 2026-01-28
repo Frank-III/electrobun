@@ -202,3 +202,13 @@ Thread: https://ampcode.com/threads/T-019c0624-b9ba-707a-b3e1-bf7db5b57917
   - useAtom returns accessor - viewedFiles() not viewedFiles[key]
   - Pre-existing type errors (Kobalte asChild, Select components) are separate migration issues
 ---
+
+## 2026-01-28 - US-012
+Thread: https://ampcode.com/threads/T-019c062e-3336-748a-bcc8-dc8bb0a6ce90
+- Verified TSX source files already converted to SolidJS ref patterns in US-011
+- Deleted 45 stale .js transpiled files from src/mainview/features/changes/ that contained old React .current patterns
+- **Learnings for future iterations:**
+  - TSX source files were already properly converted - the .current patterns existed only in stale .js transpiled output
+  - Always check for stale .js files when migrating a feature area - they can contain old React patterns
+  - Build errors related to missing dependencies (zustand, react, @trpc/react-query) are pre-existing and unrelated to migration work
+---
