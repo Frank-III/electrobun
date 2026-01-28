@@ -1,8 +1,7 @@
 "use client";
-import React, { useMemo, useState, useCallback, useRef, useEffect, memo, createEffect, createMemo, createSignal } from "solid-js";
-import { createPortal } from "solid-js/web";
+import { createEffect, createMemo, createSignal, For, Show, onCleanup } from "solid-js";
+import { Portal } from "solid-js/web";
 import { useAtom, useAtomValue, useSetAtom } from "../../lib/state/jotai";
-import { motion, AnimatePresence } from "motion/react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/utils";
@@ -45,7 +44,8 @@ interface SidebarSearchHistoryPopoverProps {
 	allSubChatsLength: number;
 	onSelect: (subChat: SubChatMeta) => void;
 }
-const SidebarSearchHistoryPopover = memo(function SidebarSearchHistoryPopover({ sortedSubChats, loadingSubChats, subChatUnseenChanges, pendingQuestionsMap, allSubChatsLength, onSelect }: SidebarSearchHistoryPopoverProps) {
+function SidebarSearchHistoryPopover(props: SidebarSearchHistoryPopoverProps) {
+	const { sortedSubChats, loadingSubChats, subChatUnseenChanges, pendingQuestionsMap, allSubChatsLength, onSelect } = props;
 	const [isHistoryOpen, setIsHistoryOpen] = createSignal(false);
 	const renderItem = (subChat: SubChatMeta) => {
 		const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
@@ -78,7 +78,7 @@ const SidebarSearchHistoryPopover = memo(function SidebarSearchHistoryPopover({ 
           </TooltipTrigger>
           <TooltipContent side="bottom">Chat history</TooltipContent>
         </Tooltip>} />;
-});
+}
 interface AgentsSubChatsSidebarProps {
 	onClose?: () => void;
 	isMobile?: boolean;
@@ -105,20 +105,20 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 	// Fetch agent chats for navigation after archive
 	const { data: agentChats } = api.agents.getAgentChats.useQuery({ teamId: selectedTeamId! }, { enabled: !!selectedTeamId });
 	const utils = trpc.useUtils();
-	// SubChat name tooltip - using refs instead of state to avoid re-renders on hover
+	// SubChat name tooltip - using let refs instead of state to avoid re-renders on hover
 	// Declared here so they can be used in archive mutation's onSuccess
-	const [subChatNameRefs, setSubChatNameRefs] = createSignal<Map<string, HTMLSpanElement>>(new Map());
-	const [subChatTooltipTimerRef, setSubChatTooltipTimerRef] = createSignal<ReturnType<typeof setTimeout> | null>(null);
-	const [tooltipRef, setTooltipRef] = createSignal<HTMLDivElement>(null);
+	let subChatNameRefs = new Map<string, HTMLSpanElement>();
+	let subChatTooltipTimerRef: ReturnType<typeof setTimeout> | undefined = undefined;
+	let tooltipRef: HTMLDivElement | undefined = undefined;
 	// Archive parent chat mutation
 	const archiveChatMutation = trpc.chats.archive.useMutation({ onSuccess: (_, variables) => {
 		// Hide tooltip if visible (element may be removed from DOM before mouseLeave fires)
-		if (subChatTooltipTimerRef.current) {
-			clearTimeout(subChatTooltipTimerRef.current);
-			subChatTooltipTimerRef.current = null;
+		if (subChatTooltipTimerRef) {
+			clearTimeout(subChatTooltipTimerRef);
+			subChatTooltipTimerRef = undefined;
 		}
-		if (tooltipRef.current) {
-			tooltipRef.current.style.display = "none";
+		if (tooltipRef) {
+			tooltipRef.style.display = "none";
 		}
 		utils.chats.list.invalidate();
 		utils.chats.listArchived.invalidate();
@@ -157,17 +157,17 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 	const setUndoStack = useSetAtom(undoStackAtom);
 	const [searchQuery, setSearchQuery] = createSignal("");
 	const [focusedChatIndex, setFocusedChatIndex] = createSignal(-1);
-	const [searchInputRef, setSearchInputRef] = createSignal<HTMLInputElement>(null);
-	const [scrollContainerRef, setScrollContainerRef] = createSignal<HTMLDivElement>(null);
+	let searchInputRef: HTMLInputElement | undefined = undefined;
+	let scrollContainerRef: HTMLDivElement | undefined = undefined;
 	const [renameDialogOpen, setRenameDialogOpen] = createSignal(false);
-	const [renamingSubChat, setRenamingSubChat] = createSignal(null);
+	const [renamingSubChat, setRenamingSubChat] = createSignal<SubChatMeta | null>(null);
 	const [renameLoading, setRenameLoading] = createSignal(false);
 	const [showTopGradient, setShowTopGradient] = createSignal(false);
 	const [showBottomGradient, setShowBottomGradient] = createSignal(false);
 	// Using ref instead of state to avoid re-renders on hover
-	const [hoveredChatIndexRef, setHoveredChatIndexRef] = createSignal<number>(-1);
+	let hoveredChatIndexRef = -1;
 	const [archiveAgentDialogOpen, setArchiveAgentDialogOpen] = createSignal(false);
-	const [subChatToArchive, setSubChatToArchive] = createSignal(null);
+	const [subChatToArchive, setSubChatToArchive] = createSignal<SubChatMeta | null>(null);
 	// Multi-select state
 	const [selectedSubChatIds, setSelectedSubChatIds] = useAtom(selectedSubChatIdsAtom);
 	const isMultiSelectMode = useAtomValue(isSubChatMultiSelectModeAtom);
@@ -190,8 +190,8 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 		return chats;
 	});
 	// Filter and separate pinned/unpinned sub-chats
-	const { pinnedChats, unpinnedChats } = createMemo(() => {
-		const filtered = searchQuery.trim() ? openSubChats.filter((chat) => chat.name.toLowerCase().includes(searchQuery.toLowerCase())) : openSubChats;
+	const pinnedAndUnpinned = createMemo(() => {
+		const filtered = searchQuery().trim() ? openSubChats().filter((chat) => chat.name.toLowerCase().includes(searchQuery().toLowerCase())) : openSubChats();
 		const pinned = filtered.filter((chat) => pinnedSubChatIds.includes(chat.id));
 		const unpinned = filtered.filter((chat) => !pinnedSubChatIds.includes(chat.id));
 		return {
@@ -199,17 +199,21 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 			unpinnedChats: unpinned
 		};
 	});
+	const pinnedChats = () => pinnedAndUnpinned().pinnedChats;
+	const unpinnedChats = () => pinnedAndUnpinned().unpinnedChats;
 	const filteredSubChats = createMemo(() => {
-		return [...pinnedChats, ...unpinnedChats];
+		return [...pinnedChats(), ...unpinnedChats()];
 	});
 	// Reset focused index when search query changes
-	React.useEffect(() => {
+	createEffect(() => {
+		searchQuery();
+		filteredSubChats();
 		setFocusedChatIndex(-1);
-	}, [searchQuery, filteredSubChats.length]);
+	});
 	// Scroll focused item into view
-	React.useEffect(() => {
-		if (focusedChatIndex >= 0 && filteredSubChats.length > 0) {
-			const focusedElement = scrollContainerRef.current?.querySelector(`[data-subchat-index="${focusedChatIndex}"]`) as HTMLElement;
+	createEffect(() => {
+		if (focusedChatIndex() >= 0 && filteredSubChats().length > 0) {
+			const focusedElement = scrollContainerRef?.querySelector(`[data-subchat-index="${focusedChatIndex()}"]`) as HTMLElement;
 			if (focusedElement) {
 				focusedElement.scrollIntoView({
 					block: "nearest",
@@ -217,10 +221,10 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 				});
 			}
 		}
-	}, [focusedChatIndex, filteredSubChats.length]);
+	});
 	// Unified scroll handler for gradients (works with both event and direct calls)
 	const updateScrollGradients = (element?: HTMLDivElement) => {
-		const container = element || scrollContainerRef.current;
+		const container = element || scrollContainerRef;
 		if (!container) return;
 		const { scrollTop, scrollHeight, clientHeight } = container;
 		const isScrollable = scrollHeight > clientHeight;
@@ -235,21 +239,22 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 		setShowTopGradient(!isAtTop);
 		setShowBottomGradient(!isAtBottom);
 	};
-	// Handler for React onScroll event
-	const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+	// Handler for scroll event
+	const handleScroll = (e: Event & { currentTarget: HTMLDivElement }) => {
 		updateScrollGradients(e.currentTarget);
 	};
 	// Initialize gradients on mount and observe container size changes
-	React.useEffect(() => {
-		const container = scrollContainerRef.current;
+	createEffect(() => {
+		filteredSubChats();
+		const container = scrollContainerRef;
 		if (!container) return;
 		updateScrollGradients();
 		const resizeObserver = new ResizeObserver(() => updateScrollGradients());
 		resizeObserver.observe(container);
-		return () => resizeObserver.disconnect();
-	}, [filteredSubChats, updateScrollGradients]);
+		onCleanup(() => resizeObserver.disconnect());
+	});
 	// Hotkey: / to focus search input (only when sidebar is visible and input not focused)
-	React.useEffect(() => {
+	createEffect(() => {
 		const handleSearchHotkey = (e: KeyboardEvent) => {
 			// Only trigger if / is pressed without Cmd/Ctrl/Alt
 			// Note: e.key automatically handles keyboard layouts (Shift is not checked, allowing international layouts)
@@ -261,16 +266,14 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 				}
 				e.preventDefault();
 				e.stopPropagation();
-				searchInputRef.current?.focus();
-				searchInputRef.current?.select();
+				searchInputRef?.focus();
+				searchInputRef?.select();
 			}
 		};
 		// Use capture phase to intercept before other handlers (e.g., prompt input)
-		// Cleanup is guaranteed on unmount to prevent memory leaks
 		window.addEventListener("keydown", handleSearchHotkey, { capture: true });
-		return () => window.removeEventListener("keydown", handleSearchHotkey, { capture: true });
-		// Empty deps: handler is stable and uses only ref which doesn't need tracking
-	}, []);
+		onCleanup(() => window.removeEventListener("keydown", handleSearchHotkey, { capture: true }));
+	});
 	// Derive which sub-chats are loading (keys = subChatIds)
 	const loadingChatIds = createMemo(() => new Set([...loadingSubChats.keys()]));
 	const handleSubChatClick = (subChatId: string) => {
@@ -281,7 +284,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 	};
 	const handleArchiveSubChat = (subChatId: string) => {
 		// If this is the last open subchat, show confirmation dialog
-		if (openSubChats.length === 1) {
+		if (openSubChats().length === 1) {
 			const subChat = allSubChats.find((sc) => sc.id === subChatId);
 			if (subChat) {
 				setSubChatToArchive(subChat);
@@ -316,17 +319,17 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 	// Uses direct DOM manipulation instead of state to avoid re-renders
 	const handleSubChatMouseEnter = (subChatId: string, name: string, cardElement: HTMLElement) => {
 		// Clear any existing timer
-		if (subChatTooltipTimerRef.current) {
-			clearTimeout(subChatTooltipTimerRef.current);
+		if (subChatTooltipTimerRef) {
+			clearTimeout(subChatTooltipTimerRef);
 		}
-		const nameEl = subChatNameRefs.current.get(subChatId);
+		const nameEl = subChatNameRefs.get(subChatId);
 		if (!nameEl) return;
 		// Check if name is truncated
 		const isTruncated = nameEl.scrollWidth > nameEl.clientWidth;
 		if (!isTruncated) return;
 		// Show tooltip after 1 second delay via DOM manipulation (no state update)
-		subChatTooltipTimerRef.current = setTimeout(() => {
-			const tooltip = tooltipRef.current;
+		subChatTooltipTimerRef = setTimeout(() => {
+			const tooltip = tooltipRef;
 			if (!tooltip) return;
 			const rect = cardElement.getBoundingClientRect();
 			tooltip.style.display = "block";
@@ -337,21 +340,21 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 	};
 	const handleSubChatMouseLeave = () => {
 		// Clear timer if hovering ends before delay
-		if (subChatTooltipTimerRef.current) {
-			clearTimeout(subChatTooltipTimerRef.current);
-			subChatTooltipTimerRef.current = null;
+		if (subChatTooltipTimerRef) {
+			clearTimeout(subChatTooltipTimerRef);
+			subChatTooltipTimerRef = undefined;
 		}
 		// Hide tooltip via DOM - no state update, no re-render
-		const tooltip = tooltipRef.current;
+		const tooltip = tooltipRef;
 		if (tooltip) {
 			tooltip.style.display = "none";
 		}
 	};
 	const handleArchiveAllBelow = (subChatId: string) => {
-		const currentIndex = filteredSubChats.findIndex((c) => c.id === subChatId);
-		if (currentIndex === -1 || currentIndex === filteredSubChats.length - 1) return;
+		const currentIndex = filteredSubChats().findIndex((c) => c.id === subChatId);
+		if (currentIndex === -1 || currentIndex === filteredSubChats().length - 1) return;
 		const state = useAgentSubChatStore.getState();
-		const idsToClose = filteredSubChats.slice(currentIndex + 1).map((c) => c.id);
+		const idsToClose = filteredSubChats().slice(currentIndex + 1).map((c) => c.id);
 		idsToClose.forEach((id) => state.removeFromOpenSubChats(id));
 		// Add each to unified undo stack for Cmd+Z
 		if (parentChatId) {
@@ -563,17 +566,17 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 		// Shift+click for range selection
 		if (e?.shiftKey) {
 			e.preventDefault();
-			const clickedIndex = globalIndex ?? filteredSubChats.findIndex((c) => c.id === subChatId);
+			const clickedIndex = globalIndex ?? filteredSubChats().findIndex((c) => c.id === subChatId);
 			if (clickedIndex === -1) return;
 			// Find the anchor: use active sub-chat
 			let anchorIndex = -1;
 			if (activeSubChatId) {
-				anchorIndex = filteredSubChats.findIndex((c) => c.id === activeSubChatId);
+				anchorIndex = filteredSubChats().findIndex((c) => c.id === activeSubChatId);
 			}
 			// If no active sub-chat, try to use the first selected item
 			if (anchorIndex === -1 && selectedSubChatIds.size > 0) {
-				for (let i = 0; i < filteredSubChats.length; i++) {
-					if (selectedSubChatIds.has(filteredSubChats[i]!.id)) {
+				for (let i = 0; i < filteredSubChats().length; i++) {
+					if (selectedSubChatIds.has(filteredSubChats()[i]!.id)) {
 						anchorIndex = i;
 						break;
 					}
@@ -591,7 +594,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 			const endIndex = Math.max(anchorIndex, clickedIndex);
 			const newSelection = new Set(selectedSubChatIds);
 			for (let i = startIndex; i <= endIndex; i++) {
-				const chat = filteredSubChats[i];
+				const chat = filteredSubChats()[i];
 				if (chat) {
 					newSelection.add(chat.id);
 				}
@@ -605,11 +608,11 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 	// Multi-select hotkeys
 	// X to toggle selection of hovered or focused chat
 	useHotkeys("x", () => {
-		if (!filteredSubChats || filteredSubChats.length === 0) return;
+		if (!filteredSubChats() || filteredSubChats().length === 0) return;
 		// Prefer hovered (via ref), then focused
-		const targetIndex = hoveredChatIndexRef.current >= 0 ? hoveredChatIndexRef.current : focusedChatIndex >= 0 ? focusedChatIndex : -1;
-		if (targetIndex >= 0 && targetIndex < filteredSubChats.length) {
-			const subChatId = filteredSubChats[targetIndex]!.id;
+		const targetIndex = hoveredChatIndexRef >= 0 ? hoveredChatIndexRef : focusedChatIndex() >= 0 ? focusedChatIndex() : -1;
+		if (targetIndex >= 0 && targetIndex < filteredSubChats().length) {
+			const subChatId = filteredSubChats()[targetIndex]!.id;
 			toggleSubChatSelection(subChatId);
 		}
 	}, [
@@ -619,9 +622,9 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 	]);
 	// Cmd+A / Ctrl+A to select all sub-chats (only when at least one is already selected)
 	useHotkeys("mod+a", (e) => {
-		if (isMultiSelectMode && filteredSubChats.length > 0) {
+		if (isMultiSelectMode() && filteredSubChats().length > 0) {
 			e.preventDefault();
-			selectAllSubChats(filteredSubChats.map((c) => c.id));
+			selectAllSubChats(filteredSubChats().map((c) => c.id));
 		}
 	}, [
 		filteredSubChats,
@@ -630,8 +633,8 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 	]);
 	// Escape to clear selection (but not when dialogs are open)
 	useHotkeys("escape", () => {
-		if (archiveAgentDialogOpen || renameDialogOpen) return;
-		if (isMultiSelectMode) {
+		if (archiveAgentDialogOpen() || renameDialogOpen()) return;
+		if (isMultiSelectMode()) {
 			clearSubChatSelection();
 			setFocusedChatIndex(-1);
 		}
@@ -697,10 +700,10 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
             </div>}
           { /* Search Input */}
           <div class="relative" style={{ WebkitAppRegion: "no-drag" }}>
-            <Input ref={searchInputRef} placeholder="Search chats..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => {
+            <Input ref={(el) => searchInputRef = el} placeholder="Search chats..." value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} onKeyDown={(e) => {
  if (e.key === "Escape") {
 			e.preventDefault();
-			searchInputRef.current?.blur();
+			searchInputRef?.blur();
 			setFocusedChatIndex(-1);
 			return;
 		}
@@ -708,25 +711,25 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 			e.preventDefault();
 			setFocusedChatIndex((prev) => {
 				if (prev === -1) return 0;
-				return prev < filteredSubChats.length - 1 ? prev + 1 : prev;
+				return prev < filteredSubChats().length - 1 ? prev + 1 : prev;
 			});
 			return;
 		}
 		if (e.key === "ArrowUp") {
 			e.preventDefault();
 			setFocusedChatIndex((prev) => {
-				if (prev === -1) return filteredSubChats.length - 1;
+				if (prev === -1) return filteredSubChats().length - 1;
 				return prev > 0 ? prev - 1 : prev;
 			});
 			return;
 		}
 		if (e.key === "Enter") {
 			e.preventDefault();
-			if (focusedChatIndex >= 0) {
-				const focusedChat = filteredSubChats[focusedChatIndex];
+			if (focusedChatIndex() >= 0) {
+				const focusedChat = filteredSubChats()[focusedChatIndex()];
 				if (focusedChat) {
 					handleSubChatClick(focusedChat.id);
-					searchInputRef.current?.blur();
+					searchInputRef?.blur();
 					setFocusedChatIndex(-1);
 				}
 			}
@@ -764,7 +767,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
             {showBottomGradient && <div class="absolute left-0 right-0 bottom-0 h-8 bg-gradient-to-t from-background to-transparent pointer-events-none z-10" />}
 
             <div ref={scrollContainerRef} onScroll={handleScroll} class={cn("h-full overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent", isMultiSelectMode ? "px-0" : "px-2")}>
-              {filteredSubChats.length > 0 ? <div class={cn("mb-4", isMultiSelectMode ? "px-0" : "-mx-1")}>
+              {filteredSubChats().length > 0 ? <div class={cn("mb-4", isMultiSelectMode ? "px-0" : "-mx-1")}>
                   { /* Pinned section */}
                   {pinnedChats.length > 0 && <>
                       <div class={cn("flex items-center h-4 mb-1", isMultiSelectMode ? "pl-3" : "pl-2")}>
@@ -777,7 +780,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
  const isSubChatLoading = loadingChatIds.has(subChat.id);
 		const isActive = activeSubChatId === subChat.id;
 		const isPinned = pinnedSubChatIds.includes(subChat.id);
-		const globalIndex = filteredSubChats.findIndex((c) => c.id === subChat.id);
+		const globalIndex = filteredSubChats().findIndex((c) => c.id === subChat.id);
 		const isFocused = focusedChatIndex === globalIndex && focusedChatIndex >= 0;
 		const hasUnseen = subChatUnseenChanges().has(subChat.id);
 		const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
@@ -804,10 +807,10 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 				handleSubChatItemClick(subChat.id, undefined, globalIndex);
 			}
 		}} onMouseEnter={(e) => {
-			hoveredChatIndexRef.current = globalIndex;
+			hoveredChatIndexRef = globalIndex;
 			handleSubChatMouseEnter(subChat.id, subChat.name || "New Chat", e.currentTarget);
 		}} onMouseLeave={() => {
-			hoveredChatIndexRef.current = -1;
+			hoveredChatIndexRef = -1;
 			handleSubChatMouseLeave();
 		}} class={cn("w-full text-left py-1.5 transition-colors duration-75 cursor-pointer group relative", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", isMultiSelectMode ? "px-3" : "pl-2 pr-2", isMultiSelectMode ? "" : "rounded-md", isActive ? "bg-foreground/5 text-foreground" : isChecked ? "bg-foreground/5 text-foreground" : isFocused ? "bg-foreground/5 text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}>
                                   <div class="flex items-start gap-2.5">
@@ -830,7 +833,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
                                     <div class="flex-1 min-w-0 flex flex-col gap-0.5">
                                       <div class="flex items-center gap-1">
                                         <span ref={(el) => {
- if (el) subChatNameRefs.current.set(subChat.id, el);
+ if (el) subChatNameRefs.set(subChat.id, el);
 		}} class="truncate block text-sm leading-tight flex-1">
                                           <TypewriterText text={subChat.name || ""} placeholder="New Chat" id={subChat.id} isJustCreated={justCreatedIds().has(subChat.id)} showPlaceholder={true} />
                                         </span>
@@ -879,7 +882,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
                                     Archive {selectedSubChatIds.size}{" "}
                                     {pluralize(selectedSubChatIds.size, "chat")}
                                   </ContextMenuItem>
-                                </ContextMenuContent> : <SubChatContextMenu subChat={subChat} isPinned={isPinned} onTogglePin={togglePinSubChat} onRename={handleRenameClick} onArchive={handleArchiveSubChat} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={onCloseOtherChats} isOnlyChat={openSubChats.length === 1} currentIndex={globalIndex} totalCount={filteredSubChats.length} chatId={parentChatId} />}
+                                </ContextMenuContent> : <SubChatContextMenu subChat={subChat} isPinned={isPinned} onTogglePin={togglePinSubChat} onRename={handleRenameClick} onArchive={handleArchiveSubChat} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={onCloseOtherChats} isOnlyChat={openSubChats().length === 1} currentIndex={globalIndex} totalCount={filteredSubChats().length} chatId={parentChatId} />}
                             </ContextMenu>;
  })}
                       </div>
@@ -897,7 +900,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
  const isSubChatLoading = loadingChatIds.has(subChat.id);
 		const isActive = activeSubChatId === subChat.id;
 		const isPinned = pinnedSubChatIds.includes(subChat.id);
-		const globalIndex = filteredSubChats.findIndex((c) => c.id === subChat.id);
+		const globalIndex = filteredSubChats().findIndex((c) => c.id === subChat.id);
 		const isFocused = focusedChatIndex === globalIndex && focusedChatIndex >= 0;
 		const hasUnseen = subChatUnseenChanges().has(subChat.id);
 		const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
@@ -924,10 +927,10 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 				handleSubChatItemClick(subChat.id, undefined, globalIndex);
 			}
 		}} onMouseEnter={(e) => {
-			hoveredChatIndexRef.current = globalIndex;
+			hoveredChatIndexRef = globalIndex;
 			handleSubChatMouseEnter(subChat.id, subChat.name || "New Chat", e.currentTarget);
 		}} onMouseLeave={() => {
-			hoveredChatIndexRef.current = -1;
+			hoveredChatIndexRef = -1;
 			handleSubChatMouseLeave();
 		}} class={cn("w-full text-left py-1.5 transition-colors duration-75 cursor-pointer group relative", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", isMultiSelectMode ? "px-3" : "pl-2 pr-2", isMultiSelectMode ? "" : "rounded-md", isActive ? "bg-foreground/5 text-foreground" : isChecked ? "bg-foreground/5 text-foreground" : isFocused ? "bg-foreground/5 text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}>
                                   <div class="flex items-start gap-2.5">
@@ -950,7 +953,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
                                     <div class="flex-1 min-w-0 flex flex-col gap-0.5">
                                       <div class="flex items-center gap-1">
                                         <span ref={(el) => {
- if (el) subChatNameRefs.current.set(subChat.id, el);
+ if (el) subChatNameRefs.set(subChat.id, el);
 		}} class="truncate block text-sm leading-tight flex-1">
                                           <TypewriterText text={subChat.name || ""} placeholder="New Chat" id={subChat.id} isJustCreated={justCreatedIds().has(subChat.id)} showPlaceholder={true} />
                                         </span>
@@ -999,12 +1002,12 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
                                     Archive {selectedSubChatIds.size}{" "}
                                     {pluralize(selectedSubChatIds.size, "chat")}
                                   </ContextMenuItem>
-                                </ContextMenuContent> : <SubChatContextMenu subChat={subChat} isPinned={isPinned} onTogglePin={togglePinSubChat} onRename={handleRenameClick} onArchive={handleArchiveSubChat} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={onCloseOtherChats} isOnlyChat={openSubChats.length === 1} currentIndex={globalIndex} totalCount={filteredSubChats.length} chatId={parentChatId} />}
+                                </ContextMenuContent> : <SubChatContextMenu subChat={subChat} isPinned={isPinned} onTogglePin={togglePinSubChat} onRename={handleRenameClick} onArchive={handleArchiveSubChat} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={onCloseOtherChats} isOnlyChat={openSubChats().length === 1} currentIndex={globalIndex} totalCount={filteredSubChats().length} chatId={parentChatId} />}
                             </ContextMenu>;
  })}
                       </div>
                     </>}
-                </div> : searchQuery.trim() ? <div class="flex items-center justify-center h-full text-sm text-muted-foreground p-4 text-center">
+                </div> : searchQuery().trim() ? <div class="flex items-center justify-center h-full text-sm text-muted-foreground p-4 text-center">
                   <div>
                     <p class="mb-1">No results</p>
                     <p class="text-xs text-muted-foreground/60">
@@ -1017,20 +1020,11 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
       </div>
 
       {	/* Multi-select Footer Toolbar */}
-      <AnimatePresence mode="wait">
-        {isMultiSelectMode && <motion.div key="multiselect-footer" initial={{
- opacity: 0,
-		y: 8
-	}} animate={{
-		opacity: 1,
-		y: 0
-	}} exit={{
-		opacity: 0,
-		y: 8
-	}} transition={{ duration: 0 }} class="flex-shrink-0 p-2 bg-background space-y-2 relative z-10" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={isMultiSelectMode()}>
+        <div class="flex-shrink-0 p-2 bg-background space-y-2 relative z-10" style={{ "webkit-app-region": "no-drag" }}>
             <div class="flex items-center justify-between px-1">
               <span class="text-xs text-muted-foreground">
-                {selectedSubChatsCount} selected
+                {selectedSubChatsCount()} selected
               </span>
               <button onClick={clearSubChatSelection} class="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Cancel
@@ -1043,17 +1037,17 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
                 Archive
               </Button>
             </div>
-          </motion.div>}
-      </AnimatePresence>
+          </div>
+      </Show>
 
       {	/* Rename Dialog */}
-      <AgentsRenameSubChatDialog isOpen={renameDialogOpen} onClose={() => {
+      <AgentsRenameSubChatDialog isOpen={renameDialogOpen()} onClose={() => {
  setRenameDialogOpen(false);
 		setRenamingSubChat(null);
-	}} onSave={handleRenameSave} currentName={renamingSubChat?.name || ""} isLoading={renameLoading} />
+	}} onSave={handleRenameSave} currentName={renamingSubChat()?.name || ""} isLoading={renameLoading()} />
 
       {	/* Archive Agent Confirmation Dialog */}
-      <AlertDialog open={archiveAgentDialogOpen} onOpenChange={(open) => {
+      <AlertDialog open={archiveAgentDialogOpen()} onOpenChange={(open) => {
  setArchiveAgentDialogOpen(open);
 		if (!open) {
 			setSubChatToArchive(null);
@@ -1066,7 +1060,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
           <AlertDialogDescription class="px-5 pb-5">
             Do you want to archive agent{" "}
             <span class="font-medium text-foreground">
-              {agentName || subChatToArchive?.name || "this agent"}
+              {agentName || subChatToArchive()?.name || "this agent"}
             </span>
             ? You can restore it from history later.
           </AlertDialogDescription>
@@ -1080,9 +1074,11 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
       </AlertDialog>
 
       {	/* SubChat name tooltip portal - always rendered, visibility controlled via ref */}
-      {typeof document !== "undefined" && createPortal(<div ref={tooltipRef} class="fixed z-[100000] max-w-xs px-2 py-1 text-xs bg-popover border border-border rounded-md shadow-lg pointer-events-none text-foreground/90 whitespace-nowrap" style={{
+      <Portal>
+        <div ref={(el) => tooltipRef = el} class="fixed z-[100000] max-w-xs px-2 py-1 text-xs bg-popover border border-border rounded-md shadow-lg pointer-events-none text-foreground/90 whitespace-nowrap" style={{
  display: "none",
 		transform: "translateY(-50%)"
-	}} />, document.body)}
+	}} />
+      </Portal>
     </div>;
 }

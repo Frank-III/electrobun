@@ -134,3 +134,37 @@ Thread: https://ampcode.com/threads/T-019c0604-7f4b-7133-b127-5f76fb46ff21
   - Convert `return () => cleanup()` to `onCleanup(() => cleanup())` in all effects
   - agent-diff-view.tsx has React class component (DiffErrorBoundary) that needs more complex migration (separate story)
 ---
+
+## 2026-01-28 - US-008
+Thread: https://ampcode.com/threads/T-019c0609-e69e-7704-a7b0-715d7be120fd
+- Converted React refs to SolidJS direct-value pattern in agent UI components
+- Files changed:
+  - src/mainview/features/agents/ui/voice-input-button.tsx - removed memo(), createSignal for refs -> let refs, onCleanup, props pattern, Show components
+  - src/mainview/features/agents/ui/voice-wave-indicator.tsx - removed createSignal for refs -> array ref, For component, Show component
+  - src/mainview/features/agents/ui/agent-thinking-tool.tsx - removed memo(), createSignal for refs -> let refs, createMemo for derived values, Show components
+  - src/mainview/features/agents/ui/message-action-buttons.tsx - removed memo(), createSignal for refs -> let refs, onCleanup(), props pattern, Show/For components
+  - src/mainview/features/agents/ui/agent-exploring-group.tsx - removed memo(), createSignal for refs -> let refs, props pattern, Show/For components
+  - src/mainview/features/agents/ui/sub-chat-selector.tsx - fixed remaining .current patterns (was partially converted)
+  - Deleted: 55 stale .js files in src/mainview/features/agents/ui/
+- **Learnings for future iterations:**
+  - Many agent UI files still have .current patterns: agent-diff-view.tsx (23), agents-content.tsx (81), agent-preview.tsx (6) need more work
+  - The codebase has mixed React/SolidJS state - useAtomValue returns Accessor that must be called: `value()` not `value`
+  - Most `e.currentTarget` usages are correct DOM property, not React ref patterns
+  - Kobalte component type errors (asChild prop, TooltipContent side prop) are pre-existing migration issues
+  - Some files are already correctly converted to `let ref: T | undefined` pattern
+---
+
+## 2026-01-28 - US-009
+Thread: https://ampcode.com/threads/T-019c0611-68e3-776f-b9ae-8143bfe498b0
+- Fixed signal accessors in sidebar components (agents-subchats-sidebar.tsx)
+- Files changed:
+  - src/mainview/features/sidebar/agents-subchats-sidebar.tsx - comprehensive migration to SolidJS patterns
+- **Learnings for future iterations:**
+  - agents-subchats-sidebar.tsx had extensive React patterns: React imports, memo(), createSignal for refs, React.useEffect, .current patterns
+  - Replaced: memo→plain function, createSignal refs→let refs, React.useEffect→createEffect+onCleanup
+  - Fixed signal accessor patterns: filteredSubChats()→filteredSubChats()(), searchQuery()→searchQuery(), etc.
+  - Replaced AnimatePresence/motion.div with Show component (no animations)
+  - Replaced createPortal with Portal from solid-js/web
+  - agents-sidebar.tsx is much larger and still has many React patterns (React.memo, forwardRef, motion/react, React namespace types) - needs US-013/US-014/US-019 to fully migrate
+  - The useAtomValue returns plain values in this jotai integration, not SolidJS signals - so isMultiSelectMode works without ()
+---

@@ -279,7 +279,7 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 				}
 				e.preventDefault();
 				e.stopPropagation();
-				searchHistoryPopoverRef.current?.open();
+				searchHistoryPopoverRef?.open();
 			}
 		};
 		window.addEventListener("keydown", handleHistoryHotkey, true);
@@ -288,9 +288,9 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 	// Keyboard shortcut: Cmd+Shift+T / Ctrl+Shift+T for new sub-chat
 	// Scroll to active tab when it changes
 	createEffect(() => {
-		if (!activeSubChatId || !tabsContainerRef.current) return;
-		const container = tabsContainerRef.current;
-		const activeTabElement = tabRefs.current.get(activeSubChatId);
+		if (!activeSubChatId || !tabsContainerRef) return;
+		const container = tabsContainerRef;
+		const activeTabElement = tabRefs.get(activeSubChatId);
 		if (activeTabElement) {
 			setTimeout(() => {
 				const containerRect = container.getBoundingClientRect();

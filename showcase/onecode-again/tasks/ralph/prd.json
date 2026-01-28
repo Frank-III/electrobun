@@ -111,8 +111,8 @@
         "Scroll container refs use direct-value pattern"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Converted voice-input-button.tsx, voice-wave-indicator.tsx, agent-thinking-tool.tsx, message-action-buttons.tsx, agent-exploring-group.tsx, sub-chat-selector.tsx to SolidJS ref patterns (let ref: T | undefined). Deleted 55 stale .js files from agents/ui/. Remaining files have pre-existing .current patterns that need separate attention (agent-diff-view, agents-content, agent-preview have 81+ patterns combined)."
     },
     {
       "id": "US-009",
@@ -124,8 +124,8 @@
         "All conditional checks use signal()"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Fixed agents-subchats-sidebar.tsx: removed memo/React imports, converted createSignal refs to let refs, replaced .current patterns, converted React.useEffect to createEffect+onCleanup, fixed signal accessor patterns for filteredSubChats/searchQuery/focusedChatIndex/openSubChats, replaced AnimatePresence with Show, replaced createPortal with Portal. Deleted stale .js files. agents-sidebar.tsx still has many React patterns (React.memo, forwardRef, motion/react, React.useEffect) that need separate conversion."
     },
     {
       "id": "US-010",
