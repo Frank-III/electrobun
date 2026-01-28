@@ -1,5 +1,4 @@
 "use client";
-import { memo } from "solid-js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { cn } from "../../../lib/utils";
 // Claude model context windows
@@ -50,7 +49,7 @@ function CircularProgress({ percent, size = 18, strokeWidth = 2, className }: {
       <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" class="transition-all duration-300 text-muted-foreground/60" />
     </svg>;
  }
-export const AgentContextIndicator = memo(function AgentContextIndicator({ tokenData, modelId = "sonnet", className, onCompact, isCompacting, disabled }: AgentContextIndicatorProps) {
+export function AgentContextIndicator({ tokenData, modelId = "sonnet", className, onCompact, isCompacting, disabled }: AgentContextIndicatorProps) {
 	const totalTokens = tokenData.totalInputTokens + tokenData.totalOutputTokens;
 	const contextWindow = CONTEXT_WINDOWS[modelId];
 	const percentUsed = Math.min(100, totalTokens / contextWindow * 100);
@@ -79,4 +78,4 @@ export const AgentContextIndicator = memo(function AgentContextIndicator({ token
         </p>
       </TooltipContent>
     </Tooltip>;
-});
+}

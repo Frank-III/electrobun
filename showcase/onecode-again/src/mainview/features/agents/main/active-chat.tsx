@@ -479,7 +479,7 @@ function RollbackButton({ disabled = false, onRollback, isRollingBack = false }:
     </Tooltip>;
 }
 // Isolated scroll-to-bottom button - uses own scroll listener to avoid re-renders of parent
-const ScrollToBottomButton = memo(function ScrollToBottomButton({ containerRef, onScrollToBottom, hasStackedCards = false, subChatId, isActive = true }: {
+function ScrollToBottomButton({ containerRef, onScrollToBottom, hasStackedCards = false, subChatId, isActive = true }: {
 	containerRef: Ref<HTMLElement | null>;
 	onScrollToBottom: () => void;
 	hasStackedCards?: boolean;
@@ -570,7 +570,7 @@ const ScrollToBottomButton = memo(function ScrollToBottomButton({ containerRef, 
           </TooltipContent>
         </Tooltip>}
     </AnimatePresence>;
-});
+}
 // Message group wrapper - measures user message height for sticky todo positioning
 interface MessageGroupProps {
 	children: JSX.Element;
@@ -725,7 +725,7 @@ interface DiffSidebarContentProps {
 	onSelectNextFile?: (filePath: string) => void;
 }
 // Memoized commit file item for History tab
-const CommitFileItem = memo(function CommitFileItem({ file, onClick }: {
+function CommitFileItem({ file, onClick }: {
 	file: {
 		path: string;
 		status: FileStatus;
@@ -747,8 +747,8 @@ const CommitFileItem = memo(function CommitFileItem({ file, onClick }: {
         {getStatusIndicator(file.status)}
       </div>
     </div>;
-});
-const DiffSidebarContent = memo(function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffStats, setDiffStats, diffContent, parsedFileDiffs, prefetchedFileContents, setDiffCollapseState, diffViewRef, agentChat, sidebarWidth, onCommitWithAI, isCommittingWithAI = false, diffMode, setDiffMode, onCreatePr, subChats = [] }: Omit<DiffSidebarContentProps, "selectedFilePath" | "onFileSelect" | "onCommitSuccess" | "initialSubChatFilter" | "onSelectNextFile">) {
+}
+function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffStats, setDiffStats, diffContent, parsedFileDiffs, prefetchedFileContents, setDiffCollapseState, diffViewRef, agentChat, sidebarWidth, onCommitWithAI, isCommittingWithAI = false, diffMode, setDiffMode, onCreatePr, subChats = [] }: Omit<DiffSidebarContentProps, "selectedFilePath" | "onFileSelect" | "onCommitSuccess" | "initialSubChatFilter" | "onSelectNextFile">) {
 	// Get values from context instead of props
 	const { selectedFilePath, filteredSubChatId, handleDiffFileSelect, handleSelectNextFile, handleCommitSuccess, handleViewedCountChange, resetActiveTabRef } = useDiffState();
 	// Compute initial selected file synchronously for first render
@@ -958,7 +958,7 @@ const DiffSidebarContent = memo(function DiffSidebarContent({ worktreePath, chat
         </div>
       </div>
     </div>;
- });
+}
 // ============================================================================
 // DiffStateProvider - manages diff state in isolation from ChatView
 // This prevents ChatView from re-rendering when selected file changes
@@ -981,7 +981,7 @@ interface DiffStateProviderProps {
 	fetchDiffStats: () => void;
 	children: JSX.Element;
 }
-const DiffStateProvider = memo(function DiffStateProvider({ isDiffSidebarOpen, parsedFileDiffs, isDiffSidebarNarrow, setIsDiffSidebarOpen, setDiffStats, setDiffContent, setParsedFileDiffs, setPrefetchedFileContents, fetchDiffStats, children }: DiffStateProviderProps) {
+function DiffStateProvider({ isDiffSidebarOpen, parsedFileDiffs, isDiffSidebarNarrow, setIsDiffSidebarOpen, setDiffStats, setDiffContent, setParsedFileDiffs, setPrefetchedFileContents, fetchDiffStats, children }: DiffStateProviderProps) {
 	// Viewed count state - kept here to avoid re-rendering ChatView
 	const [viewedCount, setViewedCount] = createSignal(0);
 	// Ref for resetting activeTab to "changes" before closing
@@ -1074,7 +1074,7 @@ const DiffStateProvider = memo(function DiffStateProvider({ isDiffSidebarOpen, p
 	return <DiffStateContext.Provider value={contextValue}>
       {children}
     </DiffStateContext.Provider>;
-});
+}
 // ============================================================================
 // DiffSidebarRenderer - renders the diff sidebar using context for state
 // This component is inside DiffStateProvider and uses useDiffState()
@@ -1162,7 +1162,7 @@ interface DiffSidebarRendererProps {
 		deletions: number;
 	}) => void;
 }
-const DiffSidebarRenderer = memo(function DiffSidebarRenderer({ worktreePath, chatId, sandboxId, repository, diffStats, diffContent, parsedFileDiffs, prefetchedFileContents, setDiffCollapseState, diffViewRef, diffSidebarRef, agentChat, branchData, gitStatus, isGitStatusLoading, isDiffSidebarOpen, diffDisplayMode, diffSidebarWidth, handleReview, isReviewing, handleCreatePr, isCreatingPr, handleMergePr, mergePrMutation, handleRefreshGitStatus, hasPrNumber, isPrOpen, hasMergeConflicts, handleFixConflicts, handleExpandAll, handleCollapseAll, diffMode, setDiffMode, handleMarkAllViewed, handleMarkAllUnviewed, isDesktop, isFullscreen, setDiffDisplayMode, handleCommitToPr, isCommittingToPr, subChatsWithFiles, setDiffStats }: DiffSidebarRendererProps) {
+function DiffSidebarRenderer({ worktreePath, chatId, sandboxId, repository, diffStats, diffContent, parsedFileDiffs, prefetchedFileContents, setDiffCollapseState, diffViewRef, diffSidebarRef, agentChat, branchData, gitStatus, isGitStatusLoading, isDiffSidebarOpen, diffDisplayMode, diffSidebarWidth, handleReview, isReviewing, handleCreatePr, isCreatingPr, handleMergePr, mergePrMutation, handleRefreshGitStatus, hasPrNumber, isPrOpen, hasMergeConflicts, handleFixConflicts, handleExpandAll, handleCollapseAll, diffMode, setDiffMode, handleMarkAllViewed, handleMarkAllUnviewed, isDesktop, isFullscreen, setDiffDisplayMode, handleCommitToPr, isCommittingToPr, subChatsWithFiles, setDiffStats }: DiffSidebarRendererProps) {
 	// Get callbacks and state from context
 	const { handleCloseDiff, viewedCount, handleViewedCountChange } = useDiffState();
 	// Width for responsive layouts - use stored width for sidebar, fixed for dialog/fullpage
@@ -1199,10 +1199,10 @@ const DiffSidebarRenderer = memo(function DiffSidebarRenderer({ worktreePath, ch
       </DiffFullPageView>;
 	}
 	return null;
-});
+}
 // Inner chat component - only rendered when chat object is ready
 // Memoized to prevent re-renders when parent state changes (e.g., selectedFilePath)
-const ChatViewInner = memo(function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRename, onCreateNewSubChat, refreshDiff, teamId, repository, streamId, isMobile = false, sandboxSetupStatus = "ready", sandboxSetupError, onRetrySetup, isSubChatsSidebarOpen = false, sandboxId, projectPath, isArchived = false, onRestoreWorkspace, existingPrUrl, isActive = true }: {
+function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRename, onCreateNewSubChat, refreshDiff, teamId, repository, streamId, isMobile = false, sandboxSetupStatus = "ready", sandboxSetupError, onRetrySetup, isSubChatsSidebarOpen = false, sandboxId, projectPath, isArchived = false, onRestoreWorkspace, existingPrUrl, isActive = true }: {
 	chat: Chat<any>;
 	subChatId: string;
 	parentChatId: string;
@@ -2874,7 +2874,7 @@ const ChatViewInner = memo(function ChatViewInner({ chat, subChatId, parentChatI
         <ScrollToBottomButton containerRef={chatContainerRef} onScrollToBottom={scrollToBottom} hasStackedCards={!pendingQuestions && (queue.length > 0 || changedFilesForSubChat.length > 0)} subChatId={subChatId} isActive={isActive} />
       </div>
     </SearchHighlightProvider>;
- });
+}
 // Chat View wrapper - handles loading and creates chat object
 export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamName, selectedTeamImageUrl, isMobileFullscreen = false, onBackToChats, onOpenPreview, onOpenDiff, onOpenTerminal }: {
 	chatId: string;

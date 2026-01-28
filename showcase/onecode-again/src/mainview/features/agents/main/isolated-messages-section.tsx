@@ -1,5 +1,4 @@
 "use client";
-import { memo } from "solid-js";
 import { useAtomValue } from "../../../lib/state/jotai";
 import { userMessageIdsAtom, currentSubChatIdAtom } from "../stores/message-store";
 import { IsolatedMessageGroup } from "./isolated-message-group";
@@ -48,7 +47,7 @@ interface IsolatedMessagesSectionProps {
 function areSectionPropsEqual(prev: IsolatedMessagesSectionProps, next: IsolatedMessagesSectionProps): boolean {
 	return prev.subChatId === next.subChatId && prev.chatId === next.chatId && prev.isMobile === next.isMobile && prev.sandboxSetupStatus === next.sandboxSetupStatus && prev.stickyTopClass === next.stickyTopClass && prev.sandboxSetupError === next.sandboxSetupError && prev.onRetrySetup === next.onRetrySetup && prev.UserBubbleComponent === next.UserBubbleComponent && prev.ToolCallComponent === next.ToolCallComponent && prev.MessageGroupWrapper === next.MessageGroupWrapper && prev.toolRegistry === next.toolRegistry;
 }
-export const IsolatedMessagesSection = memo(function IsolatedMessagesSection({ subChatId, chatId, isMobile, sandboxSetupStatus, stickyTopClass, sandboxSetupError, onRetrySetup, UserBubbleComponent, ToolCallComponent, MessageGroupWrapper, toolRegistry }: IsolatedMessagesSectionProps) {
+export function IsolatedMessagesSection({ subChatId, chatId, isMobile, sandboxSetupStatus, stickyTopClass, sandboxSetupError, onRetrySetup, UserBubbleComponent, ToolCallComponent, MessageGroupWrapper, toolRegistry }: IsolatedMessagesSectionProps) {
 	// CRITICAL: Check if global atoms are synced for THIS subChat FIRST
 	// With keep-alive tabs, multiple ChatViewInner instances exist simultaneously.
 	// Global atoms (messageIdsAtom, etc.) contain data from the ACTIVE tab only.
@@ -70,4 +69,4 @@ export const IsolatedMessagesSection = memo(function IsolatedMessagesSection({ s
 	return <>
       {userMsgIds.map((userMsgId) => <IsolatedMessageGroup key={userMsgId} userMsgId={userMsgId} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} stickyTopClass={stickyTopClass} sandboxSetupError={sandboxSetupError} onRetrySetup={onRetrySetup} UserBubbleComponent={UserBubbleComponent} ToolCallComponent={ToolCallComponent} MessageGroupWrapper={MessageGroupWrapper} toolRegistry={toolRegistry} />)}
     </>;
-}, areSectionPropsEqual);
+}

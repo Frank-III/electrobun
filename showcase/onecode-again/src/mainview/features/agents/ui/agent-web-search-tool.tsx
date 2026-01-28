@@ -4,7 +4,6 @@ import { SearchIcon, IconSpinner, ExpandIcon, CollapseIcon, ExternalLinkIcon } f
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { getToolStatus } from "./agent-tool-registry";
 import { AgentToolInterrupted } from "./agent-tool-interrupted";
-import { areToolPropsEqual } from "./agent-tool-utils";
 import { cn } from "../../../lib/utils";
 interface AgentWebSearchToolProps {
 	part: any;
@@ -14,7 +13,7 @@ interface SearchResult {
 	title: string;
 	url: string;
 }
-export const AgentWebSearchTool = memo(function AgentWebSearchTool({ part, chatStatus }: AgentWebSearchToolProps) {
+export function AgentWebSearchTool({ part, chatStatus }: AgentWebSearchToolProps) {
 	const [isExpanded, setIsExpanded] = createSignal(false);
 	const { isPending, isError, isInterrupted } = getToolStatus(part, chatStatus);
 	const query = part.input?.query || "";
@@ -96,4 +95,4 @@ export const AgentWebSearchTool = memo(function AgentWebSearchTool({ part, chatS
             </a>)}
         </div>}
     </div>;
- }, areToolPropsEqual);
+}

@@ -460,7 +460,7 @@ function walkTreeOnce(root: HTMLElement, range: Range | null): TreeWalkResult {
 	};
 }
 // Memoized to prevent re-renders when parent re-renders
-export const AgentsMentionsEditor = memo(forwardRef<AgentsMentionsEditorHandle, AgentsMentionsEditorProps>(function AgentsMentionsEditor({ initialValue, onTrigger, onCloseTrigger, onSlashTrigger, onCloseSlashTrigger, onContentChange, placeholder, className, onSubmit, onForceSubmit, disabled, onPaste, onShiftTab, onFocus, onBlur }, ref) {
+export const AgentsMentionsEditor = forwardRef<AgentsMentionsEditorHandle, AgentsMentionsEditorProps>(function AgentsMentionsEditor({ initialValue, onTrigger, onCloseTrigger, onSlashTrigger, onCloseSlashTrigger, onContentChange, placeholder, className, onSubmit, onForceSubmit, disabled, onPaste, onShiftTab, onFocus, onBlur }, ref) {
 	const [editorRef, setEditorRef] = createSignal<HTMLDivElement>(null);
 	const [triggerActive, setTriggerActive] = createSignal(false);
 	const [triggerStartIndex, setTriggerStartIndex] = createSignal<number | null>(null);
@@ -1178,4 +1178,4 @@ interface UndoState {
 		onPaste?.(e);
 	}} onFocus={onFocus} onBlur={onBlur} class={cn("min-h-[24px] outline-none whitespace-pre-wrap break-words text-sm relative", disabled && "opacity-50 cursor-not-allowed", className)} />
         </div>;
-}));
+});

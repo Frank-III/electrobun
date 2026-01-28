@@ -1,5 +1,4 @@
 "use client";
-import { memo } from "solid-js";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 interface AgentToolCallProps {
@@ -13,7 +12,7 @@ interface AgentToolCallProps {
 	isError: boolean;
 	isNested?: boolean;
 }
-export const AgentToolCall = memo(function AgentToolCall({ icon: _Icon, title, subtitle, tooltipContent, isPending, isError: _isError, isNested }: AgentToolCallProps) {
+export function AgentToolCall({ icon: _Icon, title, subtitle, tooltipContent, isPending, isError: _isError, isNested }: AgentToolCallProps) {
 	// Ensure title and subtitle are strings (copied from canvas)
 	const titleStr = String(title);
 	const subtitleStr = subtitle ? String(subtitle) : undefined;
@@ -46,7 +45,4 @@ export const AgentToolCall = memo(function AgentToolCall({ icon: _Icon, title, s
           </div>
         </div>
       </div>;
- }, (prevProps, nextProps) => {
-	// Custom comparison for memoization (copied from canvas)
-	return prevProps.title === nextProps.title && prevProps.subtitle === nextProps.subtitle && prevProps.tooltipContent === nextProps.tooltipContent && prevProps.isPending === nextProps.isPending && prevProps.isError === nextProps.isError && prevProps.isNested === nextProps.isNested;
-});
+}

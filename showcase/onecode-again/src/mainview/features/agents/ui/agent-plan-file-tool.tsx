@@ -8,7 +8,6 @@ import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { ChatMarkdownRenderer } from "../../../components/chat-markdown-renderer";
 import { cn } from "../../../lib/utils";
 import { getToolStatus } from "./agent-tool-registry";
-import { areToolPropsEqual } from "./agent-tool-utils";
 import { planSidebarOpenAtomFamily, currentPlanPathAtomFamily, subChatModeAtomFamily, pendingBuildPlanSubChatIdAtom } from "../atoms";
 import { useAgentSubChatStore } from "../stores/sub-chat-store";
 interface AgentPlanFileToolProps {
@@ -30,7 +29,7 @@ interface AgentPlanFileToolProps {
 * Shows plan content during streaming and after completion.
 * Features: expand/collapse, View plan (sidebar), Build button.
 */
-export const AgentPlanFileTool = memo(function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false }: AgentPlanFileToolProps) {
+export function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false }: AgentPlanFileToolProps) {
 	const [isExpanded, setIsExpanded] = createSignal(false);
 	const { isPending } = getToolStatus(part, chatStatus);
 	const isWrite = part.type === "tool-Write";
@@ -181,4 +180,4 @@ export const AgentPlanFileTool = memo(function AgentPlanFileTool({ part, chatSta
           </Button>}
       </div>
     </div>;
- }, areToolPropsEqual);
+}

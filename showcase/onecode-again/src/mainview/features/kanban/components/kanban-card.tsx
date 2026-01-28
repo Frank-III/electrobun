@@ -1,4 +1,4 @@
-import { memo } from "solid-js";
+
 import { AnimatePresence, motion } from "motion/react";
 import { formatTimeAgo } from "../../../lib/utils/format-time-ago";
 import { cn } from "../../../lib/utils";
@@ -51,7 +51,7 @@ interface KanbanCardProps {
 		format: "markdown" | "json" | "text";
 	}) => void;
 }
-export const KanbanCard = memo(function KanbanCard({ card, isMultiSelectMode, onClick, onCheckboxClick, onTogglePin, onRename, onArchive, onCopyBranch, onExportChat, onCopyChat }: KanbanCardProps) {
+export function KanbanCard({ card, isMultiSelectMode, onClick, onCheckboxClick, onTogglePin, onRename, onArchive, onCopyBranch, onExportChat, onCopyChat }: KanbanCardProps) {
 	const timeAgo = formatTimeAgo(card.updatedAt || card.createdAt);
 	// Build display text: projectName + branch (if exists)
 	const displayText = card.branch ? card.projectName ? `${card.projectName} • ${card.branch}` : card.branch : card.projectName || "Local project";
@@ -242,4 +242,4 @@ export const KanbanCard = memo(function KanbanCard({ card, isMultiSelectMode, on
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>;
-});
+}

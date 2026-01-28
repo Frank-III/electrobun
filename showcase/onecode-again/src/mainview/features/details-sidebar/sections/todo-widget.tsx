@@ -80,7 +80,7 @@ const TodoListItem = ({ todo, isLast }: {
 * Matches the visual style of AgentTodoTool exactly
 * Memoized to prevent re-renders when parent updates
 */
-export const TodoWidget = memo(function TodoWidget({ subChatId }: TodoWidgetProps) {
+export function TodoWidget({ subChatId }: TodoWidgetProps) {
 	// Get todos from the active sub-chat
 	const todosAtom = createMemo(() => currentTodosAtomFamily(subChatId || "default"));
 	const todoState = useAtomValue(todosAtom);
@@ -158,4 +158,4 @@ export const TodoWidget = memo(function TodoWidget({ subChatId }: TodoWidgetProp
           </div>}
       </div>
     </div>;
- });
+}

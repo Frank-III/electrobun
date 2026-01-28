@@ -47,7 +47,7 @@ const COLUMNS: {
 		title: "Done"
 	}
 ];
-export const KanbanBoard = memo(function KanbanBoard({ cards, isMultiSelectMode, onCardClick, onCheckboxClick, onTogglePin, onRename, onArchive, onCopyBranch, onExportChat, onCopyChat }: KanbanBoardProps) {
+export function KanbanBoard({ cards, isMultiSelectMode, onCardClick, onCheckboxClick, onTogglePin, onRename, onArchive, onCopyBranch, onExportChat, onCopyChat }: KanbanBoardProps) {
 	// Group cards by status
 	const cardsByStatus = createMemo(() => {
 		const grouped: Record<SubChatStatus, KanbanCardData[]> = {
@@ -67,4 +67,4 @@ export const KanbanBoard = memo(function KanbanBoard({ cards, isMultiSelectMode,
         {COLUMNS.map((column) => <KanbanColumn key={column.status} title={column.title} status={column.status} cards={cardsByStatus[column.status]} isMultiSelectMode={isMultiSelectMode} onCardClick={onCardClick} onCheckboxClick={onCheckboxClick} onTogglePin={onTogglePin} onRename={onRename} onArchive={onArchive} onCopyBranch={onCopyBranch} onExportChat={onExportChat} onCopyChat={onCopyChat} />)}
       </div>
     </div>;
- });
+}

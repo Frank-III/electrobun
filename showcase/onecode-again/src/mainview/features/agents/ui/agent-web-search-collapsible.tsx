@@ -2,7 +2,6 @@
 import { createSignal, createMemo } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 import { ExternalLinkIcon } from "../../../components/ui/icons";
-import { areToolPropsEqual } from "./agent-tool-utils";
 import { cn } from "../../../lib/utils";
 interface SearchResult {
 	title: string;
@@ -12,7 +11,7 @@ interface AgentWebSearchCollapsibleProps {
 	part: any;
 	chatStatus?: string;
 }
-export const AgentWebSearchCollapsible = memo(function AgentWebSearchCollapsible({ part, chatStatus }: AgentWebSearchCollapsibleProps) {
+export function AgentWebSearchCollapsible({ part, chatStatus }: AgentWebSearchCollapsibleProps) {
 	const [isExpanded, setIsExpanded] = createSignal(false);
 	const isPending = part.state !== "output-available" && part.state !== "output-error";
 	// Include "submitted" status - this is when request was sent but streaming hasn't started yet
@@ -84,4 +83,4 @@ export const AgentWebSearchCollapsible = memo(function AgentWebSearchCollapsible
             </div>
           </div>}
       </div>;
- }, areToolPropsEqual);
+}

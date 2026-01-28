@@ -47,7 +47,7 @@ function getFileStatus(file: ParsedDiffFile): "added" | "modified" | "deleted" |
 * Shows file list exactly like the Changes tab in diff sidebar
 * Memoized to prevent unnecessary re-renders when parent updates
 */
-export const ChangesWidget = memo(function ChangesWidget({ chatId, worktreePath, diffStats, parsedFileDiffs, onCommit, isCommitting = false, onExpand, onFileSelect, diffDisplayMode = "side-peek" }: ChangesWidgetProps) {
+export function ChangesWidget({ chatId, worktreePath, diffStats, parsedFileDiffs, onCommit, isCommitting = false, onExpand, onFileSelect, diffDisplayMode = "side-peek" }: ChangesWidgetProps) {
 	// Data is now cached at the ActiveChat level via workspaceDiffCacheAtomFamily
 	// So parsedFileDiffs and diffStats persist across workspace switches
 	const displayFiles = parsedFileDiffs ?? [];
@@ -217,4 +217,4 @@ export const ChangesWidget = memo(function ChangesWidget({ chatId, worktreePath,
           </div>}
       </div>
     </div>;
- });
+}

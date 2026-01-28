@@ -228,7 +228,7 @@ function arePropsEqual(prevProps: ChatInputAreaProps, nextProps: ChatInputAreaPr
 *
 * When user types, only this component re-renders, not the entire ChatViewInner.
 */
-export const ChatInputArea = memo(function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, onStop, onCompact, onCreateNewSubChat, isStreaming, isCompacting, images, files, onAddAttachments, onRemoveImage, onRemoveFile, isUploading, textContexts, onRemoveTextContext, diffTextContexts, onRemoveDiffTextContext, pastedTexts = [], onAddPastedText, onRemovePastedText, onCacheFileContent, messageTokenData, subChatId, parentChatId, teamId, repository, sandboxId, projectPath, changedFiles, isMobile = false, queueLength = 0, onSendFromQueue, firstQueueItemId, onInputContentChange, onSubmitWithQuestionAnswer }: ChatInputAreaProps) {
+export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, onStop, onCompact, onCreateNewSubChat, isStreaming, isCompacting, images, files, onAddAttachments, onRemoveImage, onRemoveFile, isUploading, textContexts, onRemoveTextContext, diffTextContexts, onRemoveDiffTextContext, pastedTexts = [], onAddPastedText, onRemovePastedText, onCacheFileContent, messageTokenData, subChatId, parentChatId, teamId, repository, sandboxId, projectPath, changedFiles, isMobile = false, queueLength = 0, onSendFromQueue, firstQueueItemId, onInputContentChange, onSubmitWithQuestionAnswer }: ChatInputAreaProps) {
 	// Local state - changes here don't re-render parent
 	const [hasContent, setHasContent] = createSignal(false);
 	const [isFocused, setIsFocused] = createSignal(false);
@@ -1066,4 +1066,4 @@ export const ChatInputArea = memo(function ChatInputArea({ editorRef, fileInputR
       {	/* Slash command dropdown */}
       <AgentsSlashCommand isOpen={showSlashDropdown} onClose={handleCloseSlashTrigger} onSelect={handleSlashSelect} searchText={slashSearchText} position={slashPosition} projectPath={projectPath} mode={subChatMode} />
     </div>;
- }, arePropsEqual);
+}

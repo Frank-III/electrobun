@@ -42,7 +42,7 @@ function getNextTerminalName(terminals: TerminalInstance[]): string {
 * Combines WidgetCard header with terminal tabs and content
 * Memoized to prevent re-renders when parent updates
 */
-export const TerminalWidget = memo(function TerminalWidget({ chatId, cwd, workspaceId, onExpand }: TerminalWidgetProps) {
+export function TerminalWidget({ chatId, cwd, workspaceId, onExpand }: TerminalWidgetProps) {
 	// Terminal state - reuse existing atoms
 	const [allTerminals, setAllTerminals] = useAtom(terminalsAtom);
 	const [allActiveIds, setAllActiveIds] = useAtom(activeTerminalIdAtom);
@@ -230,4 +230,4 @@ export const TerminalWidget = memo(function TerminalWidget({ chatId, cwd, worksp
         </div>
       </div>
     </div>;
-});
+}

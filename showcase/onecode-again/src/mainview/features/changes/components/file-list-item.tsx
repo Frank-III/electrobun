@@ -1,5 +1,4 @@
 "use client";
-import { memo } from "solid-js";
 import { Eye } from "lucide-solid";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Kbd } from "@/components/ui/kbd";
@@ -47,7 +46,7 @@ export interface FileListItemProps {
 * Shared file list item component used in both changes-view and changes-widget
 * Memoized to prevent re-renders
 */
-export const FileListItem = memo(function FileListItem({ filePath, fileName, dirPath, status, isSelected = false, isChecked, isViewed, isUntracked, onSelect, onDoubleClick, onCheckboxChange, onCopyPath, onCopyRelativePath, onRevealInFinder, onToggleViewed, onDiscard, showContextMenu = true }: FileListItemProps) {
+export function FileListItem({ filePath, fileName, dirPath, status, isSelected = false, isChecked, isViewed, isUntracked, onSelect, onDoubleClick, onCheckboxChange, onCopyPath, onCopyRelativePath, onRevealInFinder, onToggleViewed, onDiscard, showContextMenu = true }: FileListItemProps) {
 	const content = <div data-file-item class={cn("flex items-center gap-2 px-2 py-1 cursor-pointer", "hover:bg-muted/80 transition-colors", isSelected && "bg-muted")} onClick={onSelect} onDoubleClick={onDoubleClick}>
       <Checkbox checked={isChecked} onCheckedChange={onCheckboxChange} onClick={(e) => e.stopPropagation()} class="size-4 shrink-0 border-muted-foreground/50" />
       <div class="flex-1 min-w-0 flex items-center overflow-hidden">
@@ -94,7 +93,7 @@ export const FileListItem = memo(function FileListItem({ filePath, fileName, dir
           </>}
       </ContextMenuContent>
     </ContextMenu>;
-});
+}
 /**
 * Helper to extract file name from path
 */

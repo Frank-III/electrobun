@@ -31,7 +31,7 @@ interface PlanWidgetProps {
 * Keeps original header buttons (View plan, Approve) and adds expand/collapse icon
 * Memoized to prevent re-renders when parent updates
 */
-export const PlanWidget = memo(function PlanWidget({ chatId, activeSubChatId, planPath, refetchTrigger, mode = "agent", onApprovePlan, onExpandPlan }: PlanWidgetProps) {
+export function PlanWidget({ chatId, activeSubChatId, planPath, refetchTrigger, mode = "agent", onApprovePlan, onExpandPlan }: PlanWidgetProps) {
 	// Use activeSubChatId for fetching if available
 	const effectiveChatId = activeSubChatId || chatId;
 	// Expanded/collapsed state
@@ -156,4 +156,4 @@ export const PlanWidget = memo(function PlanWidget({ chatId, activeSubChatId, pl
         </div>
       </div>
     </div>;
-});
+}

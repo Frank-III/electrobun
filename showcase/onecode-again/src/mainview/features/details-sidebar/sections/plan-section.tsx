@@ -16,7 +16,7 @@ interface PlanSectionProps {
 * Memoized to prevent re-renders when parent updates
 * Uses caching to show content instantly when switching workspaces
 */
-export const PlanSection = memo(function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = false }: PlanSectionProps) {
+export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = false }: PlanSectionProps) {
 	// Refs for scroll gradients (avoid re-renders)
 	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
 	const [topGradientRef, setTopGradientRef] = createSignal<HTMLDivElement>(null);
@@ -136,4 +136,4 @@ export const PlanSection = memo(function PlanSection({ chatId, planPath, refetch
 	}} />
       </div>
     </div>;
-});
+}

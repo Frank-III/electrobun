@@ -72,7 +72,7 @@ function PropertyRow({ icon: Icon, label, value, title, onClick, copyable, toolt
 * Shows workspace info: branch, PR, path
 * Memoized to prevent re-renders when parent updates
 */
-export const InfoSection = memo(function InfoSection({ chatId, worktreePath, isExpanded = false, remoteInfo }: InfoSectionProps) {
+export function InfoSection({ chatId, worktreePath, isExpanded = false, remoteInfo }: InfoSectionProps) {
 	// Extract folder name from path
 	const folderName = worktreePath?.split("/").pop() || "Unknown";
 	// Mutation to open folder in Finder
@@ -155,4 +155,4 @@ export const InfoSection = memo(function InfoSection({ chatId, worktreePath, isE
       { /* Path - only for local chats */}
       {worktreePath && <PropertyRow icon={FolderFilledIcon} label="Path" value={folderName} title={worktreePath} onClick={handleOpenFolder} tooltip="Open in Finder" />}
     </div>;
- });
+}

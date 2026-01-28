@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useRef, useEffect, useState, useCallback, memo, createEffect, createMemo, createSignal } from "solid-js";
+import { createEffect, createMemo, createSignal } from "solid-js";
 import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 import { trpc } from "../../../lib/trpc";
 import { archivePopoverOpenAtom, archiveSearchQueryAtom, selectedAgentChatIdAtom, selectedChatIsRemoteAtom } from "../atoms";
@@ -77,7 +77,7 @@ interface ArchiveChatItemProps {
 	onRestore: (id: string) => void;
 	setRef: (index: number, el: HTMLDivElement | null) => void;
 }
-const ArchiveChatItem = memo(function ArchiveChatItem({ chat, index, isSelected, isCurrentChat, showIcon, projectsMap, stats, onSelect, onRestore, setRef }: ArchiveChatItemProps) {
+function ArchiveChatItem({ chat, index, isSelected, isCurrentChat, showIcon, projectsMap, stats, onSelect, onRestore, setRef }: ArchiveChatItemProps) {
 	const branch = chat.branch;
 	// For local chats, use projectsMap; for remote chats, use chat properties directly
 	const project = chat.projectId ? projectsMap.get(chat.projectId) : null;
@@ -132,12 +132,12 @@ const ArchiveChatItem = memo(function ArchiveChatItem({ chat, index, isSelected,
         </div>
       </div>
     </div>;
- });
+}
 // Desktop: uses project info for git owner/provider
 interface ArchivePopoverProps {
 	trigger: JSX.Element;
 }
-export const ArchivePopover = memo(function ArchivePopover({ trigger }: ArchivePopoverProps) {
+export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	const [open, setOpen] = useAtom(archivePopoverOpenAtom);
 	const [searchQuery, setSearchQuery] = useAtom(archiveSearchQueryAtom);
 	const [selectedIndex, setSelectedIndex] = createSignal(0);
@@ -388,4 +388,4 @@ export const ArchivePopover = memo(function ArchivePopover({ trigger }: ArchiveP
         </div>
       </PopoverContent>
     </Popover>;
-});
+}

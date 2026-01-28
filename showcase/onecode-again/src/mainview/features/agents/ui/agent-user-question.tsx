@@ -13,7 +13,7 @@ interface AgentUserQuestionProps {
 export interface AgentUserQuestionHandle {
 	getAnswers: () => Record<string, string>;
 }
-export const AgentUserQuestion = memo(forwardRef<AgentUserQuestionHandle, AgentUserQuestionProps>(function AgentUserQuestion({ pendingQuestions, onAnswer, onSkip, hasCustomText = false }: AgentUserQuestionProps, ref) {
+export const AgentUserQuestion = forwardRef<AgentUserQuestionHandle, AgentUserQuestionProps>(function AgentUserQuestion({ pendingQuestions, onAnswer, onSkip, hasCustomText = false }: AgentUserQuestionProps, ref) {
 	const { questions, toolUseId } = pendingQuestions;
 	const [currentQuestionIndex, setCurrentQuestionIndex] = createSignal(0);
 	const [answers, setAnswers] = createSignal({});
@@ -258,4 +258,4 @@ export const AgentUserQuestion = memo(forwardRef<AgentUserQuestionHandle, AgentU
         </Button>
       </div>
     </div>;
- }));
+});

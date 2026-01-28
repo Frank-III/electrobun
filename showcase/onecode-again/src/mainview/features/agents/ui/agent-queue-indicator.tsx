@@ -9,8 +9,7 @@ import { RenderFileMentions } from "../mentions/render-file-mentions";
 import { getWindowId } from "../../../contexts/WindowContext";
 // Window-scoped key so each window has its own queue expanded state
 const getQueueExpandedKey = () => `${getWindowId()}:agent-queue-expanded`;
-// Queue item row component
-const QueueItemRow = memo(function QueueItemRow({ item, onRemove, onSendNow }: {
+function QueueItemRow({ item, onRemove, onSendNow }: {
 	item: AgentQueueItem;
 	onRemove?: (itemId: string) => void;
 	onSendNow?: (itemId: string) => void;
@@ -52,7 +51,7 @@ const QueueItemRow = memo(function QueueItemRow({ item, onRemove, onSendNow }: {
           </Tooltip>}
       </div>
     </div>;
-});
+}
 interface AgentQueueIndicatorProps {
 	queue: AgentQueueItem[];
 	onRemoveItem?: (itemId: string) => void;
@@ -61,7 +60,7 @@ interface AgentQueueIndicatorProps {
 	/** Whether there's a status card below this one - affects border radius */
 	hasStatusCardBelow?: boolean;
 }
-export const AgentQueueIndicator = memo(function AgentQueueIndicator({ queue, onRemoveItem, onSendNow, isStreaming = false, hasStatusCardBelow = false }: AgentQueueIndicatorProps) {
+export function AgentQueueIndicator({ queue, onRemoveItem, onSendNow, isStreaming = false, hasStatusCardBelow = false }: AgentQueueIndicatorProps) {
 	// Load expanded state from localStorage (window-scoped)
 	const [isExpanded, setIsExpanded] = createSignal(() => {
 		if (typeof window === "undefined") return true;
@@ -123,4 +122,4 @@ export const AgentQueueIndicator = memo(function AgentQueueIndicator({ queue, on
           </motion.div>}
       </AnimatePresence>
     </div>;
-});
+}

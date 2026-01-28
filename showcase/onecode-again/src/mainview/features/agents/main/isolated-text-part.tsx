@@ -166,7 +166,7 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentM
 		}
 	}
 }
-export const IsolatedTextPart = memo(function IsolatedTextPart({ messageId, partIndex, isFinalText, visibleStepsCount }: IsolatedTextPartProps) {
+export function IsolatedTextPart({ messageId, partIndex, isFinalText, visibleStepsCount }: IsolatedTextPartProps) {
 	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
 	// Use external store to subscribe to ONLY this text part
 	// This prevents re-renders when other parts of the same message change
@@ -211,7 +211,7 @@ export const IsolatedTextPart = memo(function IsolatedTextPart({ messageId, part
         <MemoizedMarkdown content={text} id={`${messageId}-${partIndex}`} size="sm" />
       </div>
     </div>;
-}, arePropsEqual);
+}
 // ============================================================================
 // ISOLATED TEXT PARTS LIST - Renders all text parts for a message
 // ============================================================================
@@ -228,7 +228,7 @@ interface IsolatedTextPartsProps {
 function areListPropsEqual(prev: IsolatedTextPartsProps, next: IsolatedTextPartsProps): boolean {
 	return prev.messageId === next.messageId && prev.finalTextIndex === next.finalTextIndex && prev.visibleStepsCount === next.visibleStepsCount && prev.showOnlyFinalText === next.showOnlyFinalText;
 }
-export const IsolatedTextPartsList = memo(function IsolatedTextPartsList({ messageId, finalTextIndex, visibleStepsCount, showOnlyFinalText = false }: IsolatedTextPartsProps) {
+export function IsolatedTextPartsList({ messageId, finalTextIndex, visibleStepsCount, showOnlyFinalText = false }: IsolatedTextPartsProps) {
 	// Subscribe to message just to get parts structure (not content)
 	const message = useAtomValue(messageAtomFamily(messageId));
 	// Find indices of text parts that should be rendered
@@ -257,4 +257,4 @@ export const IsolatedTextPartsList = memo(function IsolatedTextPartsList({ messa
 	return <>
       {textPartIndices.map((partIndex) => <IsolatedTextPart key={`${messageId}-text-${partIndex}`} messageId={messageId} partIndex={partIndex} isFinalText={showOnlyFinalText && finalTextIndex !== -1 && partIndex === finalTextIndex} visibleStepsCount={visibleStepsCount} />)}
     </>;
-}, areListPropsEqual);
+}

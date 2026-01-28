@@ -5,7 +5,6 @@ import { IconSpinner, ExpandIcon, CollapseIcon } from "../../../components/ui/ic
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { getToolStatus } from "./agent-tool-registry";
 import { AgentToolInterrupted } from "./agent-tool-interrupted";
-import { areToolPropsEqual } from "./agent-tool-utils";
 import { cn } from "../../../lib/utils";
 interface AgentBashToolProps {
 	part: any;
@@ -47,7 +46,7 @@ function limitLines(text: string, maxLines: number): {
 		truncated: true
 	};
 }
-export const AgentBashTool = memo(function AgentBashTool({ part, messageId, partIndex, chatStatus }: AgentBashToolProps) {
+export function AgentBashTool({ part, messageId, partIndex, chatStatus }: AgentBashToolProps) {
 	const [isOutputExpanded, setIsOutputExpanded] = createSignal(false);
 	const { isPending } = getToolStatus(part, chatStatus);
 	const command = part.input?.command || "";
@@ -151,4 +150,4 @@ export const AgentBashTool = memo(function AgentBashTool({ part, messageId, part
 
       </div>
     </div>;
-}, areToolPropsEqual);
+}

@@ -81,7 +81,7 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentO
 		globalOffset += text.length;
 	}
 }
-export const AgentUserMessageBubble = memo(function AgentUserMessageBubble({ messageId, textContent, imageParts = [], skipTextMentionBlocks = false }: AgentUserMessageBubbleProps) {
+export function AgentUserMessageBubble({ messageId, textContent, imageParts = [], skipTextMentionBlocks = false }: AgentUserMessageBubbleProps) {
 	const [isExpanded, setIsExpanded] = createSignal(false);
 	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
 	// Extract quote/diff mentions to display above the bubble
@@ -200,4 +200,4 @@ export const AgentUserMessageBubble = memo(function AgentUserMessageBubble({ mes
         </DialogContent>
       </Dialog>
     </>;
- });
+}

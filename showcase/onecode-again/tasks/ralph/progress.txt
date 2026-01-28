@@ -212,3 +212,23 @@ Thread: https://ampcode.com/threads/T-019c062e-3336-748a-bcc8-dc8bb0a6ce90
   - Always check for stale .js files when migrating a feature area - they can contain old React patterns
   - Build errors related to missing dependencies (zustand, react, @trpc/react-query) are pre-existing and unrelated to migration work
 ---
+
+## 2026-01-28 - US-013
+Thread: https://ampcode.com/threads/T-019c062f-85e5-7684-9b99-9dcb0f0a4fdd
+- Removed all memo() wrapper calls from TSX files
+- Files changed (65+ components across these files):
+  - agents/ui/: agent-tool-call.tsx, agent-exit-plan-mode-tool.tsx, agent-tool-interrupted.tsx, agent-message-usage.tsx, agent-context-indicator.tsx, agent-ask-user-question-tool.tsx, agent-web-search-tool.tsx, agent-web-fetch-tool.tsx, agent-web-search-collapsible.tsx, agent-plan-tool.tsx, agent-task-tool.tsx, agent-plan-file-tool.tsx, agent-bash-tool.tsx, agent-edit-tool.tsx, agent-todo-tool.tsx, agent-queue-indicator.tsx, agent-diff-view.tsx, sub-chat-status-card.tsx, agent-user-message-bubble.tsx, agent-user-question.tsx, mcp-servers-indicator.tsx, archive-popover.tsx
+  - agents/main/: active-chat.tsx, chat-input-area.tsx, messages-list.tsx, assistant-message-item.tsx, memoized-text-part.tsx, isolated-text-part.tsx, isolated-message-group.tsx, isolated-messages-section.tsx
+  - agents/commands/: agents-slash-command.tsx
+  - agents/mentions/: agents-file-mention.tsx, agents-mentions-editor.tsx
+  - changes/: history-view.tsx, file-list-item.tsx
+  - kanban/: kanban-card.tsx, kanban-board.tsx, kanban-column.tsx
+  - details-sidebar/: todo-widget.tsx, info-section.tsx, plan-widget.tsx, plan-section.tsx, changes-widget.tsx, terminal-widget.tsx
+  - components/: mermaid-block.tsx
+- Deleted 21 stale .js files with old memo patterns
+- **Learnings for future iterations:**
+  - SolidJS doesn't need memo() - its fine-grained reactivity makes components only re-render when their deps change
+  - Pattern to convert: `export const X = memo(function X(props) {...}, compareFunc)` → `export function X(props) {...}`
+  - Also delete the second argument (custom comparison function) when present
+  - memo was being imported from "solid-js" but doesn't exist there - it was React API copied over
+---

@@ -140,15 +140,15 @@ const mermaidCache = new Map<string, string>();
 // Track which mermaid blocks have finished streaming (by first N chars of code as ID)
 const finishedStreamingBlocks = new Set<string>();
 // Streaming placeholder - simple static text, no spinner
-const StreamingPlaceholder = memo(function StreamingPlaceholder() {
+function StreamingPlaceholder() {
 	return <div class="relative mt-2 mb-4 rounded-[10px] bg-muted/50 overflow-hidden">
       <div class="p-4 min-h-[60px] flex items-center justify-center">
         <span class="text-muted-foreground text-sm">Creating diagram...</span>
       </div>
     </div>;
-});
+}
 // Main mermaid block - handles actual rendering when not streaming
-const MermaidBlockInner = memo(function MermaidBlockInner({ code }: {
+function MermaidBlockInner({ code }: {
 	code: string;
 }) {
 	const { resolvedTheme } = useTheme();
@@ -398,7 +398,7 @@ const MermaidBlockInner = memo(function MermaidBlockInner({ code }: {
         </DialogPortal>
       </Dialog>
     </>;
- });
+}
 // Check if mermaid code looks complete (basic heuristics)
 function looksComplete(code: string): boolean {
 	if (code.trim().length < 20) return false;

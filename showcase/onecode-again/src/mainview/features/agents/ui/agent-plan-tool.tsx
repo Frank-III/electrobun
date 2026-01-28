@@ -3,7 +3,6 @@ import { createSignal } from "solid-js";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { IconSpinner, ExpandIcon, CollapseIcon, CheckIcon } from "../../../components/ui/icons";
 import { getToolStatus } from "./agent-tool-registry";
-import { areToolPropsEqual } from "./agent-tool-utils";
 import { cn } from "../../../lib/utils";
 import { Circle, SkipForward, FileCode2 } from "lucide-solid";
 interface PlanStep {
@@ -68,7 +67,7 @@ const ComplexityBadge = ({ complexity }: {
       {complexity}
     </span>;
 };
-export const AgentPlanTool = memo(function AgentPlanTool({ part, chatStatus }: AgentPlanToolProps) {
+export function AgentPlanTool({ part, chatStatus }: AgentPlanToolProps) {
 	const [isExpanded, setIsExpanded] = createSignal(false);
 	const { isPending } = getToolStatus(part, chatStatus);
 	const plan = part.input?.plan;
@@ -199,4 +198,4 @@ export const AgentPlanTool = memo(function AgentPlanTool({ part, chatStatus }: A
             </div>}
         </div>}
     </div>;
- }, areToolPropsEqual);
+}

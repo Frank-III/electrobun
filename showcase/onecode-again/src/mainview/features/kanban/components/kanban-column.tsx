@@ -31,7 +31,7 @@ const STATUS_COLORS: Record<SubChatStatus, string> = {
 	"needs-input": "bg-amber-500",
 	done: "bg-emerald-500"
 };
-export const KanbanColumn = memo(function KanbanColumn({ title, status, cards, isMultiSelectMode, onCardClick, onCheckboxClick, onTogglePin, onRename, onArchive, onCopyBranch, onExportChat, onCopyChat }: KanbanColumnProps) {
+export function KanbanColumn({ title, status, cards, isMultiSelectMode, onCardClick, onCheckboxClick, onTogglePin, onRename, onArchive, onCopyBranch, onExportChat, onCopyChat }: KanbanColumnProps) {
 	// Sort cards: pinned first, then by updatedAt desc
 	const sortedCards = createMemo(() => {
 		const pinned = cards.filter((c) => c.isPinned);
@@ -63,4 +63,4 @@ export const KanbanColumn = memo(function KanbanColumn({ title, status, cards, i
           </div> : sortedCards.map((card) => <KanbanCard key={card.id} card={card} isMultiSelectMode={isMultiSelectMode} onClick={(e) => onCardClick(card, e)} onCheckboxClick={onCheckboxClick} onTogglePin={onTogglePin} onRename={onRename} onArchive={onArchive} onCopyBranch={onCopyBranch} onExportChat={onExportChat} onCopyChat={onCopyChat} />)}
       </div>
     </div>;
- });
+}

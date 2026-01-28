@@ -4,13 +4,12 @@ import { GlobeIcon, IconSpinner, ExpandIcon, CollapseIcon } from "../../../compo
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { getToolStatus } from "./agent-tool-registry";
 import { AgentToolInterrupted } from "./agent-tool-interrupted";
-import { areToolPropsEqual } from "./agent-tool-utils";
 import { cn } from "../../../lib/utils";
 interface AgentWebFetchToolProps {
 	part: any;
 	chatStatus?: string;
 }
-export const AgentWebFetchTool = memo(function AgentWebFetchTool({ part, chatStatus }: AgentWebFetchToolProps) {
+export function AgentWebFetchTool({ part, chatStatus }: AgentWebFetchToolProps) {
 	const [isExpanded, setIsExpanded] = createSignal(false);
 	const { isPending, isError, isInterrupted } = getToolStatus(part, chatStatus);
 	const url = part.input?.url || "";
@@ -74,4 +73,4 @@ export const AgentWebFetchTool = memo(function AgentWebFetchTool({ part, chatSta
           </pre>
         </div>}
     </div>;
- }, areToolPropsEqual);
+}

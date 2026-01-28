@@ -31,7 +31,7 @@ interface SubChatStatusCardProps {
 	/** Whether there's a queue card above this one - affects border radius */
 	hasQueueCardAbove?: boolean;
 }
-export const SubChatStatusCard = memo(function SubChatStatusCard({ chatId, subChatId, isStreaming, isCompacting, changedFiles, worktreePath, onStop, hasQueueCardAbove = false }: SubChatStatusCardProps) {
+export function SubChatStatusCard({ chatId, subChatId, isStreaming, isCompacting, changedFiles, worktreePath, onStop, hasQueueCardAbove = false }: SubChatStatusCardProps) {
 	const [isExpanded, setIsExpanded] = createSignal(false);
 	// Use per-chat atom family instead of legacy global atom
 	const diffSidebarAtom = createMemo(() => diffSidebarOpenAtomFamily(chatId));
@@ -239,4 +239,4 @@ export const SubChatStatusCard = memo(function SubChatStatusCard({ chatId, subCh
           </motion.div>}
       </AnimatePresence>
     </div>;
-});
+}

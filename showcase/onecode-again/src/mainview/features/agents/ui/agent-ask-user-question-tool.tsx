@@ -1,10 +1,8 @@
 "use client";
-import { memo } from "solid-js";
 import { useAtomValue } from "../../../lib/state/jotai";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { QuestionIcon } from "../../../components/ui/icons";
 import { QUESTIONS_SKIPPED_MESSAGE, QUESTIONS_TIMED_OUT_MESSAGE, askUserQuestionResultsAtom, pendingUserQuestionsAtom } from "../atoms";
-import { areAskUserQuestionPropsEqual } from "./agent-tool-utils";
 interface AgentAskUserQuestionToolProps {
 	input: {
 		questions?: Array<{
@@ -27,7 +25,7 @@ interface AgentAskUserQuestionToolProps {
 	isStreaming?: boolean;
 	toolCallId?: string;
 }
-export const AgentAskUserQuestionTool = memo(function AgentAskUserQuestionTool({ input, result, errorText, state, isError, isStreaming, toolCallId }: AgentAskUserQuestionToolProps) {
+export function AgentAskUserQuestionTool({ input, result, errorText, state, isError, isStreaming, toolCallId }: AgentAskUserQuestionToolProps) {
 	const questions = input?.questions ?? [];
 	const questionCount = questions.length;
 	// Get real-time results from atom (for immediate updates before DB sync)
@@ -128,4 +126,4 @@ export const AgentAskUserQuestionTool = memo(function AgentAskUserQuestionTool({
       <span class="text-muted-foreground/50">•</span>
       <span>Interrupted</span>
     </div>;
-}, areAskUserQuestionPropsEqual);
+}

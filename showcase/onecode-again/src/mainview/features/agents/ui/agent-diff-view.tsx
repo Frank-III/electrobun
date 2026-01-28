@@ -310,7 +310,7 @@ const fileDiffCardAreEqual = (prev: FileDiffCardProps, next: FileDiffCardProps):
 	if (prev.showViewed !== next.showViewed) return false;
 	return true;
 };
-const FileDiffCard = memo(function FileDiffCard({ file, data, isLight, isCollapsed, toggleCollapsed, isFullExpanded, toggleFullExpanded, hasContent, isLoadingContent, diffMode, shikiHighlighter, worktreePath, onDiscardFile, isViewed, onToggleViewed, showViewed = true }: FileDiffCardProps) {
+function FileDiffCard({ file, data, isLight, isCollapsed, toggleCollapsed, isFullExpanded, toggleFullExpanded, hasContent, isLoadingContent, diffMode, shikiHighlighter, worktreePath, onDiscardFile, isViewed, onToggleViewed, showViewed = true }: FileDiffCardProps) {
 	const [diffViewRef, setDiffViewRef] = createSignal<{
 		getDiffFileInstance: () => DiffFile;
 	} | null>(null);
@@ -524,7 +524,7 @@ const FileDiffCard = memo(function FileDiffCard({ file, data, isLight, isCollaps
             </div>}
         </div>}
     </div>;
- }, fileDiffCardAreEqual);
+}
 export interface DiffStats {
 	fileCount: number;
 	additions: number;

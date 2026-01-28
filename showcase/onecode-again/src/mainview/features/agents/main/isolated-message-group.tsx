@@ -54,7 +54,7 @@ interface IsolatedMessageGroupProps {
 function areGroupPropsEqual(prev: IsolatedMessageGroupProps, next: IsolatedMessageGroupProps): boolean {
 	return prev.userMsgId === next.userMsgId && prev.subChatId === next.subChatId && prev.chatId === next.chatId && prev.isMobile === next.isMobile && prev.sandboxSetupStatus === next.sandboxSetupStatus && prev.stickyTopClass === next.stickyTopClass && prev.sandboxSetupError === next.sandboxSetupError && prev.onRetrySetup === next.onRetrySetup && prev.UserBubbleComponent === next.UserBubbleComponent && prev.ToolCallComponent === next.ToolCallComponent && prev.MessageGroupWrapper === next.MessageGroupWrapper && prev.toolRegistry === next.toolRegistry;
 }
-export const IsolatedMessageGroup = memo(function IsolatedMessageGroup({ userMsgId, subChatId, chatId, isMobile, sandboxSetupStatus, stickyTopClass, sandboxSetupError, onRetrySetup, UserBubbleComponent, ToolCallComponent, MessageGroupWrapper, toolRegistry }: IsolatedMessageGroupProps) {
+export function IsolatedMessageGroup({ userMsgId, subChatId, chatId, isMobile, sandboxSetupStatus, stickyTopClass, sandboxSetupError, onRetrySetup, UserBubbleComponent, ToolCallComponent, MessageGroupWrapper, toolRegistry }: IsolatedMessageGroupProps) {
 	// Subscribe to specific atoms - NOT the whole messages array
 	const userMsg = useAtomValue(messageAtomFamily(userMsgId));
 	const assistantIds = useAtomValue(assistantIdsForUserMsgAtomFamily(userMsgId));
@@ -139,4 +139,4 @@ export const IsolatedMessageGroup = memo(function IsolatedMessageGroup({ userMsg
             <ToolCallComponent icon={toolRegistry["tool-planning"]?.icon} title={toolRegistry["tool-planning"]?.title({}) || "Planning..."} isPending={true} isError={false} />
           </div>}
     </MessageGroupWrapper>;
- }, areGroupPropsEqual);
+}

@@ -24,7 +24,7 @@ interface HistoryViewProps {
 	onFileSelect?: (file: ChangedFile, commitHash: string) => void;
 	pushCount?: number;
 }
-export const HistoryView = memo(function HistoryView({ worktreePath, selectedCommitHash, selectedFilePath, onCommitSelect, onFileSelect, pushCount }: HistoryViewProps) {
+export function HistoryView({ worktreePath, selectedCommitHash, selectedFilePath, onCommitSelect, onFileSelect, pushCount }: HistoryViewProps) {
 	const { data: commits, isLoading, refetch: refetchHistory } = trpc.changes.getHistory.useQuery({
 		worktreePath,
 		limit: 50
@@ -95,8 +95,8 @@ export const HistoryView = memo(function HistoryView({ worktreePath, selectedCom
 			{ /* Commits list - only commits, files are shown in right panel */}
 			{commits.map((commit, index) => <HistoryCommitItem key={commit.hash} commit={commit} isSelected={selectedCommitHash === commit.hash} isUnpushed={index < (pushCount || 0)} onClick={() => handleCommitClick(commit)} />)}
 		</div>;
- });
-const HistoryCommitItem = memo(function HistoryCommitItem({ commit, isSelected, isUnpushed, onClick }: {
+}
+function HistoryCommitItem({ commit, isSelected, isUnpushed, onClick }: {
 	commit: CommitInfo;
 	isSelected: boolean;
 	isUnpushed?: boolean;
@@ -139,8 +139,8 @@ const HistoryCommitItem = memo(function HistoryCommitItem({ commit, isSelected, 
 				</ContextMenuItem>
 			</ContextMenuContent>
 		</ContextMenu>;
-});
-const CommitFileItem = memo(function CommitFileItem({ file, isSelected, onClick }: {
+}
+function CommitFileItem({ file, isSelected, onClick }: {
 	file: ChangedFile;
 	isSelected: boolean;
 	onClick: () => void;
@@ -159,4 +159,4 @@ const CommitFileItem = memo(function CommitFileItem({ file, isSelected, onClick 
 			</div>
 			<div class="shrink-0">{getStatusIndicator(file.status)}</div>
 		</div>;
-});
+}

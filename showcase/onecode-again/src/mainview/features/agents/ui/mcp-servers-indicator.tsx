@@ -21,7 +21,7 @@ interface McpServersIndicatorProps {
 * - Expandable servers showing their tools
 * - Link to configure in ~/.claude.json
 */
-export const McpServersIndicator = memo(function McpServersIndicator({ projectPath }: McpServersIndicatorProps) {
+export function McpServersIndicator({ projectPath }: McpServersIndicatorProps) {
 	const [sessionInfo, setSessionInfo] = useAtom(sessionInfoAtom);
 	// Fetch MCP config on mount if we have projectPath and no session info yet
 	const { data: mcpConfig } = trpc.claude.getMcpConfig.useQuery({ projectPath: projectPath! }, {
@@ -234,4 +234,4 @@ export const McpServersIndicator = memo(function McpServersIndicator({ projectPa
         </div>
       </PopoverContent>
     </Popover>;
- });
+}

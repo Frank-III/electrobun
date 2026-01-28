@@ -506,7 +506,7 @@ function renderTooltipContent(option: FileMentionOption) {
     </div>;
 }
 // Memoized to prevent re-renders when parent re-renders
-export const AgentsFileMention = memo(function AgentsFileMention({ isOpen, onClose, onSelect, searchText, position, teamId, repository, sandboxId, branch, projectPath, changedFiles = [], showingFilesList = false, showingSkillsList = false, showingAgentsList = false, showingToolsList = false }: AgentsFileMentionProps) {
+export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, position, teamId, repository, sandboxId, branch, projectPath, changedFiles = [], showingFilesList = false, showingSkillsList = false, showingAgentsList = false, showingToolsList = false }: AgentsFileMentionProps) {
 	const [dropdownRef, setDropdownRef] = createSignal<HTMLDivElement>(null);
 	const [selectedIndex, setSelectedIndex] = createSignal(0);
 	const [placementRef, setPlacementRef] = createSignal<"above" | "below" | null>(null);
@@ -966,4 +966,4 @@ export const AgentsFileMention = memo(function AgentsFileMention({ isOpen, onClo
           </>}
       </div>
     </TooltipProvider>, document.body);
-});
+}

@@ -175,8 +175,8 @@
         "Components are plain functions"
       ],
       "priority": 13,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Removed memo() from 65+ components across agents/ui/, agents/main/, agents/commands/, agents/mentions/, changes/, kanban/, details-sidebar/, and components/. Deleted 21 stale .js files with old memo patterns."
     },
     {
       "id": "US-014",

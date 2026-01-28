@@ -21,7 +21,7 @@ interface AgentsSlashCommandProps {
 	disabledCommands?: string[];
 }
 // Memoized to prevent re-renders when parent re-renders
-export const AgentsSlashCommand = memo(function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, position, projectPath, mode, disabledCommands }: AgentsSlashCommandProps) {
+export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, position, projectPath, mode, disabledCommands }: AgentsSlashCommandProps) {
 	const [dropdownRef, setDropdownRef] = createSignal<HTMLDivElement>(null);
 	const [selectedIndex, setSelectedIndex] = createSignal(0);
 	const [placementRef, setPlacementRef] = createSignal<"above" | "below" | null>(null);
@@ -290,4 +290,4 @@ export const AgentsSlashCommand = memo(function AgentsSlashCommand({ isOpen, onC
           {debouncedSearchText ? `No commands matching "${debouncedSearchText}"` : "No commands available"}
         </div>}
     </div>, document.body);
- });
+}

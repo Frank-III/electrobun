@@ -173,7 +173,7 @@ function areMessagePropsEqual(prev: AssistantMessageItemProps, next: AssistantMe
 	// Nothing changed - skip re-render
 	return true;
 }
-export const AssistantMessageItem = memo(function AssistantMessageItem({ message, isLastMessage, isStreaming, status, isMobile, subChatId, chatId, sandboxSetupStatus = "ready" }: AssistantMessageItemProps) {
+export function AssistantMessageItem({ message, isLastMessage, isStreaming, status, isMobile, subChatId, chatId, sandboxSetupStatus = "ready" }: AssistantMessageItemProps) {
 	const onRollback = useAtomValue(rollbackHandlerAtom);
 	const isRollingBack = useAtomValue(isRollingBackAtom);
 	const messageParts = message?.parts || [];
@@ -458,4 +458,4 @@ export const AssistantMessageItem = memo(function AssistantMessageItem({ message
           <AgentMessageUsage metadata={msgMetadata} isStreaming={isStreaming} isMobile={isMobile} />
         </div>}
     </div>;
- }, areMessagePropsEqual);
+}

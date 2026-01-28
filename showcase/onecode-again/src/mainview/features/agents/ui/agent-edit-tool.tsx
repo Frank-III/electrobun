@@ -8,7 +8,6 @@ import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { getToolStatus } from "./agent-tool-registry";
 import { AgentToolInterrupted } from "./agent-tool-interrupted";
-import { areToolPropsEqual } from "./agent-tool-utils";
 import { getFileIconByExtension } from "../mentions/agents-file-mention";
 import { agentsDiffSidebarOpenAtom, agentsFocusedDiffFileAtom } from "../atoms";
 import { cn } from "../../../lib/utils";
@@ -142,23 +141,17 @@ function useBatchHighlight(lines: DiffLine[], language: string, themeId: string,
 	});
 	return highlightedMap;
 }
-// Memoized component for rendering a single diff line
-// Uses custom comparator to compare line content instead of object reference
-const DiffLineRow = memo(
-	function DiffLineRow({ line, highlightedHtml }: {
-		line: DiffLine;
-		highlightedHtml: string | undefined;
-	}) {
-		return <div class={cn("px-2.5 py-0.5", line.type === "removed" && "bg-red-500/10 dark:bg-red-500/15 border-l-2 border-red-500/50", line.type === "added" && "bg-green-500/10 dark:bg-green-500/15 border-l-2 border-green-500/50", line.type === "context" && "border-l-2 border-transparent")}>
+function DiffLineRow({ line, highlightedHtml }: {
+	line: DiffLine;
+	highlightedHtml: string | undefined;
+}) {
+	return <div class={cn("px-2.5 py-0.5", line.type === "removed" && "bg-red-500/10 dark:bg-red-500/15 border-l-2 border-red-500/50", line.type === "added" && "bg-green-500/10 dark:bg-green-500/15 border-l-2 border-green-500/50", line.type === "context" && "border-l-2 border-transparent")}>
         {highlightedHtml ? <span class="whitespace-pre-wrap break-all [&_.shiki]:bg-transparent [&_pre]:bg-transparent [&_code]:bg-transparent" dangerouslySetInnerHTML={{ __html: highlightedHtml }} /> : <span class={cn("whitespace-pre-wrap break-all", line.type === "removed" && "text-red-700 dark:text-red-300", line.type === "added" && "text-green-700 dark:text-green-300", line.type === "context" && "text-muted-foreground")}>
             {line.content || " "}
           </span>}
       </div>;
-	},
-	// Custom comparator: compare line content and type, not object reference
-	(prevProps, nextProps) => prevProps.line.type === nextProps.line.type && prevProps.line.content === nextProps.line.content && prevProps.highlightedHtml === nextProps.highlightedHtml
-);
-export const AgentEditTool = memo(function AgentEditTool({ part, messageId, partIndex, chatStatus }: AgentEditToolProps) {
+}
+export function AgentEditTool({ part, messageId, partIndex, chatStatus }: AgentEditToolProps) {
 	const [isOutputExpanded, setIsOutputExpanded] = createSignal(false);
 	const { isPending, isInterrupted } = getToolStatus(part, chatStatus);
 	const codeTheme = useCodeTheme();
@@ -459,4 +452,4 @@ export const AgentEditTool = memo(function AgentEditTool({ part, messageId, part
             </div> : null}
         </div>}
     </div>;
- }, areToolPropsEqual);
+}

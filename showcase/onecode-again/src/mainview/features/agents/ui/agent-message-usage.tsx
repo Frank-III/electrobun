@@ -1,5 +1,4 @@
 "use client";
-import { memo } from "solid-js";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "../../../components/ui/hover-card";
 import { cn } from "../../../lib/utils";
 export interface AgentMessageMetadata {
@@ -35,7 +34,7 @@ function formatDuration(ms: number): string {
 	const remainingSeconds = Math.round(seconds % 60);
 	return `${minutes}m ${remainingSeconds}s`;
 }
-export const AgentMessageUsage = memo(function AgentMessageUsage({ metadata, isStreaming = false, isMobile = false }: AgentMessageUsageProps) {
+export function AgentMessageUsage({ metadata, isStreaming = false, isMobile = false }: AgentMessageUsageProps) {
 	if (!metadata || isStreaming) return null;
 	const { inputTokens = 0, outputTokens = 0, totalTokens = 0, durationMs, resultSubtype } = metadata;
 	const hasUsage = inputTokens > 0 || outputTokens > 0;
@@ -76,4 +75,4 @@ export const AgentMessageUsage = memo(function AgentMessageUsage({ metadata, isS
         </div>
       </HoverCardContent>
     </HoverCard>;
- });
+}

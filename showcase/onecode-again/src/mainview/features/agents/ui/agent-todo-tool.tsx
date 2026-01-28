@@ -4,7 +4,6 @@ import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { IconSpinner, ExpandIcon, CollapseIcon, CheckIcon, PlanIcon, IconDoubleChevronRight, IconArrowRight } from "../../../components/ui/icons";
 import { getToolStatus } from "./agent-tool-registry";
-import { areToolPropsEqual } from "./agent-tool-utils";
 import { cn } from "../../../lib/utils";
 import { Circle } from "lucide-solid";
 import { AgentToolCall } from "./agent-tool-call";
@@ -169,8 +168,7 @@ const TOOL_CALL_ICONS = {
 	in_progress: IconSpinner,
 	pending: Circle
 } as const;
-// Memoized component for rendering individual todo change items
-const TodoChangeItem = memo(function TodoChangeItem({ change, showSeparator }: {
+function TodoChangeItem({ change, showSeparator }: {
 	change: TodoChange;
 	showSeparator: boolean;
 }) {
@@ -180,9 +178,8 @@ const TodoChangeItem = memo(function TodoChangeItem({ change, showSeparator }: {
       <span class="truncate">{change.todo.content}</span>
       {showSeparator && <span class="mx-0.5">,</span>}
     </div>;
-});
-// Memoized component for rendering individual todo list items in expanded view
-const TodoListItem = memo(function TodoListItem({ todo, isPending, isLast }: {
+}
+function TodoListItem({ todo, isPending, isLast }: {
 	todo: TodoItem;
 	isPending: boolean;
 	isLast: boolean;
@@ -193,8 +190,8 @@ const TodoListItem = memo(function TodoListItem({ todo, isPending, isLast }: {
         {todo.content}
       </span>
     </div>;
-});
-export const AgentTodoTool = memo(function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProps) {
+}
+export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProps) {
 	// User preference for always expanded to-do list
 	const alwaysExpandTodoList = useAtomValue(alwaysExpandTodoListAtom);
 	// Synced todos state - scoped per subChatId to prevent cross-chat conflicts
@@ -461,4 +458,4 @@ export const AgentTodoTool = memo(function AgentTodoTool({ part, chatStatus, sub
           </div>}
       </div>
     </div>;
- }, areToolPropsEqual);
+}
