@@ -76,7 +76,7 @@ export function insertTextAtCursor(text: string, editableElement: Element): void
  * @param addPastedText - Optional callback to save large text as a file
  */
 export function handlePasteEvent(
-  e: React.ClipboardEvent,
+  e: ClipboardEvent,
   handleAddAttachments: (files: File[]) => void,
   addPastedText?: AddPastedTextFn,
 ): void {

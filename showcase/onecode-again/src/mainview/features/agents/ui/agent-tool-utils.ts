@@ -94,7 +94,7 @@ function isToolCompleted(part: any): boolean {
 
 /**
  * Deep compare function for tool part props.
- * Used with React.memo() to prevent unnecessary re-renders when
+ * Used with memoization to prevent unnecessary re-renders when
  * parent component re-renders but the tool's actual data hasn't changed.
  *
  * This is critical for streaming performance - when ai-sdk updates messages,

@@ -1,19 +1,21 @@
-import { Provider as JotaiProvider, useAtomValue, useSetAtom } from "./lib/state/jotai";
+import { Provider as StateProvider } from "./lib/state/store";
 import { ColorModeProvider, ColorModeScript, useColorMode } from "@kobalte/core";
-import { createEffect, createMemo, onCleanup } from "solid-js";
+import { createEffect, createMemo, onCleanup, Switch, Match } from "solid-js";
+import "./lib/electrobun-rpc";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { TRPCProvider } from "./contexts/TRPCProvider";
+import { QueryProvider } from "./contexts/QueryProvider";
 import { WindowProvider, getInitialWindowParams } from "./contexts/WindowContext";
 import { selectedProjectAtom, selectedAgentChatIdAtom } from "./features/agents/atoms";
 import { useAgentSubChatStore } from "./features/agents/stores/sub-chat-store";
 import { AgentsLayout } from "./features/layout/agents-layout";
 import { AnthropicOnboardingPage, ApiKeyOnboardingPage, BillingMethodPage, SelectRepoPage } from "./features/onboarding";
-import { identify, initAnalytics, shutdown } from "./lib/analytics";
 import { anthropicOnboardingCompletedAtom, apiKeyOnboardingCompletedAtom, billingMethodAtom } from "./lib/atoms";
-import { appStore } from "./lib/jotai-store";
+import { appStore } from "./lib/app-store";
 import { VSCodeThemeProvider } from "./lib/themes/theme-provider";
-import { trpc } from "./lib/trpc";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "./lib/desktop-rpc";
+import { TerminalStoreProvider } from "./features/terminal/terminal-store-context";
 /**
 * Custom Toaster that adapts to theme
 */
@@ -25,14 +27,14 @@ function ThemedToaster() {
 * Main content router - decides which page to show based on onboarding state
 */
 function AppContent() {
-	const billingMethod = useAtomValue(billingMethodAtom);
-	const setBillingMethod = useSetAtom(billingMethodAtom);
-	const anthropicOnboardingCompleted = useAtomValue(anthropicOnboardingCompletedAtom);
-	const setAnthropicOnboardingCompleted = useSetAtom(anthropicOnboardingCompletedAtom);
-	const apiKeyOnboardingCompleted = useAtomValue(apiKeyOnboardingCompletedAtom);
-	const setApiKeyOnboardingCompleted = useSetAtom(apiKeyOnboardingCompletedAtom);
-	const selectedProject = useAtomValue(selectedProjectAtom);
-	const setSelectedChatId = useSetAtom(selectedAgentChatIdAtom);
+	const billingMethod = billingMethodAtom[0];
+	const setBillingMethod = billingMethodAtom[1];
+	const anthropicOnboardingCompleted = anthropicOnboardingCompletedAtom[0];
+	const setAnthropicOnboardingCompleted = anthropicOnboardingCompletedAtom[1];
+	const apiKeyOnboardingCompleted = apiKeyOnboardingCompletedAtom[0];
+	const setApiKeyOnboardingCompleted = apiKeyOnboardingCompletedAtom[1];
+	const selectedProject = selectedProjectAtom[0];
+	const setSelectedChatId = selectedAgentChatIdAtom[1];
 	const { setActiveSubChat, addToOpenSubChats, setChatId } = useAgentSubChatStore();
 	// Apply initial window params (chatId/subChatId) when opening via "Open in new window"
 	createEffect(() => {
@@ -49,7 +51,12 @@ function AppContent() {
 	});
 	// Check if user has existing CLI config (API key or proxy)
 	// Based on PR #29 by @sa4hnd
-	const { data: cliConfig, isLoading: isLoadingCliConfig } = trpc.claudeCode.hasExistingCliConfig.useQuery();
+	const cliConfigQuery = useQuery(() => ({
+		queryKey: ["claudeCode", "hasExistingCliConfig"] as const,
+		queryFn: () => desktopRpc.claudeCode.hasExistingCliConfig(),
+	}));
+	const cliConfig = () => cliConfigQuery.data;
+	const isLoadingCliConfig = () => cliConfigQuery.isLoading;
 	// Migration: If user already completed Anthropic onboarding but has no billing method set,
 	// automatically set it to "claude-subscription" (legacy users before billing method was added)
 	createEffect(() => {
@@ -60,24 +67,31 @@ function AppContent() {
 	// Auto-skip onboarding if user has existing CLI config (API key or proxy)
 	// This allows users with ANTHROPIC_API_KEY to use the app without OAuth
 	createEffect(() => {
-		if (cliConfig?.hasConfig && !billingMethod()) {
+		const cfg = cliConfig();
+		if (cfg?.hasConfig && !billingMethod()) {
 			console.log("[App] Detected existing CLI config, auto-completing onboarding");
 			setBillingMethod("api-key");
 			setApiKeyOnboardingCompleted(true);
 		}
 	});
-	// Fetch projects to validate selectedProject exists
-	const { data: projects, isLoading: isLoadingProjects } = trpc.projects.list.useQuery();
+	// Fetch projects to validate selectedProject exists (Electrobun RPC + Solid Query)
+	const projectsQuery = useQuery(() => ({
+		queryKey: ["projects", "list"] as const,
+		queryFn: () => desktopRpc.projects.list.query(),
+	}));
+	const projects = () => projectsQuery.data;
+	const isLoadingProjects = () => projectsQuery.isLoading;
 	// Validated project - only valid if exists in DB
 	const validatedProject = createMemo(() => {
 		if (!selectedProject()) return null;
 		// While loading, trust localStorage value to prevent flicker
-		if (isLoadingProjects) return selectedProject();
+		if (isLoadingProjects()) return selectedProject();
 		// After loading, validate against DB
-		if (!projects) return null;
+		const projs = projects();
+		if (!projs) return null;
 		const current = selectedProject();
 		if (!current) return null;
-		const exists = projects.some((p) => p.id === current.id);
+		const exists = projs.some((p) => p.id === current.id);
 		return exists ? current : null;
 	});
 	// Determine which page to show:
@@ -86,69 +100,42 @@ function AppContent() {
 	// 3. API key or custom model selected but not completed -> ApiKeyOnboardingPage
 	// 4. No valid project selected -> SelectRepoPage
 	// 5. Otherwise -> AgentsLayout
-	if (!billingMethod()) {
-		return <BillingMethodPage />;
-	}
-	if (billingMethod() === "claude-subscription" && !anthropicOnboardingCompleted()) {
-		return <AnthropicOnboardingPage />;
-	}
-	if ((billingMethod() === "api-key" || billingMethod() === "custom-model") && !apiKeyOnboardingCompleted()) {
-		return <ApiKeyOnboardingPage />;
-	}
-	if (!validatedProject() && !isLoadingProjects) {
-		return <SelectRepoPage />;
-	}
-	return <AgentsLayout />;
+	// Note: Using Switch/Match for proper SolidJS reactivity (if/return doesn't re-run on signal changes)
+	return (
+		<Switch fallback={<AgentsLayout />}>
+			<Match when={!billingMethod()}>
+				<BillingMethodPage />
+			</Match>
+			<Match when={billingMethod() === "claude-subscription" && !anthropicOnboardingCompleted()}>
+				<AnthropicOnboardingPage />
+			</Match>
+			<Match when={(billingMethod() === "api-key" || billingMethod() === "custom-model") && !apiKeyOnboardingCompleted()}>
+				<ApiKeyOnboardingPage />
+			</Match>
+			<Match when={!validatedProject() && !isLoadingProjects()}>
+				<SelectRepoPage />
+			</Match>
+		</Switch>
+	);
 }
 export function App() {
-	// Initialize analytics on mount
-	createEffect(() => {
-		initAnalytics();
-		// Sync analytics opt-out status to main process
-		const syncOptOutStatus = async () => {
-			try {
-				const optOut = localStorage.getItem("preferences:analytics-opt-out") === "true";
-				await window.desktopApi?.setAnalyticsOptOut(optOut);
-			} catch (error) {
-				console.warn("[Analytics] Failed to sync opt-out status:", error);
-			}
-		};
-		syncOptOutStatus();
-		// Identify user if already authenticated
-		const identifyUser = async () => {
-			try {
-				const user = await window.desktopApi?.getUser();
-				if (user?.id) {
-					identify(user.id, {
-						email: user.email,
-						name: user.name
-					});
-				}
-			} catch (error) {
-				console.warn("[Analytics] Failed to identify user:", error);
-			}
-		};
-		identifyUser();
-		// Cleanup on unmount
-		onCleanup(() => {
-			shutdown();
-		});
-	});
 	return <WindowProvider>
       <ColorModeScript initialColorMode="system" />
       <ColorModeProvider initialColorMode="system">
-        <JotaiProvider store={appStore}>
+        <TerminalStoreProvider>
+        <StateProvider store={appStore}>
           <VSCodeThemeProvider>
             <TooltipProvider delayDuration={100}>
-              <TRPCProvider>
+              <QueryProvider>
                 <div data-agents-page class="h-screen w-screen bg-background text-foreground overflow-hidden">
                   <AppContent />
                 </div>
                 <ThemedToaster />
-              </TRPCProvider>
+              </QueryProvider>
             </TooltipProvider>
           </VSCodeThemeProvider>
-        </JotaiProvider>
+        </StateProvider>
+        </TerminalStoreProvider>
       </ColorModeProvider>
     </WindowProvider>;
 }
