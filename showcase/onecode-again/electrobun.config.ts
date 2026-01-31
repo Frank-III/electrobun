@@ -1,26 +1,35 @@
-import type { ElectrobunConfig } from "electrobun/config";
-
-const config: ElectrobunConfig = {
-  name: "onecode-again",
-  identifier: "dev.onecode.again",
-  version: "0.1.0",
+export default {
+  app: {
+    name: "onecode-again",
+    identifier: "dev.onecode.again",
+    version: "0.1.0",
+  },
   build: {
+    bun: {
+      entrypoint: "src/bun/index.ts",
+      external: [],
+    },
     views: {
       mainview: {
-        src: "./src/mainview/index.html",
+        entrypoint: "dist/mainview/main.js",
+        external: [],
       },
     },
-    mac: {
-      bundleCEF: false,
-      codesign: true,
+    copy: {
+      "src/mainview/index.html": "views/mainview/index.html",
+      "dist/mainview/main.css": "views/mainview/main.css",
+      "src/native/zig-out/lib/libelectrobun_vt.dylib": "native/zig-out/lib/libelectrobun_vt.dylib",
+      "src/bun/legacy/drizzle": "bun/legacy/drizzle",
     },
-    windows: {
-      bundleCEF: false,
+    mac: {
+      bundleCEF: true,
+      codesign: false,
     },
     linux: {
-      bundleCEF: false,
+      bundleCEF: true,
+    },
+    win: {
+      bundleCEF: true,
     },
   },
 };
-
-export default config;

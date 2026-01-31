@@ -1,10 +1,10 @@
-import { useAtom } from "../../../lib/state/jotai";
-import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show, type Accessor } from "solid-js";
 import { analyticsOptOutAtom, autoAdvanceTargetAtom, ctrlTabTargetAtom, defaultAgentModeAtom, desktopNotificationsEnabledAtom, extendedThinkingEnabledAtom, soundNotificationsEnabledAtom, type AgentMode, type AutoAdvanceTarget, type CtrlTabTarget } from "../../../lib/atoms";
 import { Kbd } from "../../ui/kbd";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "../../ui/select";
 import { Switch } from "../../ui/switch";
-import { trpc } from "../../../lib/trpc";
+import { useQuery, useMutation } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 
 function useIsNarrowScreen(): Accessor<boolean> {
 	const [isNarrow, setIsNarrow] = createSignal(false);
@@ -19,19 +19,28 @@ function useIsNarrowScreen(): Accessor<boolean> {
 	return isNarrow;
 }
 export function AgentsPreferencesTab() {
-	const [thinkingEnabled, setThinkingEnabled] = useAtom(extendedThinkingEnabledAtom);
-	const [soundEnabled, setSoundEnabled] = useAtom(soundNotificationsEnabledAtom);
-	const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useAtom(desktopNotificationsEnabledAtom);
-	const [analyticsOptOut, setAnalyticsOptOut] = useAtom(analyticsOptOutAtom);
-	const [ctrlTabTarget, setCtrlTabTarget] = useAtom(ctrlTabTargetAtom);
-	const [autoAdvanceTarget, setAutoAdvanceTarget] = useAtom(autoAdvanceTargetAtom);
-	const [defaultAgentMode, setDefaultAgentMode] = useAtom(defaultAgentModeAtom);
+	const [thinkingEnabled, setThinkingEnabled] = extendedThinkingEnabledAtom;
+	const [soundEnabled, setSoundEnabled] = soundNotificationsEnabledAtom;
+	const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = desktopNotificationsEnabledAtom;
+	const [analyticsOptOut, setAnalyticsOptOut] = analyticsOptOutAtom;
+	const [ctrlTabTarget, setCtrlTabTarget] = ctrlTabTargetAtom;
+	const [autoAdvanceTarget, setAutoAdvanceTarget] = autoAdvanceTargetAtom;
+	const [defaultAgentMode, setDefaultAgentMode] = defaultAgentModeAtom;
 	const isNarrowScreen = useIsNarrowScreen();
-	// Co-authored-by setting from Claude settings.json
-	const { data: includeCoAuthoredBy, refetch: refetchCoAuthoredBy } = trpc.claudeSettings.getIncludeCoAuthoredBy.useQuery();
-	const setCoAuthoredByMutation = trpc.claudeSettings.setIncludeCoAuthoredBy.useMutation({ onSuccess: () => {
-		refetchCoAuthoredBy();
-	} });
+
+	const coAuthoredByQuery = useQuery(() => ({
+		queryKey: ["claudeSettings", "getIncludeCoAuthoredBy"] as const,
+		queryFn: () => desktopRpc.claudeSettings.getIncludeCoAuthoredBy(),
+	}));
+	const includeCoAuthoredBy = () => coAuthoredByQuery.data;
+
+	const setCoAuthoredByMutation = useMutation(() => ({
+		mutationFn: (input: { enabled: boolean }) =>
+			desktopRpc.claudeSettings.setIncludeCoAuthoredBy.mutate(input),
+		onSuccess: () => {
+			coAuthoredByQuery.refetch();
+		},
+	}));
 	const handleCoAuthoredByToggle = (enabled: boolean) => {
 		setCoAuthoredByMutation.mutate({ enabled });
 	};
@@ -45,14 +54,16 @@ export function AgentsPreferencesTab() {
 			console.error("Failed to sync analytics opt-out to main process:", error);
 		}
 	};
-	return <div class="p-6 space-y-6">
+    return <div class="p-6 space-y-6">
       {	/* Header - hidden on narrow screens since it's in the navigation bar */}
-      {!isNarrowScreen() && <div class="flex flex-col space-y-1.5 text-center sm:text-left">
+      <Show when={!isNarrowScreen()}>
+        <div class="flex flex-col space-y-1.5 text-center sm:text-left">
           <h3 class="text-sm font-semibold text-foreground">Preferences</h3>
           <p class="text-xs text-muted-foreground">
             Configure Claude's behavior and features
           </p>
-        </div>}
+        </div>
+      </Show>
 
       { /* Features Section */}
       <div class="bg-background rounded-lg border border-border overflow-hidden">
@@ -108,7 +119,7 @@ export function AgentsPreferencesTab() {
                 Add "Co-authored-by: Claude" to git commits made by Claude
               </span>
             </div>
-            <Switch checked={includeCoAuthoredBy ?? true} onCheckedChange={handleCoAuthoredByToggle} disabled={setCoAuthoredByMutation.isPending} />
+            <Switch checked={includeCoAuthoredBy() ?? true} onCheckedChange={handleCoAuthoredByToggle} disabled={setCoAuthoredByMutation.isPending} />
           </div>
 
           { /* Quick Switch */}
@@ -121,7 +132,7 @@ export function AgentsPreferencesTab() {
                 What <Kbd>⌃Tab</Kbd> switches between
               </span>
             </div>
-            <Select value={ctrlTabTarget()} onValueChange={(value: CtrlTabTarget) => setCtrlTabTarget(value)}>
+            <Select value={ctrlTabTarget()} onChange={(value: CtrlTabTarget) => setCtrlTabTarget(value)}>
               <SelectTrigger class="w-auto px-2">
                 <span class="text-xs">
                   {ctrlTabTarget() === "workspaces" ? "Workspaces" : "Agents"}
@@ -144,7 +155,7 @@ export function AgentsPreferencesTab() {
                 Where to go after archiving a workspace
               </span>
             </div>
-            <Select value={autoAdvanceTarget()} onValueChange={(value: AutoAdvanceTarget) => setAutoAdvanceTarget(value)}>
+            <Select value={autoAdvanceTarget()} onChange={(value: AutoAdvanceTarget) => setAutoAdvanceTarget(value)}>
               <SelectTrigger class="w-auto px-2">
                 <span class="text-xs">
                   {autoAdvanceTarget() === "next" ? "Go to next workspace" : autoAdvanceTarget() === "previous" ? "Go to previous workspace" : "Close workspace"}
@@ -168,7 +179,7 @@ export function AgentsPreferencesTab() {
                 Mode for new agents (Plan = read-only, Agent = can edit)
               </span>
             </div>
-            <Select value={defaultAgentMode()} onValueChange={(value: AgentMode) => setDefaultAgentMode(value)}>
+            <Select value={defaultAgentMode()} onChange={(value: AgentMode) => setDefaultAgentMode(value)}>
               <SelectTrigger class="w-auto px-2">
                 <span class="text-xs">
                   {defaultAgentMode() === "agent" ? "Agent" : "Plan"}

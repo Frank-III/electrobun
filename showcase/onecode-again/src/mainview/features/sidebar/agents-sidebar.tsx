@@ -1,11 +1,10 @@
-"use client";
-import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, For, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Motion, Presence } from "solid-motionone";
 import { Show } from "solid-js";
+import { ReactiveSet } from "@solid-primitives/set";
 import { Button as ButtonCustom } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
-import { useSetAtom, useAtom, useAtomValue } from "../../lib/state/jotai";
 import { autoAdvanceTargetAtom, createTeamDialogOpenAtom, agentsSettingsDialogActiveTabAtom, agentsSettingsDialogOpenAtom, agentsHelpPopoverOpenAtom, selectedAgentChatIdsAtom, isAgentMultiSelectModeAtom, toggleAgentChatSelectionAtom, selectAllAgentChatsAtom, clearAgentChatSelectionAtom, selectedAgentChatsCountAtom, isDesktopAtom, isFullscreenAtom, showOfflineModeFeaturesAtom, chatSourceModeAtom, selectedTeamIdAtom, type ChatSourceMode, showWorkspaceIconAtom, betaKanbanEnabledAtom } from "../../lib/atoms";
 import { useRemoteChats, useUserTeams, usePrefetchRemoteChat, useArchiveRemoteChat, useArchiveRemoteChatsBatch, useRestoreRemoteChat, useRenameRemoteChat } from "../../lib/hooks/use-remote-chats";
 import { ArchivePopover } from "../agents/ui/archive-popover";
@@ -14,7 +13,7 @@ import { ChevronDown, MoreHorizontal, Columns3 } from "lucide-solid";
 // import { useCombinedAuth } from "@/lib/hooks/use-combined-auth"
 const useCombinedAuth = () => ({ userId: null });
 // import { AuthDialog } from "@/components/auth/auth-dialog"
-const AuthDialog = () => null;
+const AuthDialog = (_props: { open?: boolean; onOpenChange?: (open: boolean) => void }) => null;
 // Desktop: archive is handled inline, not via hook
 // import { DiscordIcon } from "@/components/icons"
 import { DiscordIcon } from "../../icons";
@@ -22,7 +21,8 @@ import { AgentsRenameSubChatDialog } from "../agents/components/agents-rename-su
 import { OpenLocallyDialog } from "../agents/components/open-locally-dialog";
 import { useAutoImport } from "../agents/hooks/use-auto-import";
 import { ConfirmArchiveDialog } from "../../components/confirm-archive-dialog";
-import { trpc } from "../../lib/trpc";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/solid-query";
+import { desktopRpc } from "../../lib/desktop-rpc";
 import { toast } from "solid-sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuSeparator } from "../../components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
@@ -42,7 +42,7 @@ import { useResolvedHotkeyDisplay } from "../../lib/hotkeys";
 import { pluralize } from "../agents/utils/pluralize";
 import { useNewChatDrafts, deleteNewChatDraft, type NewChatDraft } from "../agents/lib/drafts";
 import { TrafficLightSpacer, TrafficLights } from "../agents/components/traffic-light-spacer";
-import { useHotkeys } from "react-hotkeys-hook";
+import { useHotkeys } from "../../lib/hooks/use-hotkeys";
 import { Checkbox } from "../../components/ui/checkbox";
 import { useHaptic } from "./hooks/use-haptic";
 import { TypewriterText } from "../../components/ui/typewriter-text";
@@ -50,21 +50,23 @@ import { exportChat, copyChat, type ExportFormat } from "../agents/lib/export-ch
 // Feedback URL: uses env variable for hosted version, falls back to public Discord for open source
 const FEEDBACK_URL = import.meta.env.VITE_FEEDBACK_URL || "https://discord.gg/8ektTZGnj4";
 // GitHub avatar with loading placeholder
-const GitHubAvatar = function GitHubAvatar({ gitOwner, className = "h-4 w-4" }: {
+const GitHubAvatar = function GitHubAvatar(props: {
 	gitOwner: string;
-	className?: string;
+	class?: string;
 }) {
+	const { gitOwner } = props;
+	const cls = props.class ?? "h-4 w-4";
 	const [isLoaded, setIsLoaded] = createSignal(false);
 	const [hasError, setHasError] = createSignal(false);
 	const handleLoad = () => setIsLoaded(true);
 	const handleError = () => setHasError(true);
-	if (hasError) {
-		return <GitHubLogo class={cn(className, "text-muted-foreground flex-shrink-0")} />;
+	if (hasError()) {
+		return <GitHubLogo class={cn(cls, "text-muted-foreground flex-shrink-0")} />;
 	}
-	return <div class={cn(className, "relative flex-shrink-0")}>
+	return <div class={cn(cls, "relative flex-shrink-0")}>
       {	/* Placeholder background while loading */}
-      {!isLoaded && <div class="absolute inset-0 rounded-sm bg-muted" />}
-      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={cn(className, "rounded-sm flex-shrink-0", isLoaded ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
+      <Show when={!isLoaded()}><div class="absolute inset-0 rounded-sm bg-muted" /></Show>
+      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={cn(cls, "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
     </div>;
 }
 // Component to render chat icon with loading status
@@ -161,11 +163,11 @@ const DraftItem = function DraftItem({ draftId, draftText, draftUpdatedAt, proje
 }) {
 	return <div onClick={() => onSelect(draftId)} class={cn("w-full text-left py-1.5 cursor-pointer group relative", "transition-colors duration-75", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", isMultiSelectMode ? "px-3" : "pl-2 pr-2", !isMultiSelectMode && "rounded-md", isSelected ? "bg-foreground/5 text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}>
       <div class="flex items-start gap-2.5">
-        {showIcon && <div class="pt-0.5">
+        <Show when={showIcon}><div class="pt-0.5">
             <div class="relative flex-shrink-0 w-4 h-4">
-              {projectGitOwner && projectGitProvider === "github" ? <GitHubAvatar gitOwner={projectGitOwner} /> : <GitHubLogo class="h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+              <Show when={projectGitOwner && projectGitProvider === "github"} fallback={<GitHubLogo class="h-4 w-4 flex-shrink-0 text-muted-foreground" />}><GitHubAvatar gitOwner={projectGitOwner!} /></Show>
             </div>
-          </div>}
+          </div></Show>
         <div class="flex-1 min-w-0 flex flex-col gap-0.5">
           <div class="flex items-center gap-1">
             <span class="truncate block text-sm leading-tight flex-1">
@@ -173,12 +175,12 @@ const DraftItem = function DraftItem({ draftId, draftText, draftUpdatedAt, proje
               {draftText.length > 50 ? "..." : ""}
             </span>
             {	/* Delete button - shown on hover */}
-            {!isMultiSelectMode && !isMobileFullscreen && <button onClick={(e) => {
+            <Show when={!isMultiSelectMode && !isMobileFullscreen}><button onClick={(e) => {
  e.stopPropagation();
 		onDelete(draftId);
 	}} tabIndex={-1} class="flex-shrink-0 text-muted-foreground hover:text-foreground active:text-foreground transition-[opacity,transform,color] duration-150 ease-out opacity-0 scale-95 pointer-events-none group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto active:scale-[0.97]" aria-label="Delete draft">
                 <TrashIcon class="h-3.5 w-3.5" />
-              </button>}
+              </button></Show>
           </div>
           <div class="flex items-center justify-between gap-2">
             <span class="text-[11px] text-muted-foreground/60 truncate">
@@ -193,8 +195,8 @@ const DraftItem = function DraftItem({ draftId, draftText, draftUpdatedAt, proje
       </div>
     </div>;
 }
-// Memoized Agent Chat Item component to prevent re-renders on hover
-const AgentChatItem = function AgentChatItem({ chatId, chatName, chatBranch, chatUpdatedAt, chatProjectId, globalIndex, isSelected, isLoading, hasUnseenChanges, hasPendingPlan, hasPendingQuestion, isMultiSelectMode, isChecked, isFocused, isMobileFullscreen, isDesktop, isPinned, displayText, gitOwner, gitProvider, stats, selectedChatIdsSize, canShowPinOption, areAllSelectedPinned, filteredChatsLength, isLastInFilteredChats, isRemote, showIcon, onChatClick, onCheckboxClick, onMouseEnter, onMouseLeave, onArchive, onTogglePin, onRenameClick, onCopyBranch, onArchiveAllBelow, onArchiveOthers, onOpenLocally, onBulkPin, onBulkUnpin, onBulkArchive, archivePending, archiveBatchPending, nameRefCallback, formatTime, isJustCreated }: {
+// Memoized Agent Chat Item component (props via props.xxx for Solid reactivity)
+interface AgentChatItemProps {
 	chatId: string;
 	chatName: string | null;
 	chatBranch: string | null;
@@ -215,11 +217,7 @@ const AgentChatItem = function AgentChatItem({ chatId, chatName, chatBranch, cha
 	displayText: string;
 	gitOwner: string | null | undefined;
 	gitProvider: string | null | undefined;
-	stats: {
-		fileCount: number;
-		additions: number;
-		deletions: number;
-	} | undefined;
+	stats: { fileCount: number; additions: number; deletions: number } | undefined;
 	selectedChatIdsSize: number;
 	canShowPinOption: boolean;
 	areAllSelectedPinned: boolean;
@@ -233,11 +231,7 @@ const AgentChatItem = function AgentChatItem({ chatId, chatName, chatBranch, cha
 	onMouseLeave: () => void;
 	onArchive: (chatId: string) => void;
 	onTogglePin: (chatId: string) => void;
-	onRenameClick: (chat: {
-		id: string;
-		name: string | null;
-		isRemote?: boolean;
-	}) => void;
+	onRenameClick: (chat: { id: string; name: string | null; isRemote?: boolean }) => void;
 	onCopyBranch: (branch: string) => void;
 	onArchiveAllBelow: (chatId: string) => void;
 	onArchiveOthers: (chatId: string) => void;
@@ -250,57 +244,50 @@ const AgentChatItem = function AgentChatItem({ chatId, chatName, chatBranch, cha
 	nameRefCallback: (chatId: string, el: HTMLSpanElement | null) => void;
 	formatTime: (dateStr: string) => string;
 	isJustCreated: boolean;
-}) {
-	// Resolved hotkey for context menu
+}
+const AgentChatItem = function AgentChatItem(props: AgentChatItemProps) {
 	const archiveWorkspaceHotkey = useResolvedHotkeyDisplay("archive-workspace");
 	return <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div data-chat-item data-chat-index={globalIndex} onClick={(e) => {
-		// On real mobile (touch devices), onTouchEnd handles the click
-		// In desktop app with narrow window, we still use mouse clicks
-		if (isMobileFullscreen && !isDesktop) return;
-		onChatClick(chatId, e, globalIndex);
+        <div data-chat-item data-chat-index={props.globalIndex} onClick={(e) => {
+		if (props.isMobileFullscreen && !props.isDesktop) return;
+		props.onChatClick(props.chatId, e, props.globalIndex);
 	}} onTouchEnd={(e) => {
-		// On real mobile touch devices, use touchEnd directly to bypass ContextMenu's click delay
-		if (isMobileFullscreen && !isDesktop) {
+		if (props.isMobileFullscreen && !props.isDesktop) {
 			e.preventDefault();
-			onChatClick(chatId, undefined, globalIndex);
+			props.onChatClick(props.chatId, undefined, props.globalIndex);
 		}
 	}} tabIndex={0} onKeyDown={(e) => {
 		if (e.key === "Enter" || e.key === " ") {
 			e.preventDefault();
-			onChatClick(chatId, undefined, globalIndex);
+			props.onChatClick(props.chatId, undefined, props.globalIndex);
 		}
 	}} onMouseEnter={(e) => {
-		onMouseEnter(chatId, chatName, e.currentTarget, globalIndex);
-	}} onMouseLeave={onMouseLeave} class={cn(
+		props.onMouseEnter(props.chatId, props.chatName, e.currentTarget, props.globalIndex);
+	}} onMouseLeave={props.onMouseLeave} class={cn(
 		"w-full text-left py-1.5 cursor-pointer group relative",
 		"transition-colors duration-75",
 		"outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
-		// In multi-select: px-3 compensates for removed container px-2, keeping text aligned
-		isMultiSelectMode ? "px-3" : "pl-2 pr-2",
-		!isMultiSelectMode && "rounded-md",
-		isSelected ? "bg-foreground/5 text-foreground" : isFocused ? "bg-foreground/5 text-foreground" : isMobileFullscreen ? "text-muted-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-		isChecked && (isMobileFullscreen ? "bg-primary/10" : "bg-primary/10 hover:bg-primary/15")
+		props.isMultiSelectMode ? "px-3" : "pl-2 pr-2",
+		!props.isMultiSelectMode && "rounded-md",
+		props.isSelected ? "bg-foreground/5 text-foreground" : props.isFocused ? "bg-foreground/5 text-foreground" : props.isMobileFullscreen ? "text-muted-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+		props.isChecked && (props.isMobileFullscreen ? "bg-primary/10" : "bg-primary/10 hover:bg-primary/15")
 	)}>
           <div class="flex items-start gap-2.5">
-            {	/* Icon container - only render if showIcon or in multi-select mode */}
-            {(showIcon || isMultiSelectMode) && <div class="pt-0.5">
-                <ChatIcon isSelected={isSelected} isLoading={isLoading} hasUnseenChanges={hasUnseenChanges} hasPendingPlan={hasPendingPlan} hasPendingQuestion={hasPendingQuestion} isMultiSelectMode={isMultiSelectMode} isChecked={isChecked} onCheckboxClick={(e) => onCheckboxClick(e, chatId)} gitOwner={gitOwner} gitProvider={gitProvider} showIcon={showIcon} />
-              </div>}
+            <Show when={props.showIcon || props.isMultiSelectMode}><div class="pt-0.5">
+                <ChatIcon isSelected={props.isSelected} isLoading={props.isLoading} hasUnseenChanges={props.hasUnseenChanges} hasPendingPlan={props.hasPendingPlan} hasPendingQuestion={props.hasPendingQuestion} isMultiSelectMode={props.isMultiSelectMode} isChecked={props.isChecked} onCheckboxClick={(e) => props.onCheckboxClick(e, props.chatId)} gitOwner={props.gitOwner} gitProvider={props.gitProvider} showIcon={props.showIcon} />
+              </div></Show>
             <div class="flex-1 min-w-0 flex flex-col gap-0.5">
               <div class="flex items-center gap-1">
-                <span ref={(el) => nameRefCallback(chatId, el)} class="truncate block text-sm leading-tight flex-1">
-                  <TypewriterText text={chatName || ""} placeholder="New workspace" id={chatId} isJustCreated={isJustCreated} showPlaceholder={true} />
+                <span ref={(el) => props.nameRefCallback(props.chatId, el)} class="truncate block text-sm leading-tight flex-1">
+                  <TypewriterText text={props.chatName || ""} placeholder="New workspace" id={props.chatId} isJustCreated={props.isJustCreated} showPlaceholder={true} />
                 </span>
-                { /* Archive button or inline loader/status when icon is hidden */}
-                {!isMultiSelectMode && !isMobileFullscreen && <div class="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center relative">
-                    { /* Inline loader/status when icon is hidden - always visible, hides on hover */}
-                    {!showIcon && (hasPendingQuestion || isLoading || hasUnseenChanges || hasPendingPlan) && <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover:opacity-0">
+                <Show when={!props.isMultiSelectMode && !props.isMobileFullscreen}><div class="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center relative">
+                    <Show when={!props.showIcon && (props.hasPendingQuestion || props.isLoading || props.hasUnseenChanges || props.hasPendingPlan)}><div class="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover:opacity-0">
                         <Presence exitBeforeEnter>
-                          <Show when={hasPendingQuestion} fallback={
-                            <Show when={isLoading} fallback={
-                              <Show when={hasPendingPlan} fallback={
+                          <Show when={props.hasPendingQuestion} fallback={
+                            <Show when={props.isLoading} fallback={
+                              <Show when={props.hasPendingPlan} fallback={
                                 <Motion.div initial={{ opacity: 0, scale: .5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .5 }} transition={{ duration: .15 }}>
                                   <LoadingDot isLoading={false} class="w-2.5 h-2.5 text-muted-foreground" />
                                 </Motion.div>
@@ -318,31 +305,31 @@ const AgentChatItem = function AgentChatItem({ chatId, chatName, chatBranch, cha
                             </Motion.div>
                           </Show>
                         </Presence>
-                      </div>}
-                    {	/* Archive button - appears on hover */}
+                      </div></Show>
                     <button onClick={(e) => {
  e.stopPropagation();
-		onArchive(chatId);
+		props.onArchive(props.chatId);
 	}} tabIndex={-1} class="absolute inset-0 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground transition-[opacity,transform,color] duration-150 ease-out opacity-0 scale-95 pointer-events-none group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto active:scale-[0.97]" aria-label="Archive workspace">
                       <ArchiveIcon class="h-3.5 w-3.5" />
                     </button>
-                  </div>}
+                  </div></Show>
               </div>
               <div class="flex items-center gap-1 text-[11px] text-muted-foreground/60 min-w-0">
-                {	/* Cloud icon for remote chats */}
-                {isRemote && <CloudIcon class="h-2.5 w-2.5 flex-shrink-0" />}
-                <span class="truncate flex-1 min-w-0">{displayText}</span>
+                <Show when={props.isRemote}>
+                  <CloudIcon class="h-2.5 w-2.5 flex-shrink-0" />
+                </Show>
+                <span class="truncate flex-1 min-w-0">{props.displayText}</span>
                 <div class="flex items-center gap-1.5 flex-shrink-0">
-                  {stats && (stats.additions > 0 || stats.deletions > 0) && <>
-                      <span class="text-green-600 dark:text-green-400">
-                        +{stats.additions}
-                      </span>
-                      <span class="text-red-600 dark:text-red-400">
-                        -{stats.deletions}
-                      </span>
-                    </>}
+                  <Show when={props.stats && (props.stats.additions > 0 || props.stats.deletions > 0)}>
+                    <span class="text-green-600 dark:text-green-400">
+                      +{props.stats!.additions}
+                    </span>
+                    <span class="text-red-600 dark:text-red-400">
+                      -{props.stats!.deletions}
+                    </span>
+                  </Show>
                   <span>
-                    {formatTime(chatUpdatedAt?.toISOString() ?? new Date().toISOString())}
+                    {props.formatTime(props.chatUpdatedAt?.toISOString() ?? new Date().toISOString())}
                   </span>
                 </div>
               </div>
@@ -351,100 +338,109 @@ const AgentChatItem = function AgentChatItem({ chatId, chatName, chatBranch, cha
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent class="w-48">
-        { /* Multi-select context menu */}
-        {isMultiSelectMode && isChecked ? <>
-            {canShowPinOption && <>
-                <ContextMenuItem onClick={areAllSelectedPinned ? onBulkUnpin : onBulkPin}>
-                  {areAllSelectedPinned ? `Unpin ${selectedChatIdsSize} ${pluralize(selectedChatIdsSize, "workspace")}` : `Pin ${selectedChatIdsSize} ${pluralize(selectedChatIdsSize, "workspace")}`}
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-              </>}
-            <ContextMenuItem onClick={onBulkArchive} disabled={archiveBatchPending}>
-              {archiveBatchPending ? "Archiving..." : `Archive ${selectedChatIdsSize} ${pluralize(selectedChatIdsSize, "workspace")}`}
+        <Show when={props.isMultiSelectMode && props.isChecked} fallback={
+          <>
+            <Show when={props.isRemote}>
+              <ContextMenuItem onClick={() => props.onOpenLocally(props.chatId)}>
+                Fork Locally
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </Show>
+            <ContextMenuItem onClick={() => props.onTogglePin(props.chatId)}>
+              {props.isPinned ? "Unpin workspace" : "Pin workspace"}
             </ContextMenuItem>
-          </> : <>
-            {isRemote && <>
-                <ContextMenuItem onClick={() => onOpenLocally(chatId)}>
-                  Fork Locally
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-              </>}
-            <ContextMenuItem onClick={() => onTogglePin(chatId)}>
-              {isPinned ? "Unpin workspace" : "Pin workspace"}
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => onRenameClick({
- id: chatId,
-		name: chatName,
-		isRemote
-	})}>
+            <ContextMenuItem onClick={() => props.onRenameClick({
+              id: props.chatId,
+              name: props.chatName,
+              isRemote: props.isRemote
+            })}>
               Rename workspace
             </ContextMenuItem>
-            {chatBranch && <ContextMenuItem onClick={() => onCopyBranch(chatBranch)}>
+            <Show when={props.chatBranch}>
+              <ContextMenuItem onClick={() => props.onCopyBranch(props.chatBranch!)}>
                 Copy branch name
-              </ContextMenuItem>}
+              </ContextMenuItem>
+            </Show>
             <ContextMenuSub>
               <ContextMenuSubTrigger>Export workspace</ContextMenuSubTrigger>
               <ContextMenuSubContent sideOffset={6} alignOffset={-4}>
                 <ContextMenuItem onClick={() => exportChat({
-		chatId: isRemote ? chatId.replace(/^remote_/, "") : chatId,
-		format: "markdown",
-		isRemote
-	})}>
+                  chatId: props.isRemote ? props.chatId.replace(/^remote_/, "") : props.chatId,
+                  format: "markdown",
+                  isRemote: props.isRemote
+                })}>
                   Download as Markdown
                 </ContextMenuItem>
                 <ContextMenuItem onClick={() => exportChat({
-		chatId: isRemote ? chatId.replace(/^remote_/, "") : chatId,
-		format: "json",
-		isRemote
-	})}>
+                  chatId: props.isRemote ? props.chatId.replace(/^remote_/, "") : props.chatId,
+                  format: "json",
+                  isRemote: props.isRemote
+                })}>
                   Download as JSON
                 </ContextMenuItem>
                 <ContextMenuItem onClick={() => exportChat({
-		chatId: isRemote ? chatId.replace(/^remote_/, "") : chatId,
-		format: "text",
-		isRemote
-	})}>
+                  chatId: props.isRemote ? props.chatId.replace(/^remote_/, "") : props.chatId,
+                  format: "text",
+                  isRemote: props.isRemote
+                })}>
                   Download as Text
                 </ContextMenuItem>
                 <ContextMenuSeparator />
                 <ContextMenuItem onClick={() => copyChat({
-		chatId: isRemote ? chatId.replace(/^remote_/, "") : chatId,
-		format: "markdown",
-		isRemote
-	})}>
+                  chatId: props.isRemote ? props.chatId.replace(/^remote_/, "") : props.chatId,
+                  format: "markdown",
+                  isRemote: props.isRemote
+                })}>
                   Copy as Markdown
                 </ContextMenuItem>
                 <ContextMenuItem onClick={() => copyChat({
-		chatId: isRemote ? chatId.replace(/^remote_/, "") : chatId,
-		format: "json",
-		isRemote
-	})}>
+                  chatId: props.isRemote ? props.chatId.replace(/^remote_/, "") : props.chatId,
+                  format: "json",
+                  isRemote: props.isRemote
+                })}>
                   Copy as JSON
                 </ContextMenuItem>
                 <ContextMenuItem onClick={() => copyChat({
-		chatId: isRemote ? chatId.replace(/^remote_/, "") : chatId,
-		format: "text",
-		isRemote
-	})}>
+                  chatId: props.isRemote ? props.chatId.replace(/^remote_/, "") : props.chatId,
+                  format: "text",
+                  isRemote: props.isRemote
+                })}>
                   Copy as Text
                 </ContextMenuItem>
               </ContextMenuSubContent>
             </ContextMenuSub>
-            {isDesktop && <ContextMenuItem onClick={() => window.desktopApi?.newWindow({ chatId })}>
+            <Show when={props.isDesktop}>
+              <ContextMenuItem onClick={() => {
+                console.log("Open in new window:", props.chatId)
+              }}>
                 Open in new window
-              </ContextMenuItem>}
+              </ContextMenuItem>
+            </Show>
             <ContextMenuSeparator />
-            <ContextMenuItem onClick={() => onArchive(chatId)} class="justify-between">
+            <ContextMenuItem onClick={() => props.onArchive(props.chatId)} class="justify-between">
               Archive workspace
-              {archiveWorkspaceHotkey && <Kbd>{archiveWorkspaceHotkey}</Kbd>}
+              <Show when={archiveWorkspaceHotkey}>
+                <Kbd>{archiveWorkspaceHotkey}</Kbd>
+              </Show>
             </ContextMenuItem>
-            <ContextMenuItem onClick={() => onArchiveAllBelow(chatId)} disabled={isLastInFilteredChats}>
+            <ContextMenuItem onClick={() => props.onArchiveAllBelow(props.chatId)} disabled={props.isLastInFilteredChats}>
               Archive all below
             </ContextMenuItem>
-            <ContextMenuItem onClick={() => onArchiveOthers(chatId)} disabled={filteredChatsLength === 1}>
+            <ContextMenuItem onClick={() => props.onArchiveOthers(props.chatId)} disabled={props.filteredChatsLength === 1}>
               Archive others
             </ContextMenuItem>
-          </>}
+          </>
+        }>
+          <Show when={props.canShowPinOption}>
+            <ContextMenuItem onClick={props.areAllSelectedPinned ? props.onBulkUnpin : props.onBulkPin}>
+              {props.areAllSelectedPinned ? `Unpin ${props.selectedChatIdsSize} ${pluralize(props.selectedChatIdsSize, "workspace")}` : `Pin ${props.selectedChatIdsSize} ${pluralize(props.selectedChatIdsSize, "workspace")}`}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </Show>
+          <ContextMenuItem onClick={props.onBulkArchive} disabled={props.archiveBatchPending}>
+            {props.archiveBatchPending ? "Archiving..." : `Archive ${props.selectedChatIdsSize} ${pluralize(props.selectedChatIdsSize, "workspace")}`}
+          </ContextMenuItem>
+        </Show>
       </ContextMenuContent>
     </ContextMenu>;
 }
@@ -555,49 +551,46 @@ interface ChatListSectionProps {
 	formatTime: (dateStr: string) => string;
 	justCreatedIds: Set<string>;
 }
-// Memoized Chat List Section component
-const ChatListSection = function ChatListSection({ title, chats, selectedChatId, selectedChatIsRemote, focusedChatIndex, loadingChatIds, unseenChanges, workspacePendingPlans, workspacePendingQuestions, isMultiSelectMode, selectedChatIds, isMobileFullscreen, isDesktop, pinnedChatIds, projectsMap, workspaceFileStats, filteredChats, canShowPinOption, areAllSelectedPinned, showIcon, onChatClick, onCheckboxClick, onMouseEnter, onMouseLeave, onArchive, onTogglePin, onRenameClick, onCopyBranch, onArchiveAllBelow, onArchiveOthers, onOpenLocally, onBulkPin, onBulkUnpin, onBulkArchive, archivePending, archiveBatchPending, nameRefCallback, formatTime, justCreatedIds }: ChatListSectionProps) {
-	if (chats.length === 0) return null;
-	// Pre-compute global indices map to avoid O(n²) findIndex in map()
+// Memoized Chat List Section component (props accessed via props.xxx for Solid reactivity)
+const ChatListSection = function ChatListSection(props: ChatListSectionProps) {
 	const globalIndexMap = createMemo(() => {
 		const map = new Map<string, number>();
-		filteredChats.forEach((c, i) => map.set(c.id, i));
+		props.filteredChats.forEach((c, i) => map.set(c.id, i));
 		return map;
 	});
-	return <>
-      <div class={cn("flex items-center h-4 mb-1", isMultiSelectMode ? "pl-3" : "pl-2")}>
+	return (
+		<Show when={props.chats.length > 0} fallback={null}>
+		<>
+      <div class={cn("flex items-center h-4 mb-1", props.isMultiSelectMode ? "pl-3" : "pl-2")}>
         <h3 class="text-xs font-medium text-muted-foreground whitespace-nowrap">
-          {title}
+          {props.title}
         </h3>
       </div>
       <div class="list-none p-0 m-0 mb-3">
-        {chats.map((chat) => {
-		const isLoading = loadingChatIds.has(chat.id);
-		// For remote chats, compare without prefix; for local, compare directly
-		// Remote chat IDs in list have "remote_" prefix, but selectedChatId is the original ID
+        <For each={props.chats}>{(chat) => {
+		const isLoading = props.loadingChatIds.has(chat.id);
 		const chatOriginalId = chat.isRemote ? chat.id.replace(/^remote_/, "") : chat.id;
-		const isSelected = selectedChatId === chatOriginalId && selectedChatIsRemote === chat.isRemote;
-		const isPinned = pinnedChatIds.has(chat.id);
-		const globalIndex = globalIndexMap.get(chat.id) ?? -1;
-		const isFocused = focusedChatIndex === globalIndex && focusedChatIndex >= 0;
-		// For remote chats, get repo info from meta; for local, from projectsMap
-		const project = chat.projectId ? projectsMap.get(chat.projectId) : null;
+		const isSelected = props.selectedChatId === chatOriginalId && props.selectedChatIsRemote === chat.isRemote;
+		const isPinned = props.pinnedChatIds.has(chat.id);
+		const globalIndex = globalIndexMap().get(chat.id) ?? -1;
+		const isFocused = props.focusedChatIndex === globalIndex && props.focusedChatIndex >= 0;
+		const project = chat.projectId ? props.projectsMap.get(chat.projectId) : null;
 		const repoName = chat.isRemote ? chat.meta?.repository : project?.gitRepo || project?.name;
 		const displayText = chat.branch ? repoName ? `${repoName} • ${chat.branch}` : chat.branch : repoName || (chat.isRemote ? "Remote project" : "Local project");
-		const isChecked = selectedChatIds.has(chat.id);
-		// For remote chats, use remoteStats; for local, use workspaceFileStats
-		const stats = chat.isRemote ? chat.remoteStats : workspaceFileStats.get(chat.id);
-		const hasPendingPlan = workspacePendingPlans.has(chat.id);
-		const hasPendingQuestion = workspacePendingQuestions.has(chat.id);
-		const isLastInFilteredChats = globalIndex === filteredChats.length - 1;
-		const isJustCreated = justCreatedIds().has(chat.id);
-		// For remote chats, extract gitOwner from meta.repository (e.g. "owner/repo" -> "owner")
+		const isChecked = props.selectedChatIds.has(chat.id);
+		const stats = chat.isRemote ? chat.remoteStats : props.workspaceFileStats.get(chat.id);
+		const hasPendingPlan = props.workspacePendingPlans.has(chat.id);
+		const hasPendingQuestion = props.workspacePendingQuestions.has(chat.id);
+		const isLastInFilteredChats = globalIndex === props.filteredChats.length - 1;
+		const isJustCreated = props.justCreatedIds.has(chat.id);
 		const gitOwner = chat.isRemote ? chat.meta?.repository?.split("/")[0] : project?.gitOwner;
 		const gitProvider = chat.isRemote ? "github" : project?.gitProvider;
-		return <AgentChatItem key={chat.id} chatId={chat.id} chatName={chat.name} chatBranch={chat.branch} chatUpdatedAt={chat.updatedAt} chatProjectId={chat.projectId ?? ""} globalIndex={globalIndex} isSelected={isSelected} isLoading={isLoading} hasUnseenChanges={unseenChanges().has(chat.id)} hasPendingPlan={hasPendingPlan} hasPendingQuestion={hasPendingQuestion} isMultiSelectMode={isMultiSelectMode} isChecked={isChecked} isFocused={isFocused} isMobileFullscreen={isMobileFullscreen} isDesktop={isDesktop} isPinned={isPinned} displayText={displayText} gitOwner={gitOwner} gitProvider={gitProvider} stats={stats ?? undefined} selectedChatIdsSize={selectedChatIds.size} canShowPinOption={canShowPinOption} areAllSelectedPinned={areAllSelectedPinned} filteredChatsLength={filteredChats.length} isLastInFilteredChats={isLastInFilteredChats} showIcon={showIcon} onChatClick={onChatClick} onCheckboxClick={onCheckboxClick} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} onArchive={onArchive} onTogglePin={onTogglePin} onRenameClick={onRenameClick} onCopyBranch={onCopyBranch} onArchiveAllBelow={onArchiveAllBelow} onArchiveOthers={onArchiveOthers} onOpenLocally={onOpenLocally} onBulkPin={onBulkPin} onBulkUnpin={onBulkUnpin} onBulkArchive={onBulkArchive} archivePending={archivePending} archiveBatchPending={archiveBatchPending} isRemote={chat.isRemote} nameRefCallback={nameRefCallback} formatTime={formatTime} isJustCreated={isJustCreated} />;
-	})}
+		return <AgentChatItem chatId={chat.id} chatName={chat.name} chatBranch={chat.branch} chatUpdatedAt={chat.updatedAt} chatProjectId={chat.projectId ?? ""} globalIndex={globalIndex} isSelected={isSelected} isLoading={isLoading} hasUnseenChanges={props.unseenChanges.has(chat.id)} hasPendingPlan={hasPendingPlan} hasPendingQuestion={hasPendingQuestion} isMultiSelectMode={props.isMultiSelectMode} isChecked={isChecked} isFocused={isFocused} isMobileFullscreen={props.isMobileFullscreen} isDesktop={props.isDesktop} isPinned={isPinned} displayText={displayText} gitOwner={gitOwner} gitProvider={gitProvider} stats={stats ?? undefined} selectedChatIdsSize={props.selectedChatIds.size} canShowPinOption={props.canShowPinOption} areAllSelectedPinned={props.areAllSelectedPinned} filteredChatsLength={props.filteredChats.length} isLastInFilteredChats={isLastInFilteredChats} showIcon={props.showIcon} onChatClick={props.onChatClick} onCheckboxClick={props.onCheckboxClick} onMouseEnter={props.onMouseEnter} onMouseLeave={props.onMouseLeave} onArchive={props.onArchive} onTogglePin={props.onTogglePin} onRenameClick={props.onRenameClick} onCopyBranch={props.onCopyBranch} onArchiveAllBelow={props.onArchiveAllBelow} onArchiveOthers={props.onArchiveOthers} onOpenLocally={props.onOpenLocally} onBulkPin={props.onBulkPin} onBulkUnpin={props.onBulkUnpin} onBulkArchive={props.onBulkArchive} archivePending={props.archivePending} archiveBatchPending={props.archiveBatchPending} isRemote={chat.isRemote} nameRefCallback={props.nameRefCallback} formatTime={props.formatTime} isJustCreated={isJustCreated} />;
+	}}</For>
       </div>
-    </>;
+    </>
+		</Show>
+	);
 }
 interface AgentsSidebarProps {
 	userId?: string | null | undefined;
@@ -620,10 +613,10 @@ function ArchiveButton(props: JSX.ButtonHTMLAttributes<HTMLButtonElement>) {
 }
 // Isolated Kanban Button - clears selection to show Kanban view
 function KanbanButton() {
-	const kanbanEnabled = useAtomValue(betaKanbanEnabledAtom);
-	const setSelectedChatId = useSetAtom(selectedAgentChatIdAtom);
-	const setSelectedDraftId = useSetAtom(selectedDraftIdAtom);
-	const setShowNewChatForm = useSetAtom(showNewChatFormAtom);
+	const kanbanEnabled = betaKanbanEnabledAtom[0];
+	const setSelectedChatId = selectedAgentChatIdAtom[1];
+	const setSelectedDraftId = selectedDraftIdAtom[1];
+	const setShowNewChatForm = showNewChatFormAtom[1];
 	// Resolved hotkey for tooltip (respects custom bindings)
 	const openKanbanHotkey = useResolvedHotkeyDisplay("open-kanban");
 	const handleClick = () => {
@@ -632,9 +625,10 @@ function KanbanButton() {
 		setSelectedDraftId(null);
 		setShowNewChatForm(false);
 	};
-	// Hide button if feature is disabled
-	if (!kanbanEnabled) return null;
-	return <Tooltip delayDuration={500}>
+	// Hide button if feature is disabled (Show for reactivity)
+	return (
+		<Show when={kanbanEnabled()} fallback={null}>
+		<Tooltip delayDuration={500}>
       <TooltipTrigger asChild>
         <button type="button" onClick={handleClick} class="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
           <Columns3 class="h-4 w-4" />
@@ -642,9 +636,11 @@ function KanbanButton() {
       </TooltipTrigger>
       <TooltipContent>
         Kanban View
-        {openKanbanHotkey && <Kbd>{openKanbanHotkey}</Kbd>}
+        <Show when={openKanbanHotkey}><Kbd>{openKanbanHotkey}</Kbd></Show>
       </TooltipContent>
-    </Tooltip>;
+    </Tooltip>
+		</Show>
+	);
 }
 // Isolated Archive Section - subscribes to archivePopoverOpenAtom internally
 // to prevent sidebar re-renders when popover opens/closes
@@ -652,7 +648,7 @@ interface ArchiveSectionProps {
 	archivedChatsCount: number;
 }
 function ArchiveSection(props: ArchiveSectionProps) {
-	const archivePopoverOpen = useAtomValue(archivePopoverOpenAtom);
+	const archivePopoverOpen = archivePopoverOpenAtom[0];
 	const [blockArchiveTooltip, setBlockArchiveTooltip] = createSignal(false);
 	let prevArchivePopoverOpen = false;
 	let archiveButtonRef: HTMLButtonElement | undefined;
@@ -664,17 +660,20 @@ function ArchiveSection(props: ArchiveSectionProps) {
 			const timer = setTimeout(() => setBlockArchiveTooltip(false), 300);
 			onCleanup(() => clearTimeout(timer));
 		}
-		prevArchivePopoverOpen = archivePopoverOpen;
+		prevArchivePopoverOpen = archivePopoverOpen();
 	});
-	if (props.archivedChatsCount === 0) return null;
-	return <Tooltip delayDuration={500} open={archivePopoverOpen || blockArchiveTooltip() ? false : undefined}>
+	return (
+		<Show when={props.archivedChatsCount > 0} fallback={null}>
+		<Tooltip delayDuration={500} open={archivePopoverOpen() || blockArchiveTooltip() ? false : undefined}>
       <TooltipTrigger asChild>
         <div>
           <ArchivePopover trigger={<ArchiveButton ref={(el) => archiveButtonRef = el} />} />
         </div>
       </TooltipTrigger>
       <TooltipContent>Archive</TooltipContent>
-    </Tooltip>;
+    </Tooltip>
+		</Show>
+	);
 }
 // Isolated Sidebar Header - contains dropdown, traffic lights, close button
 // Subscribes to dropdown state internally to prevent sidebar re-renders
@@ -694,48 +693,44 @@ interface SidebarHeaderProps {
 	setSettingsActiveTab: (tab: string) => void;
 	setShowAuthDialog: (open: boolean) => void;
 	handleSidebarMouseEnter: () => void;
-	handleSidebarMouseLeave: () => void;
-	closeButtonRef: Ref<HTMLDivElement>;
+	handleSidebarMouseLeave: (e: MouseEvent) => void;
+	closeButtonRef: (el: HTMLDivElement) => void;
 }
-function SidebarHeader({ isDesktop, isFullscreen, isMobileFullscreen, userId, desktopUser, onSignOut, onToggleSidebar, setSettingsDialogOpen, setSettingsActiveTab, setShowAuthDialog, handleSidebarMouseEnter, handleSidebarMouseLeave, closeButtonRef }: SidebarHeaderProps) {
+function SidebarHeader(props: SidebarHeaderProps) {
 	const [isDropdownOpen, setIsDropdownOpen] = createSignal(false);
-	const showOfflineFeatures = useAtomValue(showOfflineModeFeaturesAtom);
+	const showOfflineFeatures = showOfflineModeFeaturesAtom[0];
 	const toggleSidebarHotkey = useResolvedHotkeyDisplay("toggle-sidebar");
-	return <div class="relative flex-shrink-0" onMouseEnter={handleSidebarMouseEnter} onMouseLeave={handleSidebarMouseLeave}>
-      {	/* Draggable area for window movement - background layer (hidden in fullscreen) */}
-      {isDesktop && !isFullscreen && <div class="absolute inset-x-0 top-0 h-[32px] z-0" style={{ WebkitAppRegion: "drag" }} data-sidebar-content />}
+	return <div class="relative flex-shrink-0" onMouseEnter={props.handleSidebarMouseEnter} onMouseLeave={props.handleSidebarMouseLeave}>
+      <Show when={props.isDesktop && !props.isFullscreen}><div class="absolute inset-x-0 top-0 h-[32px] z-0" style={{ "-webkit-app-region": "drag" }} data-sidebar-content /></Show>
 
-      { /* Custom traffic lights - positioned at top left, centered in 32px area */}
-      <TrafficLights isHovered={isDropdownOpen} isFullscreen={isFullscreen} isDesktop={isDesktop} class="absolute left-4 top-[14px] z-20" />
+      <TrafficLights isHovered={isDropdownOpen()} isFullscreen={props.isFullscreen} isDesktop={props.isDesktop} class="absolute left-4 top-[14px] z-20" />
 
-      { /* Close button - positioned at top right */}
-      {!isMobileFullscreen && <div ref={closeButtonRef} class={cn("absolute right-2 z-20 transition-opacity duration-150", "top-2")} style={{
- opacity: isDropdownOpen ? 1 : 0,
-		WebkitAppRegion: "no-drag"
+      <Show when={!props.isMobileFullscreen}><div ref={props.closeButtonRef} class={cn("absolute right-2 z-20 transition-opacity duration-150", "top-2")} style={{
+ opacity: isDropdownOpen() ? 1 : 0,
+		"-webkit-app-region": "no-drag"
 	}}>
           <Tooltip delayDuration={500}>
             <TooltipTrigger asChild>
-              <ButtonCustom variant="ghost" size="icon" onClick={onToggleSidebar} tabIndex={-1} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground flex-shrink-0 rounded-md" aria-label="Close sidebar">
+              <ButtonCustom variant="ghost" size="icon" onClick={props.onToggleSidebar} tabIndex={-1} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground flex-shrink-0 rounded-md" aria-label="Close sidebar">
                 <IconDoubleChevronLeft class="h-4 w-4" />
               </ButtonCustom>
             </TooltipTrigger>
             <TooltipContent>
               Close sidebar
-              {toggleSidebarHotkey && <Kbd>{toggleSidebarHotkey}</Kbd>}
+              <Show when={toggleSidebarHotkey}><Kbd>{toggleSidebarHotkey}</Kbd></Show>
             </TooltipContent>
           </Tooltip>
-        </div>}
+        </div></Show>
 
-      {	/* Spacer for macOS traffic lights */}
-      <TrafficLightSpacer isFullscreen={isFullscreen} isDesktop={isDesktop} />
+      <TrafficLightSpacer isFullscreen={props.isFullscreen} isDesktop={props.isDesktop} />
 
       { /* Team dropdown - below traffic lights */}
       <div class="px-2 pt-2 pb-2">
         <div class="flex items-center gap-1">
           <div class="flex-1 min-w-0">
-            <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
+            <DropdownMenu open={isDropdownOpen()} onOpenChange={setIsDropdownOpen}>
               <DropdownMenuTrigger asChild>
-                <ButtonCustom variant="ghost" class="h-6 px-1.5 justify-start hover:bg-foreground/10 rounded-md group/team-button max-w-full" suppressHydrationWarning>
+                <ButtonCustom variant="ghost" class="h-6 px-1.5 justify-start hover:bg-foreground/10 rounded-md group/team-button max-w-full">
                   <div class="flex items-center gap-1.5 min-w-0 max-w-full">
                     <div class="flex items-center justify-center flex-shrink-0">
                       <Logo class="w-3.5 h-3.5" />
@@ -745,16 +740,15 @@ function SidebarHeader({ isDesktop, isFullscreen, isMobileFullscreen, userId, de
                         1Code
                       </div>
                     </div>
-                    {showOfflineFeatures && <div class="flex-shrink-0">
+                    <Show when={showOfflineFeatures()}><div class="flex-shrink-0">
                         <NetworkStatus />
-                      </div>}
-                    <ChevronDown class={cn("h-3 text-muted-foreground flex-shrink-0 overflow-hidden", isDropdownOpen ? "opacity-100 w-3" : "opacity-0 w-0 group-hover/team-button:opacity-100 group-hover/team-button:w-3")} />
+                      </div></Show>
+                    <ChevronDown class={cn("h-3 text-muted-foreground flex-shrink-0 overflow-hidden", isDropdownOpen() ? "opacity-100 w-3" : "opacity-0 w-0 group-hover/team-button:opacity-100 group-hover/team-button:w-3")} />
                   </div>
                 </ButtonCustom>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" class="w-52 pt-0" sideOffset={8}>
-                {userId ? <>
-                    { /* Project section at the top */}
+                {props.userId ? <>
                     <div class="relative rounded-t-xl border-b overflow-hidden">
                       <div class="absolute inset-0 bg-popover brightness-110" />
                       <div class="relative pl-2 pt-1.5 pb-2">
@@ -764,21 +758,20 @@ function SidebarHeader({ isDesktop, isFullscreen, isMobileFullscreen, userId, de
                           </div>
                           <div class="flex-1 min-w-0 overflow-hidden">
                             <div class="font-medium text-sm text-foreground truncate">
-                              {desktopUser?.name || "User"}
+                              {props.desktopUser?.name || "User"}
                             </div>
                             <div class="text-xs text-muted-foreground truncate">
-                              {desktopUser?.email}
+                              {props.desktopUser?.email}
                             </div>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    { /* Settings */}
                     <DropdownMenuItem class="gap-2" onSelect={() => {
  setIsDropdownOpen(false);
-		setSettingsActiveTab("profile");
-		setSettingsDialogOpen(true);
+		props.setSettingsActiveTab("profile");
+		props.setSettingsDialogOpen(true);
 	}}>
                       <SettingsIcon class="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                       Settings
@@ -798,36 +791,34 @@ function SidebarHeader({ isDesktop, isFullscreen, isMobileFullscreen, userId, de
                           <DiscordIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           <span class="flex-1">Discord</span>
                         </DropdownMenuItem>
-                        {!isMobileFullscreen && <DropdownMenuItem onSelect={() => {
-		setIsDropdownOpen(false);
-		setSettingsActiveTab("keyboard");
-		setSettingsDialogOpen(true);
-	}} class="gap-2">
+                        <Show when={!props.isMobileFullscreen}><DropdownMenuItem onSelect={() => {
+	setIsDropdownOpen(false);
+	props.setSettingsActiveTab("keyboard");
+	props.setSettingsDialogOpen(true);
+}} class="gap-2">
                             <KeyboardIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             <span class="flex-1">Shortcuts</span>
-                          </DropdownMenuItem>}
+                          </DropdownMenuItem></Show>
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
 
                     <DropdownMenuSeparator />
 
-                    {	/* Log out */}
                     <div class="">
-                      <DropdownMenuItem class="gap-2" onSelect={() => onSignOut()}>
+                      <DropdownMenuItem class="gap-2" onSelect={() => props.onSignOut()}>
                         <svg class="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          <polyline points="16,17 21,12 16,7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                          <polyline points="16,17 21,12 16,7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                          <line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
                         Log out
                       </DropdownMenuItem>
                     </div>
                   </> : <>
-                    { /* Login for unauthenticated users */}
                     <div class="">
                       <DropdownMenuItem class="gap-2" onSelect={() => {
  setIsDropdownOpen(false);
-		setShowAuthDialog(true);
+		props.setShowAuthDialog(true);
 	}}>
                         <ProfileIcon class="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                         Login
@@ -850,14 +841,14 @@ function SidebarHeader({ isDesktop, isFullscreen, isMobileFullscreen, userId, de
                           <DiscordIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           <span class="flex-1">Discord</span>
                         </DropdownMenuItem>
-                        {!isMobileFullscreen && <DropdownMenuItem onSelect={() => {
-		setIsDropdownOpen(false);
-		setSettingsActiveTab("keyboard");
-		setSettingsDialogOpen(true);
-	}} class="gap-2">
+                        <Show when={!props.isMobileFullscreen}><DropdownMenuItem onSelect={() => {
+	setIsDropdownOpen(false);
+	props.setSettingsActiveTab("keyboard");
+	props.setSettingsDialogOpen(true);
+}} class="gap-2">
                             <KeyboardIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             <span class="flex-1">Shortcuts</span>
-                          </DropdownMenuItem>}
+                          </DropdownMenuItem></Show>
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
                   </>}
@@ -874,7 +865,7 @@ interface HelpSectionProps {
 	isMobile: boolean;
 }
 function HelpSection(props: HelpSectionProps) {
-	const [helpPopoverOpen, setHelpPopoverOpen] = useAtom(agentsHelpPopoverOpenAtom);
+	const [helpPopoverOpen, setHelpPopoverOpen] = agentsHelpPopoverOpenAtom;
 	const [blockHelpTooltip, setBlockHelpTooltip] = createSignal(false);
 	let prevHelpPopoverOpen = false;
 	let helpButtonRef: HTMLButtonElement | undefined;
@@ -886,13 +877,13 @@ function HelpSection(props: HelpSectionProps) {
 			const timer = setTimeout(() => setBlockHelpTooltip(false), 300);
 			onCleanup(() => clearTimeout(timer));
 		}
-		prevHelpPopoverOpen = helpPopoverOpen;
+		prevHelpPopoverOpen = helpPopoverOpen();
 	});
-	return <Tooltip delayDuration={500} open={helpPopoverOpen || blockHelpTooltip() ? false : undefined}>
+	return <Tooltip delayDuration={500} open={helpPopoverOpen() || blockHelpTooltip() ? false : undefined}>
       <TooltipTrigger asChild>
         <div>
-          <AgentsHelpPopover open={helpPopoverOpen} onOpenChange={setHelpPopoverOpen} isMobile={props.isMobile}>
-            <button ref={(el) => helpButtonRef = el} type="button" class="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" suppressHydrationWarning>
+          <AgentsHelpPopover open={helpPopoverOpen()} onOpenChange={setHelpPopoverOpen} isMobile={props.isMobile}>
+            <button ref={(el) => helpButtonRef = el} type="button" class="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
               <QuestionCircleIcon class="h-4 w-4" />
             </button>
           </AgentsHelpPopover>
@@ -906,92 +897,96 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	email: "demo@example.com",
 	name: "Demo User"
 }, onSignOut = () => {}, onToggleSidebar, isMobileFullscreen = false, onChatSelect }: AgentsSidebarProps) {
-	const [selectedChatId, setSelectedChatId] = useAtom(selectedAgentChatIdAtom);
-	const [selectedChatIsRemote, setSelectedChatIsRemote] = useAtom(selectedChatIsRemoteAtom);
-	const previousChatId = useAtomValue(previousAgentChatIdAtom);
-	const autoAdvanceTarget = useAtomValue(autoAdvanceTargetAtom);
-	const [selectedDraftId, setSelectedDraftId] = useAtom(selectedDraftIdAtom);
-	const setShowNewChatForm = useSetAtom(showNewChatFormAtom);
-	const [loadingSubChats] = useAtom(loadingSubChatsAtom);
-	const pendingQuestions = useAtomValue(pendingUserQuestionsAtom);
+	const [selectedChatId, setSelectedChatId] = selectedAgentChatIdAtom;
+	const [selectedChatIsRemote, setSelectedChatIsRemote] = selectedChatIsRemoteAtom;
+	const previousChatId = previousAgentChatIdAtom[0];
+	const autoAdvanceTarget = autoAdvanceTargetAtom[0];
+	const [selectedDraftId, setSelectedDraftId] = selectedDraftIdAtom;
+	const setShowNewChatForm = showNewChatFormAtom[1];
+	const [loadingSubChats] = loadingSubChatsAtom;
+	const pendingQuestions = pendingUserQuestionsAtom[0];
 	// Use ref instead of state to avoid re-renders on hover
 	const [isSidebarHoveredRef, setIsSidebarHoveredRef] = createSignal(false);
-	const [closeButtonRef, setCloseButtonRef] = createSignal<HTMLDivElement>(null);
+	const [closeButtonRef, setCloseButtonRef] = createSignal<HTMLDivElement | null>(null);
 	const [searchQuery, setSearchQuery] = createSignal("");
 	const [focusedChatIndex, setFocusedChatIndex] = createSignal(-1);
 	const [hoveredChatIndexRef, setHoveredChatIndexRef] = createSignal<number>(-1);
 	// Global desktop/fullscreen state from atoms (initialized in AgentsLayout)
-	const isDesktop = useAtomValue(isDesktopAtom);
-	const isFullscreen = useAtomValue(isFullscreenAtom);
+	const isDesktop = isDesktopAtom[0];
+	const isFullscreen = isFullscreenAtom[0];
 	// Multi-select state
-	const [selectedChatIds, setSelectedChatIds] = useAtom(selectedAgentChatIdsAtom);
-	const isMultiSelectMode = useAtomValue(isAgentMultiSelectModeAtom);
-	const selectedChatsCount = useAtomValue(selectedAgentChatsCountAtom);
-	const toggleChatSelection = useSetAtom(toggleAgentChatSelectionAtom);
-	const selectAllChats = useSetAtom(selectAllAgentChatsAtom);
-	const clearChatSelection = useSetAtom(clearAgentChatSelectionAtom);
+	const [selectedChatIds, setSelectedChatIds] = selectedAgentChatIdsAtom;
+	const isMultiSelectMode = isAgentMultiSelectModeAtom[0];
+	const selectedChatsCount = selectedAgentChatsCountAtom[0];
+	const toggleChatSelection = toggleAgentChatSelectionAtom[1];
+	const selectAllChats = selectAllAgentChatsAtom[1];
+	const clearChatSelection = clearAgentChatSelectionAtom[1];
 	// Scroll gradient refs - use DOM manipulation to avoid re-renders
-	const [topGradientRef, setTopGradientRef] = createSignal<HTMLDivElement>(null);
-	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement>(null);
-	const [scrollContainerRef, setScrollContainerRef] = createSignal<HTMLDivElement>(null);
+	const [topGradientRef, setTopGradientRef] = createSignal<HTMLDivElement | null>(null);
+	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement | null>(null);
+	const [scrollContainerRef, setScrollContainerRef] = createSignal<HTMLDivElement | null>(null);
 	// Multiple drafts state - uses event-based sync instead of polling
 	const drafts = useNewChatDrafts();
 	// Read unseen changes from global atoms
-	const unseenChanges = useAtomValue(agentsUnseenChangesAtom);
-	const justCreatedIds = useAtomValue(justCreatedIdsAtom);
+	const unseenChanges = agentsUnseenChangesAtom[0];
+	const justCreatedIds = justCreatedIdsAtom[0];
 	// Haptic feedback
 	const { trigger: triggerHaptic } = useHaptic();
 	// Resolved hotkey for tooltip
 	const newWorkspaceHotkey = useResolvedHotkeyDisplay("new-workspace");
 	// Rename dialog state
 	const [renameDialogOpen, setRenameDialogOpen] = createSignal(false);
-	const [renamingChat, setRenamingChat] = createSignal(null);
+	const [renamingChat, setRenamingChat] = createSignal<{ id: string; name: string | null; isRemote?: boolean } | null>(null);
 	const [renameLoading, setRenameLoading] = createSignal(false);
 	// Confirm archive dialog state
 	const [confirmArchiveDialogOpen, setConfirmArchiveDialogOpen] = createSignal(false);
-	const [archivingChatId, setArchivingChatId] = createSignal(null);
+	const [archivingChatId, setArchivingChatId] = createSignal<string | null>(null);
 	const [activeProcessCount, setActiveProcessCount] = createSignal(0);
 	const [hasWorktree, setHasWorktree] = createSignal(false);
 	const [uncommittedCount, setUncommittedCount] = createSignal(0);
 	// Import sandbox dialog state
 	const [importDialogOpen, setImportDialogOpen] = createSignal(false);
-	const [importingChatId, setImportingChatId] = createSignal(null);
+	const [importingChatId, setImportingChatId] = createSignal<string | null>(null);
 	// Track initial mount to skip footer animation on load
 	const [hasFooterAnimated, setHasFooterAnimated] = createSignal(false);
 	// Pinned chats (stored in localStorage per project)
-	const [pinnedChatIds, setPinnedChatIds] = createSignal(new Set());
-	const [searchInputRef, setSearchInputRef] = createSignal<HTMLInputElement>(null);
+	const [pinnedChatIds, setPinnedChatIds] = createSignal<Set<string>>(new Set());
+	const [searchInputRef, setSearchInputRef] = createSignal<HTMLInputElement | null>(null);
 	// Agent name tooltip refs (for truncated names) - using DOM manipulation to avoid re-renders
-	const [agentTooltipRef, setAgentTooltipRef] = createSignal<HTMLDivElement>(null);
+	const [agentTooltipRef, setAgentTooltipRef] = createSignal<HTMLDivElement | null>(null);
 	const [nameRefs, setNameRefs] = createSignal<Map<string, HTMLSpanElement>>(new Map());
 	const [agentTooltipTimerRef, setAgentTooltipTimerRef] = createSignal<ReturnType<typeof setTimeout> | null>(null);
-	const setSettingsDialogOpen = useSetAtom(agentsSettingsDialogOpenAtom);
-	const setSettingsActiveTab = useSetAtom(agentsSettingsDialogActiveTabAtom);
-	const { isLoaded: isAuthLoaded } = useCombinedAuth();
+	const setSettingsDialogOpen = agentsSettingsDialogOpenAtom[1];
+	const setSettingsActiveTab = agentsSettingsDialogActiveTabAtom[1];
+	const combinedAuth = useCombinedAuth();
 	const [showAuthDialog, setShowAuthDialog] = createSignal(false);
-	const setCreateTeamDialogOpen = useSetAtom(createTeamDialogOpenAtom);
+	const setCreateTeamDialogOpen = createTeamDialogOpenAtom[1];
 	// Debug mode for testing first-time user experience
-	const debugMode = useAtomValue(agentsDebugModeAtom);
+	const debugMode = agentsDebugModeAtom[0];
 	// Sidebar appearance settings
-	const showWorkspaceIcon = useAtomValue(showWorkspaceIconAtom);
+	const showWorkspaceIcon = showWorkspaceIconAtom[0];
 	// Desktop: use selectedProject instead of teams
-	const [selectedProject] = useAtom(selectedProjectAtom);
+	const [selectedProject] = selectedProjectAtom;
 	// Keep chatSourceModeAtom for backwards compatibility (used in other places)
-	const [chatSourceMode, setChatSourceMode] = useAtom(chatSourceModeAtom);
-	const teamId = useAtomValue(selectedTeamIdAtom);
+	const [chatSourceMode, setChatSourceMode] = chatSourceModeAtom;
+	const teamId = selectedTeamIdAtom[0];
 	// Sync chatSourceMode with selectedChatIsRemote on startup
 	// This fixes the race condition where atoms load independently from localStorage
 	let hasRunStartupSync = false;
 	createEffect(() => {
 		if (hasRunStartupSync) return;
 		hasRunStartupSync = true;
-		const correctMode = selectedChatIsRemote ? "sandbox" : "local";
-		if (chatSourceMode !== correctMode) {
+		const correctMode = selectedChatIsRemote() ? "sandbox" : "local";
+		if (chatSourceMode() !== correctMode) {
 			setChatSourceMode(correctMode);
 		}
 	});
-	// Fetch all local chats (no project filter)
-	const { data: localChats } = trpc.chats.list.useQuery({});
+	// Fetch all local chats (no project filter) — Electrobun RPC + Solid Query
+	const localChatsQuery = useQuery(() => ({
+		queryKey: ["chats", "list"] as const,
+		queryFn: () => desktopRpc.chats.list.query(),
+	}));
+	const localChats = () => localChatsQuery.data;
 	// Fetch user's teams (same as web) - always enabled to allow merged list
 	const { data: teams, isLoading: isTeamsLoading, isError: isTeamsError } = useUserTeams(true);
 	// Fetch remote sandbox chats (same as web) - requires teamId
@@ -1025,20 +1020,21 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			} | null;
 		}> = [];
 		// Add local chats
-		if (localChats) {
-			for (const chat of localChats) {
+		const local = localChats();
+		if (local) {
+			for (const chat of local) {
 				unified.push({
 					id: chat.id,
 					name: chat.name,
-					createdAt: chat.createdAt,
-					updatedAt: chat.updatedAt,
-					archivedAt: chat.archivedAt,
-					projectId: chat.projectId,
-					worktreePath: chat.worktreePath,
-					branch: chat.branch,
-					baseBranch: chat.baseBranch,
-					prUrl: chat.prUrl,
-					prNumber: chat.prNumber,
+					createdAt: chat.createdAt ? new Date(chat.createdAt) : null,
+					updatedAt: chat.updatedAt ? new Date(chat.updatedAt) : null,
+					archivedAt: chat.archivedAt ? new Date(chat.archivedAt) : null,
+					projectId: chat.projectId ?? null,
+					worktreePath: chat.worktreePath ?? null,
+					branch: chat.branch ?? null,
+					baseBranch: chat.baseBranch ?? null,
+					prUrl: chat.prUrl ?? null,
+					prNumber: chat.prNumber ?? null,
 					isRemote: false
 				});
 			}
@@ -1086,10 +1082,10 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	const allOpenSubChatIds = createMemo(() => {
 		// openSubChatsVersion is used to trigger recalculation when sub-chats change
 		void openSubChatsVersion;
-		if (!agentChats) return prevOpenSubChatIdsRef.current;
+		if (!agentChats) return prevOpenSubChatIdsRef();
 		const windowId = getWindowId();
 		const allIds: string[] = [];
-		for (const chat of agentChats) {
+		for (const chat of agentChats()) {
 			try {
 				// Use window-prefixed key (matches sub-chat-store.ts)
 				const stored = localStorage.getItem(`${windowId}:agent-open-sub-chats-${chat.id}`);
@@ -1101,50 +1097,67 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 		}
 		// Compare with previous - if content is same, return old reference
 		// This prevents React Query from refetching when array content hasn't changed
-		const prev = prevOpenSubChatIdsRef.current;
+		const prev = prevOpenSubChatIdsRef();
 		const sorted = [...allIds].sort();
 		const prevSorted = [...prev].sort();
 		if (sorted.length === prevSorted.length && sorted.every((id, i) => id === prevSorted[i])) {
 			return prev;
 		}
-		prevOpenSubChatIdsRef.current = allIds;
+		setPrevOpenSubChatIdsRef(allIds);
 		return allIds;
 	});
 	// File changes stats from DB - only for open sub-chats
-	const { data: fileStatsData } = trpc.chats.getFileStats.useQuery({ openSubChatIds: allOpenSubChatIds }, {
+	const fileStatsQuery = useQuery(() => ({
+		queryKey: ["chats", "getFileStats", allOpenSubChatIds()] as const,
+		queryFn: () => desktopRpc.chats.getFileStats({ openSubChatIds: allOpenSubChatIds() }),
 		refetchInterval: 5e3,
-		enabled: allOpenSubChatIds.length > 0,
-		placeholderData: (prev) => prev
-	});
+		enabled: allOpenSubChatIds().length > 0,
+		placeholderData: (prev) => prev,
+	}));
+	const fileStatsData = () => fileStatsQuery.data;
 	// Pending plan approvals from DB - only for open sub-chats
-	const { data: pendingPlanApprovalsData } = trpc.chats.getPendingPlanApprovals.useQuery({ openSubChatIds: allOpenSubChatIds }, {
+	const pendingPlanApprovalsQuery = useQuery(() => ({
+		queryKey: ["chats", "getPendingPlanApprovals", allOpenSubChatIds()] as const,
+		queryFn: () => desktopRpc.chats.getPendingPlanApprovals({ openSubChatIds: allOpenSubChatIds() }),
 		refetchInterval: 5e3,
-		enabled: allOpenSubChatIds.length > 0,
-		placeholderData: (prev) => prev
-	});
+		enabled: allOpenSubChatIds().length > 0,
+		placeholderData: (prev) => prev,
+	}));
+	const pendingPlanApprovalsData = () => pendingPlanApprovalsQuery.data;
 	// Fetch all projects for git info
-	const { data: projects } = trpc.projects.list.useQuery();
+	const projectsQuery = useQuery(() => ({
+		queryKey: ["projects", "list"] as const,
+		queryFn: () => desktopRpc.projects.list.query(),
+	}));
+	const projects = () => projectsQuery.data;
 	// Auto-import hook for "Open Locally" functionality
 	const { getMatchingProjects, autoImport, isImporting } = useAutoImport();
 	// Create map for quick project lookup by id
 	const projectsMap = createMemo(() => {
-		if (!projects) return new Map();
-		return new Map(projects.map((p) => [p.id, p]));
+		const projs = projects();
+		if (!projs) return new Map();
+		return new Map(projs.map((p) => [p.id, p]));
 	});
 	// Fetch all archived chats (to get count)
-	const { data: archivedChats } = trpc.chats.listArchived.useQuery({});
-	const archivedChatsCount = archivedChats?.length ?? 0;
-	// Get utils outside of callbacks - hooks must be called at top level
-	const utils = trpc.useUtils();
+	const archivedChatsQuery = useQuery(() => ({
+		queryKey: ["chats", "listArchived"] as const,
+		queryFn: () => desktopRpc.chats.listArchived.query(),
+	}));
+	const archivedChats = () => archivedChatsQuery.data;
+	const archivedChatsCount = () => archivedChats()?.length ?? 0;
+	// Query client for cache invalidation (replaces trpc.useUtils())
+	const queryClient = useQueryClient();
 	// Unified undo stack for workspaces and sub-chats (Jotai atom)
-	const [undoStack, setUndoStack] = useAtom(undoStackAtom);
+	const [undoStack, setUndoStack] = undoStackAtom;
 	// Restore chat mutation (for undo)
-	const restoreChatMutation = trpc.chats.restore.useMutation({ onSuccess: (_, variables) => {
-		utils.chats.list.invalidate();
-		utils.chats.listArchived.invalidate();
-		// Select the restored chat
-		setSelectedChatId(variables.id);
-	} });
+	const restoreChatMutation = useMutation(() => ({
+		mutationFn: (args: { id: string }) => desktopRpc.chats.restore.mutate(args),
+		onSuccess: (_data: unknown, variables: { id: string }) => {
+			void queryClient.invalidateQueries({ queryKey: ["chats", "list"] });
+			void queryClient.invalidateQueries({ queryKey: ["chats", "listArchived"] });
+			setSelectedChatId(variables.id);
+		},
+	}));
 	// Remove workspace item from stack by chatId
 	const removeWorkspaceFromStack = (chatId: string) => {
 		setUndoStack((prev) => {
@@ -1162,60 +1175,58 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	const restoreRemoteChatMutation = useRestoreRemoteChat();
 	const renameRemoteChatMutation = useRenameRemoteChat();
 	// Archive chat mutation
-	const archiveChatMutation = trpc.chats.archive.useMutation({ onSuccess: (_, variables) => {
-		// Hide tooltip if visible (element may be removed from DOM before mouseLeave fires)
-		if (agentTooltipTimerRef.current) {
-			clearTimeout(agentTooltipTimerRef.current);
-			agentTooltipTimerRef.current = null;
-		}
-		if (agentTooltipRef.current) {
-			agentTooltipRef.current.style.display = "none";
-		}
-		utils.chats.list.invalidate();
-		utils.chats.listArchived.invalidate();
-		// If archiving the currently selected chat, navigate based on auto-advance setting
-		if (selectedChatId === variables.id) {
-			const currentIndex = agentChats?.findIndex((c) => c.id === variables.id) ?? -1;
-			if (autoAdvanceTarget === "next") {
-				// Find next workspace in list (after current index)
-				const nextChat = agentChats?.find((c, i) => i > currentIndex && c.id !== variables.id);
-				if (nextChat) {
-					setSelectedChatId(nextChat.id);
-				} else {
-					// No next workspace, go to new workspace view
-					setSelectedChatId(null);
-				}
-			} else if (autoAdvanceTarget === "previous") {
-				// Go to previously selected workspace
-				const isPreviousAvailable = previousChatId && agentChats?.some((c) => c.id === previousChatId && c.id !== variables.id);
-				if (isPreviousAvailable) {
-					setSelectedChatId(previousChatId);
-				} else {
-					setSelectedChatId(null);
-				}
-			} else {
-				// Close: go to new workspace view
-				setSelectedChatId(null);
+	const archiveChatMutation = useMutation(() => ({
+		mutationFn: (args: { id: string }) => desktopRpc.chats.archive.mutate(args),
+		onSuccess: (_data: unknown, variables: { id: string }) => {
+			const timer = agentTooltipTimerRef();
+			if (timer) {
+				clearTimeout(timer);
+				setAgentTooltipTimerRef(null);
 			}
-		}
-		// Clear after 10 seconds (Cmd+Z window)
-		const timeoutId = setTimeout(() => {
-			removeWorkspaceFromStack(variables.id);
-		}, 1e4);
-		// Add to unified undo stack for Cmd+Z
-		setUndoStack((prev) => [...prev, {
-			type: "workspace",
-			chatId: variables.id,
-			timeoutId
-		}]);
-	} });
+			const tooltip = agentTooltipRef();
+			if (tooltip) {
+				tooltip.style.display = "none";
+			}
+			void queryClient.invalidateQueries({ queryKey: ["chats", "list"] });
+			void queryClient.invalidateQueries({ queryKey: ["chats", "listArchived"] });
+			const chats = agentChats();
+			if (selectedChatId() === variables.id) {
+				const currentIndex = chats?.findIndex((c) => c.id === variables.id) ?? -1;
+				if (autoAdvanceTarget() === "next") {
+					const nextChat = chats?.find((c, i) => i > currentIndex && c.id !== variables.id);
+					if (nextChat) {
+						setSelectedChatId(nextChat.id);
+					} else {
+						setSelectedChatId(null);
+					}
+				} else if (autoAdvanceTarget() === "previous") {
+					const isPreviousAvailable = previousChatId() && chats?.some((c) => c.id === previousChatId() && c.id !== variables.id);
+					if (isPreviousAvailable) {
+						setSelectedChatId(previousChatId);
+					} else {
+						setSelectedChatId(null);
+					}
+				} else {
+					setSelectedChatId(null);
+				}
+			}
+			const timeoutId = setTimeout(() => {
+				removeWorkspaceFromStack(variables.id);
+			}, 1e4);
+			setUndoStack((prev) => [...prev, {
+				type: "workspace",
+				chatId: variables.id,
+				timeoutId
+			}]);
+		},
+	}));
 	// Cmd+Z to undo archive (supports multiple undos for workspaces AND sub-chats)
 	createEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if ((e.metaKey || e.ctrlKey) && e.key === "z" && undoStack.length > 0) {
+			if ((e.metaKey || e.ctrlKey) && e.key === "z" && undoStack().length > 0) {
 				e.preventDefault();
 				// Get the most recent item
-				const lastItem = undoStack[undoStack.length - 1];
+				const lastItem = undoStack()[undoStack().length - 1];
 				if (!lastItem) return;
 				// Clear timeout and remove from stack
 				clearTimeout(lastItem.timeoutId);
@@ -1251,76 +1262,82 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
 	// Batch archive mutation
-	const archiveChatsBatchMutation = trpc.chats.archiveBatch.useMutation({ onSuccess: (_, variables) => {
-		// Hide tooltip if visible (element may be removed from DOM before mouseLeave fires)
-		if (agentTooltipTimerRef.current) {
-			clearTimeout(agentTooltipTimerRef.current);
-			agentTooltipTimerRef.current = null;
-		}
-		if (agentTooltipRef.current) {
-			agentTooltipRef.current.style.display = "none";
-		}
-		utils.chats.list.invalidate();
-		utils.chats.listArchived.invalidate();
-		// Add each chat to unified undo stack for Cmd+Z
-		const newItems: UndoItem[] = variables.chatIds.map((chatId) => {
-			const timeoutId = setTimeout(() => {
-				removeWorkspaceFromStack(chatId);
-			}, 1e4);
-			return {
-				type: "workspace" as const,
-				chatId,
-				timeoutId
-			};
-		});
-		setUndoStack((prev) => [...prev, ...newItems]);
-	} });
+	const archiveChatsBatchMutation = useMutation(() => ({
+		mutationFn: (args: { chatIds: string[] }) => desktopRpc.chats.archiveBatch.mutate(args),
+		onSuccess: (_data: unknown, variables: { chatIds: string[] }) => {
+			const timer = agentTooltipTimerRef();
+			if (timer) {
+				clearTimeout(timer);
+				setAgentTooltipTimerRef(null);
+			}
+			const tooltip = agentTooltipRef();
+			if (tooltip) {
+				tooltip.style.display = "none";
+			}
+			void queryClient.invalidateQueries({ queryKey: ["chats", "list"] });
+			void queryClient.invalidateQueries({ queryKey: ["chats", "listArchived"] });
+			const newItems: UndoItem[] = variables.chatIds.map((chatId) => {
+				const timeoutId = setTimeout(() => {
+					removeWorkspaceFromStack(chatId);
+				}, 1e4);
+				return {
+					type: "workspace" as const,
+					chatId,
+					timeoutId
+				};
+			});
+			setUndoStack((prev) => [...prev, ...newItems]);
+		},
+	}));
 	// Reset selected chat when project changes (but not on initial load)
 	const [prevProjectIdRef, setPrevProjectIdRef] = createSignal<string | null | undefined>(undefined);
 	createEffect(() => {
 		// Skip on initial mount (prevProjectIdRef is undefined)
-		if (prevProjectIdRef.current === undefined) {
-			prevProjectIdRef.current = selectedProject?.id ?? null;
+		const prevId = prevProjectIdRef();
+		if (prevId === undefined) {
+			setPrevProjectIdRef(selectedProject()?.id ?? null);
 			return;
 		}
 		// Only reset if project actually changed from a real value (not from null/initial load)
-		if (prevProjectIdRef.current !== null && prevProjectIdRef.current !== selectedProject?.id && selectedChatId) {
+		if (prevId !== null && prevId !== selectedProject()?.id && selectedChatId()) {
 			setSelectedChatId(null);
 		}
-		prevProjectIdRef.current = selectedProject?.id ?? null;
+		setPrevProjectIdRef(selectedProject()?.id ?? null);
 	});
 	// Load pinned IDs from localStorage when project changes
 	createEffect(() => {
-		if (!selectedProject?.id) {
-			setPinnedChatIds(new Set());
+		if (!selectedProject()?.id) {
+			setPinnedChatIds(new Set<string>());
 			return;
 		}
 		try {
-			const stored = localStorage.getItem(`agent-pinned-chats-${selectedProject.id}`);
-			setPinnedChatIds(stored ? new Set(JSON.parse(stored)) : new Set());
+			const stored = localStorage.getItem(`agent-pinned-chats-${selectedProject()!.id}`);
+			setPinnedChatIds(stored ? new Set<string>(JSON.parse(stored)) : new Set<string>());
 		} catch {
-			setPinnedChatIds(new Set());
+			setPinnedChatIds(new Set<string>());
 		}
 	});
 	// Save pinned IDs to localStorage when they change
 	const [prevPinnedRef, setPrevPinnedRef] = createSignal<Set<string>>(new Set());
 	createEffect(() => {
-		if (!selectedProject?.id) return;
+		if (!selectedProject()?.id) return;
 		// Only save if pinnedChatIds actually changed (avoid saving on load)
-		if (pinnedChatIds !== prevPinnedRef.current && pinnedChatIds.size > 0 || prevPinnedRef.current.size > 0) {
-			localStorage.setItem(`agent-pinned-chats-${selectedProject.id}`, JSON.stringify([...pinnedChatIds]));
+		const prev = prevPinnedRef();
+		if ((pinnedChatIds() !== prev && pinnedChatIds().size > 0) || prev.size > 0) {
+			localStorage.setItem(`agent-pinned-chats-${selectedProject()!.id}`, JSON.stringify([...pinnedChatIds()]));
 		}
-		prevPinnedRef.current = pinnedChatIds;
+		setPrevPinnedRef(pinnedChatIds());
 	});
 	// Rename mutation
-	const renameChatMutation = trpc.chats.rename.useMutation({
+	const renameChatMutation = useMutation(() => ({
+		mutationFn: (args: { id: string; name: string }) => desktopRpc.chats.rename.mutate(args),
 		onSuccess: () => {
-			utils.chats.list.invalidate();
+			void queryClient.invalidateQueries({ queryKey: ["chats", "list"] });
 		},
 		onError: () => {
 			toast.error("Failed to rename agent");
-		}
-	});
+		},
+	}));
 	const handleTogglePin = (chatId: string) => {
 		setPinnedChatIds((prev) => {
 			const next = new Set(prev);
@@ -1337,18 +1354,15 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 		name: string | null;
 		isRemote?: boolean;
 	}) => {
-		setRenamingChat(chat as {
-			id: string;
-			name: string;
-			isRemote?: boolean;
-		});
+		setRenamingChat(chat);
 		setRenameDialogOpen(true);
 	};
 	const handleRenameSave = async (newName: string) => {
-		if (!renamingChat) return;
-		const chatId = renamingChat.id;
-		const oldName = renamingChat.name;
-		const isRemote = renamingChat.isRemote;
+		const chat = renamingChat();
+		if (!chat) return;
+		const chatId = chat.id;
+		const oldName = chat.name;
+		const isRemote = chat.isRemote;
 		setRenameLoading(true);
 		try {
 			if (isRemote) {
@@ -1359,9 +1373,9 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 				});
 			} else {
 				// Local chat rename - optimistically update the query cache
-				utils.chats.list.setData({}, (old) => {
-					if (!old) return old;
-					return old.map((c) => c.id === chatId ? {
+				queryClient.setQueryData(["chats", "list"], (old: unknown) => {
+					if (!old || !Array.isArray(old)) return old;
+					return old.map((c: { id: string; name: string | null }) => c.id === chatId ? {
 						...c,
 						name: newName
 					} : c);
@@ -1373,9 +1387,9 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 					});
 				} catch {
 					// Rollback on error
-					utils.chats.list.setData({}, (old) => {
-						if (!old) return old;
-						return old.map((c) => c.id === chatId ? {
+					queryClient.setQueryData(["chats", "list"], (old: unknown) => {
+						if (!old || !Array.isArray(old)) return old;
+						return old.map((c: { id: string; name: string | null }) => c.id === chatId ? {
 							...c,
 							name: oldName
 						} : c);
@@ -1394,19 +1408,19 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	};
 	// Check if all selected chats are pinned
 	const areAllSelectedPinned = createMemo(() => {
-		if (selectedChatIds.size === 0) return false;
-		return Array.from(selectedChatIds).every((id) => pinnedChatIds.has(id));
+		if (selectedChatIds().size === 0) return false;
+		return Array.from(selectedChatIds()).every((id) => pinnedChatIds().has(id));
 	});
 	// Check if all selected chats are unpinned
 	const areAllSelectedUnpinned = createMemo(() => {
-		if (selectedChatIds.size === 0) return false;
-		return Array.from(selectedChatIds).every((id) => !pinnedChatIds.has(id));
+		if (selectedChatIds().size === 0) return false;
+		return Array.from(selectedChatIds()).every((id) => !pinnedChatIds().has(id));
 	});
 	// Show pin option only if all selected have same pin state
-	const canShowPinOption = areAllSelectedPinned || areAllSelectedUnpinned;
+	const canShowPinOption = () => areAllSelectedPinned() || areAllSelectedUnpinned();
 	// Handle bulk pin of selected chats
 	const handleBulkPin = () => {
-		const chatIdsToPin = Array.from(selectedChatIds);
+		const chatIdsToPin = Array.from(selectedChatIds());
 		if (chatIdsToPin.length > 0) {
 			setPinnedChatIds((prev) => {
 				const next = new Set(prev);
@@ -1418,7 +1432,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	};
 	// Handle bulk unpin of selected chats
 	const handleBulkUnpin = () => {
-		const chatIdsToUnpin = Array.from(selectedChatIds);
+		const chatIdsToUnpin = Array.from(selectedChatIds());
 		if (chatIdsToUnpin.length > 0) {
 			setPinnedChatIds((prev) => {
 				const next = new Set(prev);
@@ -1431,30 +1445,34 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	// Get clerk username
 	const clerkUsername = clerkUser?.username;
 	// Filter and separate pinned/unpinned agents
-	const { pinnedAgents, unpinnedAgents, filteredChats } = createMemo(() => {
-		if (!agentChats) return {
-			pinnedAgents: [],
-			unpinnedAgents: [],
-			filteredChats: []
+	const agentFilters = createMemo(() => {
+		const chats = agentChats();
+		if (!chats) return {
+			pinnedAgents: [] as typeof chats,
+			unpinnedAgents: [] as typeof chats,
+			filteredChats: [] as typeof chats
 		};
-		const filtered = searchQuery.trim() ? agentChats.filter((chat) => (chat.name ?? "").toLowerCase().includes(searchQuery.toLowerCase())) : agentChats;
-		const pinned = filtered.filter((chat) => pinnedChatIds.has(chat.id));
-		const unpinned = filtered.filter((chat) => !pinnedChatIds.has(chat.id));
+		const filtered = searchQuery().trim() ? chats.filter((chat) => (chat.name ?? "").toLowerCase().includes(searchQuery().toLowerCase())) : chats;
+		const pinned = filtered.filter((chat) => pinnedChatIds().has(chat.id));
+		const unpinned = filtered.filter((chat) => !pinnedChatIds().has(chat.id));
 		return {
 			pinnedAgents: pinned,
 			unpinnedAgents: unpinned,
 			filteredChats: [...pinned, ...unpinned]
 		};
 	});
+	const pinnedAgents = () => agentFilters().pinnedAgents;
+	const unpinnedAgents = () => agentFilters().unpinnedAgents;
+	const filteredChats = () => agentFilters().filteredChats;
 	// Handle bulk archive of selected chats
 	const handleBulkArchive = () => {
-		const chatIdsToArchive = Array.from(selectedChatIds);
+		const chatIdsToArchive = Array.from(selectedChatIds());
 		if (chatIdsToArchive.length === 0) return;
 		// Separate remote and local chats
 		const remoteIds: string[] = [];
 		const localIds: string[] = [];
 		for (const chatId of chatIdsToArchive) {
-			const chat = agentChats?.find((c) => c.id === chatId);
+			const chat = agentChats()?.find((c) => c.id === chatId);
 			if (chat?.isRemote) {
 				// Extract original ID from prefixed remote ID
 				remoteIds.push(chatId.replace(/^remote_/, ""));
@@ -1463,14 +1481,14 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			}
 		}
 		// If active chat is being archived, navigate to previous or new workspace
-		const isArchivingActiveChat = selectedChatId && chatIdsToArchive.includes(selectedChatId);
+		const isArchivingActiveChat = selectedChatId() && chatIdsToArchive.includes(selectedChatId()!);
 		const onSuccessCallback = () => {
 			if (isArchivingActiveChat) {
 				// Check if previous chat is available (exists and not being archived)
-				const remainingChats = filteredChats.filter((c) => !chatIdsToArchive.includes(c.id));
-				const isPreviousAvailable = previousChatId && remainingChats.some((c) => c.id === previousChatId);
+				const remainingChats = filteredChats().filter((c) => !chatIdsToArchive.includes(c.id));
+				const isPreviousAvailable = previousChatId() && remainingChats.some((c) => c.id === previousChatId());
 				if (isPreviousAvailable) {
-					setSelectedChatId(previousChatId);
+					setSelectedChatId(previousChatId()!);
 				} else {
 					setSelectedChatId(null);
 				}
@@ -1509,9 +1527,9 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 		}
 	};
 	const handleArchiveAllBelow = (chatId: string) => {
-		const currentIndex = filteredChats.findIndex((c) => c.id === chatId);
-		if (currentIndex === -1 || currentIndex === filteredChats.length - 1) return;
-		const chatsBelow = filteredChats.slice(currentIndex + 1);
+		const currentIndex = filteredChats().findIndex((c) => c.id === chatId);
+		if (currentIndex === -1 || currentIndex === filteredChats().length - 1) return;
+		const chatsBelow = filteredChats().slice(currentIndex + 1);
 		// Separate remote and local chats
 		const remoteIds: string[] = [];
 		const localIds: string[] = [];
@@ -1543,7 +1561,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 		}
 	};
 	const handleArchiveOthers = (chatId: string) => {
-		const otherChats = filteredChats.filter((c) => c.id !== chatId);
+		const otherChats = filteredChats().filter((c) => c.id !== chatId);
 		// Separate remote and local chats
 		const remoteIds: string[] = [];
 		const localIds: string[] = [];
@@ -1578,7 +1596,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	const handleDeleteDraft = (draftId: string) => {
 		deleteNewChatDraft(draftId);
 		// If the deleted draft was selected, clear selection
-		if (selectedDraftId === draftId) {
+		if (selectedDraftId() === draftId) {
 			setSelectedDraftId(null);
 		}
 	};
@@ -1598,8 +1616,8 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	});
 	// Scroll focused item into view
 	createEffect(() => {
-		if (focusedChatIndex >= 0 && filteredChats.length > 0) {
-			const focusedElement = scrollContainerRef.current?.querySelector(`[data-chat-index="${focusedChatIndex}"]`) as HTMLElement;
+		if (focusedChatIndex() >= 0 && filteredChats().length > 0) {
+			const focusedElement = scrollContainerRef()?.querySelector(`[data-chat-index="${focusedChatIndex()}"]`) as HTMLElement;
 			if (focusedElement) {
 				focusedElement.scrollIntoView({
 					block: "nearest",
@@ -1609,7 +1627,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 		}
 	});
 	// Derive which chats have loading sub-chats
-	const loadingChatIds = createMemo(() => new Set([...loadingSubChats.values()]));
+	const loadingChatIds = createMemo(() => new Set([...loadingSubChats().values()]));
 	// Convert file stats to a Map for easy lookup (only for local chats)
 	// Remote chat stats are provided directly via chat.remoteStats
 	const workspaceFileStats = createMemo(() => {
@@ -1619,8 +1637,9 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			deletions: number;
 		}>();
 		// For local mode, use stats from DB query
-		if (fileStatsData) {
-			for (const stat of fileStatsData) {
+		const fileStats = fileStatsData();
+		if (fileStats) {
+			for (const stat of fileStats) {
 				statsMap.set(stat.chatId, {
 					fileCount: stat.fileCount,
 					additions: stat.additions,
@@ -1633,8 +1652,9 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	// Aggregate pending plan approvals by workspace (chatId) from DB
 	const workspacePendingPlans = createMemo(() => {
 		const chatIdsWithPendingPlans = new Set<string>();
-		if (pendingPlanApprovalsData) {
-			for (const { chatId } of pendingPlanApprovalsData) {
+		const pendingPlan = pendingPlanApprovalsData();
+		if (pendingPlan) {
+			for (const { chatId } of pendingPlan) {
 				chatIdsWithPendingPlans.add(chatId);
 			}
 		}
@@ -1643,7 +1663,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	// Get workspace IDs that have pending user questions
 	const workspacePendingQuestions = createMemo(() => {
 		const chatIds = new Set<string>();
-		for (const question of pendingQuestions.values()) {
+		for (const question of pendingQuestions().values()) {
 			chatIds.add(question.parentChatId);
 		}
 		return chatIds;
@@ -1662,19 +1682,19 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 		// Shift+click for range selection (works in both normal and multi-select mode)
 		if (e?.shiftKey) {
 			e.preventDefault();
-			const clickedIndex = globalIndex ?? filteredChats.findIndex((c) => c.id === chatId);
+			const clickedIndex = globalIndex ?? filteredChats().findIndex((c) => c.id === chatId);
 			if (clickedIndex === -1) return;
 			// Find the anchor: use active chat or last selected item
 			let anchorIndex = -1;
 			// First try: use currently active/selected chat as anchor
-			if (selectedChatId) {
-				anchorIndex = filteredChats.findIndex((c) => c.id === selectedChatId);
+			if (selectedChatId()) {
+				anchorIndex = filteredChats().findIndex((c) => c.id === selectedChatId());
 			}
 			// If no active chat, try to use the last item in selection
-			if (anchorIndex === -1 && selectedChatIds.size > 0) {
+			if (anchorIndex === -1 && selectedChatIds().size > 0) {
 				// Find the first selected item in the list as anchor
-				for (let i = 0; i < filteredChats.length; i++) {
-					if (selectedChatIds.has(filteredChats[i]!.id)) {
+				for (let i = 0; i < filteredChats().length; i++) {
+					if (selectedChatIds().has(filteredChats()[i]!.id)) {
 						anchorIndex = i;
 						break;
 					}
@@ -1682,7 +1702,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			}
 			// If still no anchor, just select the clicked item
 			if (anchorIndex === -1) {
-				if (!selectedChatIds.has(chatId)) {
+				if (!selectedChatIds().has(chatId)) {
 					toggleChatSelection(chatId);
 				}
 				return;
@@ -1691,14 +1711,14 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			const startIndex = Math.min(anchorIndex, clickedIndex);
 			const endIndex = Math.max(anchorIndex, clickedIndex);
 			// Build new selection set with the range
-			const newSelection = new Set(selectedChatIds);
+			const newSelection = new Set(selectedChatIds());
 			for (let i = startIndex; i <= endIndex; i++) {
-				const chat = filteredChats[i];
+				const chat = filteredChats()[i];
 				if (chat) {
 					newSelection.add(chat.id);
 				}
 			}
-			setSelectedChatIds(newSelection);
+			setSelectedChatIds(new ReactiveSet(newSelection));
 			return;
 		}
 		// In multi-select mode, clicking on the item still navigates to the chat
@@ -1740,7 +1760,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	// Checks for active terminal processes and worktree, shows confirmation dialog if needed
 	const handleArchiveSingle = async (chatId: string) => {
 		// Check if this specific chat is remote
-		const chat = agentChats?.find((c) => c.id === chatId);
+		const chat = agentChats()?.find((c) => c.id === chatId);
 		const chatIsRemote = chat?.isRemote ?? false;
 		// For remote chats, archive directly (no local processes/worktree to check)
 		if (chatIsRemote) {
@@ -1749,14 +1769,15 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			archiveRemoteChatMutation.mutate(originalId, {
 				onSuccess: () => {
 					// Handle navigation after archive (same logic as local)
-					if (selectedChatId === chatId) {
-						const currentIndex = agentChats?.findIndex((c) => c.id === chatId) ?? -1;
-						if (autoAdvanceTarget === "next") {
-							const nextChat = agentChats?.find((c, i) => i > currentIndex && c.id !== chatId);
+					const chats = agentChats();
+					if (selectedChatId() === chatId) {
+						const currentIndex = chats?.findIndex((c) => c.id === chatId) ?? -1;
+						if (autoAdvanceTarget() === "next") {
+							const nextChat = chats?.find((c, i) => i > currentIndex && c.id !== chatId);
 							setSelectedChatId(nextChat?.id ?? null);
-						} else if (autoAdvanceTarget === "previous") {
-							const isPreviousAvailable = previousChatId && agentChats?.some((c) => c.id === previousChatId && c.id !== chatId);
-							setSelectedChatId(isPreviousAvailable ? previousChatId : null);
+						} else if (autoAdvanceTarget() === "previous") {
+							const isPreviousAvailable = previousChatId() && chats?.some((c) => c.id === previousChatId() && c.id !== chatId);
+							setSelectedChatId(isPreviousAvailable ? previousChatId()! : null);
 						} else {
 							setSelectedChatId(null);
 						}
@@ -1779,8 +1800,11 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			});
 			return;
 		}
-		// Fetch both session count and worktree status in parallel
-		const [sessionCount, worktreeStatus] = await Promise.all([utils.terminal.getActiveSessionCount.fetch({ workspaceId: chatId }), utils.chats.getWorktreeStatus.fetch({ chatId })]);
+		// Fetch worktree status; Electrobun RPC does not expose terminal.getActiveSessionCount yet.
+		const [sessionCount, worktreeStatus] = await Promise.all([
+			Promise.resolve(0),
+			desktopRpc.chats.getWorktreeStatus({ chatId }),
+		]);
 		const needsConfirmation = sessionCount > 0 || worktreeStatus.hasWorktree;
 		if (needsConfirmation) {
 			// Show confirmation dialog
@@ -1795,11 +1819,11 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 		}
 	};
 	// Confirm archive after user accepts dialog (optimistic - closes immediately)
-	const handleConfirmArchive = (deleteWorktree: boolean) => {
-		if (archivingChatId) {
+	const handleConfirmArchive = (_deleteWorktree: boolean) => {
+		const chatId = archivingChatId();
+		if (chatId) {
 			archiveChatMutation.mutate({
-				id: archivingChatId,
-				deleteWorktree
+				id: chatId
 			});
 			setArchivingChatId(null);
 		}
@@ -1813,7 +1837,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	const handleOpenLocally = (chatId: string) => {
 		const remoteChat = remoteChats?.find((c) => c.id === chatId);
 		if (!remoteChat) return;
-		const matchingProjects = getMatchingProjects(projects ?? [], remoteChat);
+		const matchingProjects = getMatchingProjects((projects() ?? []) as Parameters<typeof getMatchingProjects>[0], remoteChat);
 		if (matchingProjects.length === 1) {
 			// Auto-import: single match found
 			autoImport(remoteChat, matchingProjects[0]!);
@@ -1830,13 +1854,14 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	};
 	// Get the remote chat for import dialog
 	const importingRemoteChat = createMemo(() => {
-		if (!importingChatId || !remoteChats) return null;
-		return remoteChats.find((chat) => chat.id === importingChatId) ?? null;
+		if (!importingChatId() || !remoteChats) return null;
+		return remoteChats.find((chat) => chat.id === importingChatId()) ?? null;
 	});
 	// Get matching projects for import dialog (only computed when dialog is open)
 	const importMatchingProjects = createMemo(() => {
-		if (!importingRemoteChat) return [];
-		return getMatchingProjects(projects ?? [], importingRemoteChat);
+		const chat = importingRemoteChat();
+		if (!chat) return [];
+		return getMatchingProjects((projects() ?? []) as Parameters<typeof getMatchingProjects>[0], chat);
 	});
 	// Copy branch name to clipboard
 	const handleCopyBranch = (branch: string) => {
@@ -1846,60 +1871,67 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	// Ref callback for name elements
 	const nameRefCallback = (chatId: string, el: HTMLSpanElement | null) => {
 		if (el) {
-			nameRefs.current.set(chatId, el);
+			setNameRefs((prev) => {
+				const next = new Map(prev);
+				next.set(chatId, el);
+				return next;
+			});
 		}
 	};
 	// Handle agent card hover for truncated name tooltip (1s delay)
 	// Uses DOM manipulation instead of state to avoid re-renders
 	const handleAgentMouseEnter = (chatId: string, name: string | null, cardElement: HTMLElement, globalIndex: number) => {
 		// Update hovered index ref
-		hoveredChatIndexRef.current = globalIndex;
+		setHoveredChatIndexRef(globalIndex);
 		// Prefetch chat data on hover (for remote chats, for instant load on click)
-		const chat = agentChats?.find((c) => c.id === chatId);
+		const chat = agentChats()?.find((c) => c.id === chatId);
 		if (chat?.isRemote) {
 			const originalId = chatId.replace(/^remote_/, "");
 			prefetchRemoteChat(originalId);
 		}
 		// Clear any existing timer
-		if (agentTooltipTimerRef.current) {
-			clearTimeout(agentTooltipTimerRef.current);
+		const existingTimer = agentTooltipTimerRef();
+		if (existingTimer) {
+			clearTimeout(existingTimer);
 		}
-		const nameEl = nameRefs.current.get(chatId);
+		const nameEl = nameRefs().get(chatId);
 		if (!nameEl) return;
 		// Check if name is truncated
 		const isTruncated = nameEl.scrollWidth > nameEl.clientWidth;
 		if (!isTruncated) return;
 		// Show tooltip after 1 second delay via DOM manipulation (no state update)
-		agentTooltipTimerRef.current = setTimeout(() => {
-			const tooltip = agentTooltipRef.current;
+		setAgentTooltipTimerRef(setTimeout(() => {
+			const tooltip = agentTooltipRef();
 			if (!tooltip) return;
 			const rect = cardElement.getBoundingClientRect();
 			tooltip.style.display = "block";
 			tooltip.style.top = `${rect.top + rect.height / 2}px`;
 			tooltip.style.left = `${rect.right + 8}px`;
 			tooltip.textContent = name || "";
-		}, 1e3);
+		}, 1e3));
 	};
 	const handleAgentMouseLeave = () => {
 		// Reset hovered index
-		hoveredChatIndexRef.current = -1;
+		setHoveredChatIndexRef(-1);
 		// Clear timer if hovering ends before delay
-		if (agentTooltipTimerRef.current) {
-			clearTimeout(agentTooltipTimerRef.current);
-			agentTooltipTimerRef.current = null;
+		const timer = agentTooltipTimerRef();
+		if (timer) {
+			clearTimeout(timer);
+			setAgentTooltipTimerRef(null);
 		}
 		// Hide tooltip via DOM manipulation (no state update)
-		const tooltip = agentTooltipRef.current;
+		const tooltip = agentTooltipRef();
 		if (tooltip) {
 			tooltip.style.display = "none";
 		}
 	};
 	// Update sidebar hover UI via DOM manipulation (no state update to avoid re-renders)
 	const updateSidebarHoverUI = (hovered: boolean) => {
-		isSidebarHoveredRef.current = hovered;
+		setIsSidebarHoveredRef(hovered);
 		// Update close button opacity
-		if (closeButtonRef.current) {
-			closeButtonRef.current.style.opacity = hovered ? "1" : "0";
+		const closeBtn = closeButtonRef();
+		if (closeBtn) {
+			closeBtn.style.opacity = hovered ? "1" : "0";
 		}
 		// Update native traffic light visibility
 		if (typeof window !== "undefined" && window.desktopApi?.setTrafficLightVisibility) {
@@ -1922,16 +1954,18 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	};
 	// Check if scroll is needed and show/hide gradients via DOM manipulation
 	createEffect(() => {
-		const container = scrollContainerRef.current;
+		const container = scrollContainerRef();
 		if (!container) return;
 		const checkScroll = () => {
 			const needsScroll = container.scrollHeight > container.clientHeight;
+			const bottom = bottomGradientRef();
+			const top = topGradientRef();
 			if (needsScroll) {
-				if (bottomGradientRef.current) bottomGradientRef.current.style.opacity = "1";
-				if (topGradientRef.current) topGradientRef.current.style.opacity = "0";
+				if (bottom) bottom.style.opacity = "1";
+				if (top) top.style.opacity = "0";
 			} else {
-				if (bottomGradientRef.current) bottomGradientRef.current.style.opacity = "0";
-				if (topGradientRef.current) topGradientRef.current.style.opacity = "0";
+				if (bottom) bottom.style.opacity = "0";
+				if (top) top.style.opacity = "0";
 			}
 		};
 		checkScroll();
@@ -1948,8 +1982,8 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 				e.preventDefault();
 				e.stopPropagation();
 				// Focus search input
-				searchInputRef.current?.focus();
-				searchInputRef.current?.select();
+				searchInputRef()?.focus();
+				searchInputRef()?.select();
 			}
 		};
 		window.addEventListener("keydown", handleSearchHotkey, true);
@@ -1960,11 +1994,14 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	// Multi-select hotkeys
 	// X to toggle selection of hovered or focused chat
 	useHotkeys("x", () => {
-		if (!filteredChats || filteredChats.length === 0) return;
+		const chats = filteredChats();
+		if (!chats || chats.length === 0) return;
 		// Prefer hovered, then focused - do NOT fallback to 0 (would conflict with sub-chat sidebar)
-		const targetIndex = hoveredChatIndexRef.current >= 0 ? hoveredChatIndexRef.current : focusedChatIndex >= 0 ? focusedChatIndex : -1;
-		if (targetIndex >= 0 && targetIndex < filteredChats.length) {
-			const chatId = filteredChats[targetIndex]!.id;
+		const hovered = hoveredChatIndexRef();
+		const focused = focusedChatIndex();
+		const targetIndex = hovered >= 0 ? hovered : focused >= 0 ? focused : -1;
+		if (targetIndex >= 0 && targetIndex < chats.length) {
+			const chatId = chats[targetIndex]!.id;
 			// Toggle selection (both select and deselect)
 			toggleChatSelection(chatId);
 		}
@@ -1975,9 +2012,10 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	]);
 	// Cmd+A / Ctrl+A to select all chats (only when at least one is already selected)
 	useHotkeys("mod+a", (e) => {
-		if (isMultiSelectMode && filteredChats && filteredChats.length > 0) {
+		const chats = filteredChats();
+		if (isMultiSelectMode() && chats && chats.length > 0) {
 			e.preventDefault();
-			selectAllChats(filteredChats.map((c) => c.id));
+			selectAllChats(chats.map((c) => c.id));
 		}
 	}, [
 		filteredChats,
@@ -1986,7 +2024,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 	]);
 	// Escape to clear selection
 	useHotkeys("escape", () => {
-		if (isMultiSelectMode) {
+		if (isMultiSelectMode()) {
 			clearChatSelection();
 			setFocusedChatIndex(-1);
 		}
@@ -2002,7 +2040,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 			if (isDesktopShortcut || isWebShortcut) {
 				e.preventDefault();
 				// If multi-select mode, bulk archive selected chats
-				if (isMultiSelectMode && selectedChatIds.size > 0) {
+				if (isMultiSelectMode() && selectedChatIds().size > 0) {
 					const isPending = archiveRemoteChatsBatchMutation.isPending || archiveChatsBatchMutation.isPending;
 					if (!isPending) {
 						handleBulkArchive();
@@ -2011,8 +2049,9 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 				}
 				// Otherwise archive current chat (with confirmation if has active processes)
 				const isPending = archiveRemoteChatMutation.isPending || archiveChatMutation.isPending;
-				if (selectedChatId && !isPending) {
-					handleArchiveSingle(selectedChatId);
+				const currentChatId = selectedChatId();
+				if (currentChatId && !isPending) {
+					handleArchiveSingle(currentChatId);
 				}
 			}
 		};
@@ -2024,75 +2063,80 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 		clearChatSelection();
 	});
 	// Handle scroll for gradients - use DOM manipulation to avoid re-renders
-	const handleAgentsScroll = ((e: UIEvent<HTMLDivElement>) => {
+	const handleAgentsScroll = (e: Event & { currentTarget: HTMLDivElement }) => {
 		const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
 		const needsScroll = scrollHeight > clientHeight;
 		if (!needsScroll) {
-			if (topGradientRef.current) topGradientRef.current.style.opacity = "0";
-			if (bottomGradientRef.current) bottomGradientRef.current.style.opacity = "0";
+			const top = topGradientRef();
+			const bottom = bottomGradientRef();
+			if (top) top.style.opacity = "0";
+			if (bottom) bottom.style.opacity = "0";
 			return;
 		}
 		const isAtBottom = scrollTop + clientHeight >= scrollHeight - 5;
 		const isAtTop = scrollTop <= 5;
 		// Update gradient visibility via DOM (no setState = no re-render)
-		if (topGradientRef.current) {
-			topGradientRef.current.style.opacity = isAtTop ? "0" : "1";
+		const top = topGradientRef();
+		const bottom = bottomGradientRef();
+		if (top) {
+			top.style.opacity = isAtTop ? "0" : "1";
 		}
-		if (bottomGradientRef.current) {
-			bottomGradientRef.current.style.opacity = isAtBottom ? "0" : "1";
+		if (bottom) {
+			bottom.style.opacity = isAtBottom ? "0" : "1";
 		}
-	}, []);
+	};
 	// Mobile fullscreen mode - render without ResizableSidebar wrapper
 	const sidebarContent = <div class={cn("group/sidebar flex flex-col gap-0 overflow-hidden select-none", isMobileFullscreen ? "h-full w-full bg-background" : "h-full bg-tl-background")} onMouseEnter={handleSidebarMouseEnter} onMouseLeave={handleSidebarMouseLeave} data-mobile-fullscreen={isMobileFullscreen || undefined} data-sidebar-content>
       {	/* Header area - isolated component to prevent re-renders when dropdown opens */}
-      <SidebarHeader isDesktop={isDesktop} isFullscreen={isFullscreen} isMobileFullscreen={isMobileFullscreen} userId={userId} desktopUser={desktopUser} onSignOut={onSignOut} onToggleSidebar={onToggleSidebar} setSettingsDialogOpen={setSettingsDialogOpen} setSettingsActiveTab={setSettingsActiveTab} setShowAuthDialog={setShowAuthDialog} handleSidebarMouseEnter={handleSidebarMouseEnter} handleSidebarMouseLeave={handleSidebarMouseLeave} closeButtonRef={closeButtonRef} />
+      <SidebarHeader isDesktop={isDesktop()} isFullscreen={isFullscreen()} isMobileFullscreen={isMobileFullscreen} userId={userId} desktopUser={desktopUser} onSignOut={onSignOut} onToggleSidebar={onToggleSidebar ? () => onToggleSidebar() : undefined} setSettingsDialogOpen={setSettingsDialogOpen} setSettingsActiveTab={setSettingsActiveTab} setShowAuthDialog={setShowAuthDialog} handleSidebarMouseEnter={handleSidebarMouseEnter} handleSidebarMouseLeave={handleSidebarMouseLeave} closeButtonRef={setCloseButtonRef} />
 
       { /* Search and New Workspace */}
       <div class="px-2 pb-3 flex-shrink-0">
         <div class="space-y-2">
           { /* Search Input */}
           <div class="relative">
-            <Input ref={searchInputRef} placeholder="Search workspaces..." value={searchQuery} onInput={(e) => setSearchQuery(e.currentTarget.value)} onKeyDown={(e) => {
- if (e.key === "Escape") {
-			e.preventDefault();
-			searchInputRef.current?.blur();
-			setFocusedChatIndex(-1);
-			return;
-		}
-		if (e.key === "ArrowDown") {
-			e.preventDefault();
-			setFocusedChatIndex((prev) => {
-				// If no focus yet, start from first item
-				if (prev === -1) return 0;
-				// Otherwise move down
-				return prev < filteredChats.length - 1 ? prev + 1 : prev;
-			});
-			return;
-		}
-		if (e.key === "ArrowUp") {
-			e.preventDefault();
-			setFocusedChatIndex((prev) => {
-				// If no focus yet, start from last item
-				if (prev === -1) return filteredChats.length - 1;
-				// Otherwise move up
-				return prev > 0 ? prev - 1 : prev;
-			});
-			return;
-		}
-		if (e.key === "Enter") {
-			e.preventDefault();
-			// Only open if something is focused (not -1)
-			if (focusedChatIndex >= 0) {
-				const focusedChat = filteredChats[focusedChatIndex];
-				if (focusedChat) {
-					handleChatClick(focusedChat.id);
-					searchInputRef.current?.blur();
-					setFocusedChatIndex(-1);
-				}
-			}
-			return;
-		}
-	}} class={cn("w-full rounded-lg text-sm bg-muted border border-input placeholder:text-muted-foreground/40", isMobileFullscreen ? "h-10" : "h-7")} />
+            <Input ref={setSearchInputRef} placeholder="Search workspaces..." value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} onKeyDown={(e) => {
+          if (e.key === "Escape") {
+          e.preventDefault();
+          searchInputRef()?.blur();
+          setFocusedChatIndex(-1);
+          return;
+          }
+          if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setFocusedChatIndex((prev) => {
+          // If no focus yet, start from first item
+          if (prev === -1) return 0;
+          // Otherwise move down
+          return prev < filteredChats().length - 1 ? prev + 1 : prev;
+          });
+          return;
+          }
+          if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setFocusedChatIndex((prev) => {
+          // If no focus yet, start from last item
+          if (prev === -1) return filteredChats().length - 1;
+          // Otherwise move up
+          return prev > 0 ? prev - 1 : prev;
+          });
+          return;
+          }
+          if (e.key === "Enter") {
+          e.preventDefault();
+          // Only open if something is focused (not -1)
+          const currentFocusedIndex = focusedChatIndex();
+          if (currentFocusedIndex >= 0) {
+          const focusedChat = filteredChats()[currentFocusedIndex];
+          if (focusedChat) {
+          handleChatClick(focusedChat.id);
+          searchInputRef()?.blur();
+          setFocusedChatIndex(-1);
+          }
+          }
+          return;
+          }
+          }} class={cn("w-full rounded-lg text-sm bg-muted border border-input placeholder:text-muted-foreground/40", isMobileFullscreen ? "h-10" : "h-7")} />
           </div>
           {	/* New Workspace Button */}
           <Tooltip delayDuration={500}>
@@ -2103,7 +2147,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
             </TooltipTrigger>
             <TooltipContent side="right">
               Start a new workspace
-              {newWorkspaceHotkey && <Kbd>{newWorkspaceHotkey}</Kbd>}
+              <Show when={newWorkspaceHotkey}><Kbd>{newWorkspaceHotkey}</Kbd></Show>
             </TooltipContent>
           </Tooltip>
         </div>
@@ -2111,41 +2155,41 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
 
       { /* Scrollable Agents List */}
       <div class="flex-1 min-h-0 relative">
-        <div ref={scrollContainerRef} onScroll={handleAgentsScroll} class={cn("h-full overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent", isMultiSelectMode ? "px-0" : "px-2")}>
+        <div ref={setScrollContainerRef} onScroll={handleAgentsScroll} class={cn("h-full overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent", isMultiSelectMode() ? "px-0" : "px-2")}>
           { /* Drafts Section - always show regardless of chat source mode */}
-          {drafts.length > 0 && !searchQuery && <div class={cn("mb-4", isMultiSelectMode ? "px-0" : "-mx-1")}>
-              <div class={cn("flex items-center h-4 mb-1", isMultiSelectMode ? "pl-3" : "pl-2")}>
+          <Show when={drafts().length > 0 && !searchQuery()}><div class={cn("mb-4", isMultiSelectMode() ? "px-0" : "-mx-1")}>
+              <div class={cn("flex items-center h-4 mb-1", isMultiSelectMode() ? "pl-3" : "pl-2")}>
                 <h3 class="text-xs font-medium text-muted-foreground whitespace-nowrap">
                   Drafts
                 </h3>
               </div>
               <div class="list-none p-0 m-0">
-                {drafts.map((draft) => <DraftItem key={draft.id} draftId={draft.id} draftText={draft.text} draftUpdatedAt={draft.updatedAt} projectGitOwner={draft.project?.gitOwner} projectGitProvider={draft.project?.gitProvider} projectGitRepo={draft.project?.gitRepo} projectName={draft.project?.name} isSelected={selectedDraftId === draft.id && !selectedChatId} isMultiSelectMode={isMultiSelectMode} isMobileFullscreen={isMobileFullscreen} showIcon={showWorkspaceIcon} onSelect={handleDraftSelect} onDelete={handleDeleteDraft} formatTime={formatTime} />)}
+                <For each={drafts()}>{(draft) => <DraftItem draftId={draft.id} draftText={draft.text} draftUpdatedAt={draft.updatedAt} projectGitOwner={draft.project?.gitOwner} projectGitProvider={draft.project?.gitProvider} projectGitRepo={draft.project?.gitRepo} projectName={draft.project?.name} isSelected={selectedDraftId() === draft.id && !selectedChatId()} isMultiSelectMode={isMultiSelectMode()} isMobileFullscreen={isMobileFullscreen} showIcon={showWorkspaceIcon()} onSelect={handleDraftSelect} onDelete={handleDeleteDraft} formatTime={formatTime} />}</For>
               </div>
-            </div>}
+            </div></Show>
 
           { /* Chats Section */}
-          {filteredChats.length > 0 ? <div class={cn("mb-4", isMultiSelectMode ? "px-0" : "-mx-1")}>
+          {filteredChats().length > 0 ? <div class={cn("mb-4", isMultiSelectMode() ? "px-0" : "-mx-1")}>
               { /* Pinned section */}
-              <ChatListSection title="Pinned workspaces" chats={pinnedAgents} selectedChatId={selectedChatId} selectedChatIsRemote={selectedChatIsRemote} focusedChatIndex={focusedChatIndex} loadingChatIds={loadingChatIds} unseenChanges={unseenChanges} workspacePendingPlans={workspacePendingPlans} workspacePendingQuestions={workspacePendingQuestions} isMultiSelectMode={isMultiSelectMode} selectedChatIds={selectedChatIds} isMobileFullscreen={isMobileFullscreen} isDesktop={isDesktop} pinnedChatIds={pinnedChatIds} projectsMap={projectsMap} workspaceFileStats={workspaceFileStats} filteredChats={filteredChats} canShowPinOption={canShowPinOption} areAllSelectedPinned={areAllSelectedPinned} showIcon={showWorkspaceIcon} onChatClick={handleChatClick} onCheckboxClick={handleCheckboxClick} onMouseEnter={handleAgentMouseEnter} onMouseLeave={handleAgentMouseLeave} onArchive={handleArchiveSingle} onTogglePin={handleTogglePin} onRenameClick={handleRenameClick} onCopyBranch={handleCopyBranch} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={handleArchiveOthers} onOpenLocally={handleOpenLocally} onBulkPin={handleBulkPin} onBulkUnpin={handleBulkUnpin} onBulkArchive={handleBulkArchive} archivePending={archiveChatMutation.isPending || archiveRemoteChatMutation.isPending} archiveBatchPending={archiveChatsBatchMutation.isPending || archiveRemoteChatsBatchMutation.isPending} nameRefCallback={nameRefCallback} formatTime={formatTime} justCreatedIds={justCreatedIds} />
+              <ChatListSection title="Pinned workspaces" chats={pinnedAgents()} selectedChatId={selectedChatId()} selectedChatIsRemote={selectedChatIsRemote()} focusedChatIndex={focusedChatIndex()} loadingChatIds={loadingChatIds()} unseenChanges={unseenChanges()} workspacePendingPlans={workspacePendingPlans()} workspacePendingQuestions={workspacePendingQuestions()} isMultiSelectMode={isMultiSelectMode()} selectedChatIds={selectedChatIds()} isMobileFullscreen={isMobileFullscreen} isDesktop={isDesktop()} pinnedChatIds={pinnedChatIds()} projectsMap={projectsMap()} workspaceFileStats={workspaceFileStats()} filteredChats={filteredChats()} canShowPinOption={canShowPinOption()} areAllSelectedPinned={areAllSelectedPinned()} showIcon={showWorkspaceIcon()} onChatClick={handleChatClick} onCheckboxClick={handleCheckboxClick} onMouseEnter={handleAgentMouseEnter} onMouseLeave={handleAgentMouseLeave} onArchive={handleArchiveSingle} onTogglePin={handleTogglePin} onRenameClick={handleRenameClick} onCopyBranch={handleCopyBranch} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={handleArchiveOthers} onOpenLocally={handleOpenLocally} onBulkPin={handleBulkPin} onBulkUnpin={handleBulkUnpin} onBulkArchive={handleBulkArchive} archivePending={archiveChatMutation.isPending || archiveRemoteChatMutation.isPending} archiveBatchPending={archiveChatsBatchMutation.isPending || archiveRemoteChatsBatchMutation.isPending} nameRefCallback={nameRefCallback} formatTime={formatTime} justCreatedIds={justCreatedIds()} />
 
               { /* Unpinned section */}
-              <ChatListSection title={pinnedAgents.length > 0 ? "Recent workspaces" : "Workspaces"} chats={unpinnedAgents} selectedChatId={selectedChatId} selectedChatIsRemote={selectedChatIsRemote} focusedChatIndex={focusedChatIndex} loadingChatIds={loadingChatIds} unseenChanges={unseenChanges} workspacePendingPlans={workspacePendingPlans} workspacePendingQuestions={workspacePendingQuestions} isMultiSelectMode={isMultiSelectMode} selectedChatIds={selectedChatIds} isMobileFullscreen={isMobileFullscreen} isDesktop={isDesktop} pinnedChatIds={pinnedChatIds} projectsMap={projectsMap} workspaceFileStats={workspaceFileStats} filteredChats={filteredChats} canShowPinOption={canShowPinOption} areAllSelectedPinned={areAllSelectedPinned} showIcon={showWorkspaceIcon} onChatClick={handleChatClick} onCheckboxClick={handleCheckboxClick} onMouseEnter={handleAgentMouseEnter} onMouseLeave={handleAgentMouseLeave} onArchive={handleArchiveSingle} onTogglePin={handleTogglePin} onRenameClick={handleRenameClick} onCopyBranch={handleCopyBranch} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={handleArchiveOthers} onOpenLocally={handleOpenLocally} onBulkPin={handleBulkPin} onBulkUnpin={handleBulkUnpin} onBulkArchive={handleBulkArchive} archivePending={archiveChatMutation.isPending || archiveRemoteChatMutation.isPending} archiveBatchPending={archiveChatsBatchMutation.isPending || archiveRemoteChatsBatchMutation.isPending} nameRefCallback={nameRefCallback} formatTime={formatTime} justCreatedIds={justCreatedIds} />
+              <ChatListSection title={pinnedAgents().length > 0 ? "Recent workspaces" : "Workspaces"} chats={unpinnedAgents()} selectedChatId={selectedChatId()} selectedChatIsRemote={selectedChatIsRemote()} focusedChatIndex={focusedChatIndex()} loadingChatIds={loadingChatIds()} unseenChanges={unseenChanges()} workspacePendingPlans={workspacePendingPlans()} workspacePendingQuestions={workspacePendingQuestions()} isMultiSelectMode={isMultiSelectMode()} selectedChatIds={selectedChatIds()} isMobileFullscreen={isMobileFullscreen} isDesktop={isDesktop()} pinnedChatIds={pinnedChatIds()} projectsMap={projectsMap()} workspaceFileStats={workspaceFileStats()} filteredChats={filteredChats()} canShowPinOption={canShowPinOption()} areAllSelectedPinned={areAllSelectedPinned()} showIcon={showWorkspaceIcon()} onChatClick={handleChatClick} onCheckboxClick={handleCheckboxClick} onMouseEnter={handleAgentMouseEnter} onMouseLeave={handleAgentMouseLeave} onArchive={handleArchiveSingle} onTogglePin={handleTogglePin} onRenameClick={handleRenameClick} onCopyBranch={handleCopyBranch} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={handleArchiveOthers} onOpenLocally={handleOpenLocally} onBulkPin={handleBulkPin} onBulkUnpin={handleBulkUnpin} onBulkArchive={handleBulkArchive} archivePending={archiveChatMutation.isPending || archiveRemoteChatMutation.isPending} archiveBatchPending={archiveChatsBatchMutation.isPending || archiveRemoteChatsBatchMutation.isPending} nameRefCallback={nameRefCallback} formatTime={formatTime} justCreatedIds={justCreatedIds()} />
             </div> : null}
         </div>
 
         { /* Top gradient fade (appears when scrolled down) */}
         { /* Top gradient fade (appears when scrolled down) */}
-        <div ref={topGradientRef} class="absolute top-0 left-0 right-0 h-10 pointer-events-none bg-gradient-to-b from-tl-background via-tl-background/50 to-transparent transition-opacity duration-200 opacity-0" />
+        <div ref={setTopGradientRef} class="absolute top-0 left-0 right-0 h-10 pointer-events-none bg-gradient-to-b from-tl-background via-tl-background/50 to-transparent transition-opacity duration-200 opacity-0" />
 
         { /* Bottom gradient fade */}
-        <div ref={bottomGradientRef} class="absolute bottom-0 left-0 right-0 h-12 pointer-events-none bg-gradient-to-t from-tl-background via-tl-background/50 to-transparent transition-opacity duration-200 opacity-0" />
+        <div ref={setBottomGradientRef} class="absolute bottom-0 left-0 right-0 h-12 pointer-events-none bg-gradient-to-t from-tl-background via-tl-background/50 to-transparent transition-opacity duration-200 opacity-0" />
       </div>
 
       { /* Footer - Multi-select toolbar or normal footer */}
       <Presence exitBeforeEnter>
-        <Show when={isMultiSelectMode} fallback={
-          <Motion.div initial={hasFooterAnimated ? { opacity: 0, y: 8 } : false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0 }} class="p-2 pt-2 flex flex-col gap-2">
+        <Show when={isMultiSelectMode()} fallback={
+          <Motion.div initial={hasFooterAnimated() ? { opacity: 0, y: 8 } : false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0 }} class="p-2 pt-2 flex flex-col gap-2">
             <div class="flex items-center">
               <div class="flex items-center gap-1">
                 {	/* Settings Button */}
@@ -2168,7 +2212,7 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
                 <KanbanButton />
 
                 { /* Archive Button - isolated component to prevent sidebar re-renders */}
-                <ArchiveSection archivedChatsCount={archivedChatsCount} />
+                <ArchiveSection archivedChatsCount={archivedChatsCount()} />
               </div>
 
               <div class="flex-1" />
@@ -2180,13 +2224,13 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
             </ButtonCustom>
           </Motion.div>
         }>
-          <Motion.div initial={hasFooterAnimated ? { opacity: 0, y: 8 } : false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0 }} class="p-2 flex flex-col gap-2">
+          <Motion.div initial={hasFooterAnimated() ? { opacity: 0, y: 8 } : false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0 }} class="p-2 flex flex-col gap-2">
             {	/* Selection info */}
             <div class="flex items-center justify-between px-1">
               <span class="text-xs text-muted-foreground">
-                {selectedChatsCount} selected
+                {selectedChatsCount()} selected
               </span>
-              <button onClick={clearChatSelection} class="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <button onClick={() => clearChatSelection()} class="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 Cancel
               </button>
             </div>
@@ -2208,23 +2252,23 @@ export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, deskt
       {	/* Agent name tooltip portal - always rendered, visibility controlled via ref/DOM */}
       <Show when={typeof document !== "undefined"}>
         <Portal mount={document.body}>
-          <div ref={agentTooltipRef} class="fixed z-[100000] max-w-xs px-2 py-1 text-xs bg-popover border border-border rounded-md shadow-lg dark pointer-events-none text-foreground/90 whitespace-nowrap" style={{ display: "none", transform: "translateY(-50%)" }} />
+          <div ref={setAgentTooltipRef} class="fixed z-[100000] max-w-xs px-2 py-1 text-xs bg-popover border border-border rounded-md shadow-lg dark pointer-events-none text-foreground/90 whitespace-nowrap" style={{ display: "none", transform: "translateY(-50%)" }} />
         </Portal>
       </Show>
 
       {	/* Auth Dialog */}
-      <AuthDialog open={showAuthDialog} onOpenChange={setShowAuthDialog} />
+      <AuthDialog open={showAuthDialog()} onOpenChange={setShowAuthDialog} />
 
       { /* Rename Dialog */}
-      <AgentsRenameSubChatDialog isOpen={renameDialogOpen} onClose={() => {
+      <AgentsRenameSubChatDialog isOpen={renameDialogOpen()} onClose={() => {
  setRenameDialogOpen(false);
 		setRenamingChat(null);
-	}} onSave={handleRenameSave} currentName={renamingChat?.name || ""} isLoading={renameLoading} />
+	}} onSave={handleRenameSave} currentName={renamingChat()?.name || ""} isLoading={renameLoading()} />
 
       {	/* Confirm Archive Dialog */}
-      <ConfirmArchiveDialog isOpen={confirmArchiveDialogOpen} onClose={handleCloseArchiveDialog} onConfirm={handleConfirmArchive} activeProcessCount={activeProcessCount} hasWorktree={hasWorktree} uncommittedCount={uncommittedCount} />
+      <ConfirmArchiveDialog isOpen={confirmArchiveDialogOpen()} onClose={handleCloseArchiveDialog} onConfirm={handleConfirmArchive} activeProcessCount={activeProcessCount()} hasWorktree={hasWorktree()} uncommittedCount={uncommittedCount()} />
 
       { /* Open Locally Dialog */}
-      <OpenLocallyDialog isOpen={importDialogOpen} onClose={handleCloseImportDialog} remoteChat={importingRemoteChat} matchingProjects={importMatchingProjects} allProjects={projects ?? []} remoteSubChatId={null} />
+      <OpenLocallyDialog isOpen={importDialogOpen()} onClose={handleCloseImportDialog} remoteChat={importingRemoteChat()} matchingProjects={importMatchingProjects()} allProjects={(projects() ?? []) as Parameters<typeof getMatchingProjects>[0]} remoteSubChatId={null} />
     </>;
  }

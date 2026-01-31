@@ -8,9 +8,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/mainview/*"],
-      "@bun/*": ["src/bun/*"],
-      "electrobun/view": ["src/types/electrobun.d.ts"],
-      "electrobun/bun": ["src/types/electrobun.d.ts"]
+      "@bun/*": ["src/bun/*"]
     },
     "resolveJsonModule": true,
     "isolatedModules": true,
@@ -21,5 +19,6 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["src", "scripts"]
+  "include": ["src", "scripts", "src/types"],
+  "exclude": ["src/bun/legacy", "scripts/migrate-react.ts", "node_modules"]
 }

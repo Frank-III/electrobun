@@ -1,4 +1,3 @@
-"use client";
 import { createSignal, createEffect, onCleanup, For, Show } from "solid-js";
 import { ChevronUp, ChevronDown, CornerDownLeft } from "lucide-solid";
 import { Button } from "../../../components/ui/button";

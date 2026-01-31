@@ -1,6 +1,4 @@
-"use client";
 import { createEffect, createMemo, For, Show, Switch, Match, onCleanup } from "solid-js";
-import { useAtom, useAtomValue } from "../../lib/state/store";
 import { ArrowUpRight, TerminalSquare, Box, ListTodo } from "lucide-solid";
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar";
 import { Button } from "@/components/ui/button";
@@ -70,13 +68,13 @@ interface DetailsSidebarProps {
 }
 export function DetailsSidebar({ chatId, worktreePath, planPath, mode, onBuildPlan, planRefetchTrigger, activeSubChatId, isPlanSidebarOpen, isTerminalSidebarOpen, isDiffSidebarOpen, diffDisplayMode, canOpenDiff, setIsDiffSidebarOpen, diffStats, parsedFileDiffs, onCommit, isCommitting, onExpandTerminal, onExpandPlan, onExpandDiff, onFileSelect, remoteInfo, isRemoteChat = false }: DetailsSidebarProps) {
 	// Global sidebar open state
-	const [isOpen, setIsOpen] = useAtom(detailsSidebarOpenAtom);
+	const [isOpen, setIsOpen] = detailsSidebarOpenAtom;
 	// Per-workspace widget visibility
 	const widgetVisibilityAtom = createMemo(() => widgetVisibilityAtomFamily(chatId));
-	const visibleWidgets = useAtomValue(widgetVisibilityAtom);
+	const visibleWidgets = widgetVisibilityAtom[0];
 	// Per-workspace widget order
 	const widgetOrderAtom = createMemo(() => widgetOrderAtomFamily(chatId));
-	const widgetOrder = useAtomValue(widgetOrderAtom);
+	const widgetOrder = widgetOrderAtom[0];
 	// Close sidebar callback
 	const closeSidebar = () => {
 		setIsOpen(false);
@@ -157,14 +155,16 @@ export function DetailsSidebar({ chatId, worktreePath, planPath, mode, onBuildPl
                 </>}
 
               { /* Expand to sidebar button */}
-              {canExpand && <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => handleExpandWidget(widgetId)} class="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md opacity-0 group-hover:opacity-100 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0" aria-label={`Expand ${widgetId}`}>
-                      <ArrowUpRight class="h-3 w-3" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">Expand to sidebar</TooltipContent>
-                </Tooltip>}
+              <Show when={canExpand}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" onClick={() => handleExpandWidget(widgetId)} class="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md opacity-0 group-hover:opacity-100 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0" aria-label={`Expand ${widgetId}`}>
+                        <ArrowUpRight class="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">Expand to sidebar</TooltipContent>
+                  </Tooltip>
+                </Show>
             </div>
 
             { /* Widget Content - always visible */}
@@ -188,7 +188,7 @@ export function DetailsSidebar({ chatId, worktreePath, planPath, mode, onBuildPl
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 Close details
-                {toggleDetailsHotkey && <Kbd>{toggleDetailsHotkey}</Kbd>}
+                <Show when={toggleDetailsHotkey}><Kbd>{toggleDetailsHotkey}</Kbd></Show>
               </TooltipContent>
             </Tooltip>
             <span class="text-sm font-medium">Details</span>

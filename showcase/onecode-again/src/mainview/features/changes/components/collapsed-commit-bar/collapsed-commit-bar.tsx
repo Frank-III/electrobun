@@ -1,3 +1,4 @@
+import { Show } from "solid-js";
 import { Button } from "../../../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
 import { ChevronUp } from "lucide-solid";
@@ -42,7 +43,7 @@ export function CollapsedCommitBar({ fileCount, stagedCount, currentBranch, onTo
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button variant="default" size="sm" class="w-full h-7 text-xs gap-1.5" onClick={onCommit} disabled={!canCommit || isCommitting}>
-							{isCommitting && <IconSpinner class="size-3.5" />}
+							<Show when={isCommitting}><IconSpinner class="size-3.5" /></Show>
 							{getCommitLabel()}
 						</Button>
 					</TooltipTrigger>

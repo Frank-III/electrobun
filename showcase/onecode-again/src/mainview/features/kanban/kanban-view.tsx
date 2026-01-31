@@ -1,6 +1,7 @@
 import { createMemo, createEffect, createSignal, onCleanup } from "solid-js";
 import { toast } from "solid-sonner";
-import { trpc } from "../../lib/trpc";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/solid-query";
+import { desktopRpc } from "../../lib/desktop-rpc";
 import { getWindowId } from "../../contexts/WindowContext";
 import { selectedAgentChatIdAtom, selectedDraftIdAtom, showNewChatFormAtom, loadingSubChatsAtom, pendingUserQuestionsAtom, pendingPlanApprovalsAtom, agentsUnseenChangesAtom, selectedProjectAtom, agentsSidebarOpenAtom } from "../agents/atoms";
 import { selectedAgentChatIdsAtom, isAgentMultiSelectModeAtom, toggleAgentChatSelectionAtom } from "../../lib/atoms";
@@ -43,8 +44,7 @@ export function KanbanView() {
 	const [activeProcessCount, setActiveProcessCount] = createSignal(0);
 	const [hasWorktree, setHasWorktree] = createSignal(false);
 	const [uncommittedCount, setUncommittedCount] = createSignal(0);
-	// tRPC utils
-	const utils = trpc.useUtils();
+	const queryClient = useQueryClient();
 	// Load pinned IDs from localStorage when project changes
 	createEffect(() => {
 		if (!selectedProject()?.id) {
@@ -63,11 +63,13 @@ export function KanbanView() {
 	const [prevPinnedRef, setPrevPinnedRef] = createSignal<Set<string>>(new Set());
 	createEffect(() => {
 		if (!selectedProject()?.id) return;
-		if (pinnedChatIds !== prevPinnedRef.current && pinnedChatIds.size > 0 || prevPinnedRef.current.size > 0) {
+		const current = pinnedChatIds();
+		const prev = prevPinnedRef();
+		if (current !== prev && (current.size > 0 || prev.size > 0)) {
 			const windowId = getWindowId();
-			localStorage.setItem(`${windowId}:agent-pinned-chats-${selectedProject()!.id}`, JSON.stringify([...pinnedChatIds]));
+			localStorage.setItem(`${windowId}:agent-pinned-chats-${selectedProject()!.id}`, JSON.stringify([...current]));
 		}
-		prevPinnedRef.current = pinnedChatIds;
+		setPrevPinnedRef(current);
 	});
 	// Toggle pin handler
 	const handleTogglePin = (chatId: string) => {
@@ -84,14 +86,21 @@ export function KanbanView() {
 	// Drafts from localStorage
 	const drafts = useNewChatDrafts();
 	// Fetch all chats (workspaces)
-	const { data: chats } = trpc.chats.list.useQuery({});
+	const { data: chats } = useQuery(() => ({
+		queryKey: ["chats", "list"] as const,
+		queryFn: () => desktopRpc.chats.list.query({}),
+	}));
 	// Fetch projects for metadata
-	const { data: projects } = trpc.projects.list.useQuery();
+	const { data: projects } = useQuery(() => ({
+		queryKey: ["projects", "list"] as const,
+		queryFn: () => desktopRpc.projects.list.query({}),
+	}));
 	// Create projects map
-type Project = NonNullable<typeof projects>[number];
+	type Project = { id: string; name: string; path: string; [k: string]: unknown };
 	const projectsMap = createMemo(() => {
-		if (!projects) return new Map<string, Project>();
-		return new Map(projects.map((p) => [p.id, p]));
+		const proj = projects?.();
+		if (!proj) return new Map<string, Project>();
+		return new Map(proj.map((p) => [p.id, p as Project]));
 	});
 	// Track open sub-chat changes for reactivity
 	const [openSubChatsVersion, setOpenSubChatsVersion] = createSignal(0);
@@ -105,10 +114,11 @@ type Project = NonNullable<typeof projects>[number];
 	// Collect all open sub-chat IDs from localStorage for all workspaces
 	const allOpenSubChatIds = createMemo(() => {
 		void openSubChatsVersion;
-		if (!chats) return prevOpenSubChatIdsRef.current;
+		const chatList = chats?.();
+		if (!chatList) return prevOpenSubChatIdsRef();
 		const windowId = getWindowId();
 		const allIds: string[] = [];
-		for (const chat of chats) {
+		for (const chat of chatList) {
 			try {
 				const stored = localStorage.getItem(`${windowId}:agent-open-sub-chats-${chat.id}`);
 				if (stored) {
@@ -117,32 +127,37 @@ type Project = NonNullable<typeof projects>[number];
 				}
 			} catch {}
 		}
-		const prev = prevOpenSubChatIdsRef.current;
+		const prev = prevOpenSubChatIdsRef();
 		const sorted = [...allIds].sort();
 		const prevSorted = [...prev].sort();
 		if (sorted.length === prevSorted.length && sorted.every((id, i) => id === prevSorted[i])) {
 			return prev;
 		}
-		prevOpenSubChatIdsRef.current = allIds;
+		setPrevOpenSubChatIdsRef(allIds);
 		return allIds;
 	});
 	// Pending plan approvals from DB
-	const { data: pendingPlanApprovalsData } = trpc.chats.getPendingPlanApprovals.useQuery({ openSubChatIds: allOpenSubChatIds }, {
+	const { data: pendingPlanApprovalsData } = useQuery(() => ({
+		queryKey: ["chats", "getPendingPlanApprovals", allOpenSubChatIds()] as const,
+		queryFn: () => desktopRpc.chats.getPendingPlanApprovals({ openSubChatIds: allOpenSubChatIds() }),
 		refetchInterval: 5e3,
-		enabled: allOpenSubChatIds.length > 0,
-		placeholderData: (prev) => prev
-	});
+		enabled: allOpenSubChatIds().length > 0,
+		placeholderData: (prev) => prev,
+	}));
 	// File stats from DB
-	const { data: fileStatsData } = trpc.chats.getFileStats.useQuery({ openSubChatIds: allOpenSubChatIds }, {
+	const { data: fileStatsData } = useQuery(() => ({
+		queryKey: ["chats", "getFileStats", allOpenSubChatIds()] as const,
+		queryFn: () => desktopRpc.chats.getFileStats({ openSubChatIds: allOpenSubChatIds() }),
 		refetchInterval: 5e3,
-		enabled: allOpenSubChatIds.length > 0,
-		placeholderData: (prev) => prev
-	});
+		enabled: allOpenSubChatIds().length > 0,
+		placeholderData: (prev) => prev,
+	}));
 	// Build set of chatIds with pending plan approvals from DB
 	const workspacesWithPendingApprovalsFromDb = createMemo(() => {
 		const set = new Set<string>();
-		if (pendingPlanApprovalsData) {
-			for (const item of pendingPlanApprovalsData) {
+		const data = pendingPlanApprovalsData?.();
+		if (data) {
+			for (const item of data) {
 				set.add(item.chatId);
 			}
 		}
@@ -164,8 +179,9 @@ type Project = NonNullable<typeof projects>[number];
 			additions: number;
 			deletions: number;
 		}>();
-		if (fileStatsData) {
-			for (const stat of fileStatsData) {
+		const data = fileStatsData?.();
+		if (data) {
+			for (const stat of data) {
 				statsMap.set(stat.chatId, {
 					fileCount: stat.fileCount,
 					additions: stat.additions,
@@ -211,8 +227,9 @@ type Project = NonNullable<typeof projects>[number];
 			});
 		}
 		// Add workspaces
-		if (chats) {
-			for (const chat of chats) {
+		const chatList = chats?.();
+		if (chatList) {
+			for (const chat of chatList) {
 				const project = projectsMap.get(chat.projectId);
 				const status = deriveWorkspaceStatus(chat.id, {
 					workspacesLoading,
@@ -268,14 +285,15 @@ type Project = NonNullable<typeof projects>[number];
 		toggleChatSelection(chatId);
 	};
 	// Rename mutation
-	const renameChatMutation = trpc.chats.rename.useMutation({
+	const renameChatMutation = useMutation(() => ({
+		mutationFn: (input: { id: string; name: string }) => desktopRpc.chats.rename.mutate(input),
 		onSuccess: () => {
-			utils.chats.list.invalidate();
+			void queryClient.invalidateQueries({ queryKey: ["chats", "list"] });
 		},
 		onError: () => {
 			toast.error("Failed to rename workspace");
-		}
-	});
+		},
+	}));
 	// Rename handler
 	const handleRenameClick = (chat: {
 		id: string;
@@ -294,19 +312,23 @@ type Project = NonNullable<typeof projects>[number];
 		setRenamingChat(null);
 	};
 	// Archive mutation
-	const archiveChatMutation = trpc.chats.archive.useMutation({
+	const archiveChatMutation = useMutation(() => ({
+		mutationFn: (input: { id: string; deleteWorktree?: boolean }) => desktopRpc.chats.archive.mutate(input),
 		onSuccess: () => {
-			utils.chats.list.invalidate();
+			void queryClient.invalidateQueries({ queryKey: ["chats", "list"] });
 			toast.success("Workspace archived");
 		},
 		onError: () => {
 			toast.error("Failed to archive workspace");
-		}
-	});
+		},
+	}));
 	// Archive handler with confirmation for active processes
+	// Electrobun RPC does not expose terminal.getActiveSessionCount yet; use 0 until it does.
 	const handleArchive = async (chatId: string) => {
-		// Check for active processes and worktree
-		const [sessionCount, worktreeStatus] = await Promise.all([utils.terminal.getActiveSessionCount.fetch({ workspaceId: chatId }), utils.chats.getWorktreeStatus.fetch({ chatId })]);
+		const [sessionCount, worktreeStatus] = await Promise.all([
+			Promise.resolve(0),
+			desktopRpc.chats.getWorktreeStatus({ chatId }),
+		]);
 		const needsConfirmation = sessionCount > 0 || worktreeStatus.hasWorktree;
 		if (needsConfirmation) {
 			setArchivingChatId(chatId);

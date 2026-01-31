@@ -1,5 +1,5 @@
-"use client";
-import { createEffect, createSignal } from "solid-js";
+import type { JSX } from "solid-js";
+import { createEffect, createSignal, Show } from "solid-js";
 import { cn } from "../../../lib/utils";
 /**
 * Hybrid traffic lights component for macOS desktop app
@@ -7,49 +7,49 @@ import { cn } from "../../../lib/utils";
 * - Shows custom muted circles when NOT hovered (for visual indication)
 * Note: isDesktop prop should be passed from parent after mount to avoid hydration mismatch
 */
-export function TrafficLights({ isHovered = true, isFullscreen = null, isDesktop = false, className = "", onHoverChange }: {
+export function TrafficLights(props: {
 	isHovered?: boolean;
 	isFullscreen?: boolean | null;
 	isDesktop?: boolean;
-	className?: string;
+	class?: string;
 	onHoverChange?: (hovered: boolean) => void;
 }) {
+	const { isHovered = true, isFullscreen = null, isDesktop = false, onHoverChange } = props;
+	const cls = props.class ?? "";
 	const [prevHoveredRef, setPrevHoveredRef] = createSignal(isHovered);
-	// Toggle native traffic light visibility based on hover state
+	// Note: Electrobun doesn't support setTrafficLightVisibility (macOS-specific)
+	// Traffic lights are always visible in Electrobun windows
 	createEffect(() => {
-		if (!isDesktop || isFullscreen) return;
-		if (typeof window === "undefined" || !window.desktopApi?.setTrafficLightVisibility) return;
-		// Only update if hover state changed
-		if (prevHoveredRef.current !== isHovered) {
-			prevHoveredRef.current = isHovered;
-			window.desktopApi.setTrafficLightVisibility(isHovered);
-		}
+		// No-op: Electrobun doesn't support traffic light visibility control
 	});
 	// NOTE: Removed mount effect that hides native lights
 	// Native lights are shown by default (main process), and AgentsLayout controls visibility
-	// This prevents the "flash of hidden lights" during loading state
-	// Only show in desktop app, hide in fullscreen (native traffic lights always show in fullscreen)
-	// isFullscreen === true means fullscreen, null or false means not fullscreen
-	if (!isDesktop || isFullscreen === true) return null;
-	// When hovered, native lights are visible - render invisible placeholder to maintain layout
-	if (isHovered) {
-		return <div class={cn("relative", className)} style={{ WebkitAppRegion: "no-drag" }} data-sidebar-content>
-        <div class="flex items-center gap-2" data-sidebar-content>
-          <div class="w-3 h-3" />
-          <div class="w-3 h-3" />
-          <div class="w-3 h-3" />
-        </div>
-      </div>;
-	}
-	// When NOT hovered, native lights are hidden - show custom muted circles
-	return <div class={cn("relative", className)} style={{ WebkitAppRegion: "no-drag" }} data-sidebar-content>
-      {	/* Muted traffic lights - just circles with border */}
-      <div class="flex items-center gap-2" data-sidebar-content>
-        <div class="w-3 h-3 rounded-full border border-foreground/20 bg-transparent" aria-hidden="true" />
-        <div class="w-3 h-3 rounded-full border border-foreground/20 bg-transparent" aria-hidden="true" />
-        <div class="w-3 h-3 rounded-full border border-foreground/20 bg-transparent" aria-hidden="true" />
-      </div>
-    </div>;
+	// Only show in desktop app, hide in fullscreen (Show for reactivity)
+	const placeholder = () => (
+		<div class={cn("relative", cls)} style={{ WebkitAppRegion: "no-drag" }} data-sidebar-content>
+			<div class="flex items-center gap-2" data-sidebar-content>
+				<div class="w-3 h-3" />
+				<div class="w-3 h-3" />
+				<div class="w-3 h-3" />
+			</div>
+		</div>
+	);
+	const mutedCircles = () => (
+		<div class={cn("relative", cls)} style={{ WebkitAppRegion: "no-drag" }} data-sidebar-content>
+			<div class="flex items-center gap-2" data-sidebar-content>
+				<div class="w-3 h-3 rounded-full border border-foreground/20 bg-transparent" aria-hidden="true" />
+				<div class="w-3 h-3 rounded-full border border-foreground/20 bg-transparent" aria-hidden="true" />
+				<div class="w-3 h-3 rounded-full border border-foreground/20 bg-transparent" aria-hidden="true" />
+			</div>
+		</div>
+	);
+	return (
+		<Show when={isDesktop && isFullscreen !== true} fallback={null}>
+			<Show when={isHovered} fallback={mutedCircles()}>
+				{placeholder()}
+			</Show>
+		</Show>
+	);
  }
 /**
 * Spacer component for macOS traffic light buttons (close/minimize/maximize)
@@ -60,25 +60,27 @@ export function TrafficLights({ isHovered = true, isFullscreen = null, isDesktop
 * - null: not initialized yet (no animation, assume not fullscreen)
 * - boolean: initialized (animate only on real changes)
 */
-export function TrafficLightSpacer({ isFullscreen = null, isDesktop = false, className = "" }: {
+export function TrafficLightSpacer(props: {
 	isFullscreen?: boolean | null;
 	isDesktop?: boolean;
-	className?: string;
+	class?: string;
 }) {
+	const { isFullscreen = null, isDesktop = false } = props;
+	const cls = props.class ?? "";
 	const [prevFullscreenRef, setPrevFullscreenRef] = createSignal(isFullscreen);
 	const [shouldAnimate, setShouldAnimate] = createSignal(false);
 	createEffect(() => {
 		// Enable animation only after first real fullscreen change (not initial load)
 		// Both previous and current must be non-null (initialized) and different
-		if (isFullscreen !== null && prevFullscreenRef.current !== null && prevFullscreenRef.current !== isFullscreen) {
+		if (isFullscreen !== null && prevFullscreenRef() !== null && prevFullscreenRef() !== isFullscreen) {
 			setShouldAnimate(true);
 		}
-		prevFullscreenRef.current = isFullscreen;
+		setPrevFullscreenRef(isFullscreen);
 	});
 	// Show spacer when desktop and not fullscreen
 	// If isFullscreen is null (not initialized), assume not fullscreen
 	const shouldShow = isDesktop && isFullscreen !== true;
-	return <div class={cn("w-full shrink-0 overflow-hidden", shouldAnimate() && "transition-[height] duration-200 ease-out", className)} style={{ height: shouldShow ? 32 : 0 }} />;
+	return <div class={cn("w-full shrink-0 overflow-hidden", shouldAnimate() && "transition-[height] duration-200 ease-out",cls)} style={{ height: shouldShow ? 32 : 0 }} />;
 }
 /**
 * Wrapper to make child elements non-draggable within a draggable region

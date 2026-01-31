@@ -1,9 +1,9 @@
 import { createSignal } from "solid-js"
-import { createStoredSignal } from "../../../lib/state/signal-storage"
+import { createPersistedSignal } from "../../../lib/state/signal-storage"
 import { createKeyedSignalFamily } from "../../../lib/state/signal-map"
-import { atomWithWindowStorage } from "../../../lib/window-storage"
-import type { LucideIcon } from "lucide-react"
-import { Box, FileText, Terminal, FileDiff, ListTodo } from "lucide-react"
+import { makeWindowPersistedSignal } from "../../../lib/window-storage"
+import type { Component } from "solid-js"
+import { Box, FileText, Terminal, FileDiff, ListTodo } from "lucide-solid"
 
 // ============================================================================
 // Widget System Types & Registry
@@ -14,7 +14,7 @@ export type WidgetId = "info" | "todo" | "plan" | "terminal" | "diff"
 export interface WidgetConfig {
   id: WidgetId
   label: string
-  icon: LucideIcon
+  icon: Component<{ class?: string }>
   canExpand: boolean // true = can open as separate sidebar
   defaultVisible: boolean
 }
@@ -39,11 +39,9 @@ const DEFAULT_WIDGET_ORDER: WidgetId[] = WIDGET_REGISTRY.map((w) => w.id)
 // Widget Visibility (per workspace)
 // ============================================================================
 
-const widgetVisibilityStorageAtom = createStoredSignal<Record<string, WidgetId[]>>(
+const widgetVisibilityStorageAtom = createPersistedSignal<Record<string, WidgetId[]>>(
   "overview:widgetVisibility",
   {},
-  undefined,
-  { getOnInit: true },
 )
 
 export const widgetVisibilityAtomFamily = createKeyedSignalFamily(
@@ -55,11 +53,9 @@ export const widgetVisibilityAtomFamily = createKeyedSignalFamily(
 // Widget Order (per workspace) - controls display order of all widgets
 // ============================================================================
 
-const widgetOrderStorageAtom = createStoredSignal<Record<string, WidgetId[]>>(
+const widgetOrderStorageAtom = createPersistedSignal<Record<string, WidgetId[]>>(
   "overview:widgetOrder",
   {},
-  undefined,
-  { getOnInit: true },
 )
 
 export const widgetOrderAtomFamily = createKeyedSignalFamily(
@@ -81,11 +77,9 @@ export const expandedWidgetAtomFamily = createKeyedSignalFamily(
 )
 
 // Expanded widget sidebar width
-export const expandedWidgetSidebarWidthAtom = createStoredSignal<number>(
+export const expandedWidgetSidebarWidthAtom = createPersistedSignal<number>(
   "overview:expandedWidgetWidth",
   500,
-  undefined,
-  { getOnInit: true },
 )
 
 // ============================================================================
@@ -93,18 +87,15 @@ export const expandedWidgetSidebarWidthAtom = createStoredSignal<number>(
 // ============================================================================
 
 // Feature flag for unified vs separate sidebars (for future toggle)
-export const unifiedSidebarEnabledAtom = createStoredSignal<boolean>(
+export const unifiedSidebarEnabledAtom = createPersistedSignal<boolean>(
   "overview:unifiedEnabled",
-  true, // Enable by default
-  undefined,
-  { getOnInit: true },
+  true,
 )
 
 // Details sidebar open state (per-window, persisted)
-export const detailsSidebarOpenAtom = atomWithWindowStorage<boolean>(
+export const detailsSidebarOpenAtom = makeWindowPersistedSignal<boolean>(
   "overview:sidebarOpen",
   false,
-  { getOnInit: true },
 )
 
 // Section types for the overview sidebar
@@ -114,9 +105,9 @@ export type OverviewSection = "info" | "plan" | "terminal" | "diff"
 const DEFAULT_EXPANDED_SECTIONS: OverviewSection[] = ["info", "plan", "terminal"]
 
 // Section expand states (per workspace) - stores array of expanded section IDs
-const sectionExpandStorageAtom = createStoredSignal<
+const sectionExpandStorageAtom = createPersistedSignal<
   Record<string, OverviewSection[]>
->("overview:expandedSections", {}, undefined, { getOnInit: true })
+>("overview:expandedSections", {})
 
 export const expandedSectionsAtomFamily = createKeyedSignalFamily(
   sectionExpandStorageAtom,
@@ -124,11 +115,9 @@ export const expandedSectionsAtomFamily = createKeyedSignalFamily(
 )
 
 // Unified sidebar width (persisted)
-export const detailsSidebarWidthAtom = createStoredSignal<number>(
+export const detailsSidebarWidthAtom = createPersistedSignal<number>(
   "overview:sidebarWidth",
   500,
-  undefined,
-  { getOnInit: true },
 )
 
 // Focused section for "focus mode" (when a section needs more space like Diff)

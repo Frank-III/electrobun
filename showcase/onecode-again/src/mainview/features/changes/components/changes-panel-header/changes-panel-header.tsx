@@ -3,7 +3,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
 import { createEffect, createSignal, onCleanup, For, Show } from "solid-js";
 import { RefreshCw, ChevronDown, GitBranch, GitPullRequest } from "lucide-solid";
-import { trpc } from "../../../../lib/trpc";
+import { useQuery, useMutation } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../../lib/desktop-rpc";
 import { cn } from "../../../../lib/utils";
 import { usePRStatus } from "../../../../hooks/usePRStatus";
 import { PRIcon } from "../pr-icon";
@@ -28,14 +29,26 @@ export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: 
 	const [isRefreshing, setIsRefreshing] = createSignal(false);
 	const [displayTime, setDisplayTime] = createSignal("");
 	let timeoutRef: ReturnType<typeof setTimeout> | undefined;
-	const { data: branchData, refetch: refetchBranches } = trpc.changes.getBranches.useQuery({ worktreePath }, { enabled: !!worktreePath });
-	const fetchMutation = trpc.changes.fetch.useMutation({ onSuccess: () => {
-		setLastFetchTime(new Date());
-		refetchBranches();
-	} });
-	const checkoutMutation = trpc.changes.checkout.useMutation({ onSuccess: () => {
-		refetchBranches();
-	} });
+	const branchDataQuery = useQuery(() => ({
+		queryKey: ["changes", "getBranches", worktreePath] as const,
+		queryFn: () => desktopRpc.changes.getBranches({ worktreePath }),
+		enabled: !!worktreePath,
+	}));
+	const branchData = () => branchDataQuery.data;
+	const refetchBranches = () => branchDataQuery.refetch();
+	const fetchMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string }) =>
+			desktopRpc.changes.fetch.mutate(input),
+		onSuccess: () => {
+			setLastFetchTime(new Date());
+			refetchBranches();
+		},
+	}));
+	const checkoutMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string; branch: string }) =>
+			desktopRpc.changes.checkout.mutate(input),
+		onSuccess: () => refetchBranches(),
+	}));
 	const { pr } = usePRStatus({
 		worktreePath,
 		refetchInterval: 3e4
@@ -53,22 +66,24 @@ export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: 
 	});
 	const handleFetch = () => {
 		setIsRefreshing(true);
-		fetchMutation.mutate({ worktreePath }, { onSettled: () => {
-			if (timeoutRef) clearTimeout(timeoutRef);
-			timeoutRef = setTimeout(() => setIsRefreshing(false), 600);
-		} });
+		fetchMutation.mutate(
+			{ worktreePath },
+			{
+				onSettled: () => {
+					if (timeoutRef) clearTimeout(timeoutRef);
+					timeoutRef = setTimeout(() => setIsRefreshing(false), 600);
+				},
+			},
+		);
 	};
 	const handleBranchSelect = (branch: string) => {
 		if (branch === currentBranch) return;
-		checkoutMutation.mutate({
-			worktreePath,
-			branch
-		});
+		checkoutMutation.mutate({ worktreePath, branch });
 	};
 	onCleanup(() => {
 		if (timeoutRef) clearTimeout(timeoutRef);
 	});
-	const branches = branchData?.local ?? [];
+	const branches = () => branchData()?.local ?? [];
 	const isCompact = layoutMode === "compact";
 	return <div class={cn("flex items-center gap-2 px-2 py-1.5 flex-1 min-w-0", isCompact && "px-1.5 py-1")}>
 			{	/* Branch selector */}
@@ -88,16 +103,16 @@ export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: 
 					<TooltipContent side="bottom">Switch branch</TooltipContent>
 				</Tooltip>
 				<DropdownMenuContent align="start" class="w-48">
-					<For each={branches}>
+					<For each={branches()}>
 						{(branchInfo) => <DropdownMenuItem onClick={() => handleBranchSelect(branchInfo.branch)} class={cn("text-xs", branchInfo.branch === currentBranch && "bg-accent")}>
 							<GitBranch class="mr-2 size-3.5" />
 							<span class="truncate">{branchInfo.branch}</span>
-							<Show when={branchInfo.branch === branchData?.defaultBranch}>
+							<Show when={branchInfo.branch === branchData()?.defaultBranch}>
 								<span class="ml-auto text-[10px] text-muted-foreground">default</span>
 							</Show>
 						</DropdownMenuItem>}
 					</For>
-					<Show when={branches.length > 0}>
+					<Show when={branches().length > 0}>
 						<DropdownMenuSeparator />
 					</Show>
 					<DropdownMenuItem onClick={() => {

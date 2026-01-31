@@ -1,6 +1,4 @@
-"use client";
 import { createMemo, createSignal, For, Show } from "solid-js";
-import { useAtomValue } from "../../../lib/state/jotai";
 import { cn } from "@/lib/utils";
 import { PlanIcon, CheckIcon, IconArrowRight, ExpandIcon, CollapseIcon } from "@/components/ui/icons";
 import { currentTodosAtomFamily } from "@/features/agents/atoms";
@@ -14,11 +12,11 @@ interface TodoWidgetProps {
 	subChatId: string | null;
 }
 // Pie-style progress circle - fills sectors like pizza slices
-const ProgressCircle = ({ completed, total, size = 16, className }: {
+const ProgressCircle = ({ completed, total, size = 16, class: cls }: {
 	completed: number;
 	total: number;
 	size?: number;
-	className?: string;
+	class?: string;
 }) => {
 	const cx = size / 2;
 	const cy = size / 2;
@@ -44,9 +42,9 @@ const ProgressCircle = ({ completed, total, size = 16, className }: {
 		const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
 		segments.push(<path key={i} d={pathData} fill={i < completed ? "currentColor" : "transparent"} opacity={i < completed ? .7 : .15} />);
 	}
-	return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} class={cn("text-muted-foreground", className)}>
+	return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} class={cn("text-muted-foreground",cls)}>
       {	/* Outer border circle */}
-      <circle cx={cx} cy={cy} r={outerRadius} fill="none" stroke="currentColor" strokeWidth={.5} opacity={.3} />
+      <circle cx={cx} cy={cy} r={outerRadius} fill="none" stroke="currentColor" stroke-width={.5} opacity={.3} />
       {segments}
     </svg>;
  };
@@ -70,7 +68,9 @@ const TodoListItem = ({ todo, isLast }: {
 	return <div class={cn("flex items-center gap-2 px-2 py-1.5", !isLast && "border-b border-border/30")}>
       <TodoStatusIcon status={todo.status} />
       <span class={cn("text-xs truncate", todo.status === "completed" ? "line-through text-muted-foreground" : todo.status === "pending" ? "text-muted-foreground" : "text-foreground")}>
-        {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
+        <Show when={todo.status === "in_progress" && todo.activeForm} fallback={todo.content}>
+          {todo.activeForm}
+        </Show>
       </span>
     </div>;
 };
@@ -83,7 +83,7 @@ const TodoListItem = ({ todo, isLast }: {
 export function TodoWidget({ subChatId }: TodoWidgetProps) {
 	// Get todos from the active sub-chat
 	const todosAtom = createMemo(() => currentTodosAtomFamily(subChatId || "default"));
-	const todoState = useAtomValue(todosAtom);
+	const todoState = todosAtom[0];
 	const todos = todoState.todos;
 	// Expanded/collapsed state
 	const [isExpanded, setIsExpanded] = createSignal(true);
@@ -112,7 +112,7 @@ export function TodoWidget({ subChatId }: TodoWidgetProps) {
 	}
 	return <div class="mx-2 mb-2">
       {	/* TOP BLOCK - Header with expand/collapse button - fixed height h-8 for consistency */}
-      <div class="rounded-t-lg border border-b-0 border-border/50 bg-muted/30 px-2 h-8 cursor-pointer hover:bg-muted/50 transition-colors duration-150 flex items-center" onClick={handleToggleExpand} role="button" aria-expanded={isExpanded} aria-label={`To-do list with ${totalTodos} items. Click to ${isExpanded ? "collapse" : "expand"}`} tabIndex={0} onKeyDown={handleKeyDown}>
+      <div class="rounded-t-lg border border-b-0 border-border/50 bg-muted/30 px-2 h-8 cursor-pointer hover:bg-muted/50 transition-colors duration-150 flex items-center" onClick={handleToggleExpand} role="button" aria-expanded={isExpanded()} aria-label={`To-do list with ${totalTodos} items. Click to ${isExpanded() ? "collapse" : "expand"}`} tabIndex={0} onKeyDown={handleKeyDown}>
         <div class="flex items-center gap-2 flex-1 min-w-0">
           <PlanIcon class="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
           <span class="text-xs font-medium text-foreground">To-dos</span>
@@ -121,8 +121,8 @@ export function TodoWidget({ subChatId }: TodoWidgetProps) {
           </span>
           { /* Expand/Collapse icon */}
           <div class="relative w-3.5 h-3.5 flex-shrink-0">
-            <ExpandIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
-            <CollapseIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
+            <ExpandIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
+            <CollapseIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
           </div>
         </div>
       </div>
@@ -130,27 +130,34 @@ export function TodoWidget({ subChatId }: TodoWidgetProps) {
       { /* BOTTOM BLOCK - Current task + progress (expandable) */}
       <div class="rounded-b-lg border border-border/50 border-t-0">
         { /* Collapsed view - progress circle + current task + count */}
-        {!isExpanded && <div class="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors duration-150" onClick={() => setIsExpanded(true)}>
-            { /* Progress circle or checkmark when all completed */}
-            {completedCount === totalTodos && totalTodos > 0 ? <div class="w-4 h-4 rounded-full bg-muted flex items-center justify-center flex-shrink-0" style={{ border: "0.5px solid hsl(var(--border))" }}>
+        <Show when={!isExpanded()}>
+          <div class="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors duration-150" onClick={() => setIsExpanded(true)}>
+            <Show when={completedCount === totalTodos && totalTodos > 0} fallback={
+                <ProgressCircle completed={visualProgress} total={totalTodos} size={16} class="flex-shrink-0" />
+              }>
+              <div class="w-4 h-4 rounded-full bg-muted flex items-center justify-center flex-shrink-0" style={{ border: "0.5px solid hsl(var(--border))" }}>
                 <CheckIcon class="w-2.5 h-2.5 text-muted-foreground" />
-              </div> : <ProgressCircle completed={visualProgress} total={totalTodos} size={16} class="flex-shrink-0" />}
+              </div>
+            </Show>
 
-            { /* Current task name */}
             <div class="flex items-center gap-1.5 min-w-0 flex-1">
-              {currentTask && <span class="text-xs text-muted-foreground truncate">
-                  {currentTask.status === "in_progress" ? currentTask.activeForm || currentTask.content : currentTask.content}
-                </span>}
-              {!currentTask && completedCount === totalTodos && totalTodos > 0 && <span class="text-xs text-muted-foreground truncate">
-                  {todos[totalTodos - 1]?.content}
-                </span>}
+              <Show when={currentTask}>
+                  <span class="text-xs text-muted-foreground truncate">
+                    {currentTask!.status === "in_progress" ? currentTask!.activeForm || currentTask!.content : currentTask!.content}
+                  </span>
+                </Show>
+              <Show when={!currentTask && completedCount === totalTodos && totalTodos > 0}>
+                  <span class="text-xs text-muted-foreground truncate">
+                    {todos[totalTodos - 1]?.content}
+                  </span>
+                </Show>
             </div>
 
-            { /* Right side - task count */}
             <span class="text-xs text-muted-foreground tabular-nums flex-shrink-0">
               {currentTaskIndex}/{totalTodos}
             </span>
-          </div>}
+          </div>
+        </Show>
 
         { /* Expanded content - full todo list */}
         <Show when={isExpanded}>

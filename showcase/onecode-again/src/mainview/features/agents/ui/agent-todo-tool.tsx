@@ -1,6 +1,4 @@
-"use client";
-import { createSignal, createMemo, createEffect } from "solid-js";
-import { useAtom, useAtomValue } from "../../../lib/state/jotai";
+import { createSignal, createMemo, createEffect, untrack, Show } from "solid-js";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { IconSpinner, ExpandIcon, CollapseIcon, CheckIcon, PlanIcon, IconDoubleChevronRight, IconArrowRight } from "../../../components/ui/icons";
 import { getToolStatus } from "./agent-tool-registry";
@@ -99,11 +97,11 @@ function getStatusIconComponent(status: TodoItem["status"]) {
 	}
 }
 // Pie-style progress circle - fills sectors like pizza slices
-const ProgressCircle = ({ completed, total, size = 16, className }: {
+const ProgressCircle = ({ completed, total, size = 16, class: cls }: {
 	completed: number;
 	total: number;
 	size?: number;
-	className?: string;
+	class?: string;
 }) => {
 	const cx = size / 2;
 	const cy = size / 2;
@@ -129,9 +127,9 @@ const ProgressCircle = ({ completed, total, size = 16, className }: {
 		const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
 		segments.push(<path key={i} d={pathData} fill={i < completed ? "currentColor" : "transparent"} opacity={i < completed ? .7 : .15} />);
 	}
-	return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} class={cn("text-muted-foreground", className)}>
+	return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} class={cn("text-muted-foreground",cls)}>
       {	/* Outer border circle */}
-      <circle cx={cx} cy={cy} r={outerRadius} fill="none" stroke="currentColor" strokeWidth={.5} opacity={.3} />
+      <circle cx={cx} cy={cy} r={outerRadius} fill="none" stroke="currentColor" stroke-width={.5} opacity={.3} />
       {segments}
     </svg>;
  };
@@ -176,7 +174,7 @@ function TodoChangeItem({ change, showSeparator }: {
 	return <div class="flex items-center gap-1 flex-shrink-0">
       <StatusIcon class="w-3 h-3" />
       <span class="truncate">{change.todo.content}</span>
-      {showSeparator && <span class="mx-0.5">,</span>}
+      <Show when={showSeparator}><span class="mx-0.5">,</span></Show>
     </div>;
 }
 function TodoListItem({ todo, isPending, isLast }: {
@@ -193,19 +191,14 @@ function TodoListItem({ todo, isPending, isLast }: {
 }
 export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProps) {
 	// User preference for always expanded to-do list
-	const alwaysExpandTodoList = useAtomValue(alwaysExpandTodoListAtom);
+	const alwaysExpandTodoList = alwaysExpandTodoListAtom[0];
 	// Synced todos state - scoped per subChatId to prevent cross-chat conflicts
 	// Uses a stable key to ensure proper isolation between different sub-chats
 	const todosAtom = createMemo(() => currentTodosAtomFamily(subChatId || "default"));
-	const [todoState, setTodoState] = useAtom(todosAtom);
+	const [todoState, setTodoState] = todosAtom;
 	const syncedTodos = todoState.todos;
 	const creationToolCallId = todoState.creationToolCallId;
-	// Use refs to track values without triggering effect re-runs
-	// This prevents infinite loops when the effect updates the atom
-	const [syncedTodosRef, setSyncedTodosRef] = createSignal(syncedTodos);
-	syncedTodosRef.current = syncedTodos;
-	const [creationToolCallIdRef, setCreationToolCallIdRef] = createSignal(creationToolCallId);
-	creationToolCallIdRef.current = creationToolCallId;
+	// Note: Using untrack() in the effect below to avoid circular dependency
 	// Get todos from input or output.newTodos
 	const rawOldTodos = part.output?.oldTodos || [];
 	const newTodos = part.input?.todos || part.output?.newTodos || [];
@@ -251,7 +244,7 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
 	// Sync isExpanded with alwaysExpandTodoList preference when it changes
 	// Only auto-expand, don't auto-collapse (respect user's manual collapse)
 	createEffect(() => {
-		if (alwaysExpandTodoList && !isExpanded) {
+		if (alwaysExpandTodoList() && !isExpanded()) {
 			setIsExpanded(true);
 		}
 	});
@@ -275,10 +268,10 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
 	// This keeps the creation tool in sync with all updates
 	createEffect(() => {
 		if (newTodos.length > 0) {
-			// Use refs to get current values without adding them to dependencies
+			// Use untrack to get current values without adding them to dependencies
 			// This prevents infinite loops: effect updates atom -> state changes -> effect runs again
-			const currentSyncedTodos = syncedTodosRef.current;
-			const currentCreationToolCallId = creationToolCallIdRef.current;
+			const currentSyncedTodos = untrack(() => syncedTodos);
+			const currentCreationToolCallId = untrack(() => creationToolCallId);
 			// Compute these inside the effect to avoid dependency issues
 			// These values depend on syncedTodos/creationToolCallId which change when we call setTodoState
 			const hasOutputWithEmptyOldTodos = part.output !== undefined && "oldTodos" in part.output && Array.isArray(part.output.oldTodos) && part.output.oldTodos.length === 0;
@@ -345,8 +338,8 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
 	}
 	// COMPACT MODE: Single update - render as simple tool call
 	// Skip compact mode if user prefers always expanded and this is the creation tool call
-	if (changes.type === "single" && !(alwaysExpandTodoList && isCreationToolCall)) {
-		const change = changes.items[0];
+	if (changes().type === "single" && !(alwaysExpandTodoList() && isCreationToolCall)) {
+		const change = changes().items[0];
 		// Use stable icon reference from TOOL_CALL_ICONS map
 		const IconComponent = TOOL_CALL_ICONS[change.newStatus] || TOOL_CALL_ICONS.pending;
 		// For in_progress status with activeForm, use activeForm as the title text
@@ -356,9 +349,9 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
 	}
 	// COMPACT MODE: Multiple updates - render as custom component with icons
 	// Skip compact mode if user prefers always expanded and this is the creation tool call
-	if (changes.type === "multiple" && !(alwaysExpandTodoList && isCreationToolCall)) {
-		const completedChanges = changes.items.filter((c) => c.newStatus === "completed").length;
-		const startedChanges = changes.items.filter((c) => c.newStatus === "in_progress").length;
+	if (changes().type === "multiple" && !(alwaysExpandTodoList() && isCreationToolCall)) {
+		const completedChanges = changes().items.filter((c) => c.newStatus === "completed").length;
+		const startedChanges = changes().items.filter((c) => c.newStatus === "in_progress").length;
 		// Build summary title
 		let summaryTitle = "Updated to-dos";
 		if (completedChanges > 0 && startedChanges === 0) {
@@ -366,12 +359,12 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
 		} else if (startedChanges > 0 && completedChanges === 0) {
 			summaryTitle = `Started ${startedChanges} ${startedChanges === 1 ? "task" : "tasks"}`;
 		} else if (completedChanges > 0 && startedChanges > 0) {
-			summaryTitle = `Updated ${changes.items.length} ${changes.items.length === 1 ? "task" : "tasks"}`;
+			summaryTitle = `Updated ${changes().items.length} ${changes().items.length === 1 ? "task" : "tasks"}`;
 		}
 		// Limit displayed items to avoid overflow
 		const MAX_VISIBLE_ITEMS = 3;
-		const visibleItems = changes.items.slice(0, MAX_VISIBLE_ITEMS);
-		const remainingCount = changes.items.length - MAX_VISIBLE_ITEMS;
+		const visibleItems = changes().items.slice(0, MAX_VISIBLE_ITEMS);
+		const remainingCount = changes().items.length - MAX_VISIBLE_ITEMS;
 		return <div class="flex items-start gap-1.5 py-0.5 rounded-md px-2">
         <div class="flex-1 min-w-0 flex items-center gap-1.5">
           <div class="text-xs text-muted-foreground flex items-center gap-1.5 min-w-0">
@@ -382,9 +375,9 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
             </span>
             <div class="flex items-center gap-1 text-muted-foreground/60 font-normal truncate min-w-0">
               {visibleItems.map((c, idx) => <TodoChangeItem key={idx} change={c} showSeparator={idx < visibleItems.length - 1} />)}
-              {remainingCount > 0 && <span class="text-muted-foreground/60 whitespace-nowrap flex-shrink-0">
+              <Show when={remainingCount > 0}><span class="text-muted-foreground/60 whitespace-nowrap flex-shrink-0">
                   +{remainingCount} more
-                </span>}
+                </span></Show>
             </div>
           </div>
         </div>
@@ -410,7 +403,7 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
 		isCreationToolCall && "sticky z-[5] bg-background"
 	)} style={isCreationToolCall ? { top: "calc(var(--user-message-height, 28px) - 29px)" } : undefined}>
       {	/* TOP BLOCK - Plan title with expand/collapse button */}
-      <div class="rounded-t-lg border border-b-0 border-border bg-muted/30 px-2.5 py-1.5 cursor-pointer hover:bg-muted/40 transition-colors duration-150" onClick={handleToggleExpand} role="button" aria-expanded={isExpanded} aria-label={`To-do list with ${totalTodos} items. Click to ${isExpanded ? "collapse" : "expand"}`} tabIndex={0} onKeyDown={handleKeyDown}>
+      <div class="rounded-t-lg border border-b-0 border-border bg-muted/30 px-2.5 py-1.5 cursor-pointer hover:bg-muted/40 transition-colors duration-150" onClick={handleToggleExpand} role="button" aria-expanded={isExpanded()} aria-label={`To-do list with ${totalTodos} items. Click to ${isExpanded() ? "collapse" : "expand"}`} tabIndex={0} onKeyDown={handleKeyDown}>
         <div class="flex items-center gap-1.5">
           <PlanIcon class="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
           <span class="text-xs font-medium text-foreground">
@@ -421,8 +414,8 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
           </span>
           { /* Expand/Collapse icon */}
           <div class="relative w-4 h-4 flex-shrink-0">
-            <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
-            <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
+            <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
+            <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
           </div>
         </div>
       </div>
@@ -430,7 +423,7 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
       { /* BOTTOM BLOCK - Current task + progress (expandable) */}
       <div class="rounded-b-lg border border-border bg-muted/20 shadow-xl shadow-background">
         { /* Collapsed view - progress circle + current task + count */}
-        {!isExpanded && <div class="flex items-center gap-2.5 px-2.5 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors duration-150" onClick={handleExpand}>
+        <Show when={!isExpanded()}><div class="flex items-center gap-2.5 px-2.5 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors duration-150" onClick={handleExpand}>
             { /* Progress circle or checkmark when all completed */}
             {completedCount === totalTodos && totalTodos > 0 ? <div class="w-4 h-4 rounded-full bg-muted flex items-center justify-center flex-shrink-0" style={{ border: "0.5px solid hsl(var(--border))" }}>
                 <CheckIcon class="w-2.5 h-2.5 text-muted-foreground" />
@@ -438,24 +431,24 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
 
             { /* Current task name */}
             <div class="flex items-center gap-1.5 min-w-0 flex-1">
-              {currentTask && <span class="text-xs text-muted-foreground truncate">
+              <Show when={currentTask}><span class="text-xs text-muted-foreground truncate">
                   {currentTask.status === "in_progress" ? currentTask.activeForm || currentTask.content : currentTask.content}
-                </span>}
-              {!currentTask && completedCount === totalTodos && totalTodos > 0 && <span class="text-xs text-muted-foreground truncate">
+                </span></Show>
+              <Show when={!currentTask && completedCount === totalTodos && totalTodos > 0}><span class="text-xs text-muted-foreground truncate">
                   {displayTodos[totalTodos - 1]?.content}
-                </span>}
+                </span></Show>
             </div>
 
             { /* Right side - task count */}
             <span class="text-xs text-muted-foreground tabular-nums flex-shrink-0">
               {currentTaskIndex}/{totalTodos}
             </span>
-          </div>}
+          </div></Show>
 
         { /* Expanded content - full todo list */}
-        {isExpanded && <div class="max-h-[300px] overflow-y-auto cursor-pointer" onClick={handleCollapse}>
+        <Show when={isExpanded()}><div class="max-h-[300px] overflow-y-auto cursor-pointer" onClick={handleCollapse}>
             {displayTodos.map((todo, idx) => <TodoListItem key={idx} todo={todo} isPending={isPending} isLast={idx === displayTodos.length - 1} />)}
-          </div>}
+          </div></Show>
       </div>
     </div>;
 }

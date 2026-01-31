@@ -1,4 +1,3 @@
-"use client";
 import { cn } from "../../../lib/utils";
 import { createSignal, createEffect } from "solid-js";
 import { Popover, PopoverAnchor, PopoverContent } from "../../../components/ui/popover";
@@ -7,9 +6,9 @@ interface ScaleControlProps {
 	value: number;
 	onChange: (scale: number) => void;
 	presets?: readonly number[];
-	className?: string;
+	class?: string;
 }
-export function ScaleControl({ value, onChange, presets = AGENTS_PREVIEW_CONSTANTS.SCALE_PRESETS, className }: ScaleControlProps) {
+export function ScaleControl({ value, onChange, presets = AGENTS_PREVIEW_CONSTANTS.SCALE_PRESETS, class: cls }: ScaleControlProps) {
 	const [isOpen, setIsOpen] = createSignal(false);
 	const [inputValue, setInputValue] = createSignal(String(value));
 	const [inputRef, setInputRef] = createSignal<HTMLInputElement>(null);
@@ -38,12 +37,12 @@ export function ScaleControl({ value, onChange, presets = AGENTS_PREVIEW_CONSTAN
 		if (e.key === "Enter") {
 			handleCommit();
 			setIsOpen(false);
-			inputRef.current?.blur();
+			inputRef()?.blur();
 		}
 		if (e.key === "Escape") {
 			setInputValue(String(value));
 			setIsOpen(false);
-			inputRef.current?.blur();
+			inputRef()?.blur();
 		}
 	};
 	return <Popover open={isOpen} onOpenChange={(open) => {
@@ -53,10 +52,10 @@ export function ScaleControl({ value, onChange, presets = AGENTS_PREVIEW_CONSTAN
 		}
 	}}>
       <PopoverAnchor asChild>
-        <div class={cn("flex items-center h-7 px-1.5 ml-1 rounded-md cursor-text transition-colors", "hover:bg-muted", isOpen && "bg-muted", className)} onClick={(e) => {
+        <div class={cn("flex items-center h-7 px-1.5 ml-1 rounded-md cursor-text transition-colors", "hover:bg-muted", isOpen() && "bg-muted",cls)} onClick={(e) => {
 		// If click is not on input, focus input
-		if (e.target !== inputRef.current) {
-			inputRef.current?.focus();
+		if (e.target !== inputRef()) {
+			inputRef()?.focus();
 		}
 	}}>
           <input ref={inputRef} type="text" value={inputValue} onInput={handleInputChange} onFocus={(e) => {

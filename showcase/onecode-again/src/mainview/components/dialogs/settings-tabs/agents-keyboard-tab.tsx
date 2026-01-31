@@ -1,6 +1,4 @@
-"use client";
 import { createMemo, createSignal, createEffect, onCleanup, For, Index, Show } from "solid-js";
-import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { X, RotateCcw, Search, Settings2 } from "lucide-solid";
 import { cn } from "../../../lib/utils";
 import { CmdIcon, OptionIcon, ShiftIcon, ControlIcon } from "../../ui/icons";
@@ -125,7 +123,7 @@ function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, on
 	const { currentKeys } = useHotkeyRecorder({
 		onRecord,
 		onCancel,
-		isRecording
+		isRecording: () => isRecording
 	});
 	// Click outside to cancel recording
 	createEffect(() => {
@@ -150,9 +148,9 @@ function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, on
         {(() => {
  // During recording, show currentKeys or "Press keys..."
 		if (isRecording) {
-			if (currentKeys.length > 0) {
+			if (currentKeys().length > 0) {
 				return <div class="flex items-center gap-1">
-                  <Index each={currentKeys}>{(key) => <ShortcutKey keyName={key()} size="lg" />}</Index>
+                  <Index each={currentKeys()}>{(key) => <ShortcutKey keyName={key()} size="lg" />}</Index>
                 </div>;
 			}
 			return <span class="text-sm text-muted-foreground animate-pulse">
@@ -170,9 +168,11 @@ function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, on
       </button>
 
       {	/* Conflict warning - shown temporarily when trying to set conflicting hotkey */}
-      {conflictMessage && <p class="text-xs text-red-500 mt-3 animate-pulse">
+      <Show when={conflictMessage}>
+        <p class="text-xs text-red-500 mt-3 animate-pulse">
           {conflictMessage}
-        </p>}
+        </p>
+      </Show>
 
       { /* Reset to default / Instructions - always reserve space to prevent layout shift */}
       <div class="mt-6 h-8 flex items-center justify-center">
@@ -203,14 +203,14 @@ function EmptyDetailPanel() {
 * Main keyboard settings tab component
 */
 export function AgentsKeyboardTab() {
-	const [customHotkeys, setCustomHotkeys] = useAtom(customHotkeysAtom);
-	const [ctrlTabTarget] = useAtom(ctrlTabTargetAtom);
-	const betaKanbanEnabled = useAtomValue(betaKanbanEnabledAtom);
+	const [customHotkeys, setCustomHotkeys] = customHotkeysAtom;
+	const [ctrlTabTarget] = ctrlTabTargetAtom;
+	const betaKanbanEnabled = betaKanbanEnabledAtom[0];
 	// Default to first shortcut
 	const [selectedActionId, setSelectedActionId] = createSignal("show-shortcuts");
 	const [isRecording, setIsRecording] = createSignal(false);
 	const [searchQuery, setSearchQuery] = createSignal("");
-	const [conflictMessage, setConflictMessage] = createSignal(null);
+	const [conflictMessage, setConflictMessage] = createSignal<string | null>(null);
 	// Get shortcuts by category, filtering out disabled features
 	const shortcutsByCategory = createMemo(() => {
 		const all = getShortcutsByCategory();
@@ -372,17 +372,21 @@ export function AgentsKeyboardTab() {
           </div>
 
           {	/* Reset all button at bottom */}
-          {hasCustomHotkeys() && <div class="pt-2 flex-shrink-0">
+          <Show when={hasCustomHotkeys()}>
+            <div class="pt-2 flex-shrink-0">
               <button type="button" onClick={handleResetAll} class="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
                 <RotateCcw class="h-3 w-3" />
                 Reset all to defaults
               </button>
-            </div>}
+            </div>
+          </Show>
         </div>
 
         { /* Right panel - shortcut details */}
         <div class="flex-1 bg-secondary/30 rounded-xl overflow-hidden">
-          {selectedAction() ? <ShortcutDetailPanel action={selectedAction()!} config={customHotkeys()} isRecording={isRecording()} onStartRecording={handleStartRecording} onRecord={handleRecord} onCancel={handleCancel} onReset={handleReset} ctrlTabTarget={ctrlTabTarget()} conflictMessage={conflictMessage()} /> : <EmptyDetailPanel />}
+          <Show when={selectedAction()} fallback={<EmptyDetailPanel />}>
+            <ShortcutDetailPanel action={selectedAction()!} config={customHotkeys()} isRecording={isRecording()} onStartRecording={handleStartRecording} onRecord={handleRecord} onCancel={handleCancel} onReset={handleReset} ctrlTabTarget={ctrlTabTarget()} conflictMessage={conflictMessage()} />
+          </Show>
         </div>
       </div>
     </div>;

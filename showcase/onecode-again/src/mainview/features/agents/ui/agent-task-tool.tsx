@@ -1,5 +1,4 @@
-"use client";
-import { createSignal, createEffect, onCleanup } from "solid-js";
+import { createSignal, createEffect, onCleanup, For, Show } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 import { AgentToolRegistry, getToolStatus } from "./agent-tool-registry";
 import { AgentToolCall } from "./agent-tool-call";
@@ -24,16 +23,16 @@ function formatElapsedTime(ms: number): string {
 	if (remainingSeconds === 0) return `${minutes}m`;
 	return `${minutes}m ${remainingSeconds}s`;
 }
-export function AgentTaskTool({ part, nestedTools, chatStatus }: AgentTaskToolProps) {
-	const { isPending, isInterrupted } = getToolStatus(part, chatStatus);
+export function AgentTaskTool(props: AgentTaskToolProps) {
+	const { isPending, isInterrupted } = getToolStatus(props.part, props.chatStatus);
 	// Default: collapsed
 	const [isExpanded, setIsExpanded] = createSignal(false);
 	const [scrollRef, setScrollRef] = createSignal<HTMLDivElement>(null);
 	// Track elapsed time for running tasks
 	const [elapsedMs, setElapsedMs] = createSignal(0);
-	const description = part.input?.description || "";
+	const description = props.part.input?.description || "";
 	// Use startedAt from backend for persistent timing across re-renders
-	const startedAt = part.startedAt as number | undefined;
+	const startedAt = props.part.startedAt as number | undefined;
 	// Track elapsed time while task is running using backend timestamp
 	createEffect(() => {
 		if (isPending && startedAt) {
@@ -46,16 +45,17 @@ export function AgentTaskTool({ part, nestedTools, chatStatus }: AgentTaskToolPr
 		}
 	});
 	// Use output duration from Claude Code if available, otherwise use our tracked time
-	const outputDuration = part.output?.duration || part.output?.duration_ms;
+	const outputDuration = props.part.output?.duration || props.part.output?.duration_ms;
 	const displayMs = !isPending && outputDuration ? outputDuration : elapsedMs;
 	const elapsedTimeDisplay = formatElapsedTime(displayMs);
 	// Auto-scroll to bottom when streaming and new nested tools added
 	createEffect(() => {
-		if (isPending && isExpanded && scrollRef.current) {
-			scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+		const el = scrollRef();
+		if (isPending && isExpanded() && el) {
+			el.scrollTop = el.scrollHeight;
 		}
 	});
-	const hasNestedTools = nestedTools.length > 0;
+	const hasNestedTools = props.nestedTools.length > 0;
 	// Build subtitle - always show description
 	const getSubtitle = () => {
 		if (description) {
@@ -70,7 +70,7 @@ export function AgentTaskTool({ part, nestedTools, chatStatus }: AgentTaskToolPr
 		return isPending ? "Running Task" : "Completed Task";
 	};
 	// Show interrupted state if task was interrupted without completing
-	if (isInterrupted && !part.output) {
+	if (isInterrupted && !props.part.output) {
 		return <AgentToolInterrupted toolName="Task" subtitle={subtitle} />;
 	}
 	return <div>
@@ -84,37 +84,43 @@ export function AgentTaskTool({ part, nestedTools, chatStatus }: AgentTaskToolPr
               </TextShimmer> : <span class="font-medium whitespace-nowrap flex-shrink-0 text-muted-foreground">
                 {getTitle()}
               </span>}
-            {subtitle && <span class="text-muted-foreground/60 truncate">
+            <Show when={subtitle}>
+              <span class="text-muted-foreground/60 truncate">
                 {subtitle}
-              </span>}
+              </span>
+            </Show>
             { /* Show elapsed time while running or final time when done */}
-            {elapsedTimeDisplay && <span class="text-muted-foreground/50 tabular-nums flex-shrink-0">
+            <Show when={elapsedTimeDisplay}>
+              <span class="text-muted-foreground/50 tabular-nums flex-shrink-0">
                 {elapsedTimeDisplay}
-              </span>}
+              </span>
+            </Show>
             { /* Chevron right after text - rotates when expanded */}
-            <ChevronRight class={cn("w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200 ease-out flex-shrink-0", isExpanded && "rotate-90", !isExpanded && "opacity-0 group-hover:opacity-100")} />
+            <ChevronRight class={cn("w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200 ease-out flex-shrink-0", isExpanded() && "rotate-90", !isExpanded() && "opacity-0 group-hover:opacity-100")} />
           </div>
         </div>
       </div>
 
       { /* Nested tools - only show when expanded */}
-      {hasNestedTools && isExpanded && <div class="relative mt-1">
+      <Show when={hasNestedTools && isExpanded()}>
+        <div class="relative mt-1">
           { /* Top gradient fade when streaming and has many items */}
-          <div class={cn("absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none transition-opacity duration-200", isPending && nestedTools.length > MAX_VISIBLE_TOOLS ? "opacity-100" : "opacity-0")} />
+          <div class={cn("absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none transition-opacity duration-200", isPending && props.nestedTools.length > MAX_VISIBLE_TOOLS ? "opacity-100" : "opacity-0")} />
 
-          { /* Scrollable container - auto-scrolls to bottom when streaming */}
-          <div ref={scrollRef} class={cn("space-y-1.5", isPending && nestedTools.length > MAX_VISIBLE_TOOLS && "overflow-y-auto scrollbar-hide")} style={isPending && nestedTools.length > MAX_VISIBLE_TOOLS ? { maxHeight: `${MAX_VISIBLE_TOOLS * TOOL_HEIGHT_PX}px` } : undefined}>
-            {nestedTools.map((nestedPart, idx) => {
+          {/* Scrollable container - auto-scrolls to bottom when streaming */}
+          <div ref={setScrollRef} class={cn("space-y-1.5", isPending && props.nestedTools.length > MAX_VISIBLE_TOOLS && "overflow-y-auto scrollbar-hide")} style={isPending && props.nestedTools.length > MAX_VISIBLE_TOOLS ? { maxHeight: `${MAX_VISIBLE_TOOLS * TOOL_HEIGHT_PX}px` } : undefined}>
+            <For each={props.nestedTools}>{(nestedPart, idx) => {
  const nestedMeta = AgentToolRegistry[nestedPart.type];
 		if (!nestedMeta) {
-			return <div key={idx} class="text-xs text-muted-foreground py-0.5 px-2">
+			return <div class="text-xs text-muted-foreground py-0.5 px-2">
                     {nestedPart.type?.replace("tool-", "")}
                   </div>;
 		}
-		const { isPending: nestedIsPending, isError: nestedIsError } = getToolStatus(nestedPart, chatStatus);
-		return <AgentToolCall key={idx} icon={nestedMeta.icon} title={nestedMeta.title(nestedPart)} subtitle={nestedMeta.subtitle?.(nestedPart)} isPending={nestedIsPending} isError={nestedIsError} />;
-	})}
+		const { isPending: nestedIsPending, isError: nestedIsError } = getToolStatus(nestedPart, props.chatStatus);
+		return <AgentToolCall icon={nestedMeta.icon} title={nestedMeta.title(nestedPart)} subtitle={nestedMeta.subtitle?.(nestedPart)} isPending={nestedIsPending} isError={nestedIsError} />;
+	}}</For>
           </div>
-        </div>}
+        </div>
+      </Show>
     </div>;
 }

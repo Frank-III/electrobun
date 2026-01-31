@@ -73,7 +73,7 @@ export interface MentionCategory {
   /**
    * Optional icon component for the category
    */
-  icon?: Component<{ className?: string }>
+  icon?: Component<{ class?: string }>
 
   /**
    * Sort priority (higher = shown first)
@@ -107,7 +107,7 @@ export interface MentionItem<TData = unknown> {
    * Icon identifier (string) or component
    * String IDs map to the icon registry
    */
-  icon?: string | Component<{ className?: string }>
+  icon?: string | Component<{ class?: string }>
 
   /**
    * Provider-specific data payload

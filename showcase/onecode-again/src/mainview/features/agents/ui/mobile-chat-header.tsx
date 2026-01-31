@@ -1,6 +1,4 @@
-"use client";
 import { createMemo, createSignal } from "solid-js";
-import { useAtomValue } from "../../../lib/state/jotai";
 import { loadingSubChatsAtom } from "../atoms";
 import { Plus, ChevronDown, Play, AlignJustify, FolderDown } from "lucide-solid";
 import { IconSpinner, PlanIcon, AgentIcon, DiffIcon, CustomTerminalIcon, IconTextUndo } from "../../../components/ui/icons";
@@ -33,18 +31,19 @@ interface MobileChatHeaderProps {
 	showOpenLocally?: boolean;
 }
 export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, canOpenPreview = false, onOpenDiff, canOpenDiff = false, diffStats, onOpenTerminal, canOpenTerminal = false, isArchived = false, onRestore, onOpenLocally, showOpenLocally = false }: MobileChatHeaderProps) {
-	const activeSubChatId = useAgentSubChatStore((state) => state.activeSubChatId);
-	const allSubChats = useAgentSubChatStore((state) => state.allSubChats);
-	const loadingSubChatsAtomValue = useAtomValue(loadingSubChatsAtom);
+	const subChatStore = useAgentSubChatStore();
+	const activeSubChatId = createMemo(() => subChatStore.activeSubChatId);
+	const allSubChats = createMemo(() => subChatStore.allSubChats);
+	const loadingSubChatsAtomValue = loadingSubChatsAtom[0];
 	const [isHistoryOpen, setIsHistoryOpen] = createSignal(false);
 	// Find active sub-chat metadata
 	const activeSubChat = createMemo(() => {
-		return allSubChats.find((sc) => sc.id === activeSubChatId);
+		return allSubChats().find((sc) => sc.id === activeSubChatId());
 	});
-	const isLoading = activeSubChatId ? loadingSubChatsAtomValue.has(activeSubChatId) : false;
-	const mode = activeSubChat?.mode || "agent";
+	const isLoading = activeSubChatId() ? loadingSubChatsAtomValue.has(activeSubChatId()) : false;
+	const mode = activeSubChat()?.mode || "agent";
 	// Sort sub-chats by most recent first for history
-	const sortedSubChats = createMemo(() => [...allSubChats].sort((a, b) => {
+	const sortedSubChats = createMemo(() => [...allSubChats()].sort((a, b) => {
 		const aT = new Date(a.updated_at || a.created_at || "0").getTime();
 		const bT = new Date(b.updated_at || b.created_at || "0").getTime();
 		return bT - aT;
@@ -70,7 +69,7 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
       { /* Active chat trigger - opens history (shrinks to content, max-width limited) */}
       <SearchCombobox isOpen={isHistoryOpen} onOpenChange={setIsHistoryOpen} items={sortedSubChats} onSelect={handleSelectFromHistory} placeholder="Search chats..." emptyMessage="No results" align="start" side="bottom" sideOffset={8} getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={(subChat) => {
  const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
-		const isActive = subChat.id === activeSubChatId;
+		const isActive = subChat.id === activeSubChatId();
 		return <div class={cn("flex items-center gap-2 flex-1 min-w-0", isActive && "font-medium")}>
               <span class="text-sm truncate">
                 {subChat.name || "New Chat"}

@@ -1,9 +1,9 @@
-import { useAtom, useSetAtom } from "../../../lib/state/jotai";
 import { MoreHorizontal, Plus } from "lucide-solid";
-import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show, type Accessor } from "solid-js";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/solid-query";
 import { toast } from "solid-sonner";
 import { agentsSettingsDialogOpenAtom, anthropicOnboardingCompletedAtom, customClaudeConfigAtom, openaiApiKeyAtom, type CustomClaudeConfig } from "../../../lib/atoms";
-import { trpc } from "../../../lib/trpc";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../ui/dropdown-menu";
@@ -41,27 +41,35 @@ function AccountRow({ account, isActive, onSetActive, onRename, onRemove, isLoad
 	onRemove: () => void;
 	isLoading: boolean;
 }) {
-	return <div class="flex items-center justify-between p-3 hover:bg-muted/50">
+    return <div class="flex items-center justify-between p-3 hover:bg-muted/50">
       <div class="flex items-center gap-3">
         <div>
           <div class="text-sm font-medium">
             {account.displayName || "Anthropic Account"}
           </div>
-          {account.email && <div class="text-xs text-muted-foreground">{account.email}</div>}
-          {!account.email && account.connectedAt && <div class="text-xs text-muted-foreground">
+          <Show when={account.email}>
+            <div class="text-xs text-muted-foreground">{account.email}</div>
+          </Show>
+          <Show when={!account.email && account.connectedAt}>
+            <div class="text-xs text-muted-foreground">
               Connected{" "}
-              {new Date(account.connectedAt).toLocaleDateString(undefined, { dateStyle: "short" })}
-            </div>}
+              {new Date(account.connectedAt!).toLocaleDateString(undefined, { dateStyle: "short" })}
+            </div>
+          </Show>
         </div>
       </div>
 
       <div class="flex items-center gap-2">
-        {!isActive && <Button size="sm" variant="ghost" onClick={onSetActive} disabled={isLoading}>
+        <Show when={!isActive}>
+          <Button size="sm" variant="ghost" onClick={onSetActive} disabled={isLoading}>
             Switch
-          </Button>}
-        {isActive && <Badge variant="secondary" class="text-xs">
+          </Button>
+        </Show>
+        <Show when={isActive}>
+          <Badge variant="secondary" class="text-xs">
             Active
-          </Badge>}
+          </Badge>
+        </Show>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="icon" variant="ghost" class="h-7 w-7">
@@ -80,59 +88,80 @@ function AccountRow({ account, isActive, onSetActive, onRename, onRemove, isLoad
 }
 // Anthropic accounts section component
 function AnthropicAccountsSection() {
-	const { data: accounts, isLoading: isAccountsLoading, refetch: refetchList } = trpc.anthropicAccounts.list.useQuery(undefined, {
+	const queryClient = useQueryClient();
+	const accountsQuery = useQuery(() => ({
+		queryKey: ["anthropicAccounts", "list"],
+		queryFn: () => desktopRpc.anthropicAccounts.list(),
 		refetchOnMount: true,
-		staleTime: 0
-	});
-	const { data: activeAccount, refetch: refetchActive } = trpc.anthropicAccounts.getActive.useQuery(undefined, {
+		staleTime: 0,
+	}));
+	const accounts = () => accountsQuery.data;
+	const isAccountsLoading = () => accountsQuery.isLoading;
+	const refetchList = () => accountsQuery.refetch();
+	const activeAccountQuery = useQuery(() => ({
+		queryKey: ["anthropicAccounts", "getActive"],
+		queryFn: () => desktopRpc.anthropicAccounts.getActive(),
 		refetchOnMount: true,
-		staleTime: 0
-	});
-	const { data: claudeCodeIntegration } = trpc.claudeCode.getIntegration.useQuery();
-	const trpcUtils = trpc.useUtils();
-	// Auto-migrate legacy account if needed
-	const migrateLegacy = trpc.anthropicAccounts.migrateLegacy.useMutation({ onSuccess: async () => {
-		await refetchList();
-		await refetchActive();
-	} });
+		staleTime: 0,
+	}));
+	const activeAccount = () => activeAccountQuery.data;
+	const refetchActive = () => activeAccountQuery.refetch();
+	const claudeCodeIntegrationQuery = useQuery(() => ({
+		queryKey: ["claudeCode", "getIntegration"],
+		queryFn: () => desktopRpc.claudeCode.getIntegration(),
+	}));
+	const claudeCodeIntegration = () => claudeCodeIntegrationQuery.data;
+	const migrateLegacy = useMutation(() => ({
+		mutationFn: () => desktopRpc.anthropicAccounts.migrateLegacy.mutate(undefined as never),
+		onSuccess: async () => {
+			await refetchList();
+			await refetchActive();
+		},
+	}));
 	// Trigger migration if: no accounts, not loading, has legacy connection, not already migrating
 	createEffect(() => {
-		if (!isAccountsLoading && accounts?.length === 0 && claudeCodeIntegration?.isConnected && !migrateLegacy.isPending && !migrateLegacy.isSuccess) {
-			migrateLegacy.mutate();
+		if (!isAccountsLoading() && (accounts()?.length === 0) && claudeCodeIntegration()?.isConnected && !migrateLegacy.isPending && !migrateLegacy.isSuccess) {
+			migrateLegacy.mutate(undefined as never);
 		}
 	});
-	const setActiveMutation = trpc.anthropicAccounts.setActive.useMutation({
+	const setActiveMutation = useMutation(() => ({
+		mutationFn: (input: { accountId: string }) =>
+			desktopRpc.anthropicAccounts.setActive.mutate(input),
 		onSuccess: () => {
-			trpcUtils.anthropicAccounts.list.invalidate();
-			trpcUtils.anthropicAccounts.getActive.invalidate();
-			trpcUtils.claudeCode.getIntegration.invalidate();
+			queryClient.invalidateQueries({ queryKey: ["anthropicAccounts", "list"] });
+			queryClient.invalidateQueries({ queryKey: ["anthropicAccounts", "getActive"] });
+			queryClient.invalidateQueries({ queryKey: ["claudeCode", "getIntegration"] });
 			toast.success("Account switched");
 		},
-		onError: (err) => {
+		onError: (err: Error) => {
 			toast.error(`Failed to switch account: ${err.message}`);
-		}
-	});
-	const renameMutation = trpc.anthropicAccounts.rename.useMutation({
+		},
+	}));
+	const renameMutation = useMutation(() => ({
+		mutationFn: (input: { accountId: string; displayName: string }) =>
+			desktopRpc.anthropicAccounts.rename.mutate(input),
 		onSuccess: () => {
-			trpcUtils.anthropicAccounts.list.invalidate();
-			trpcUtils.anthropicAccounts.getActive.invalidate();
+			queryClient.invalidateQueries({ queryKey: ["anthropicAccounts", "list"] });
+			queryClient.invalidateQueries({ queryKey: ["anthropicAccounts", "getActive"] });
 			toast.success("Account renamed");
 		},
-		onError: (err) => {
+		onError: (err: Error) => {
 			toast.error(`Failed to rename account: ${err.message}`);
-		}
-	});
-	const removeMutation = trpc.anthropicAccounts.remove.useMutation({
+		},
+	}));
+	const removeMutation = useMutation(() => ({
+		mutationFn: (input: { accountId: string }) =>
+			desktopRpc.anthropicAccounts.remove.mutate(input),
 		onSuccess: () => {
-			trpcUtils.anthropicAccounts.list.invalidate();
-			trpcUtils.anthropicAccounts.getActive.invalidate();
-			trpcUtils.claudeCode.getIntegration.invalidate();
+			queryClient.invalidateQueries({ queryKey: ["anthropicAccounts", "list"] });
+			queryClient.invalidateQueries({ queryKey: ["anthropicAccounts", "getActive"] });
+			queryClient.invalidateQueries({ queryKey: ["claudeCode", "getIntegration"] });
 			toast.success("Account removed");
 		},
-		onError: (err) => {
+		onError: (err: Error) => {
 			toast.error(`Failed to remove account: ${err.message}`);
-		}
-	});
+		},
+	}));
 	const handleRename = (accountId: string, currentName: string | null) => {
 		const newName = window.prompt("Enter new name for this account:", currentName || "Anthropic Account");
 		if (newName && newName.trim()) {
@@ -148,33 +177,43 @@ function AnthropicAccountsSection() {
 			removeMutation.mutate({ accountId });
 		}
 	};
-	const isLoading = setActiveMutation.isPending || renameMutation.isPending || removeMutation.isPending;
+	const isLoading = () => setActiveMutation.isPending || renameMutation.isPending || removeMutation.isPending;
 	// Don't show section if no accounts
-	if (!isAccountsLoading && (!accounts || accounts.length === 0)) {
+	if (!isAccountsLoading() && (!accounts() || accounts()!.length === 0)) {
 		return null;
 	}
 	return <div class="bg-background rounded-lg border border-border overflow-hidden divide-y divide-border">
-        {isAccountsLoading ? <div class="p-4 text-center text-sm text-muted-foreground">
+        {isAccountsLoading() ? <div class="p-4 text-center text-sm text-muted-foreground">
             Loading accounts...
-          </div> : accounts?.map((account) => <AccountRow key={account.id} account={account} isActive={activeAccount?.id === account.id} onSetActive={() => setActiveMutation.mutate({ accountId: account.id })} onRename={() => handleRename(account.id, account.displayName)} onRemove={() => handleRemove(account.id, account.displayName)} isLoading={isLoading} />)}
+          </div> : accounts()?.map((account) => <AccountRow key={account.id} account={account} isActive={activeAccount()?.id === account.id} onSetActive={() => setActiveMutation.mutate({ accountId: account.id })} onRename={() => handleRename(account.id, account.displayName)} onRemove={() => handleRemove(account.id, account.displayName)} isLoading={isLoading()} />)}
     </div>;
 }
 export function AgentsModelsTab() {
-	const [storedConfig, setStoredConfig] = useAtom(customClaudeConfigAtom);
+	const [storedConfig, setStoredConfig] = customClaudeConfigAtom;
 	const [model, setModel] = createSignal(storedConfig().model);
 	const [baseUrl, setBaseUrl] = createSignal(storedConfig().baseUrl);
 	const [token, setToken] = createSignal(storedConfig().token);
-	const setAnthropicOnboardingCompleted = useSetAtom(anthropicOnboardingCompletedAtom);
-	const setSettingsOpen = useSetAtom(agentsSettingsDialogOpenAtom);
+	const setAnthropicOnboardingCompleted = anthropicOnboardingCompletedAtom[1];
+	const setSettingsOpen = agentsSettingsDialogOpenAtom[1];
 	const isNarrowScreen = useIsNarrowScreen();
-	const disconnectClaudeCode = trpc.claudeCode.disconnect.useMutation();
-	const { data: claudeCodeIntegration, isLoading: isClaudeCodeLoading } = trpc.claudeCode.getIntegration.useQuery();
-	const isClaudeCodeConnected = claudeCodeIntegration?.isConnected;
+	const disconnectClaudeCode = useMutation(() => ({
+		mutationFn: () => desktopRpc.claudeCode.disconnect.mutate(undefined as never),
+	}));
+	const claudeCodeIntegrationQuery2 = useQuery(() => ({
+		queryKey: ["claudeCode", "getIntegration"],
+		queryFn: () => desktopRpc.claudeCode.getIntegration(),
+	}));
+	const claudeCodeIntegration2 = () => claudeCodeIntegrationQuery2.data;
+	const isClaudeCodeLoading = () => claudeCodeIntegrationQuery2.isLoading;
+	const isClaudeCodeConnected = () => claudeCodeIntegration2()?.isConnected;
 	// OpenAI API key state
-	const [storedOpenAIKey, setStoredOpenAIKey] = useAtom(openaiApiKeyAtom);
+	const [storedOpenAIKey, setStoredOpenAIKey] = openaiApiKeyAtom;
 	const [openaiKey, setOpenaiKey] = createSignal(storedOpenAIKey());
-	const setOpenAIKeyMutation = trpc.voice.setOpenAIKey.useMutation();
-	const trpcUtils = trpc.useUtils();
+	const queryClient = useQueryClient();
+	const setOpenAIKeyMutation = useMutation(() => ({
+		mutationFn: (input: { key: string }) =>
+			desktopRpc.voice.setOpenAIKey.mutate(input),
+	}));
 	createEffect(() => {
 		setModel(storedConfig().model);
 		setBaseUrl(storedConfig().baseUrl);
@@ -209,7 +248,7 @@ export function AgentsModelsTab() {
 		toast.success("Model settings reset");
 	};
 	const handleClaudeCodeSetup = () => {
-		disconnectClaudeCode.mutate();
+		disconnectClaudeCode.mutate(undefined as never);
 		setSettingsOpen(false);
 		setAnthropicOnboardingCompleted(false);
 	};
@@ -226,8 +265,7 @@ export function AgentsModelsTab() {
 		try {
 			await setOpenAIKeyMutation.mutateAsync({ key });
 			setStoredOpenAIKey(key);
-			// Invalidate voice availability check
-			await trpcUtils.voice.isAvailable.invalidate();
+			queryClient.invalidateQueries({ queryKey: ["voice", "isAvailable"] });
 			toast.success("OpenAI API key saved");
 		} catch (err) {
 			toast.error("Failed to save OpenAI API key");
@@ -238,20 +276,22 @@ export function AgentsModelsTab() {
 			await setOpenAIKeyMutation.mutateAsync({ key: "" });
 			setStoredOpenAIKey("");
 			setOpenaiKey("");
-			await trpcUtils.voice.isAvailable.invalidate();
+			queryClient.invalidateQueries({ queryKey: ["voice", "isAvailable"] });
 			toast.success("OpenAI API key removed");
 		} catch (err) {
 			toast.error("Failed to remove OpenAI API key");
 		}
 	};
-	return <div class="p-6 space-y-6">
+    return <div class="p-6 space-y-6">
       {	/* Header - hidden on narrow screens since it's in the navigation bar */}
-      {!isNarrowScreen() && <div class="flex flex-col space-y-1.5 text-center sm:text-left">
+      <Show when={!isNarrowScreen()}>
+        <div class="flex flex-col space-y-1.5 text-center sm:text-left">
           <h3 class="text-sm font-semibold text-foreground">Models</h3>
           <p class="text-xs text-muted-foreground">
             Configure model overrides and Claude Code authentication
           </p>
-        </div>}
+        </div>
+      </Show>
 
       { /* Anthropic Accounts Section */}
       <div class="space-y-2">
@@ -264,9 +304,9 @@ export function AgentsModelsTab() {
               Manage your Claude API accounts
             </p>
           </div>
-          <Button size="sm" variant="outline" onClick={handleClaudeCodeSetup} disabled={disconnectClaudeCode.isPending || isClaudeCodeLoading}>
+          <Button size="sm" variant="outline" onClick={handleClaudeCodeSetup} disabled={disconnectClaudeCode.isPending || isClaudeCodeLoading()}>
             <Plus class="h-3 w-3 mr-1" />
-            {isClaudeCodeConnected ? "Add" : "Connect"}
+            {isClaudeCodeConnected() ? "Add" : "Connect"}
           </Button>
         </div>
 

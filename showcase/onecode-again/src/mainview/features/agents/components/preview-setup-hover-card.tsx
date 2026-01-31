@@ -1,10 +1,8 @@
-"use client";
+import type { JSX } from "solid-js";
 import { createSignal } from "solid-js";
 import { useTheme } from "../../../lib/hooks/use-theme";
 // import Image from "next/image" // Desktop doesn't use next/image
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "../../../components/ui/hover-card";
-import { createSignal } from "solid-js";
-import { useSetAtom } from "../../../lib/state/jotai";
 // import { agentsSettingsDialogOpenAtom, agentsSettingsDialogActiveTabAtom } from "@/lib/atoms/agents-settings-dialog"
 const agentsSettingsDialogOpenAtom = createSignal(false);
 const agentsSettingsDialogActiveTabAtom = createSignal<string | null>(null);
@@ -14,8 +12,8 @@ interface PreviewSetupHoverCardProps {
 }
 export function PreviewSetupHoverCard({ children }: PreviewSetupHoverCardProps) {
 	const { resolvedTheme } = useTheme();
-	const setSettingsDialogOpen = useSetAtom(agentsSettingsDialogOpenAtom);
-	const setSettingsActiveTab = useSetAtom(agentsSettingsDialogActiveTabAtom);
+	const setSettingsDialogOpen = agentsSettingsDialogOpenAtom[1];
+	const setSettingsActiveTab = agentsSettingsDialogActiveTabAtom[1];
 	const [open, setOpen] = createSignal(false);
 	const handleOpenSettings = () => {
 		setSettingsActiveTab("github");

@@ -1,5 +1,5 @@
 import { createJSONStorage } from "./state/jotai-utils"
-import { createStoredSignal, type SignalPair } from "./state/signal-storage"
+import { createPersistedSignal, type SignalPair } from "./state/signal-storage"
 import type { SyncStorage } from "@solid-primitives/storage"
 import { getWindowId } from "../contexts/WindowContext"
 
@@ -104,10 +104,15 @@ export function createWindowScopedStorage<T>() {
       const windowKey = `${getWindowId()}:${key}`
       localStorage.removeItem(windowKey)
     },
-  }))
+    get length() {
+      return 0
+    },
+    key: () => null,
+    clear: () => {},
+  } as Storage))
 }
 
-function createWindowScopedRawStorage(): SyncStorage {
+export function createWindowScopedRawStorage(): SyncStorage {
   return {
     getItem: (key: string) => {
       const windowKey = `${getWindowId()}:${key}`
@@ -156,37 +161,7 @@ function createWindowScopedRawStorage(): SyncStorage {
   }
 }
 
-/**
- * Atom with storage that is scoped to the current window.
- * Each Electron window has its own isolated storage namespace.
- *
- * Use this for state that should be different per window, like:
- * - Selected chat ID
- * - Selected project
- * - Sidebar open/close states
- * - Terminal states
- *
- * For shared preferences (sidebar width, model settings, etc.),
- * use createStoredSignal instead.
- *
- * @example
- * export const selectedChatIdAtom = atomWithWindowStorage<string | null>(
- *   "agents:selectedChatId",
- *   null,
- *   { getOnInit: true }
- * )
- */
-export function atomWithWindowStorage<T>(
-  key: string,
-  initialValue: T,
-  _options?: { getOnInit?: boolean }
-) {
-  return createWindowStoredSignal<T>(key, initialValue)
-}
-
-export function createWindowStoredSignal<T>(
-  key: string,
-  initialValue: T,
-): SignalPair<T> {
-  return createStoredSignal<T>(key, initialValue, createWindowScopedRawStorage())
+/** Persist a signal to window-scoped storage (prefix + migration). Use makePersisted(createSignal(...), { storage: createWindowScopedRawStorage() }) for custom cases. */
+export function makeWindowPersistedSignal<T>(key: string, initialValue: T): SignalPair<T> {
+  return createPersistedSignal(key, initialValue, createWindowScopedRawStorage())
 }

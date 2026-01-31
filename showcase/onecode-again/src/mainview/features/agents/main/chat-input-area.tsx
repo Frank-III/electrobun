@@ -1,6 +1,5 @@
-"use client";
-import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { ChevronDown, Zap } from "lucide-solid";
+import type { Accessor } from "solid-js";
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Button } from "../../../components/ui/button";
@@ -9,8 +8,9 @@ import { AgentIcon, AttachIcon, CheckIcon, ClaudeCodeIcon, PlanIcon, ThinkingIco
 import { Kbd } from "../../../components/ui/kbd";
 import { PromptInput, PromptInputActions, PromptInputContextItems } from "../../../components/ui/prompt-input";
 import { Switch } from "../../../components/ui/switch";
+import { useQuery, useMutation } from "@tanstack/solid-query";
 import { autoOfflineModeAtom, customClaudeConfigAtom, extendedThinkingEnabledAtom, normalizeCustomClaudeConfig, selectedOllamaModelAtom, showOfflineModeFeaturesAtom } from "../../../lib/atoms";
-import { trpc } from "../../../lib/trpc";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { cn } from "../../../lib/utils";
 import { lastSelectedModelIdAtom, subChatModeAtomFamily, getNextMode, type AgentMode, type SubChatFileChange } from "../atoms";
 import { useAgentSubChatStore } from "../stores/sub-chat-store";
@@ -33,18 +33,22 @@ import type { PastedTextFile } from "../hooks/use-pasted-text-files";
 import { useVoiceRecording, blobToBase64, getAudioFormat } from "../../../lib/hooks/use-voice-recording";
 import { getResolvedHotkey } from "../../../lib/hotkeys";
 import { customHotkeysAtom } from "../../../lib/atoms";
+// NOTE: desktopRpc already imported above (line 14)
 // Hook to get available models (including offline models if Ollama is available and debug enabled)
 function useAvailableModels() {
-	const showOfflineFeatures = useAtomValue(showOfflineModeFeaturesAtom);
-	const { data: ollamaStatus } = trpc.ollama.getStatus.useQuery(undefined, {
+	const showOfflineFeatures = showOfflineModeFeaturesAtom[0];
+	const { data: ollamaStatus } = useQuery(() => ({
+		queryKey: ["ollama", "getStatus"] as const,
+		queryFn: () => desktopRpc.ollama.getStatus(),
 		refetchInterval: showOfflineFeatures() ? 3e4 : false,
-		enabled: showOfflineFeatures()
-	});
+		enabled: showOfflineFeatures(),
+	}));
 	const baseModels = CLAUDE_MODELS;
-	const isOffline = ollamaStatus ? !ollamaStatus.internet.online : false;
-	const hasOllama = ollamaStatus?.ollama.available && (ollamaStatus.ollama.models?.length ?? 0) > 0;
-	const ollamaModels = ollamaStatus?.ollama.models || [];
-	const recommendedModel = ollamaStatus?.ollama.recommendedModel;
+	const status = ollamaStatus;
+	const isOffline = status ? !status.internet.online : false;
+	const hasOllama = status?.ollama.available && (status.ollama.models?.length ?? 0) > 0;
+	const ollamaModels = status?.ollama.models || [];
+	const recommendedModel = status?.ollama.recommendedModel;
 	// Only show offline models if:
 	// 1. Debug flag is enabled (showOfflineFeatures)
 	// 2. Ollama is available with models
@@ -68,9 +72,11 @@ function useAvailableModels() {
 }
 export interface ChatInputAreaProps {
 	// Editor ref - passed from parent for external access
-	editorRef: Ref<AgentsMentionsEditorHandle | null>;
+	editorRef: Accessor<AgentsMentionsEditorHandle | null>;
+	setEditorRef: (handle: AgentsMentionsEditorHandle | null) => void;
 	// File input ref - for attachment button
-	fileInputRef: Ref<HTMLInputElement | null>;
+	fileInputRef: Accessor<HTMLInputElement | null>;
+	setFileInputRef: (el: HTMLInputElement | null) => void;
 	// Core callbacks
 	onSend: () => void;
 	onForceSend: () => void;
@@ -130,7 +136,7 @@ function arePropsEqual(prevProps: ChatInputAreaProps, nextProps: ChatInputAreaPr
 		return false;
 	}
 	// Compare refs by identity (they should be stable)
-	if (prevProps.editorRef !== nextProps.editorRef || prevProps.fileInputRef !== nextProps.fileInputRef) {
+	if (prevProps.editorRef !== nextProps.editorRef || prevProps.fileInputRef !== nextProps.fileInputRef || prevProps.setEditorRef !== nextProps.setEditorRef || prevProps.setFileInputRef !== nextProps.setFileInputRef) {
 		return false;
 	}
 	// Compare callbacks by identity (they should be memoized in parent)
@@ -228,7 +234,7 @@ function arePropsEqual(prevProps: ChatInputAreaProps, nextProps: ChatInputAreaPr
 *
 * When user types, only this component re-renders, not the entire ChatViewInner.
 */
-export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, onStop, onCompact, onCreateNewSubChat, isStreaming, isCompacting, images, files, onAddAttachments, onRemoveImage, onRemoveFile, isUploading, textContexts, onRemoveTextContext, diffTextContexts, onRemoveDiffTextContext, pastedTexts = [], onAddPastedText, onRemovePastedText, onCacheFileContent, messageTokenData, subChatId, parentChatId, teamId, repository, sandboxId, projectPath, changedFiles, isMobile = false, queueLength = 0, onSendFromQueue, firstQueueItemId, onInputContentChange, onSubmitWithQuestionAnswer }: ChatInputAreaProps) {
+export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileInputRef, onSend, onForceSend, onStop, onCompact, onCreateNewSubChat, isStreaming, isCompacting, images, files, onAddAttachments, onRemoveImage, onRemoveFile, isUploading, textContexts, onRemoveTextContext, diffTextContexts, onRemoveDiffTextContext, pastedTexts = [], onAddPastedText, onRemovePastedText, onCacheFileContent, messageTokenData, subChatId, parentChatId, teamId, repository, sandboxId, projectPath, changedFiles, isMobile = false, queueLength = 0, onSendFromQueue, firstQueueItemId, onInputContentChange, onSubmitWithQuestionAnswer }: ChatInputAreaProps) {
 	// Local state - changes here don't re-render parent
 	const [hasContent, setHasContent] = createSignal(false);
 	const [isFocused, setIsFocused] = createSignal(false);
@@ -254,22 +260,22 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 	});
 	// Mode dropdown state
 	const [modeDropdownOpen, setModeDropdownOpen] = createSignal(false);
-	const [modeTooltip, setModeTooltip] = createSignal(null);
+	const [modeTooltip, setModeTooltip] = createSignal<{ visible: boolean; position: { top: number; left: number }; mode: "agent" | "plan" } | null>(null);
 	const [tooltipTimeoutRef, setTooltipTimeoutRef] = createSignal<ReturnType<typeof setTimeout> | null>(null);
 	const [hasShownTooltipRef, setHasShownTooltipRef] = createSignal(false);
 	// Model dropdown state
 	const [isModelDropdownOpen, setIsModelDropdownOpen] = createSignal(false);
-	const [lastSelectedModelId, setLastSelectedModelId] = useAtom(lastSelectedModelIdAtom);
-	const [selectedOllamaModel, setSelectedOllamaModel] = useAtom(selectedOllamaModelAtom);
+	const [lastSelectedModelId, setLastSelectedModelId] = lastSelectedModelIdAtom;
+	const [selectedOllamaModel, setSelectedOllamaModel] = selectedOllamaModelAtom;
 	const availableModels = useAvailableModels();
-	const autoOfflineMode = useAtomValue(autoOfflineModeAtom);
-	const showOfflineFeatures = useAtomValue(showOfflineModeFeaturesAtom);
-	const [selectedModel, setSelectedModel] = createSignal(() => availableModels.models.find((m) => m.id === lastSelectedModelId) || availableModels.models[1]);
-	const customClaudeConfig = useAtomValue(customClaudeConfigAtom);
-	const normalizedCustomClaudeConfig = normalizeCustomClaudeConfig(customClaudeConfig);
+	const autoOfflineMode = autoOfflineModeAtom[0];
+	const showOfflineFeatures = showOfflineModeFeaturesAtom[0];
+	const [selectedModel, setSelectedModel] = createSignal<{ id: string; name: string }>(availableModels.models.find((m) => m.id === lastSelectedModelId()) || availableModels.models[1] || availableModels.models[0]);
+	const customClaudeConfig = customClaudeConfigAtom[0];
+	const normalizedCustomClaudeConfig = normalizeCustomClaudeConfig(customClaudeConfig());
 	const hasCustomClaudeConfig = Boolean(normalizedCustomClaudeConfig);
 	// Determine current Ollama model (selected or recommended)
-	const currentOllamaModel = selectedOllamaModel || availableModels.recommendedModel || availableModels.ollamaModels[0];
+	const currentOllamaModel = createMemo(() => selectedOllamaModel() || availableModels.recommendedModel || availableModels.ollamaModels[0]);
 	// Debug: log selected Ollama model
 	createEffect(() => {
 		if (availableModels.isOffline) {
@@ -277,13 +283,14 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 		}
 	});
 	// Extended thinking (reasoning) toggle
-	const [thinkingEnabled, setThinkingEnabled] = useAtom(extendedThinkingEnabledAtom);
+	const [thinkingEnabled, setThinkingEnabled] = extendedThinkingEnabledAtom;
 	// Auto-switch model based on network status (only if offline features enabled)
 	// Note: When offline, we show Ollama models selector instead of Claude models
 	// The selectedOllamaModel atom is used to track which Ollama model is selected
 	// Plan mode - per-subChat using atomFamily
-	const subChatModeAtom = createMemo(() => subChatModeAtomFamily(subChatId));
-	const [subChatMode, setSubChatMode] = useAtom(subChatModeAtom);
+	const subChatModeSignal = createMemo(() => subChatModeAtomFamily(subChatId));
+	const subChatMode = createMemo(() => subChatModeSignal()[0]());
+	const setSubChatMode = (mode: AgentMode) => subChatModeSignal()[1](mode);
 	// Helper to update mode (atomFamily + Zustand store sync)
 	const updateMode = (newMode: AgentMode) => {
 		setSubChatMode(newMode);
@@ -291,31 +298,37 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 	};
 	// Toggle mode helper
 	const toggleMode = () => {
-		updateMode(getNextMode(subChatMode));
+		updateMode(getNextMode(subChatMode()));
 	};
 	// Voice input state
 	const { isRecording: isVoiceRecording, audioLevel: voiceAudioLevel, startRecording: startVoiceRecording, stopRecording: stopVoiceRecording, cancelRecording: cancelVoiceRecording } = useVoiceRecording();
 	const [isTranscribing, setIsTranscribing] = createSignal(false);
 	const [voiceMountedRef, setVoiceMountedRef] = createSignal(true);
 	createEffect(() => {
-		voiceMountedRef.current = true;
+		setVoiceMountedRef(true);
 		onCleanup(() => {
-			voiceMountedRef.current = false;
+			setVoiceMountedRef(false);
 		});
 	});
-	const transcribeMutation = trpc.voice.transcribe.useMutation();
+	const transcribeMutation = useMutation(() => ({
+		mutationFn: (input: { audioBase64: string; format: string; language?: string }) =>
+			desktopRpc.voice.transcribe.mutate(input),
+	}));
 	// Check if voice input is available (authenticated OR has OPENAI_API_KEY)
-	const { data: voiceAvailability } = trpc.voice.isAvailable.useQuery();
+	const { data: voiceAvailability } = useQuery(() => ({
+		queryKey: ["voice", "isAvailable"] as const,
+		queryFn: () => desktopRpc.voice.isAvailable(),
+	}));
 	const isVoiceAvailable = voiceAvailability?.available ?? false;
 	// Get resolved voice input hotkey
-	const customHotkeys = useAtomValue(customHotkeysAtom);
-	const voiceInputHotkey = getResolvedHotkey("voice-input", customHotkeys);
+	const customHotkeys = customHotkeysAtom[0];
+	const voiceInputHotkey = getResolvedHotkey("voice-input", customHotkeys());
 	// Refs for draft saving
 	const [currentSubChatIdRef, setCurrentSubChatIdRef] = createSignal<string>(subChatId);
 	const [currentChatIdRef, setCurrentChatIdRef] = createSignal<string | null>(parentChatId);
 	const [currentDraftTextRef, setCurrentDraftTextRef] = createSignal<string>("");
-	currentSubChatIdRef.current = subChatId;
-	currentChatIdRef.current = parentChatId;
+	setCurrentSubChatIdRef(subChatId);
+	setCurrentChatIdRef(parentChatId);
 	// Keyboard shortcut: Cmd+/ to open model selector
 	createEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
@@ -332,7 +345,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 	});
 	// Voice input handlers
 	const handleVoiceMouseDown = async () => {
-		if (isStreaming || isTranscribing || isVoiceRecording()) return;
+		if (isStreaming || isTranscribing() || isVoiceRecording()) return;
 		try {
 			await startVoiceRecording();
 		} catch (err) {
@@ -340,7 +353,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 		}
 	};
 	const handleVoiceMouseUp = async () => {
-		if (!isVoiceRecording) return;
+		if (!isVoiceRecording()) return;
 		try {
 			const blob = await stopVoiceRecording();
 			// Don't transcribe very short recordings (likely accidental clicks)
@@ -348,37 +361,38 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 				console.log("[VoiceInput] Recording too short, ignoring");
 				return;
 			}
-			if (!voiceMountedRef.current) return;
+			if (!voiceMountedRef()) return;
 			setIsTranscribing(true);
 			const base64 = await blobToBase64(blob);
 			const format = getAudioFormat(blob.type);
 			const result = await transcribeMutation.mutateAsync({
-				audio: base64,
-				format
+				audioBase64: base64,
+				format,
 			});
-			if (!voiceMountedRef.current) return;
-			if (result.text && result.text.trim()) {
+			if (!voiceMountedRef()) return;
+			const text = (result as { text: string }).text;
+			if (text && text.trim()) {
 				// Insert transcribed text into editor
 				// Clean both current value and transcribed text
-				const currentRaw = editorRef.current?.getValue() || "";
+				const currentRaw = editorRef()?.getValue() || "";
 				const current = currentRaw.replace(/[\r\n\t]+/g, " ").replace(/ +/g, " ").trim();
-				const transcribed = result.text.replace(/[\r\n\t]+/g, " ").replace(/ +/g, " ").trim();
+				const transcribed = text.replace(/[\r\n\t]+/g, " ").replace(/ +/g, " ").trim();
 				// Add space separator only if current text exists and doesn't end with whitespace
 				const needsSpace = current.length > 0 && !/\s$/.test(current);
 				const newValue = current + (needsSpace ? " " : "") + transcribed;
-				editorRef.current?.setValue(newValue);
-				editorRef.current?.focus();
+				editorRef()?.setValue(newValue);
+				editorRef()?.focus();
 			}
 		} catch (err) {
 			console.error("[VoiceInput] Transcription failed:", err);
 		} finally {
-			if (voiceMountedRef.current) {
+			if (voiceMountedRef()) {
 				setIsTranscribing(false);
 			}
 		}
 	};
 	const handleVoiceMouseLeave = () => {
-		if (isVoiceRecording) {
+		if (isVoiceRecording()) {
 			// Cancel instead of transcribing when leaving button area
 			cancelVoiceRecording();
 		}
@@ -441,7 +455,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 			e.preventDefault();
 			e.stopPropagation();
 			// Start recording on keydown
-			if (!isVoiceRecording && !isTranscribing && !isStreaming) {
+			if (!isVoiceRecording() && !isTranscribing() && !isStreaming) {
 				handleVoiceMouseDown();
 			}
 		};
@@ -449,7 +463,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 			// Stop recording when the main key (or any modifier for modifier-only hotkeys) is released
 			if (!isMainKeyRelease(e)) return;
 			// Only stop if we're currently recording
-			if (isVoiceRecording) {
+			if (isVoiceRecording()) {
 				e.preventDefault();
 				e.stopPropagation();
 				handleVoiceMouseUp();
@@ -465,11 +479,11 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 	// Save draft on blur (with attachments and text contexts)
 	const handleEditorBlur = async () => {
 		setIsFocused(false);
-		const draft = editorRef.current?.getValue() || "";
-		const chatId = currentChatIdRef.current;
-		const subChatIdValue = currentSubChatIdRef.current;
+		const draft = editorRef()?.getValue() || "";
+		const chatId = currentChatIdRef();
+		const subChatIdValue = currentSubChatIdRef();
 		// Update ref for unmount save
-		currentDraftTextRef.current = draft;
+		setCurrentDraftTextRef(draft);
 		if (!chatId) return;
 		const hasContent = draft.trim() || images.length > 0 || files.length > 0 || textContexts.length > 0 || (diffTextContexts?.length ?? 0) > 0;
 		if (hasContent) {
@@ -487,13 +501,13 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 		setHasContent(newHasContent);
 		onInputContentChange?.(newHasContent);
 		// Sync the draft text ref for unmount save
-		const draft = editorRef.current?.getValue() || "";
-		currentDraftTextRef.current = draft;
+		const draft = editorRef()?.getValue() || "";
+		setCurrentDraftTextRef(draft);
 	};
 	// Editor submit handler - handles Enter key with queue logic
 	// If input is empty and queue has items, stop stream and send first from queue
 	const handleEditorSubmit = async () => {
-		const inputValue = editorRef.current?.getValue() || "";
+		const inputValue = editorRef()?.getValue() || "";
 		const hasText = inputValue.trim().length > 0;
 		const hasAttachments = images.length > 0 || files.length > 0 || textContexts.length > 0 || (diffTextContexts?.length ?? 0) > 0;
 		if (!hasText && !hasAttachments && queueLength > 0 && onSendFromQueue && firstQueueItemId) {
@@ -526,7 +540,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 			}
 		}
 		// Otherwise: insert mention as normal
-		editorRef.current?.insertMention(mention);
+		editorRef()?.insertMention(mention);
 		setShowMentionDropdown(false);
 		// Reset subpage state
 		setShowingFilesList(false);
@@ -551,7 +565,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 	};
 	const handleSlashSelect = (command: SlashCommandOption) => {
 		// Clear the slash command text from editor
-		editorRef.current?.clearSlashCommand();
+		editorRef()?.clearSlashCommand();
 		setShowSlashDropdown(false);
 		// Handle builtin commands that change app state (no text input needed)
 		if (command.category === "builtin") {
@@ -563,12 +577,12 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 					}
 					return;
 				case "plan":
-					if (subChatMode !== "plan") {
+					if (subChatMode() !== "plan") {
 						updateMode("plan");
 					}
 					return;
 				case "agent":
-					if (subChatMode === "plan") {
+					if (subChatMode() === "plan") {
 						updateMode("agent");
 					}
 					return;
@@ -580,7 +594,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 		}
 		// For all other commands (builtin prompts and custom):
 		// insert the command and let user add arguments or press Enter to send
-		editorRef.current?.setValue(`/${command.name} `);
+		editorRef()?.setValue(`/${command.name} `);
 	};
 	// Paste handler for images, plain text, and large text (saved as files)
 	const handlePaste = (e: ClipboardEvent) => handlePasteEvent(e, onAddAttachments, onAddPastedText);
@@ -686,11 +700,10 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 		".webp",
 		".bmp"
 	]);
-	const trpcUtils = trpc.useUtils();
 	const handleDrop = async (e: DragEvent) => {
 		e.preventDefault();
 		setIsDragOver(false);
-		const droppedFiles = Array.from(e.dataTransfer.files);
+		const droppedFiles = Array.from(e.dataTransfer!.files);
 		// Separate images from other files
 		const imageFiles: File[] = [];
 		const otherFiles: File[] = [];
@@ -739,7 +752,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 			// Show file chip, content will be added to prompt on send
 			if (isTextFile && isSmallEnough && filePath) {
 				// Add file chip for visual representation
-				editorRef.current?.insertMention({
+				editorRef()?.insertMention({
 					id: mentionId,
 					label: fileName,
 					path: mentionPath,
@@ -748,7 +761,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 				});
 				// Read and cache content (will be added to prompt on send)
 				try {
-					const content = await trpcUtils.files.readFile.fetch({ filePath });
+					const content = await desktopRpc.files.readFile({ filePath });
 					onCacheFileContent?.(mentionId, content);
 				} catch (err) {
 					// If reading fails, chip is still there - agent can try to read via path
@@ -757,7 +770,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 			} else {
 				// For binary files, large files - add as mention only
 				// mentionPath contains full absolute path for external files
-				editorRef.current?.insertMention({
+				editorRef()?.insertMention({
 					id: mentionId,
 					label: fileName,
 					path: mentionPath,
@@ -769,14 +782,14 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 		// Focus after state update - use double rAF to wait for React render
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
-				editorRef.current?.focus();
+				editorRef()?.focus();
 			});
 		});
 	};
 	return <div class="px-2 pb-2 shadow-sm shadow-background relative z-10">
       <div class="w-full max-w-2xl mx-auto">
         <div class="relative w-full" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
-          <div class="relative w-full cursor-text" onClick={() => editorRef.current?.focus()}>
+          <div class="relative w-full cursor-text" onClick={() => editorRef()?.focus()}>
             <PromptInput class={cn("border bg-input-background relative z-10 p-2 rounded-xl transition-[border-color,box-shadow] duration-150", isDragOver() && "ring-2 ring-primary/50 border-primary/50", isFocused() && !isDragOver() && "ring-2 ring-primary/50")} maxHeight={200} onSubmit={onSend} contextItems={images.length > 0 || files.length > 0 || textContexts.length > 0 || (diffTextContexts?.length ?? 0) > 0 || pastedTexts.length > 0 ? <div class="flex flex-wrap gap-[6px]">
                     {(() => {
 		// Build allImages array for gallery navigation
@@ -787,16 +800,16 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 			filename: img.filename,
 			url: img.url
 		}));
-		return images.map((img, idx) => <AgentImageItem key={img.id} id={img.id} filename={img.filename} url={img.url || ""} isLoading={img.isLoading} onRemove={() => onRemoveImage(img.id)} allImages={allImages} imageIndex={idx} />);
+		return images.map((img, idx) => <AgentImageItem id={img.id} filename={img.filename} url={img.url || ""} isLoading={img.isLoading} onRemove={() => onRemoveImage(img.id)} allImages={allImages} imageIndex={idx} />);
 	})()}
-                    {files.map((f) => <AgentFileItem key={f.id} id={f.id} filename={f.filename} url={f.url || ""} size={f.size} isLoading={f.isLoading} onRemove={() => onRemoveFile(f.id)} />)}
-                    {textContexts.map((tc) => <AgentTextContextItem key={tc.id} text={tc.text} preview={tc.preview} onRemove={() => onRemoveTextContext(tc.id)} />)}
-                    {diffTextContexts?.map((dtc) => <AgentDiffTextContextItem key={dtc.id} text={dtc.text} preview={dtc.preview} filePath={dtc.filePath} lineNumber={dtc.lineNumber} lineType={dtc.lineType} onRemove={onRemoveDiffTextContext ? () => onRemoveDiffTextContext(dtc.id) : undefined} />)}
-                    {pastedTexts.map((pt) => <AgentPastedTextItem key={pt.id} filePath={pt.filePath} filename={pt.filename} size={pt.size} preview={pt.preview} onRemove={onRemovePastedText ? () => onRemovePastedText(pt.id) : undefined} />)}
+                    {files.map((f) => <AgentFileItem id={f.id} filename={f.filename} url={f.url || ""} size={f.size} isLoading={f.isLoading} onRemove={() => onRemoveFile(f.id)} />)}
+                    {textContexts.map((tc) => <AgentTextContextItem text={tc.text} preview={tc.preview} onRemove={() => onRemoveTextContext(tc.id)} />)}
+                    {diffTextContexts?.map((dtc) => <AgentDiffTextContextItem text={dtc.text} preview={dtc.preview} filePath={dtc.filePath} lineNumber={dtc.lineNumber} lineType={dtc.lineType} onRemove={onRemoveDiffTextContext ? () => onRemoveDiffTextContext(dtc.id) : undefined} />)}
+                    {pastedTexts.map((pt) => <AgentPastedTextItem filePath={pt.filePath} filename={pt.filename} size={pt.size} preview={pt.preview} onRemove={onRemovePastedText ? () => onRemovePastedText(pt.id) : undefined} />)}
                   </div> : null}>
               <PromptInputContextItems />
               <div class="relative">
-                <AgentsMentionsEditor ref={editorRef} onTrigger={({ searchText, rect }) => {
+                <AgentsMentionsEditor ref={setEditorRef} onTrigger={({ searchText, rect }) => {
 		// Desktop: use projectPath for local file search
 		if (projectPath || repository) {
 			setMentionSearchText(searchText);
@@ -818,40 +831,40 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
               <PromptInputActions class="w-full">
                 <div class="flex items-center gap-0.5 flex-1 min-w-0">
                   {	/* Mode toggle (Agent/Plan) */}
-                  <DropdownMenu open={modeDropdownOpen} onOpenChange={(open) => {
+                  <DropdownMenu open={modeDropdownOpen()} onOpenChange={(open) => {
  setModeDropdownOpen(open);
 		if (!open) {
-			if (tooltipTimeoutRef.current) {
-				clearTimeout(tooltipTimeoutRef.current);
-				tooltipTimeoutRef.current = null;
+			if (tooltipTimeoutRef()) {
+				clearTimeout(tooltipTimeoutRef()!);
+				setTooltipTimeoutRef(null);
 			}
 			setModeTooltip(null);
-			hasShownTooltipRef.current = false;
+			setHasShownTooltipRef(false);
 		}
 	}}>
                     <DropdownMenuTrigger asChild>
                       <button class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
-                        {subChatMode === "plan" ? <PlanIcon class="h-3.5 w-3.5 shrink-0" /> : <AgentIcon class="h-3.5 w-3.5 shrink-0" />}
-                        <span class="truncate">{subChatMode === "plan" ? "Plan" : "Agent"}</span>
+                        {subChatMode() === "plan" ? <PlanIcon class="h-3.5 w-3.5 shrink-0" /> : <AgentIcon class="h-3.5 w-3.5 shrink-0" />}
+                        <span class="truncate">{subChatMode() === "plan" ? "Plan" : "Agent"}</span>
                         <ChevronDown class="h-3 w-3 shrink-0 opacity-50" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" sideOffset={6} class="!min-w-[116px] !w-[116px]" onCloseAutoFocus={(e) => e.preventDefault()}>
                       <DropdownMenuItem onClick={() => {
 		// Clear tooltip before closing dropdown (onMouseLeave won't fire)
-		if (tooltipTimeoutRef.current) {
-			clearTimeout(tooltipTimeoutRef.current);
-			tooltipTimeoutRef.current = null;
+		if (tooltipTimeoutRef()) {
+			clearTimeout(tooltipTimeoutRef()!);
+			setTooltipTimeoutRef(null);
 		}
 		setModeTooltip(null);
 		updateMode("agent");
 		setModeDropdownOpen(false);
-	}} class="justify-between gap-2" onMouseEnter={(e) => {
-		if (tooltipTimeoutRef.current) {
-			clearTimeout(tooltipTimeoutRef.current);
-			tooltipTimeoutRef.current = null;
+	}} class="justify-between gap-2" onMouseEnter={(e: MouseEvent) => {
+		if (tooltipTimeoutRef()) {
+			clearTimeout(tooltipTimeoutRef()!);
+			setTooltipTimeoutRef(null);
 		}
-		const rect = e.currentTarget.getBoundingClientRect();
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const showTooltip = () => {
 			setModeTooltip({
 				visible: true,
@@ -861,18 +874,18 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 				},
 				mode: "agent"
 			});
-			hasShownTooltipRef.current = true;
-			tooltipTimeoutRef.current = null;
+			setHasShownTooltipRef(true);
+			setTooltipTimeoutRef(null);
 		};
-		if (hasShownTooltipRef.current) {
+		if (hasShownTooltipRef()) {
 			showTooltip();
 		} else {
-			tooltipTimeoutRef.current = setTimeout(showTooltip, 1e3);
+			setTooltipTimeoutRef(setTimeout(showTooltip, 1e3));
 		}
 	}} onMouseLeave={() => {
-		if (tooltipTimeoutRef.current) {
-			clearTimeout(tooltipTimeoutRef.current);
-			tooltipTimeoutRef.current = null;
+		if (tooltipTimeoutRef()) {
+			clearTimeout(tooltipTimeoutRef()!);
+			setTooltipTimeoutRef(null);
 		}
 		setModeTooltip(null);
 	}}>
@@ -880,23 +893,23 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
                           <AgentIcon class="w-4 h-4 text-muted-foreground" />
                           <span>Agent</span>
                         </div>
-                        {subChatMode !== "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
+                        {subChatMode() !== "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => {
 		// Clear tooltip before closing dropdown (onMouseLeave won't fire)
-		if (tooltipTimeoutRef.current) {
-			clearTimeout(tooltipTimeoutRef.current);
-			tooltipTimeoutRef.current = null;
+		if (tooltipTimeoutRef()) {
+			clearTimeout(tooltipTimeoutRef()!);
+			setTooltipTimeoutRef(null);
 		}
 		setModeTooltip(null);
 		updateMode("plan");
 		setModeDropdownOpen(false);
-	}} class="justify-between gap-2" onMouseEnter={(e) => {
-		if (tooltipTimeoutRef.current) {
-			clearTimeout(tooltipTimeoutRef.current);
-			tooltipTimeoutRef.current = null;
+	}} class="justify-between gap-2" onMouseEnter={(e: MouseEvent) => {
+		if (tooltipTimeoutRef()) {
+			clearTimeout(tooltipTimeoutRef()!);
+			setTooltipTimeoutRef(null);
 		}
-		const rect = e.currentTarget.getBoundingClientRect();
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const showTooltip = () => {
 			setModeTooltip({
 				visible: true,
@@ -906,18 +919,18 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 				},
 				mode: "plan"
 			});
-			hasShownTooltipRef.current = true;
-			tooltipTimeoutRef.current = null;
+			setHasShownTooltipRef(true);
+			setTooltipTimeoutRef(null);
 		};
-		if (hasShownTooltipRef.current) {
+		if (hasShownTooltipRef()) {
 			showTooltip();
 		} else {
-			tooltipTimeoutRef.current = setTimeout(showTooltip, 1e3);
+			setTooltipTimeoutRef(setTimeout(showTooltip, 1e3));
 		}
 	}} onMouseLeave={() => {
-		if (tooltipTimeoutRef.current) {
-			clearTimeout(tooltipTimeoutRef.current);
-			tooltipTimeoutRef.current = null;
+		if (tooltipTimeoutRef()) {
+			clearTimeout(tooltipTimeoutRef()!);
+			setTooltipTimeoutRef(null);
 		}
 		setModeTooltip(null);
 	}}>
@@ -925,19 +938,19 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
                           <PlanIcon class="w-4 h-4 text-muted-foreground" />
                           <span>Plan</span>
                         </div>
-                        {subChatMode === "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
+                        {subChatMode() === "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
-                    <Show when={modeTooltip?.visible}>
+                    <Show when={modeTooltip()?.visible}>
                       <Portal mount={document.body}>
                         <div class="fixed z-[100000]" style={{
-                          top: `${modeTooltip.position.top + 14}px`,
-                          left: `${modeTooltip.position.left}px`,
+                          top: `${modeTooltip()!.position.top + 14}px`,
+                          left: `${modeTooltip()!.position.left}px`,
                           transform: "translateY(-50%)"
                         }}>
                           <div data-tooltip="true" class="relative rounded-[12px] bg-popover px-2.5 py-1.5 text-xs text-popover-foreground dark max-w-[150px]">
                             <span>
-                              {modeTooltip.mode === "agent" ? "Apply changes directly without a plan" : "Create a plan before making changes"}
+                              {modeTooltip()!.mode === "agent" ? "Apply changes directly without a plan" : "Create a plan before making changes"}
                             </span>
                           </div>
                         </div>
@@ -946,19 +959,19 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
                   </DropdownMenu>
 
                   {	/* Model selector - shows Ollama models when offline, Claude models when online */}
-                  {availableModels.isOffline && availableModels.hasOllama ? <DropdownMenu open={isModelDropdownOpen} onOpenChange={setIsModelDropdownOpen}>
+                  {availableModels.isOffline && availableModels.hasOllama ? <DropdownMenu open={isModelDropdownOpen()} onOpenChange={setIsModelDropdownOpen}>
                       <DropdownMenuTrigger asChild>
                         <button class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 border border-border">
                           <Zap class="h-4 w-4 shrink-0" />
-                          <span class="truncate">{currentOllamaModel || "Select model"}</span>
+                          <span class="truncate">{currentOllamaModel() || "Select model"}</span>
                           <ChevronDown class="h-3 w-3 shrink-0 opacity-50" />
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" class="w-[240px]">
                         {availableModels.ollamaModels.map((model) => {
- const isSelected = model === currentOllamaModel;
+ const isSelected = model === currentOllamaModel();
 		const isRecommended = model === availableModels.recommendedModel;
-		return <DropdownMenuItem key={model} onClick={() => {
+		return <DropdownMenuItem onClick={() => {
 			console.log(`[Ollama UI] Setting selected model: ${model}`);
 			setSelectedOllamaModel(model);
 		}} class="gap-2 justify-between">
@@ -973,7 +986,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
                             </DropdownMenuItem>;
 	})}
                       </DropdownMenuContent>
-                    </DropdownMenu> : <DropdownMenu open={hasCustomClaudeConfig ? false : isModelDropdownOpen} onOpenChange={(open) => {
+                    </DropdownMenu> : <DropdownMenu open={hasCustomClaudeConfig ? false : isModelDropdownOpen()} onOpenChange={(open) => {
 		if (!hasCustomClaudeConfig) {
 			setIsModelDropdownOpen(open);
 		}
@@ -983,7 +996,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
                           <ClaudeCodeIcon class="h-3.5 w-3.5 shrink-0" />
                           <span class="truncate">
                             {hasCustomClaudeConfig ? "Custom Model" : <>
-                                {selectedModel?.name}{" "}
+                                {selectedModel()?.name}{" "}
                                 <span class="text-muted-foreground">4.5</span>
                               </>}
                           </span>
@@ -992,8 +1005,8 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" class="w-[200px]">
                         {availableModels.models.map((model) => {
-		const isSelected = selectedModel?.id === model.id;
-		return <DropdownMenuItem key={model.id} onClick={() => {
+		const isSelected = selectedModel()?.id === model.id;
+		return <DropdownMenuItem onClick={() => {
 			setSelectedModel(model);
 			setLastSelectedModelId(model.id);
 		}} class="gap-2 justify-between">
@@ -1013,7 +1026,7 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
                             <ThinkingIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             <span class="text-sm">Thinking</span>
                           </div>
-                          <Switch checked={thinkingEnabled} onCheckedChange={setThinkingEnabled} class="scale-75" />
+                          <Switch checked={thinkingEnabled()} onCheckedChange={setThinkingEnabled} class="scale-75" />
                         </div>
                       </DropdownMenuContent>
                     </DropdownMenu>}
@@ -1021,33 +1034,33 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 
                 <div class="flex items-center gap-0.5 ml-auto flex-shrink-0">
                   {	/* Hidden file input - accepts images and text/code files */}
-                  <input type="file" ref={fileInputRef} hidden accept="image/jpeg,image/png,.txt,.md,.markdown,.json,.yaml,.yml,.xml,.csv,.tsv,.log,.ini,.cfg,.conf,.js,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cpp,.h,.hpp,.cs,.php,.html,.css,.scss,.sass,.less,.sql,.sh,.bash,.zsh,.ps1,.bat,.env,.gitignore,.dockerignore,.editorconfig,.prettierrc,.eslintrc,.babelrc,.nvmrc,.pdf" multiple onChange={(e) => {
+                  <input type="file" ref={setFileInputRef} hidden accept="image/jpeg,image/png,.txt,.md,.markdown,.json,.yaml,.yml,.xml,.csv,.tsv,.log,.ini,.cfg,.conf,.js,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.cpp,.h,.hpp,.cs,.php,.html,.css,.scss,.sass,.less,.sql,.sh,.bash,.zsh,.ps1,.bat,.env,.gitignore,.dockerignore,.editorconfig,.prettierrc,.eslintrc,.babelrc,.nvmrc,.pdf" multiple onChange={(e) => {
  const inputFiles = Array.from(e.target.files || []);
 		onAddAttachments(inputFiles);
 		e.target.value = "";
 	}} />
 
                   {	/* Voice wave indicator - shown during recording */}
-                  {isVoiceRecording ? <VoiceWaveIndicator isRecording={isVoiceRecording} audioLevel={voiceAudioLevel} /> : <>
+                  {isVoiceRecording() ? <VoiceWaveIndicator isRecording={isVoiceRecording()} audioLevel={voiceAudioLevel()} /> : <>
                       { /* Context window indicator - click to compact */}
                       <AgentContextIndicator tokenData={messageTokenData} onCompact={onCompact} isCompacting={isCompacting} disabled={isStreaming} />
 
                       { /* Attachment button */}
-                      <Button variant="ghost" size="icon" class="h-7 w-7 rounded-sm outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" onClick={() => fileInputRef.current?.click()} disabled={images.length >= 5 && files.length >= 10}>
+                      <Button variant="ghost" size="icon" class="h-7 w-7 rounded-sm outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" onClick={() => fileInputRef()?.click()} disabled={images.length >= 5 && files.length >= 10}>
                         <AttachIcon class="h-4 w-4" />
                       </Button>
                     </>}
 
                   { /* Send/Stop/Voice button */}
                   <div class="ml-1">
-                    <AgentSendButton isStreaming={isStreaming} isSubmitting={false} disabled={!hasContent && images.length === 0 && files.length === 0 && textContexts.length === 0 && (diffTextContexts?.length ?? 0) === 0 && queueLength === 0 || isUploading} hasContent={hasContent || images.length > 0 || files.length > 0 || textContexts.length > 0 || (diffTextContexts?.length ?? 0) > 0} onClick={() => {
+                    <AgentSendButton isStreaming={isStreaming} isSubmitting={false} disabled={!hasContent() && images.length === 0 && files.length === 0 && textContexts.length === 0 && (diffTextContexts?.length ?? 0) === 0 && queueLength === 0 || isUploading} hasContent={hasContent() || images.length > 0 || files.length > 0 || textContexts.length > 0 || (diffTextContexts?.length ?? 0) > 0} onClick={() => {
  // If input is empty and queue has items, send first queue item
-		if (!hasContent && images.length === 0 && files.length === 0 && queueLength > 0 && onSendFromQueue && firstQueueItemId) {
+		if (!hasContent() && images.length === 0 && files.length === 0 && queueLength > 0 && onSendFromQueue && firstQueueItemId) {
 			onSendFromQueue(firstQueueItemId);
 		} else {
 			onSend();
 		}
-	}} onStop={onStop} mode={subChatMode} showVoiceInput={isVoiceAvailable} isRecording={isVoiceRecording} isTranscribing={isTranscribing} onVoiceMouseDown={handleVoiceMouseDown} onVoiceMouseUp={handleVoiceMouseUp} onVoiceMouseLeave={handleVoiceMouseLeave} />
+	}} onStop={onStop} mode={subChatMode()} showVoiceInput={isVoiceAvailable} isRecording={isVoiceRecording()} isTranscribing={isTranscribing()} onVoiceMouseDown={handleVoiceMouseDown} onVoiceMouseUp={handleVoiceMouseUp} onVoiceMouseLeave={handleVoiceMouseLeave} />
                   </div>
                 </div>
               </PromptInputActions>
@@ -1065,9 +1078,9 @@ export function ChatInputArea({ editorRef, fileInputRef, onSend, onForceSend, on
 		setShowingSkillsList(false);
 		setShowingAgentsList(false);
 		setShowingToolsList(false);
-	}} onSelect={handleMentionSelect} searchText={mentionSearchText} position={mentionPosition} teamId={teamId} repository={repository} sandboxId={sandboxId} projectPath={projectPath} changedFiles={changedFiles} showingFilesList={showingFilesList} showingSkillsList={showingSkillsList} showingAgentsList={showingAgentsList} showingToolsList={showingToolsList} />
+	}} onSelect={handleMentionSelect} searchText={mentionSearchText()} position={mentionPosition()} teamId={teamId} repository={repository} sandboxId={sandboxId} projectPath={projectPath} changedFiles={changedFiles} showingFilesList={showingFilesList()} showingSkillsList={showingSkillsList()} showingAgentsList={showingAgentsList()} showingToolsList={showingToolsList()} />
 
       {	/* Slash command dropdown */}
-      <AgentsSlashCommand isOpen={showSlashDropdown} onClose={handleCloseSlashTrigger} onSelect={handleSlashSelect} searchText={slashSearchText} position={slashPosition} projectPath={projectPath} mode={subChatMode} />
+      <AgentsSlashCommand isOpen={showSlashDropdown()} onClose={handleCloseSlashTrigger} onSelect={handleSlashSelect} searchText={slashSearchText()} position={slashPosition()} projectPath={projectPath} mode={subChatMode()} />
     </div>;
 }

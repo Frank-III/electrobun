@@ -1,5 +1,4 @@
-"use client";
-import { useAtomValue } from "../../../lib/state/jotai";
+import type { JSX, Component } from "solid-js";
 import { userMessageIdsAtom, currentSubChatIdAtom } from "../stores/message-store";
 import { IsolatedMessageGroup } from "./isolated-message-group";
 // ============================================================================
@@ -59,10 +58,10 @@ export function IsolatedMessagesSection({ subChatId, chatId, isMobile, sandboxSe
 	// If it doesn't match our subChatId, return empty to avoid showing wrong messages.
 	// The useLayoutEffect will sync and update currentSubChatIdAtom, which triggers
 	// a re-render of this component (since we're subscribed to it).
-	const currentSubChatId = useAtomValue(currentSubChatIdAtom);
+	const currentSubChatId = currentSubChatIdAtom[0];
 	// Subscribe to user message IDs - but only use them if we're the active chat
-	const userMsgIds = useAtomValue(userMessageIdsAtom);
-	if (currentSubChatId !== subChatId) {
+	const userMsgIds = userMessageIdsAtom[0];
+	if (currentSubChatId() !== subChatId) {
 		// Data not synced yet - render nothing, we'll re-render when currentSubChatIdAtom updates
 		return null;
 	}

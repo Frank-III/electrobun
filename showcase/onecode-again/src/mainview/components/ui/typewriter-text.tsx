@@ -1,4 +1,3 @@
-"use client";
 import { createSignal, createEffect, onCleanup, Show } from "solid-js";
 import { cn } from "../../lib/utils";
 
@@ -16,7 +15,7 @@ export function TypewriterText(props: TypewriterTextProps) {
 		text,
 		placeholder = "New workspace",
 		id,
-		class: className,
+		class: cls,
 		isJustCreated = false,
 		showPlaceholder = false
 	} = props;
@@ -67,12 +66,12 @@ export function TypewriterText(props: TypewriterTextProps) {
 			when={text && text !== placeholder}
 			fallback={
 				<Show when={showPlaceholder || isWaitingForName()}>
-					<span class={cn("text-muted-foreground/50", className)}>{placeholder}</span>
+					<span class={cn("text-muted-foreground/50",cls)}>{placeholder}</span>
 				</Show>
 			}
 		>
-			<Show when={!isTyping()} fallback={<span class={className}>{text.slice(0, typedLength())}</span>}>
-				<span class={className}>{text}</span>
+			<Show when={!isTyping()} fallback={<span class={cls}>{text.slice(0, typedLength())}</span>}>
+				<span class={cls}>{text}</span>
 			</Show>
 		</Show>
 	);

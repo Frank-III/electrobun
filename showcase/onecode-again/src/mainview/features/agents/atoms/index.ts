@@ -1,8 +1,8 @@
 import { createSignal } from "solid-js"
 import { ReactiveSet } from "@solid-primitives/set"
-import { createStoredSignal } from "../../../lib/state/signal-storage"
+import { createPersistedSignal } from "../../../lib/state/signal-storage"
 import { createKeyedSignalFamily, createSignalMap, type SignalPair } from "../../../lib/state/signal-map"
-import { atomWithWindowStorage } from "../../../lib/window-storage"
+import { makeWindowPersistedSignal } from "../../../lib/window-storage"
 
 // Agent mode type - extensible for future modes like "debug"
 export type AgentMode = "agent" | "plan"
@@ -18,18 +18,16 @@ export function getNextMode(current: AgentMode): AgentMode {
 
 // Selected agent chat ID - null means "new chat" view (persisted to restore on reload)
 // Uses window-scoped storage so each Electron window can have its own selected chat
-export const selectedAgentChatIdAtom = atomWithWindowStorage<string | null>(
+export const selectedAgentChatIdAtom = makeWindowPersistedSignal<string | null>(
   "agents:selectedChatId",
   null,
-  { getOnInit: true },
 )
 
 // Whether the selected chat is a remote (sandbox) chat
 // This is needed because remote and local chats may have the same ID
-export const selectedChatIsRemoteAtom = atomWithWindowStorage<boolean>(
+export const selectedChatIsRemoteAtom = makeWindowPersistedSignal<boolean>(
   "agents:selectedChatIsRemote",
   false,
-  { getOnInit: true },
 )
 
 // Previous agent chat ID - used to navigate back after archiving current chat
@@ -47,11 +45,9 @@ export const selectedDraftIdAtom = createSignal<string | null>(null)
 export const showNewChatFormAtom = createSignal<boolean>(true)
 
 // Preview paths storage - stores all preview paths keyed by chatId
-const previewPathsStorageAtom = createStoredSignal<Record<string, string>>(
+const previewPathsStorageAtom = createPersistedSignal<Record<string, string>>(
   "agents:previewPaths",
   {},
-  undefined,
-  { getOnInit: true },
 )
 
 // atomFamily to get/set preview path per chatId
@@ -61,9 +57,9 @@ export const previewPathAtomFamily = createKeyedSignalFamily(
 )
 
 // Preview viewport modes storage - stores viewport mode per chatId
-const viewportModesStorageAtom = createStoredSignal<
+const viewportModesStorageAtom = createPersistedSignal<
   Record<string, "desktop" | "mobile">
->("agents:viewportModes", {}, undefined, { getOnInit: true })
+>("agents:viewportModes", {})
 
 // atomFamily to get/set viewport mode per chatId
 export const viewportModeAtomFamily = createKeyedSignalFamily(
@@ -72,11 +68,9 @@ export const viewportModeAtomFamily = createKeyedSignalFamily(
 )
 
 // Preview scales storage - stores scale per chatId
-const previewScalesStorageAtom = createStoredSignal<Record<string, number>>(
+const previewScalesStorageAtom = createPersistedSignal<Record<string, number>>(
   "agents:previewScales",
   {},
-  undefined,
-  { getOnInit: true },
 )
 
 // atomFamily to get/set preview scale per chatId
@@ -92,9 +86,9 @@ type MobileDeviceSettings = {
   preset: string
 }
 
-const mobileDevicesStorageAtom = createStoredSignal<
+const mobileDevicesStorageAtom = createPersistedSignal<
   Record<string, MobileDeviceSettings>
->("agents:mobileDevices", {}, undefined, { getOnInit: true })
+>("agents:mobileDevices", {})
 
 // atomFamily to get/set mobile device settings per chatId
 export const mobileDeviceAtomFamily = createKeyedSignalFamily(
@@ -152,11 +146,10 @@ export type SavedRepo = {
   isPublicImport?: boolean
 } | null
 
-export const lastSelectedRepoAtom = createStoredSignal<SavedRepo>(
+export const lastSelectedRepoAtom = createPersistedSignal<SavedRepo>(
   "agents:lastSelectedRepo",
   null,
   undefined,
-  { getOnInit: true },
 )
 
 // Selected local project (persisted)
@@ -171,32 +164,27 @@ export type SelectedProject = {
 } | null
 
 // Selected local project - uses window-scoped storage so each window can work with different projects
-export const selectedProjectAtom = atomWithWindowStorage<SelectedProject>(
+export const selectedProjectAtom = makeWindowPersistedSignal<SelectedProject>(
   "agents:selectedProject",
   null,
-  { getOnInit: true },
 )
 
-export const lastSelectedAgentIdAtom = createStoredSignal<string>(
+export const lastSelectedAgentIdAtom = createPersistedSignal<string>(
   "agents:lastSelectedAgentId",
   "claude-code",
   undefined,
-  { getOnInit: true },
 )
 
-export const lastSelectedModelIdAtom = createStoredSignal<string>(
+export const lastSelectedModelIdAtom = createPersistedSignal<string>(
   "agents:lastSelectedModelId",
   "sonnet",
   undefined,
-  { getOnInit: true },
 )
 
 // Storage for all sub-chat modes (persisted per subChatId)
-const subChatModesStorageAtom = createStoredSignal<Record<string, AgentMode>>(
+const subChatModesStorageAtom = createPersistedSignal<Record<string, AgentMode>>(
   "agents:subChatModes",
   {},
-  undefined,
-  { getOnInit: true },
 )
 
 // atomFamily to get/set mode per subChatId
@@ -213,75 +201,66 @@ export const MODEL_ID_MAP: Record<string, string> = {
 }
 
 // Sidebar state - window-scoped so each window has independent sidebar visibility
-export const agentsSidebarOpenAtom = atomWithWindowStorage<boolean>(
+export const agentsSidebarOpenAtom = makeWindowPersistedSignal<boolean>(
   "agents-sidebar-open",
   true,
-  { getOnInit: true },
 )
 
 // Sidebar width with localStorage persistence
-export const agentsSidebarWidthAtom = createStoredSignal<number>(
+export const agentsSidebarWidthAtom = createPersistedSignal<number>(
   "agents-sidebar-width",
   224,
   undefined,
-  { getOnInit: true },
 )
 
 // Preview sidebar (right) width and open state
-export const agentsPreviewSidebarWidthAtom = createStoredSignal<number>(
+export const agentsPreviewSidebarWidthAtom = createPersistedSignal<number>(
   "agents-preview-sidebar-width",
   500,
   undefined,
-  { getOnInit: true },
 )
 
 // Preview sidebar open state - window-scoped
-export const agentsPreviewSidebarOpenAtom = atomWithWindowStorage<boolean>(
+export const agentsPreviewSidebarOpenAtom = makeWindowPersistedSignal<boolean>(
   "agents-preview-sidebar-open",
   true,
-  { getOnInit: true },
 )
 
 // Diff sidebar (right) width (global - same width for all chats)
-export const agentsDiffSidebarWidthAtom = createStoredSignal<number>(
+export const agentsDiffSidebarWidthAtom = createPersistedSignal<number>(
   "agents-diff-sidebar-width",
   800,
   undefined,
-  { getOnInit: true },
 )
 
 // Changes panel (file list) width within the diff sidebar
-export const agentsChangesPanelWidthAtom = createStoredSignal<number>(
+export const agentsChangesPanelWidthAtom = createPersistedSignal<number>(
   "agents-changes-panel-width",
   280,
   undefined,
-  { getOnInit: true },
 )
 
 // Changes panel collapsed state in narrow view (collapsed by default)
-export const agentsChangesPanelCollapsedAtom = createStoredSignal<boolean>(
+export const agentsChangesPanelCollapsedAtom = createPersistedSignal<boolean>(
   "agents-changes-panel-collapsed",
   true, // collapsed by default
   undefined,
-  { getOnInit: true },
 )
 
 // Diff view display mode - sidebar (side peek), center dialog, or fullscreen
 // Defined early because diffSidebarOpenAtomFamily depends on it
 export type DiffViewDisplayMode = "side-peek" | "center-peek" | "full-page"
 
-export const diffViewDisplayModeAtom = createStoredSignal<DiffViewDisplayMode>(
+export const diffViewDisplayModeAtom = createPersistedSignal<DiffViewDisplayMode>(
   "agents:diffViewDisplayMode",
   "center-peek", // default to dialog for new users
   undefined,
-  { getOnInit: true },
 )
 
 // Diff sidebar open state storage - window-scoped, stores per chatId
-const diffSidebarOpenStorageAtom = atomWithWindowStorage<Record<string, boolean>>(
+const diffSidebarOpenStorageAtom = makeWindowPersistedSignal<Record<string, boolean>>(
   "agents:diffSidebarOpen",
   {},
-  { getOnInit: true },
 )
 
 // Runtime open state - not persisted, used for dialog/fullscreen modes
@@ -320,10 +299,9 @@ export const diffSidebarOpenAtomFamily = createSignalMap((chatId) => {
 
 // Legacy global atom - kept for backwards compatibility, maps to empty string key
 // TODO: Remove after migration
-export const agentsDiffSidebarOpenAtom = atomWithWindowStorage<boolean>(
+export const agentsDiffSidebarOpenAtom = makeWindowPersistedSignal<boolean>(
   "agents-diff-sidebar-open",
   false,
-  { getOnInit: true },
 )
 
 // Focused file path in diff sidebar (for scroll-to-file feature)
@@ -341,16 +319,15 @@ export const diffFilesCollapsedAtomFamily = createKeyedSignalFamily(
 
 // Sub-chats display mode - tabs (horizontal) or sidebar (vertical list)
 // Window-scoped so each window can have its own layout preference
-export const agentsSubChatsSidebarModeAtom = atomWithWindowStorage<
+export const agentsSubChatsSidebarModeAtom = makeWindowPersistedSignal<
   "tabs" | "sidebar"
->("agents-subchats-mode", "tabs", { getOnInit: true })
+>("agents-subchats-mode", "tabs")
 
 // Sub-chats sidebar width (left side of chat area)
-export const agentsSubChatsSidebarWidthAtom = createStoredSignal<number>(
+export const agentsSubChatsSidebarWidthAtom = createPersistedSignal<number>(
   "agents-subchats-sidebar-width",
   200,
   undefined,
-  { getOnInit: true },
 )
 
 // Track chats with unseen changes (finished streaming but user hasn't opened them)
@@ -421,7 +398,7 @@ export interface AgentsDebugMode {
   simulateCompleted: boolean // Simulate onboarding as completed
 }
 
-export const agentsDebugModeAtom = createStoredSignal<AgentsDebugMode>(
+export const agentsDebugModeAtom = createPersistedSignal<AgentsDebugMode>(
   "agents:debugMode",
   {
     enabled: false,
@@ -434,7 +411,6 @@ export const agentsDebugModeAtom = createStoredSignal<AgentsDebugMode>(
     simulateCompleted: false,
   },
   undefined,
-  { getOnInit: true },
 )
 
 // Changed files per sub-chat for tracking edits/writes
@@ -510,62 +486,49 @@ export const pendingAuthRetryMessageAtom = createSignal<PendingAuthRetryMessage 
 
 // Work mode preference (local = work in project dir, worktree = create isolated worktree)
 export type WorkMode = "local" | "worktree"
-export const lastSelectedWorkModeAtom = createStoredSignal<WorkMode>(
+export const lastSelectedWorkModeAtom = createPersistedSignal<WorkMode>(
   "agents:lastSelectedWorkMode",
   "worktree", // default to worktree for current behavior
   undefined,
-  { getOnInit: true },
 )
 
 // Last selected branch per project (persisted)
 // Maps projectId -> { name: string, type: "local" | "remote" }
-// Custom storage with migration from old string format
-const lastSelectedBranchesStorage = {
-  getItem: (key: string, initialValue: Record<string, { name: string; type: "local" | "remote" }>) => {
+// Custom storage with migration from old string format; wrapped as SyncStorage for createPersistedSignal
+const defaultBranches: Record<string, { name: string; type: "local" | "remote" }> = {}
+const lastSelectedBranchesStorage: import("@solid-primitives/storage").SyncStorage = {
+  getItem: (key: string) => {
     const storedValue = localStorage.getItem(key)
-    if (!storedValue) return initialValue
-
+    if (!storedValue) return null
     try {
       const parsed = JSON.parse(storedValue)
-
-      // Migrate old format: Record<string, string> -> Record<string, { name, type }>
       const migrated: Record<string, { name: string; type: "local" | "remote" }> = {}
       for (const [projectId, value] of Object.entries(parsed)) {
         if (typeof value === "string") {
-          // Old format: string branch name -> assume "local" type
           migrated[projectId] = { name: value, type: "local" }
         } else if (value && typeof value === "object" && "name" in value && "type" in value) {
-          // New format: already migrated
           migrated[projectId] = value as { name: string; type: "local" | "remote" }
         }
       }
-
-      // Save migrated data back to localStorage
       if (Object.keys(migrated).length > 0) {
         localStorage.setItem(key, JSON.stringify(migrated))
       }
-
-      return migrated
+      return JSON.stringify(migrated)
     } catch {
-      return initialValue
+      return null
     }
   },
-  setItem: (key: string, value: Record<string, { name: string; type: "local" | "remote" }>) => {
-    localStorage.setItem(key, JSON.stringify(value))
+  setItem: (key: string, value: string) => {
+    localStorage.setItem(key, value)
   },
   removeItem: (key: string) => {
     localStorage.removeItem(key)
   },
 }
 
-export const lastSelectedBranchesAtom = createStoredSignal<
+export const lastSelectedBranchesAtom = createPersistedSignal<
   Record<string, { name: string; type: "local" | "remote" }>
->(
-  "agents:lastSelectedBranches",
-  {},
-  lastSelectedBranchesStorage,
-  { getOnInit: true },
-)
+>("agents:lastSelectedBranches", defaultBranches, lastSelectedBranchesStorage)
 
 // Compacting status per sub-chat
 // Set<subChatId> - subChats currently being compacted
@@ -626,13 +589,11 @@ export type ViewedFileState = {
 
 // Storage atom for viewed files per chat
 // Structure: { [chatId]: { [fileKey]: ViewedFileState } }
-const viewedFilesStorageAtom = createStoredSignal<
+const viewedFilesStorageAtom = createPersistedSignal<
   Record<string, Record<string, ViewedFileState>>
 >(
   "agents:viewedFiles",
   {},
-  undefined,
-  { getOnInit: true },
 )
 
 // atomFamily to get/set viewed files per chatId
@@ -647,19 +608,17 @@ export const openLocallyChatIdAtom = createSignal<string | null>(null)
 // Plan sidebar state atoms
 
 // Plan sidebar width (global, persisted)
-export const agentsPlanSidebarWidthAtom = createStoredSignal<number>(
+export const agentsPlanSidebarWidthAtom = createPersistedSignal<number>(
   "agents-plan-sidebar-width",
   500,
   undefined,
-  { getOnInit: true },
 )
 
 // Plan sidebar open state storage - stores per chatId (persisted)
 // Uses window-scoped storage so each window can have independent plan sidebar states
-const planSidebarOpenStorageAtom = atomWithWindowStorage<Record<string, boolean>>(
+const planSidebarOpenStorageAtom = makeWindowPersistedSignal<Record<string, boolean>>(
   "agents:planSidebarOpen",
   {},
-  { getOnInit: true },
 )
 
 // atomFamily to get/set plan sidebar open state per chatId

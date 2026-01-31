@@ -1,6 +1,7 @@
-import { trpcClient } from "../../../lib/trpc"
+import { desktopRpc } from "../../../lib/desktop-rpc"
 import { remoteApi } from "../../../lib/remote-api"
 import { toast } from "solid-sonner"
+
 
 export type ExportFormat = "markdown" | "json" | "text"
 
@@ -82,8 +83,8 @@ export async function exportChat({ chatId, subChatId, format, isRemote = false }
       const chatName = subChat.name || chat.name || "remote-chat"
       exportData = formatMessages(messages, format, chatName)
     } else {
-      // Local chat export - use existing tRPC endpoint
-      exportData = await trpcClient.chats.exportChat.query({
+      // Local chat export - use desktop RPC
+      exportData = await desktopRpc.chats.exportChat({
         chatId,
         subChatId,
         format,
@@ -133,8 +134,8 @@ export async function copyChat({ chatId, subChatId, format, isRemote = false }: 
       const chatName = subChat.name || chat.name || "remote-chat"
       exportData = formatMessages(messages, format, chatName)
     } else {
-      // Local chat export - use existing tRPC endpoint
-      exportData = await trpcClient.chats.exportChat.query({
+      // Local chat export - use desktop RPC
+      exportData = await desktopRpc.chats.exportChat({
         chatId,
         subChatId,
         format,

@@ -1,4 +1,5 @@
 
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { Motion, Presence } from "solid-motionone";
 import { Show } from "solid-js";
 import { formatTimeAgo } from "../../../lib/utils/format-time-ago";
@@ -66,9 +67,11 @@ export function KanbanCard({ card, isMultiSelectMode, onClick, onCheckboxClick, 
 	// Card content (shared between draft and regular cards)
 	const cardContent = <div class="flex items-start gap-2.5">
       {	/* Checkbox for multi-select mode */}
-      {isMultiSelectMode && !card.isDraft && <div class="pt-0.5 flex-shrink-0">
-          <Checkbox checked={card.isSelected} onClick={(e) => onCheckboxClick(e, card.chatId)} class="h-4 w-4" />
-        </div>}
+      <Show when={isMultiSelectMode && !card.isDraft}>
+          <div class="pt-0.5 flex-shrink-0">
+            <Checkbox checked={card.isSelected} onClick={(e) => onCheckboxClick(e, card.chatId)} class="h-4 w-4" />
+          </div>
+        </Show>
 
       { /* Content */}
       <div class="flex-1 min-w-0 flex flex-col gap-0.5">
@@ -79,9 +82,10 @@ export function KanbanCard({ card, isMultiSelectMode, onClick, onCheckboxClick, 
           </span>
 
           { /* Status indicator container - справа от названия */}
-          {!isMultiSelectMode && <div class="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center relative">
-              { /* Indicator - absolute, скрывается при hover */}
-              {showStatusIndicator && <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover:opacity-0">
+          <Show when={!isMultiSelectMode}>
+            <div class="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center relative">
+              <Show when={showStatusIndicator}>
+                <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover:opacity-0">
                   <Presence>
                     <Show when={hasPendingQuestion}>
                       <Motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
@@ -107,30 +111,33 @@ export function KanbanCard({ card, isMultiSelectMode, onClick, onCheckboxClick, 
                       </Motion.div>
                     </Show>
                   </Presence>
-                </div>}
+                </div>
+                </Show>
 
-              {	/* Archive button - absolute, appears on hover */}
-              {!card.isDraft && <button type="button" onClick={(e) => {
+              <Show when={!card.isDraft}>
+                <button type="button" onClick={(e) => {
  e.stopPropagation();
 		onArchive(card.chatId);
 	}} tabIndex={-1} class="absolute inset-0 flex items-center justify-center text-muted-foreground hover:text-foreground active:text-foreground transition-[opacity,transform,color] duration-150 ease-out opacity-0 scale-95 pointer-events-none group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto active:scale-[0.97]" aria-label="Archive workspace">
                   <ArchiveIcon class="h-3.5 w-3.5" />
-                </button>}
-            </div>}
+                </button>
+              </Show>
+            </div>
+          </Show>
         </div>
 
         {	/* Second row: project/branch + stats + time */}
         <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 min-w-0">
           <span class="truncate flex-1 min-w-0">{displayText}</span>
           <div class="flex items-center gap-1.5 flex-shrink-0">
-            {card.stats && (card.stats.additions > 0 || card.stats.deletions > 0) && <>
+            <Show when={card.stats && (card.stats.additions > 0 || card.stats.deletions > 0)}>
                 <span class="text-green-600 dark:text-green-400">
-                  +{card.stats.additions}
+                  +{card.stats!.additions}
                 </span>
                 <span class="text-red-600 dark:text-red-400">
-                  -{card.stats.deletions}
+                  -{card.stats!.deletions}
                 </span>
-              </>}
+              </Show>
             <span>{timeAgo}</span>
           </div>
         </div>
@@ -158,9 +165,11 @@ export function KanbanCard({ card, isMultiSelectMode, onClick, onCheckboxClick, 
 	})}>
           Rename workspace
         </ContextMenuItem>
-        {card.branch && <ContextMenuItem onClick={() => onCopyBranch(card.branch!)}>
-            Copy branch name
-          </ContextMenuItem>}
+        <Show when={card.branch}>
+            <ContextMenuItem onClick={() => onCopyBranch(card.branch!)}>
+              Copy branch name
+            </ContextMenuItem>
+          </Show>
         <ContextMenuSub>
           <ContextMenuSubTrigger>Export workspace</ContextMenuSubTrigger>
           <ContextMenuSubContent sideOffset={6} alignOffset={-4}>
@@ -203,9 +212,14 @@ export function KanbanCard({ card, isMultiSelectMode, onClick, onCheckboxClick, 
             </ContextMenuItem>
           </ContextMenuSubContent>
         </ContextMenuSub>
-        {typeof window !== "undefined" && window.desktopApi && <ContextMenuItem onClick={() => window.desktopApi?.newWindow({ chatId: card.chatId })}>
+        <Show when={typeof window !== "undefined" && window.desktopApi}>
+          <ContextMenuItem onClick={() => {
+            // TODO: Handle via BrowserWindow "newWindowOpen" event
+            console.log("Open in new window:", card.chatId)
+          }}>
             Open in new window
-          </ContextMenuItem>}
+          </ContextMenuItem>
+        </Show>
         <ContextMenuSeparator />
         <ContextMenuItem onClick={() => onArchive(card.chatId)}>
           Archive workspace

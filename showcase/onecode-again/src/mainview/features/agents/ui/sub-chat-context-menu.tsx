@@ -1,4 +1,5 @@
-import { createMemo } from "solid-js";
+import { desktopRpc } from "../../../lib/desktop-rpc";
+import { createMemo, Show } from "solid-js";
 import { ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "../../../components/ui/context-menu";
 import { Kbd } from "../../../components/ui/kbd";
 import { isMac } from "../../../lib/utils";
@@ -7,10 +8,8 @@ import type { SubChatMeta } from "../stores/sub-chat-store";
 import { useResolvedHotkeyDisplay } from "../../../lib/hotkeys";
 import { exportChat, copyChat, type ExportFormat } from "../lib/export-chat";
 const openInNewWindow = (chatId: string, subChatId: string) => {
-	window.desktopApi?.newWindow({
-		chatId,
-		subChatId
-	});
+	// TODO: Handle via BrowserWindow "newWindowOpen" event
+	console.log("Open in new window:", chatId, subChatId)
 };
 // Platform-aware keyboard shortcut for close tab
 // Uses custom hotkey from settings if configured
@@ -67,39 +66,45 @@ export function SubChatContextMenu({ subChat, isPinned, onTogglePin, onRename, o
       <ContextMenuItem onClick={() => onRename(subChat)}>
         Rename chat
       </ContextMenuItem>
-      {chatId && <ContextMenuSub>
-          <ContextMenuSubTrigger>Export chat</ContextMenuSubTrigger>
-          <ContextMenuSubContent sideOffset={6} alignOffset={-4}>
-            <ContextMenuItem onClick={() => handleExport("markdown")}>
-              Download as Markdown
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => handleExport("json")}>
-              Download as JSON
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => handleExport("text")}>
-              Download as Text
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem onClick={() => handleCopy("markdown")}>
-              Copy as Markdown
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => handleCopy("json")}>
-              Copy as JSON
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => handleCopy("text")}>
-              Copy as Text
-            </ContextMenuItem>
-          </ContextMenuSubContent>
-        </ContextMenuSub>}
-      {isDesktopApp() && chatId && <ContextMenuItem onClick={() => openInNewWindow(chatId, subChat.id)}>
-          Open in new window
-        </ContextMenuItem>}
+      <Show when={chatId}>
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>Export chat</ContextMenuSubTrigger>
+            <ContextMenuSubContent sideOffset={6} alignOffset={-4}>
+              <ContextMenuItem onClick={() => handleExport("markdown")}>
+                Download as Markdown
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => handleExport("json")}>
+                Download as JSON
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => handleExport("text")}>
+                Download as Text
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => handleCopy("markdown")}>
+                Copy as Markdown
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => handleCopy("json")}>
+                Copy as JSON
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => handleCopy("text")}>
+                Copy as Text
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        </Show>
+      <Show when={isDesktopApp() && chatId}>
+          <ContextMenuItem onClick={() => openInNewWindow(chatId!, subChat.id)}>
+            Open in new window
+          </ContextMenuItem>
+        </Show>
       <ContextMenuSeparator />
 
-      {showCloseTabOptions ? <>
+{showCloseTabOptions ? <>
           <ContextMenuItem onClick={() => onCloseTab?.(subChat.id)} class="justify-between" disabled={isOnlyChat}>
             Close chat
-            {!isOnlyChat && <Kbd>{closeTabShortcut}</Kbd>}
+            <Show when={!isOnlyChat}>
+              <Kbd>{closeTabShortcut}</Kbd>
+            </Show>
           </ContextMenuItem>
           <ContextMenuItem onClick={() => onCloseOtherTabs?.(subChat.id)} disabled={!canCloseOtherTabs}>
             Close other chats
@@ -110,7 +115,9 @@ export function SubChatContextMenu({ subChat, isPinned, onTogglePin, onRename, o
         </> : <>
           <ContextMenuItem onClick={() => onArchive(subChat.id)} class="justify-between" disabled={isOnlyChat}>
             Archive chat
-            {!isOnlyChat && <Kbd>{closeTabShortcut}</Kbd>}
+            <Show when={!isOnlyChat}>
+              <Kbd>{closeTabShortcut}</Kbd>
+            </Show>
           </ContextMenuItem>
           <ContextMenuItem onClick={() => onArchiveAllBelow?.(subChat.id)} disabled={currentIndex === undefined || currentIndex >= (totalCount || 0) - 1}>
             Archive chats below

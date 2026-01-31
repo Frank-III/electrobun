@@ -1,4 +1,3 @@
-import { useSetAtom } from "../../../lib/state/jotai"
 import { createSignal, createEffect, createMemo } from "solid-js"
 import { subChatFilesAtom, subChatToChatMapAtom, type SubChatFileChange } from "../atoms"
 // import { REPO_ROOT_PATH } from "@/lib/codesandbox-constants"
@@ -30,8 +29,8 @@ export function useChangedFilesTracking(
   isStreaming: boolean = false,
   chatId?: string,
 ) {
-  const setSubChatFiles = useSetAtom(subChatFilesAtom)
-  const setSubChatToChatMap = useSetAtom(subChatToChatMapAtom)
+  const setSubChatFiles = subChatFilesAtom[1]
+  const setSubChatToChatMap = subChatToChatMapAtom[1]
 
   // Helper to get display path (removes sandbox prefixes and worktree paths)
   const getDisplayPath = (filePath: string): string => {

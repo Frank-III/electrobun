@@ -1,11 +1,11 @@
 /**
  * Skills Mention Provider
  *
- * Wraps the existing tRPC skills.listEnabled endpoint as a mention provider.
+ * Uses desktop (Electrobun) RPC skills.listEnabled as a mention provider.
  * Provides skill search with descriptions and source indicators.
  */
 
-import { trpcClient } from "../../../lib/trpc"
+import { desktopRpc } from "../../../lib/desktop-rpc"
 import {
   createMentionProvider,
   type MentionItem,
@@ -51,10 +51,7 @@ export const skillsProvider = createMentionProvider<SkillData>({
     }
 
     try {
-      // Use tRPC to list skills
-      const skills = await trpcClient.skills.listEnabled.query({
-        cwd: context.projectPath,
-      })
+      const skills = await desktopRpc.skills.listEnabled({ cwd: context.projectPath })
 
       // Map to MentionItem format
       let items: MentionItem<SkillData>[] = skills.map((skill) => ({

@@ -1,8 +1,8 @@
-"use client";
-import { createSignal } from "solid-js";
+import { createSignal, Show, Switch, Match } from "solid-js";
 import { GitBranchFilledIcon, FolderFilledIcon, GitPullRequestFilledIcon } from "@/components/ui/icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { trpc } from "@/lib/trpc";
+import { useQuery, useMutation } from "@tanstack/solid-query";
+import { desktopRpc } from "@/lib/desktop-rpc";
 interface InfoSectionProps {
 	chatId: string;
 	worktreePath: string | null;
@@ -17,7 +17,7 @@ interface InfoSectionProps {
 /** Property row component - Notion-style with icon, label, and value */
 function PropertyRow({ icon: Icon, label, value, title, onClick, copyable, tooltip }: {
 	icon: Component<{
-		className?: string;
+		class?: string;
 	}>;
 	label: string;
 	value: string;
@@ -49,21 +49,29 @@ function PropertyRow({ icon: Icon, label, value, title, onClick, copyable, toolt
       </div>
       { /* Value column - flexible */}
       <div class="flex-1 min-w-0 pl-2 truncate">
-        {copyable ? <Tooltip open={showCopied ? true : undefined}>
-            <TooltipTrigger asChild>
-              {valueSpan}
-            </TooltipTrigger>
-            <TooltipContent side="top" class="text-xs">
-              {showCopied ? "Copied" : "Click to copy"}
-            </TooltipContent>
-          </Tooltip> : tooltip ? <Tooltip>
-            <TooltipTrigger asChild>
-              {valueSpan}
-            </TooltipTrigger>
-            <TooltipContent side="top" class="text-xs">
-              {tooltip}
-            </TooltipContent>
-          </Tooltip> : valueSpan}
+        <Show when={copyable}>
+            <Tooltip open={showCopied() ? true : undefined}>
+              <TooltipTrigger asChild>
+                {valueSpan}
+              </TooltipTrigger>
+              <TooltipContent side="top" class="text-xs">
+                {showCopied() ? "Copied" : "Click to copy"}
+              </TooltipContent>
+            </Tooltip>
+          </Show>
+        <Show when={!copyable && tooltip}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {valueSpan}
+              </TooltipTrigger>
+              <TooltipContent side="top" class="text-xs">
+                {tooltip}
+              </TooltipContent>
+            </Tooltip>
+          </Show>
+        <Show when={!copyable && !tooltip}>
+            {valueSpan}
+          </Show>
       </div>
     </div>;
  }
@@ -76,20 +84,31 @@ export function InfoSection({ chatId, worktreePath, isExpanded = false, remoteIn
 	// Extract folder name from path
 	const folderName = worktreePath?.split("/").pop() || "Unknown";
 	// Mutation to open folder in Finder
-	const openInFinderMutation = trpc.external.openInFinder.useMutation();
+	const openInFinderMutation = useMutation(() => ({
+		mutationFn: (path: string) => desktopRpc.external.openInFinder.mutate({ path }),
+	}));
 	// Check if this is a remote sandbox chat (no local worktree)
 	const isRemoteChat = !worktreePath && !!remoteInfo;
 	// Fetch branch data directly (only for local chats)
-	const { data: branchData, isLoading: isBranchLoading } = trpc.changes.getBranches.useQuery({ worktreePath: worktreePath || "" }, { enabled: !!worktreePath });
+	const branchQuery = useQuery(() => ({
+		queryKey: ["changes", "getBranches", worktreePath] as const,
+		queryFn: () => desktopRpc.changes.getBranches({ worktreePath: worktreePath || "" }),
+		enabled: !!worktreePath,
+	}));
+	const branchData = () => branchQuery.data;
+	const isBranchLoading = () => branchQuery.isLoading;
 	// Get PR status for current branch (only for local chats)
-	const { data: prStatus } = trpc.chats.getPrStatus.useQuery({ chatId }, {
+	const prStatusQuery = useQuery(() => ({
+		queryKey: ["chats", "getPrStatus", chatId] as const,
+		queryFn: () => desktopRpc.chats.getPrStatus({ chatId }),
 		refetchInterval: 3e4,
-		enabled: !!chatId && !!worktreePath
-	});
+		enabled: !!chatId && !!worktreePath,
+	}));
+	const prStatus = () => prStatusQuery.data;
 	// For local chats: use fetched branch data
 	// For remote chats: use remoteInfo from props
-	const branchName = isRemoteChat ? remoteInfo?.branch : branchData?.current;
-	const pr = prStatus?.pr;
+	const branchName = () => (isRemoteChat ? remoteInfo?.branch : branchData()?.current);
+	const pr = () => prStatus()?.pr;
 	// Extract repo name from repository URL (e.g., "owner/repo" from "github.com/owner/repo")
 	const repositoryName = remoteInfo?.repository ? remoteInfo.repository.replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "") : null;
 	const handleOpenFolder = () => {
@@ -98,8 +117,9 @@ export function InfoSection({ chatId, worktreePath, isExpanded = false, remoteIn
 		}
 	};
 	const handleOpenPr = () => {
-		if (pr?.url) {
-			window.desktopApi.openExternal(pr.url);
+		const prData = pr();
+		if (prData?.url) {
+			window.desktopApi.openExternal(prData.url);
 		}
 	};
 	const handleOpenRepository = () => {
@@ -115,7 +135,7 @@ export function InfoSection({ chatId, worktreePath, isExpanded = false, remoteIn
 		}
 	};
 	// Show loading state while branch data is loading (only for local chats)
-	if (!isRemoteChat && isBranchLoading) {
+	if (!isRemoteChat && isBranchLoading()) {
 		return <div class="px-2 py-1.5 flex flex-col gap-0.5">
         <div class="flex items-center min-h-[28px]">
           <div class="flex items-center gap-1.5 w-[100px] flex-shrink-0">
@@ -137,7 +157,7 @@ export function InfoSection({ chatId, worktreePath, isExpanded = false, remoteIn
         </div>
       </div>;
 	}
-	const hasContent = branchName || worktreePath || repositoryName || remoteInfo?.sandboxId;
+	const hasContent = branchName() || worktreePath || repositoryName || remoteInfo?.sandboxId;
 	if (!hasContent) {
 		return <div class="px-2 py-2">
         <div class="text-xs text-muted-foreground">
@@ -147,12 +167,17 @@ export function InfoSection({ chatId, worktreePath, isExpanded = false, remoteIn
 	}
 	return <div class="px-2 py-1.5 flex flex-col gap-0.5">
       {	/* Repository - only for remote chats */}
-      {repositoryName && <PropertyRow icon={FolderFilledIcon} label="Repository" value={repositoryName} title={remoteInfo?.repository} onClick={handleOpenRepository} tooltip="Open in GitHub" />}
-      { /* Branch - for both local and remote */}
-      {branchName && <PropertyRow icon={GitBranchFilledIcon} label="Branch" value={branchName} copyable />}
-      { /* PR - only for local chats */}
-      {pr && <PropertyRow icon={GitPullRequestFilledIcon} label="Pull Request" value={`#${pr.number}`} title={pr.title} onClick={handleOpenPr} tooltip="Open in GitHub" />}
-      { /* Path - only for local chats */}
-      {worktreePath && <PropertyRow icon={FolderFilledIcon} label="Path" value={folderName} title={worktreePath} onClick={handleOpenFolder} tooltip="Open in Finder" />}
+      <Show when={repositoryName}>
+        <PropertyRow icon={FolderFilledIcon} label="Repository" value={repositoryName} title={remoteInfo?.repository} onClick={handleOpenRepository} tooltip="Open in GitHub" />
+      </Show>
+      <Show when={branchName()}>
+        <PropertyRow icon={GitBranchFilledIcon} label="Branch" value={branchName()!} copyable />
+      </Show>
+      <Show when={pr()}>
+        <PropertyRow icon={GitPullRequestFilledIcon} label="Pull Request" value={`#${pr()!.number}`} title={pr()!.title} onClick={handleOpenPr} tooltip="Open in GitHub" />
+      </Show>
+      <Show when={worktreePath}>
+        <PropertyRow icon={FolderFilledIcon} label="Path" value={folderName} title={worktreePath} onClick={handleOpenFolder} tooltip="Open in Finder" />
+      </Show>
     </div>;
 }

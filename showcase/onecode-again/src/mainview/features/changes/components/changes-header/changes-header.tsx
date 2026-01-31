@@ -4,7 +4,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/
 import { createSignal, For, Show, onCleanup } from "solid-js";
 import { RefreshCw } from "lucide-solid";
 import { IconSpinner } from "../../../../icons";
-import { trpc } from "../../../../lib/trpc";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../../lib/desktop-rpc";
 import { PRIcon } from "../pr-icon";
 import { usePRStatus } from "../../../../hooks/usePRStatus";
 import { useChangesStore } from "../../../../lib/stores/changes-store";
@@ -38,22 +39,31 @@ export function ChangesHeader({ onRefresh, viewMode, onViewModeChange, worktreeP
 		}
 	});
 	const { baseBranch, setBaseBranch } = useChangesStore();
-	const { data: branchData, isLoading } = trpc.changes.getBranches.useQuery({ worktreePath }, { enabled: !!worktreePath });
+	const branchDataQuery = useQuery(() => ({
+		queryKey: ["changes", "getBranches", worktreePath] as const,
+		queryFn: () => desktopRpc.changes.getBranches({ worktreePath }),
+		enabled: !!worktreePath,
+	}));
+	const branchData = () => branchDataQuery.data;
+	const isLoading = () => branchDataQuery.isLoading;
 	const { pr, isLoading: isPRLoading } = usePRStatus({
 		worktreePath,
-		refetchInterval: 1e4
+		refetchInterval: 1e4,
 	});
-	const effectiveBaseBranch = baseBranch ?? branchData?.defaultBranch ?? "main";
-	const availableBranches = branchData?.remote ?? [];
-	const sortedBranches = [...availableBranches].sort((a, b) => {
-		if (a === branchData?.defaultBranch) return -1;
-		if (b === branchData?.defaultBranch) return 1;
-		return a.localeCompare(b);
-	});
+	const effectiveBaseBranch = () =>
+		baseBranch ?? branchData()?.defaultBranch ?? "main";
+	const availableBranches = () => branchData()?.remote ?? [];
+	const sortedBranches = () => {
+		const avail = availableBranches();
+		const def = branchData()?.defaultBranch;
+		return [...avail].sort((a, b) => {
+			if (a === def) return -1;
+			if (b === def) return 1;
+			return a.localeCompare(b);
+		});
+	};
 	const handleChange = (value: string) => {
-		if (value === branchData?.defaultBranch && baseBranch === null) {
-			return;
-		}
+		if (value === branchData()?.defaultBranch && baseBranch === null) return;
 		setBaseBranch(value);
 	};
 	return <div class="flex items-center justify-between gap-1.5 px-2 py-1.5">
@@ -61,19 +71,19 @@ export function ChangesHeader({ onRefresh, viewMode, onViewModeChange, worktreeP
 				<span class="text-[10px] text-muted-foreground shrink-0">
 					Base:
 				</span>
-				<Show when={!isLoading && branchData} fallback={<span class="px-1.5 py-0.5 rounded bg-muted/50 text-foreground text-[10px] font-medium truncate">{effectiveBaseBranch}</span>}>
+				<Show when={!isLoading() && branchData()} fallback={<span class="px-1.5 py-0.5 rounded bg-muted/50 text-foreground text-[10px] font-medium truncate">{effectiveBaseBranch()}</span>}>
 					<Tooltip>
-						<Select value={effectiveBaseBranch} onValueChange={handleChange}>
+						<Select value={effectiveBaseBranch()} onChange={handleChange}>
 							<TooltipTrigger asChild>
 								<SelectTrigger class="h-5 px-1.5 py-0 text-[10px] font-medium border-none bg-muted/50 hover:bg-muted text-foreground min-w-0 w-auto gap-0.5 rounded">
 									<SelectValue />
 								</SelectTrigger>
 							</TooltipTrigger>
 							<SelectContent align="start">
-								<For each={sortedBranches.filter((branch) => branch)}>
+								<For each={sortedBranches().filter((branch) => branch)}>
 									{(branch) => <SelectItem value={branch} class="text-xs">
 										{branch}
-										<Show when={branch === branchData?.defaultBranch}>
+										<Show when={branch === branchData()?.defaultBranch}>
 											<span class="ml-1 text-muted-foreground">(default)</span>
 										</Show>
 									</SelectItem>}

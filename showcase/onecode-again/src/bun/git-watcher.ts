@@ -96,9 +96,6 @@ export class GitWatcher extends EventEmitter {
           flushChanges();
         }
       },
-      {
-        ignore: (path) => !isGitMeta(path, this.worktreePath),
-      },
     );
 
     console.log(`[GitWatcher] Watching: ${this.worktreePath}`);

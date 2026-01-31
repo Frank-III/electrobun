@@ -66,6 +66,8 @@ const lib = dlopen(libPath, {
 });
 
 const { symbols } = lib;
+const textDecoder = new TextDecoder();
+const MAX_ROW_BYTES = 256 * 1024;
 
 export class GhosttyTerminal {
   private handle: ReturnType<typeof symbols.vt_create>;
@@ -101,9 +103,14 @@ export class GhosttyTerminal {
   }
 
   getRowText(row: number): string {
-    const buf = new Uint8Array(4096);
-    const len = symbols.vt_get_row_text(this.handle, row, ptr(buf), buf.length);
-    return new TextDecoder().decode(buf.subarray(0, len));
+    let buf = new Uint8Array(4096);
+    let len = symbols.vt_get_row_text(this.handle, row, ptr(buf), buf.length);
+    while (len >= buf.length && buf.length < MAX_ROW_BYTES) {
+      const nextSize = Math.min(buf.length * 2, MAX_ROW_BYTES);
+      buf = new Uint8Array(nextSize);
+      len = symbols.vt_get_row_text(this.handle, row, ptr(buf), buf.length);
+    }
+    return textDecoder.decode(buf.subarray(0, len));
   }
 
   getCellCodepoint(row: number, col: number): number {

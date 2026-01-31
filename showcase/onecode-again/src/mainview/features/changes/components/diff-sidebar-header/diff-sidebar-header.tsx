@@ -7,12 +7,13 @@ import { DiffViewModeSwitcher } from "./diff-view-mode-switcher";
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { RefreshCw, ChevronDown, GitBranch, ArrowDown, ArrowUp, Check, ChevronsDownUp, ChevronsUpDown, Columns2, Eye, GitMerge, GitPullRequest, MoreHorizontal, Rows2, Square, Upload, X } from "lucide-solid";
-import { trpc } from "../../../../lib/trpc";
+import { useQuery, useMutation } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../../lib/desktop-rpc";
 import { cn } from "../../../../lib/utils";
 import { usePRStatus } from "../../../../hooks/usePRStatus";
 import { PRIcon } from "../pr-icon";
 import { toast } from "solid-sonner";
-import { DiffModeEnum } from "@git-diff-view/react";
+import type { DiffViewMode } from "../../../../agents/ui/agent-diff-view";
 interface DiffStats {
 	isLoading: boolean;
 	hasChanges: boolean;
@@ -55,8 +56,8 @@ interface DiffSidebarHeaderProps {
 	// Diff view controls
 	onExpandAll?: () => void;
 	onCollapseAll?: () => void;
-	viewMode?: DiffModeEnum;
-	onViewModeChange?: (mode: DiffModeEnum) => void;
+	viewMode?: DiffViewMode;
+	onViewModeChange?: (mode: DiffViewMode) => void;
 	// Viewed files controls
 	viewedCount?: number;
 	onMarkAllViewed?: () => void;
@@ -81,7 +82,7 @@ function formatTimeSince(date: Date): string {
 interface DiffSidebarHeaderComponentProps extends DiffSidebarHeaderProps {}
 
 export function DiffSidebarHeader(props: DiffSidebarHeaderComponentProps) {
-	const { worktreePath, currentBranch, diffStats, sidebarWidth = 800, pushCount = 0, pullCount = 0, hasUpstream = true, isSyncStatusLoading = false, aheadOfDefault = 0, behindDefault = 0, onReview, isReviewing = false, onCreatePr, isCreatingPr = false, onCreatePrWithAI, isCreatingPrWithAI = false, onMergePr, isMergingPr = false, onClose, onRefresh, hasPrNumber = false, isPrOpen = false, hasMergeConflicts = false, onFixConflicts, onExpandAll, onCollapseAll, viewMode = DiffModeEnum.Unified, onViewModeChange, viewedCount = 0, onMarkAllViewed, onMarkAllUnviewed, isDesktop = false, isFullscreen = false, displayMode = "side-peek", onDisplayModeChange } = props;
+	const { worktreePath, currentBranch, diffStats, sidebarWidth = 800, pushCount = 0, pullCount = 0, hasUpstream = true, isSyncStatusLoading = false, aheadOfDefault = 0, behindDefault = 0, onReview, isReviewing = false, onCreatePr, isCreatingPr = false, onCreatePrWithAI, isCreatingPrWithAI = false, onMergePr, isMergingPr = false, onClose, onRefresh, hasPrNumber = false, isPrOpen = false, hasMergeConflicts = false, onFixConflicts, onExpandAll, onCollapseAll, viewMode = "unified" as DiffViewMode, onViewModeChange, viewedCount = 0, onMarkAllViewed, onMarkAllUnviewed, isDesktop = false, isFullscreen = false, displayMode = "side-peek", onDisplayModeChange } = props;
 	// Responsive breakpoints - progressive disclosure
 	const isCompact = sidebarWidth < 350;
 	const showViewModeToggle = sidebarWidth >= 450;
@@ -90,42 +91,49 @@ export function DiffSidebarHeader(props: DiffSidebarHeaderComponentProps) {
 	const [isRefreshing, setIsRefreshing] = createSignal(false);
 	const [displayTime, setDisplayTime] = createSignal("");
 	let timeoutRef: ReturnType<typeof setTimeout> | undefined;
-	const { data: branchData, refetch: refetchBranches } = trpc.changes.getBranches.useQuery({ worktreePath }, { enabled: !!worktreePath });
-	// Check if current branch is the default branch (main/master)
-	const isDefaultBranch = currentBranch === branchData?.defaultBranch;
-	const fetchMutation = trpc.changes.fetch.useMutation({ onSuccess: () => {
-		setLastFetchTime(new Date());
-		refetchBranches();
-		onRefresh?.();
-	} });
-	const pushMutation = trpc.changes.push.useMutation({
+	const branchDataQuery = useQuery(() => ({
+		queryKey: ["changes", "getBranches", worktreePath] as const,
+		queryFn: () => desktopRpc.changes.getBranches({ worktreePath }),
+		enabled: !!worktreePath,
+	}));
+	const branchData = () => branchDataQuery.data;
+	const refetchBranches = () => branchDataQuery.refetch();
+	const isDefaultBranch = () => currentBranch === branchData()?.defaultBranch;
+
+	const fetchMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string }) => desktopRpc.changes.fetch.mutate(input),
 		onSuccess: () => {
+			setLastFetchTime(new Date());
+			refetchBranches();
 			onRefresh?.();
 		},
-		onError: (error) => toast.error(`Push failed: ${error.message}`)
-	});
-	const pullMutation = trpc.changes.pull.useMutation({
-		onSuccess: () => {
-			onRefresh?.();
-		},
-		onError: (error) => toast.error(`Pull failed: ${error.message}`)
-	});
-	const forcePushMutation = trpc.changes.forcePush.useMutation({
-		onSuccess: () => {
-			onRefresh?.();
-		},
-		onError: (error: {
-			message: string;
-		}) => toast.error(`Force push failed: ${error.message}`)
-	});
-	const mergeFromDefaultMutation = trpc.changes.mergeFromDefault.useMutation({
-		onSuccess: () => {
-			onRefresh?.();
-		},
-		onError: (error: {
-			message: string;
-		}) => toast.error(`Merge failed: ${error.message}`)
-	});
+	}));
+	const pushMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string; setUpstream?: boolean }) =>
+			desktopRpc.changes.push.mutate(input),
+		onSuccess: () => onRefresh?.(),
+		onError: (error) => toast.error(`Push failed: ${error.message}`),
+	}));
+	const pullMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string; autoStash?: boolean }) =>
+			desktopRpc.changes.pull.mutate(input),
+		onSuccess: () => onRefresh?.(),
+		onError: (error) => toast.error(`Pull failed: ${error.message}`),
+	}));
+	const forcePushMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string }) =>
+			desktopRpc.changes.forcePush.mutate(input),
+		onSuccess: () => onRefresh?.(),
+		onError: (error: { message: string }) =>
+			toast.error(`Force push failed: ${error.message}`),
+	}));
+	const mergeFromDefaultMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string; useRebase?: boolean }) =>
+			desktopRpc.changes.mergeFromDefault.mutate(input),
+		onSuccess: () => onRefresh?.(),
+		onError: (error: { message: string }) =>
+			toast.error(`Merge failed: ${error.message}`),
+	}));
 	const { pr } = usePRStatus({
 		worktreePath,
 		refetchInterval: 3e4
@@ -149,16 +157,10 @@ export function DiffSidebarHeader(props: DiffSidebarHeaderComponentProps) {
 		} });
 	};
 	const handlePush = () => {
-		pushMutation.mutate({
-			worktreePath,
-			setUpstream: !hasUpstream
-		});
+		pushMutation.mutate({ worktreePath, setUpstream: !hasUpstream });
 	};
 	const handlePull = () => {
-		pullMutation.mutate({
-			worktreePath,
-			autoStash: true
-		});
+		pullMutation.mutate({ worktreePath, autoStash: true });
 	};
 	const handleForcePush = () => {
 		if (window.confirm("Are you sure you want to force push? This will overwrite the remote branch.")) {
@@ -272,13 +274,13 @@ interface ActionButton {
 		// 5. No PR, branch is synced - Create PR if ahead of default, otherwise Fetch
 		if (hasUpstream && !pr) {
 			// Show Create PR if we have commits ahead of default branch (not on default branch)
-			if (aheadOfDefault > 0 && !isDefaultBranch && onCreatePr) {
+			if (aheadOfDefault > 0 && !isDefaultBranch() && onCreatePr) {
 				return {
 					label: "Create PR",
 					pendingLabel: "Creating...",
 					icon: <GitPullRequest class="size-3.5" />,
 					handler: onCreatePr,
-					tooltip: `Create Pull Request (${aheadOfDefault} commit${aheadOfDefault !== 1 ? "s" : ""} ahead of ${branchData?.defaultBranch || "main"})`,
+					tooltip: `Create Pull Request (${aheadOfDefault} commit${aheadOfDefault !== 1 ? "s" : ""} ahead of ${branchData()?.defaultBranch || "main"})`,
 					badge: `↑${aheadOfDefault}`,
 					variant: "default",
 					isPending: isCreatingPr
@@ -319,16 +321,25 @@ interface ActionButton {
 	} : primaryAction;
 	return <div class="relative flex items-center justify-between h-10 px-2 border-b border-border/50 bg-background flex-shrink-0">
 			{	/* Drag region for window dragging */}
-			{isDesktop && !isFullscreen && <div class="absolute inset-0 z-0" style={{ WebkitAppRegion: "drag" }} />}
+			<Show when={isDesktop && !isFullscreen}>
+				<div class="absolute inset-0 z-0" style={{ WebkitAppRegion: "drag" }} />
+			</Show>
 			{ /* Left side: Close button + Branch selector */}
 			<div class="relative z-10 flex items-center gap-1 min-w-0 flex-shrink" style={{ WebkitAppRegion: "no-drag" }}>
 				{ /* Close button - X icon for dialog/fullpage modes, chevron for sidebar */}
 				<Button variant="ghost" size="sm" class="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10" onClick={onClose}>
-					{displayMode === "side-peek" ? <IconCloseSidebarRight class="size-4 text-muted-foreground" /> : <X class="size-4 text-muted-foreground" />}
+					<Show
+						when={displayMode === "side-peek"}
+						fallback={<X class="size-4 text-muted-foreground" />}
+					>
+						<IconCloseSidebarRight class="size-4 text-muted-foreground" />
+					</Show>
 				</Button>
 
 				{ /* Display mode switcher (side-peek, center-peek, full-page) */}
-				{onDisplayModeChange && <DiffViewModeSwitcher mode={displayMode} onModeChange={onDisplayModeChange} />}
+				<Show when={onDisplayModeChange}>
+					<DiffViewModeSwitcher mode={displayMode} onModeChange={onDisplayModeChange} />
+				</Show>
 
 				{ /* Branch name display (branch switching will be added later) */}
 				<div class="h-6 px-2 gap-1 text-xs font-medium min-w-0 flex items-center">
@@ -339,7 +350,8 @@ interface ActionButton {
 				</div>
 
 				{ /* PR Status badge */}
-				{pr && <ContextMenu>
+				<Show when={pr}>
+					<ContextMenu>
 						<ContextMenuTrigger asChild>
 							<a href={pr.url} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 h-6 px-2 rounded-md hover:bg-foreground/10 transition-colors">
 								<PRIcon state={pr.state} class="size-3.5" />
@@ -356,62 +368,59 @@ interface ActionButton {
 								Copy link
 							</ContextMenuItem>
 						</ContextMenuContent>
-					</ContextMenu>}
+					</ContextMenu>
+				</Show>
 			</div>
 
 			{ /* Right side: Review + View mode toggle + Primary action (split button) + Secondary action + Overflow menu */}
 			<div class="relative z-10 flex items-center gap-1 flex-shrink-0" style={{ WebkitAppRegion: "no-drag" }}>
 				{ /* Review button - visible when there's enough space */}
-				{showReviewButton && diffStats.hasChanges && onReview && <Tooltip>
+				<Show when={showReviewButton && diffStats.hasChanges && onReview}>
+					<Tooltip>
 						<TooltipTrigger asChild>
 							<Button variant="ghost" size="sm" onClick={onReview} disabled={isReviewing} class="h-6 px-2 gap-1 text-xs hover:bg-foreground/10">
-								{isReviewing ? <IconSpinner class="size-3.5" /> : <IconReview class="size-3.5" />}
+								<Show when={isReviewing} fallback={<IconReview class="size-3.5" />}>
+									<IconSpinner class="size-3.5" />
+								</Show>
 								<span>Review</span>
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent side="bottom">Review changes with AI</TooltipContent>
-					</Tooltip>}
+					</Tooltip>
+				</Show>
 
 				{ /* Primary action button (solo when Fetch/Open PR, split when Push/Pull/Create PR) */}
-				{displayAction.label === "Fetch" || displayAction.label === "Fetching" || displayAction.label === "Open PR" ? <Tooltip>
-						<TooltipTrigger asChild>
-							<button onClick={displayAction.handler} disabled={displayAction.isPending || displayAction.disabled} class={cn("inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-colors", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary/70", "disabled:pointer-events-none disabled:opacity-50", "h-6 px-2 gap-1 text-xs rounded-md focus:z-10 overflow-hidden", "transition-all duration-200 ease-out", displayAction.variant === "default" ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] dark:shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(0,0,0,0.14)]" : "hover:bg-accent hover:text-accent-foreground")}>
-								<span class="flex items-center gap-1 transition-opacity duration-150 min-w-0">
-									{displayAction.isPending ? <>
-											<IconSpinner class="size-3.5 ml-0.5 shrink-0" />
-											{displayAction.pendingLabel && <span class="mr-0.5 truncate">{displayAction.pendingLabel}</span>}
-											{displayAction.badge && <span class="text-[10px] bg-primary-foreground/20 px-1.5 py-0.5 rounded font-medium ml-1 shrink-0">
-													{displayAction.badge}
-												</span>}
-										</> : <>
-											<span class="shrink-0">{displayAction.icon}</span>
-											{displayAction.label && <span class="truncate">{displayAction.label}</span>}
-											{displayAction.badge && <span class="text-[10px] bg-primary-foreground/20 px-1.5 py-0.5 rounded font-medium ml-1 shrink-0">
-													{displayAction.badge}
-												</span>}
-										</>}
-								</span>
-							</button>
-						</TooltipTrigger>
-						<TooltipContent side="bottom">{displayAction.tooltip}</TooltipContent>
-					</Tooltip> : <div class="inline-flex -space-x-px rounded-md">
+				<Show
+					when={displayAction.label === "Fetch" || displayAction.label === "Fetching" || displayAction.label === "Open PR"}
+					fallback={<div class="inline-flex -space-x-px rounded-md">
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<button onClick={displayAction.handler} disabled={displayAction.isPending || displayAction.disabled} class={cn("inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-colors", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary/70", "disabled:pointer-events-none disabled:opacity-50", "h-6 px-2 gap-1 text-xs rounded-l-md rounded-r-none focus:z-10 overflow-hidden", "transition-all duration-200 ease-out", displayAction.variant === "default" ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] dark:shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(0,0,0,0.14)]" : "hover:bg-accent hover:text-accent-foreground")}>
 									<span class="flex items-center gap-1 transition-opacity duration-150 min-w-0">
-										{displayAction.isPending ? <>
-												<IconSpinner class="size-3.5 ml-0.5 shrink-0" />
-												{displayAction.pendingLabel && <span class="mr-0.5 truncate">{displayAction.pendingLabel}</span>}
-												{displayAction.badge && <span class="text-[10px] bg-primary-foreground/20 px-1.5 py-0.5 rounded font-medium ml-1 shrink-0">
-														{displayAction.badge}
-													</span>}
-											</> : <>
+										<Show
+											when={displayAction.isPending}
+											fallback={<>
 												<span class="shrink-0">{displayAction.icon}</span>
-												{displayAction.label && <span class="truncate">{displayAction.label}</span>}
-												{displayAction.badge && <span class="text-[10px] bg-primary-foreground/20 px-1.5 py-0.5 rounded font-medium ml-1 shrink-0">
+												<Show when={displayAction.label}>
+													<span class="truncate">{displayAction.label}</span>
+												</Show>
+												<Show when={displayAction.badge}>
+													<span class="text-[10px] bg-primary-foreground/20 px-1.5 py-0.5 rounded font-medium ml-1 shrink-0">
 														{displayAction.badge}
-													</span>}
+													</span>
+												</Show>
 											</>}
+										>
+											<IconSpinner class="size-3.5 ml-0.5 shrink-0" />
+											<Show when={displayAction.pendingLabel}>
+												<span class="mr-0.5 truncate">{displayAction.pendingLabel}</span>
+											</Show>
+											<Show when={displayAction.badge}>
+												<span class="text-[10px] bg-primary-foreground/20 px-1.5 py-0.5 rounded font-medium ml-1 shrink-0">
+													{displayAction.badge}
+												</span>
+											</Show>
+										</Show>
 									</span>
 								</button>
 							</TooltipTrigger>
@@ -431,14 +440,17 @@ interface ActionButton {
 									<RefreshCw class={cn("mr-2 size-3.5", isFetchPending && "animate-spin")} />
 									<div class="flex-1">
 										<div>Fetch origin</div>
-										<div class="text-[10px] text-muted-foreground">
-											{lastFetchTime() ? `Last fetched ${displayTime()}` : "Check for updates"}
-										</div>
+											<div class="text-[10px] text-muted-foreground">
+												<Show when={lastFetchTime()} fallback="Check for updates">
+													{`Last fetched ${displayTime()}`}
+												</Show>
+											</div>
 									</div>
 								</DropdownMenuItem>
 
 								{ /* Force Push - only when history diverged (remote has commits we don't have locally) */}
-								{hasUpstream && pullCount > 0 && <DropdownMenuItem onClick={handleForcePush} disabled={forcePushMutation.isPending} class="text-xs data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400 [&_div]:data-[highlighted]:text-red-400/70">
+								<Show when={hasUpstream && pullCount > 0}>
+									<DropdownMenuItem onClick={handleForcePush} disabled={forcePushMutation.isPending} class="text-xs data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400 [&_div]:data-[highlighted]:text-red-400/70">
 										<IconForcePush class="mr-2 size-3.5" />
 										<div class="flex-1">
 											<div>Force push</div>
@@ -446,95 +458,169 @@ interface ActionButton {
 												Overwrite remote (dangerous)
 											</div>
 										</div>
-									</DropdownMenuItem>}
+									</DropdownMenuItem>
+								</Show>
 
 								{ /* Merge/Rebase from default branch */}
-								{!isDefaultBranch && hasUpstream && <>
-										<DropdownMenuSeparator />
-										<DropdownMenuItem onClick={() => handleMergeFromDefault(false)} disabled={mergeFromDefaultMutation.isPending || behindDefault === 0} class="text-xs">
-											<GitMerge class="mr-2 size-3.5" />
-											<div class="flex-1">
-												<div>Merge from {branchData?.defaultBranch || "main"}</div>
-												<div class="text-[10px] text-muted-foreground">
-													{behindDefault > 0 ? `${behindDefault} commit${behindDefault !== 1 ? "s" : ""} to merge` : "Already up to date"}
-												</div>
+								<Show when={!isDefaultBranch() && hasUpstream}>
+									<DropdownMenuSeparator />
+									<DropdownMenuItem onClick={() => handleMergeFromDefault(false)} disabled={mergeFromDefaultMutation.isPending || behindDefault === 0} class="text-xs">
+										<GitMerge class="mr-2 size-3.5" />
+										<div class="flex-1">
+											<div>Merge from {branchData()?.defaultBranch || "main"}</div>
+											<div class="text-[10px] text-muted-foreground">
+												<Show when={behindDefault > 0} fallback="Already up to date">
+													{`${behindDefault} commit${behindDefault !== 1 ? "s" : ""} to merge`}
+												</Show>
 											</div>
-											{behindDefault > 0 && <span class="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium ml-2">
-													↓{behindDefault}
-												</span>}
-										</DropdownMenuItem>
-										<DropdownMenuItem onClick={() => handleMergeFromDefault(true)} disabled={mergeFromDefaultMutation.isPending || behindDefault === 0} class="text-xs">
-											<GitMerge class="mr-2 size-3.5" />
-											<div class="flex-1">
-												<div>Rebase on {branchData?.defaultBranch || "main"}</div>
-												<div class="text-[10px] text-muted-foreground">
-													{behindDefault > 0 ? `Replay on top of ${behindDefault} commit${behindDefault !== 1 ? "s" : ""}` : "Already up to date"}
-												</div>
+										</div>
+										<Show when={behindDefault > 0}>
+											<span class="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium ml-2">
+												↓{behindDefault}
+											</span>
+										</Show>
+									</DropdownMenuItem>
+									<DropdownMenuItem onClick={() => handleMergeFromDefault(true)} disabled={mergeFromDefaultMutation.isPending || behindDefault === 0} class="text-xs">
+										<GitMerge class="mr-2 size-3.5" />
+										<div class="flex-1">
+											<div>Rebase on {branchData()?.defaultBranch || "main"}</div>
+											<div class="text-[10px] text-muted-foreground">
+												<Show when={behindDefault > 0} fallback="Already up to date">
+													{`Replay on top of ${behindDefault} commit${behindDefault !== 1 ? "s" : ""}`}
+												</Show>
 											</div>
-											{behindDefault > 0 && <span class="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium ml-2">
-													↓{behindDefault}
-												</span>}
-										</DropdownMenuItem>
-									</>}
+										</div>
+										<Show when={behindDefault > 0}>
+											<span class="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium ml-2">
+												↓{behindDefault}
+											</span>
+										</Show>
+									</DropdownMenuItem>
+								</Show>
 
 								{ /* PR actions separator */}
-								{(hasUpstream && !pr && onCreatePr && !isDefaultBranch && primaryAction.label !== "Create PR" || hasUpstream && !pr && onCreatePrWithAI && !isDefaultBranch || pr || hasPrNumber && isPrOpen && onMergePr) && <DropdownMenuSeparator />}
+								<Show when={hasUpstream && !pr && onCreatePr && !isDefaultBranch() && primaryAction.label !== "Create PR" || hasUpstream && !pr && onCreatePrWithAI && !isDefaultBranch() || pr || hasPrNumber && isPrOpen && onMergePr}>
+									<DropdownMenuSeparator />
+								</Show>
 
 								{ /* Create PR */}
-								{hasUpstream && !pr && onCreatePr && !isDefaultBranch && primaryAction.label !== "Create PR" && <DropdownMenuItem onClick={onCreatePr} disabled={isCreatingPr || aheadOfDefault === 0} class="text-xs">
+								<Show when={hasUpstream && !pr && onCreatePr && !isDefaultBranch() && primaryAction.label !== "Create PR"}>
+									<DropdownMenuItem onClick={onCreatePr} disabled={isCreatingPr || aheadOfDefault === 0} class="text-xs">
 										<GitPullRequest class="mr-2 size-3.5" />
 										<div class="flex-1">
-											<div>{isCreatingPr ? "Creating..." : "Create Pull Request"}</div>
-											{aheadOfDefault === 0 && <div class="text-[10px] text-muted-foreground">
-													No commits to merge into {branchData?.defaultBranch || "main"}
-												</div>}
+											<div>
+												<Show when={isCreatingPr} fallback="Create Pull Request">
+													Creating...
+												</Show>
+											</div>
+											<Show when={aheadOfDefault === 0}>
+												<div class="text-[10px] text-muted-foreground">
+													No commits to merge into {branchData()?.defaultBranch || "main"}
+												</div>
+											</Show>
 										</div>
-										{aheadOfDefault > 0 && <span class="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium ml-2">
+										<Show when={aheadOfDefault > 0}>
+											<span class="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium ml-2">
 												↑{aheadOfDefault}
-											</span>}
-									</DropdownMenuItem>}
+											</span>
+										</Show>
+									</DropdownMenuItem>
+								</Show>
 
 								{ /* Create PR with AI */}
-								{hasUpstream && !pr && onCreatePrWithAI && !isDefaultBranch && <DropdownMenuItem onClick={onCreatePrWithAI} disabled={isCreatingPrWithAI} class="text-xs">
+								<Show when={hasUpstream && !pr && onCreatePrWithAI && !isDefaultBranch()}>
+									<DropdownMenuItem onClick={onCreatePrWithAI} disabled={isCreatingPrWithAI} class="text-xs">
 										<GitPullRequest class="mr-2 size-3.5" />
 										<div class="flex-1">
-											<div>{isCreatingPrWithAI ? "Creating..." : "Create PR with AI"}</div>
+											<div>
+												<Show when={isCreatingPrWithAI} fallback="Create PR with AI">
+													Creating...
+												</Show>
+											</div>
 											<div class="text-[10px] text-muted-foreground">
 												Let AI create and push PR
 											</div>
 										</div>
-									</DropdownMenuItem>}
+									</DropdownMenuItem>
+								</Show>
 
 								{ /* Open PR */}
-								{pr && primaryAction.label !== "Open PR" && <DropdownMenuItem onClick={handleOpenPR} class="text-xs">
+								<Show when={pr && primaryAction.label !== "Open PR"}>
+									<DropdownMenuItem onClick={handleOpenPR} class="text-xs">
 										<ExternalLinkIcon class="mr-2 size-3.5" />
 										<span>Open Pull Request #{pr.number}</span>
-									</DropdownMenuItem>}
+									</DropdownMenuItem>
+								</Show>
 
 								{ /* Merge PR */}
-								{hasPrNumber && isPrOpen && onMergePr && !hasMergeConflicts && <DropdownMenuItem onClick={onMergePr} disabled={isMergingPr} class="text-xs">
+								<Show when={hasPrNumber && isPrOpen && onMergePr && !hasMergeConflicts}>
+									<DropdownMenuItem onClick={onMergePr} disabled={isMergingPr} class="text-xs">
 										<GitMerge class="mr-2 size-3.5" />
-										<span>{isMergingPr ? "Merging..." : "Merge Pull Request"}</span>
-									</DropdownMenuItem>}
+										<span>
+											<Show when={isMergingPr} fallback="Merge Pull Request">
+												Merging...
+											</Show>
+										</span>
+									</DropdownMenuItem>
+								</Show>
 
 								{ /* Fix Conflicts */}
-								{hasPrNumber && isPrOpen && hasMergeConflicts && onFixConflicts && <DropdownMenuItem onClick={onFixConflicts} class="text-xs text-yellow-600 dark:text-yellow-500">
+								<Show when={hasPrNumber && isPrOpen && hasMergeConflicts && onFixConflicts}>
+									<DropdownMenuItem onClick={onFixConflicts} class="text-xs text-yellow-600 dark:text-yellow-500">
 										<GitMerge class="mr-2 size-3.5" />
 										<span>Fix Merge Conflicts</span>
-									</DropdownMenuItem>}
+									</DropdownMenuItem>
+								</Show>
 							</DropdownMenuContent>
 						</DropdownMenu>
 					</div>}
+				>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button onClick={displayAction.handler} disabled={displayAction.isPending || displayAction.disabled} class={cn("inline-flex items-center justify-center whitespace-nowrap text-sm font-medium transition-colors", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary/70", "disabled:pointer-events-none disabled:opacity-50", "h-6 px-2 gap-1 text-xs rounded-md focus:z-10 overflow-hidden", "transition-all duration-200 ease-out", displayAction.variant === "default" ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] dark:shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(0,0,0,0.14)]" : "hover:bg-accent hover:text-accent-foreground")}>
+								<span class="flex items-center gap-1 transition-opacity duration-150 min-w-0">
+									<Show
+										when={displayAction.isPending}
+										fallback={<>
+											<span class="shrink-0">{displayAction.icon}</span>
+											<Show when={displayAction.label}>
+												<span class="truncate">{displayAction.label}</span>
+											</Show>
+											<Show when={displayAction.badge}>
+												<span class="text-[10px] bg-primary-foreground/20 px-1.5 py-0.5 rounded font-medium ml-1 shrink-0">
+													{displayAction.badge}
+												</span>
+											</Show>
+										</>}
+									>
+										<IconSpinner class="size-3.5 ml-0.5 shrink-0" />
+										<Show when={displayAction.pendingLabel}>
+											<span class="mr-0.5 truncate">{displayAction.pendingLabel}</span>
+										</Show>
+										<Show when={displayAction.badge}>
+											<span class="text-[10px] bg-primary-foreground/20 px-1.5 py-0.5 rounded font-medium ml-1 shrink-0">
+												{displayAction.badge}
+											</span>
+										</Show>
+									</Show>
+								</span>
+							</button>
+						</TooltipTrigger>
+						<TooltipContent side="bottom">{displayAction.tooltip}</TooltipContent>
+					</Tooltip>
+				</Show>
 
 				{ /* View mode toggle - visible when there's enough space */}
-				{showViewModeToggle && onViewModeChange && <div class="inline-flex rounded-md border border-input">
-						<Button variant={viewMode === DiffModeEnum.Split ? "secondary" : "ghost"} size="sm" onClick={() => onViewModeChange(DiffModeEnum.Split)} class={cn("h-6 w-6 p-0 rounded-r-none border-0", viewMode !== DiffModeEnum.Split && "hover:bg-foreground/10")} title="Split view">
+				<Show when={showViewModeToggle && onViewModeChange}>
+					<div class="inline-flex rounded-md border border-input">
+						<Button variant={viewMode === "split" ? "secondary" : "ghost"} size="sm" onClick={() => onViewModeChange("split")} class={cn("h-6 w-6 p-0 rounded-r-none border-0", viewMode !== "split" && "hover:bg-foreground/10")} title="Split view">
 							<Columns2 class="size-3.5" />
 						</Button>
-						<Button variant={viewMode === DiffModeEnum.Unified ? "secondary" : "ghost"} size="sm" onClick={() => onViewModeChange(DiffModeEnum.Unified)} class={cn("h-6 w-6 p-0 rounded-l-none border-0 border-l border-input", viewMode !== DiffModeEnum.Unified && "hover:bg-foreground/10")} title="Unified view">
+						<Button variant={viewMode === "unified" ? "secondary" : "ghost"} size="sm" onClick={() => onViewModeChange("unified")} class={cn("h-6 w-6 p-0 rounded-l-none border-0 border-l border-input", viewMode !== "unified" && "hover:bg-foreground/10")} title="Unified view">
 							<Rows2 class="size-3.5" />
 						</Button>
-					</div>}
+					</div>
+				</Show>
 
 				{ /* Overflow menu (three dots) - view options, expand/collapse, hidden items */}
 				<DropdownMenu>
@@ -545,64 +631,86 @@ interface ActionButton {
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end" class="w-48">
 						{ /* Review - shown here when button is hidden */}
-						{!showReviewButton && diffStats.hasChanges && onReview && <DropdownMenuItem onClick={onReview} disabled={isReviewing} class="text-xs">
+						<Show when={!showReviewButton && diffStats.hasChanges && onReview}>
+							<DropdownMenuItem onClick={onReview} disabled={isReviewing} class="text-xs">
 								<IconReview class="mr-2 size-3.5" />
-								<span>{isReviewing ? "Reviewing..." : "Review changes"}</span>
-							</DropdownMenuItem>}
+								<span>
+									<Show when={isReviewing} fallback="Review changes">
+										Reviewing...
+									</Show>
+								</span>
+							</DropdownMenuItem>
+						</Show>
 
 						{ /* Separator only if we have hidden review above */}
-						{!showReviewButton && diffStats.hasChanges && onReview && <DropdownMenuSeparator />}
+						<Show when={!showReviewButton && diffStats.hasChanges && onReview}>
+							<DropdownMenuSeparator />
+						</Show>
 
 						{ /* Refresh diff view */}
-						{onRefresh && <DropdownMenuItem onClick={onRefresh} class="text-xs">
+						<Show when={onRefresh}>
+							<DropdownMenuItem onClick={onRefresh} class="text-xs">
 								<RefreshCw class="mr-2 size-3.5" />
 								<span>Refresh diff view</span>
-							</DropdownMenuItem>}
+							</DropdownMenuItem>
+						</Show>
 
 						{ /* Separator after refresh if view mode submenu follows */}
-						{onRefresh && !showViewModeToggle && onViewModeChange && <DropdownMenuSeparator />}
+						<Show when={onRefresh && !showViewModeToggle && onViewModeChange}>
+							<DropdownMenuSeparator />
+						</Show>
 
 						{ /* View mode submenu - only shown when toggle is hidden */}
-						{!showViewModeToggle && onViewModeChange && <>
-								<DropdownMenuSub>
-									<DropdownMenuSubTrigger class="text-xs">
-										<Eye class="mr-2 size-3.5" />
-										<span>View</span>
-									</DropdownMenuSubTrigger>
-									<DropdownMenuSubContent>
-										<DropdownMenuItem onClick={() => onViewModeChange(DiffModeEnum.Split)} class={cn("text-xs", viewMode === DiffModeEnum.Split && "bg-muted")}>
-											<Columns2 class="mr-2 size-3.5" />
-											<span>Split view</span>
-										</DropdownMenuItem>
-										<DropdownMenuItem onClick={() => onViewModeChange(DiffModeEnum.Unified)} class={cn("text-xs", viewMode === DiffModeEnum.Unified && "bg-muted")}>
-											<Rows2 class="mr-2 size-3.5" />
-											<span>Unified view</span>
-										</DropdownMenuItem>
-									</DropdownMenuSubContent>
-								</DropdownMenuSub>
-								<DropdownMenuSeparator />
-							</>}
+						<Show when={!showViewModeToggle && onViewModeChange}>
+							<DropdownMenuSub>
+								<DropdownMenuSubTrigger class="text-xs">
+									<Eye class="mr-2 size-3.5" />
+									<span>View</span>
+								</DropdownMenuSubTrigger>
+								<DropdownMenuSubContent>
+									<DropdownMenuItem onClick={() => onViewModeChange("split")} class={cn("text-xs", viewMode === "split" && "bg-muted")}>
+										<Columns2 class="mr-2 size-3.5" />
+										<span>Split view</span>
+									</DropdownMenuItem>
+									<DropdownMenuItem onClick={() => onViewModeChange("unified")} class={cn("text-xs", viewMode === "unified" && "bg-muted")}>
+										<Rows2 class="mr-2 size-3.5" />
+										<span>Unified view</span>
+									</DropdownMenuItem>
+								</DropdownMenuSubContent>
+							</DropdownMenuSub>
+							<DropdownMenuSeparator />
+						</Show>
 
 						{ /* Expand/Collapse all */}
-						{onExpandAll && <DropdownMenuItem onClick={onExpandAll} class="text-xs">
+						<Show when={onExpandAll}>
+							<DropdownMenuItem onClick={onExpandAll} class="text-xs">
 								<ChevronsUpDown class="mr-2 size-3.5" />
 								<span>Expand all</span>
-							</DropdownMenuItem>}
-						{onCollapseAll && <DropdownMenuItem onClick={onCollapseAll} class="text-xs">
+							</DropdownMenuItem>
+						</Show>
+						<Show when={onCollapseAll}>
+							<DropdownMenuItem onClick={onCollapseAll} class="text-xs">
 								<ChevronsDownUp class="mr-2 size-3.5" />
 								<span>Collapse all</span>
-							</DropdownMenuItem>}
+							</DropdownMenuItem>
+						</Show>
 
 						{ /* Mark all as viewed/unviewed */}
-						{(onMarkAllViewed || onMarkAllUnviewed) && (onExpandAll || onCollapseAll) && <DropdownMenuSeparator />}
-						{onMarkAllViewed && <DropdownMenuItem onClick={onMarkAllViewed} class="text-xs">
+						<Show when={(onMarkAllViewed || onMarkAllUnviewed) && (onExpandAll || onCollapseAll)}>
+							<DropdownMenuSeparator />
+						</Show>
+						<Show when={onMarkAllViewed}>
+							<DropdownMenuItem onClick={onMarkAllViewed} class="text-xs">
 								<Check class="mr-2 size-3.5" />
 								<span>Mark all as viewed</span>
-							</DropdownMenuItem>}
-						{onMarkAllUnviewed && viewedCount > 0 && <DropdownMenuItem onClick={onMarkAllUnviewed} class="text-xs">
+							</DropdownMenuItem>
+						</Show>
+						<Show when={onMarkAllUnviewed && viewedCount > 0}>
+							<DropdownMenuItem onClick={onMarkAllUnviewed} class="text-xs">
 								<Square class="mr-2 size-3.5" />
 								<span>Mark all as unviewed</span>
-							</DropdownMenuItem>}
+							</DropdownMenuItem>
+						</Show>
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</div>

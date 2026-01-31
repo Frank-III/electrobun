@@ -1,5 +1,4 @@
-"use client";
-import { createSignal, createMemo } from "solid-js";
+import { createSignal, createMemo, Show } from "solid-js";
 import { Check, X } from "lucide-solid";
 import { IconSpinner, ExpandIcon, CollapseIcon } from "../../../components/ui/icons";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
@@ -113,12 +112,12 @@ export function AgentBashTool({ part, messageId, partIndex, chatStatus }: AgentB
           { /* Expand/Collapse button - only show when not pending and has output that can be expanded */}
           { /* Always render container for consistent spacing */}
           <div class="w-6 h-6 flex items-center justify-center">
-            {!isPending && hasOutput && hasMoreOutput && <button onClick={(e) => {
+            <Show when={!isPending && hasOutput && hasMoreOutput}><button onClick={(e) => {
  e.stopPropagation();
 		setIsOutputExpanded(!isOutputExpanded);
 	}} class="p-1 rounded-md hover:bg-accent transition-[background-color,transform] duration-150 ease-out active:scale-95">
-                {isOutputExpanded ? <CollapseIcon class="w-4 h-4 text-muted-foreground" /> : <ExpandIcon class="w-4 h-4 text-muted-foreground" />}
-              </button>}
+                {isOutputExpanded() ? <CollapseIcon class="w-4 h-4 text-muted-foreground" /> : <ExpandIcon class="w-4 h-4 text-muted-foreground" />}
+              </button></Show>
           </div>
         </div>
       </div>
@@ -134,19 +133,19 @@ export function AgentBashTool({ part, messageId, partIndex, chatStatus }: AgentB
         </div>
 
         { /* Stdout - show limited lines when collapsed, full when expanded */}
-        {stdout && <div class="mt-1.5 font-mono text-xs text-muted-foreground whitespace-pre-wrap break-all">
-            {isOutputExpanded ? stdout : stdoutLimited.text}
-          </div>}
+        <Show when={stdout}><div class="mt-1.5 font-mono text-xs text-muted-foreground whitespace-pre-wrap break-all">
+            {isOutputExpanded() ? stdout : stdoutLimited.text}
+          </div></Show>
 
         { /* Stderr - warning/error color based on exit code */}
-        {stderr && <div class={cn(
+        <Show when={stderr}><div class={cn(
  "mt-1.5 font-mono text-xs whitespace-pre-wrap break-all",
 		// If exitCode is 0, it's a warning (e.g. npm warnings)
 		// If exitCode is non-zero, it's an error
 		exitCode === 0 || exitCode === undefined ? "text-amber-600 dark:text-amber-400" : "text-rose-500 dark:text-rose-400"
 	)}>
-            {isOutputExpanded ? stderr : stderrLimited.text}
-          </div>}
+            {isOutputExpanded() ? stderr : stderrLimited.text}
+          </div></Show>
 
       </div>
     </div>;

@@ -1,4 +1,3 @@
-"use client";
 import { createSignal, createMemo } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 import { ExternalLinkIcon } from "../../../components/ui/icons";
@@ -61,13 +60,13 @@ export function AgentWebSearchCollapsible({ part, chatStatus }: AgentWebSearchCo
                   · {resultCount} {resultCount === 1 ? "result" : "results"}
                 </span>}
               { /* Chevron - rotates when expanded, visible on hover when collapsed */}
-              {hasResults && !isPending && <ChevronRight class={cn("w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200 ease-out flex-shrink-0", isExpanded && "rotate-90", !isExpanded && "opacity-0 group-hover:opacity-100")} />}
+              {hasResults && !isPending && <ChevronRight class={cn("w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200 ease-out flex-shrink-0", isExpanded() && "rotate-90", !isExpanded() && "opacity-0 group-hover:opacity-100")} />}
             </div>
           </div>
         </div>
 
         { /* Results list - only show when expanded */}
-        {isExpanded && hasResults && <div class="px-2 pb-1">
+        {isExpanded() && hasResults && <div class="px-2 pb-1">
             <div class="space-y-1">
               {results.map((result, idx) => <a key={idx} href={result.url} target="_blank" rel="noopener noreferrer" class="flex items-start gap-1.5 px-2 py-1 rounded hover:bg-muted/50 transition-colors group/link">
                   <ExternalLinkIcon class="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground group-hover/link:text-foreground transition-colors" />

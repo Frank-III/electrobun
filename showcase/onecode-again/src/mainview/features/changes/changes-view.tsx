@@ -4,9 +4,9 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/ui/tabs";
 import { toast } from "solid-sonner";
-import { createEffect, createSignal, createMemo, For, Show, onCleanup } from "solid-js";
-import { useAtom } from "../../lib/state/jotai";
-import { trpc } from "../../lib/trpc";
+import { createEffect, createSignal, createMemo, For, Show, Switch, Match, onCleanup } from "solid-js";
+import { useQuery, useMutation } from "@tanstack/solid-query";
+import { desktopRpc } from "../../lib/desktop-rpc";
 import { useChangesStore } from "../../lib/stores/changes-store";
 import { usePRStatus } from "../../hooks/usePRStatus";
 import { useFileChangeListener } from "../../lib/hooks/use-file-change-listener";
@@ -155,17 +155,29 @@ interface ChangesViewProps {
 export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFileSelectProp, onFileOpenPinned, onCreatePr, onCommitSuccess, subChats = [], initialSubChatFilter = null, chatId, selectedCommitHash, onCommitSelect, onCommitFileSelect, onActiveTabChange, pushCount }: ChangesViewProps) {
 	useFileChangeListener(worktreePath);
 	// Viewed files state from agents diff view (for showing eye icon and toggling)
-	const [viewedFiles, setViewedFiles] = useAtom(viewedFilesAtomFamily(chatId || ""));
+	const [viewedFiles, setViewedFiles] = viewedFilesAtomFamily(chatId || "");
 	const { baseBranch } = useChangesStore();
-	const { data: branchData } = trpc.changes.getBranches.useQuery({ worktreePath: worktreePath || "" }, { enabled: !!worktreePath });
-	const effectiveBaseBranch = baseBranch ?? branchData?.defaultBranch ?? "main";
-	const { data: status, isLoading, refetch } = trpc.changes.getStatus.useQuery({
-		worktreePath: worktreePath || "",
-		defaultBranch: effectiveBaseBranch
-	}, {
+	const branchDataQuery = useQuery(() => ({
+		queryKey: ["changes", "getBranches", worktreePath || ""] as const,
+		queryFn: () => desktopRpc.changes.getBranches({ worktreePath: worktreePath || "" }),
 		enabled: !!worktreePath,
-		refetchOnWindowFocus: true
-	});
+	}));
+	const branchData = () => branchDataQuery.data;
+	const effectiveBaseBranch = () => baseBranch ?? branchData()?.defaultBranch ?? "main";
+
+	const statusQuery = useQuery(() => ({
+		queryKey: ["changes", "getStatus", worktreePath || "", effectiveBaseBranch()] as const,
+		queryFn: () =>
+			desktopRpc.changes.getStatus({
+				worktreePath: worktreePath || "",
+				defaultBranch: effectiveBaseBranch(),
+			}),
+		enabled: !!worktreePath,
+		refetchOnWindowFocus: true,
+	}));
+	const status = () => statusQuery.data;
+	const isLoading = () => statusQuery.isLoading;
+	const refetch = () => statusQuery.refetch();
 	const { pr, refetch: refetchPRStatus } = usePRStatus({
 		worktreePath,
 		refetchInterval: 1e4
@@ -182,47 +194,49 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 		// Notify parent to reset diff view selection
 		onCommitSuccess?.();
 	};
-	// External actions
-	const openInFinderMutation = trpc.external.openInFinder.useMutation();
-	const openInEditorMutation = trpc.external.openFileInEditor.useMutation();
-	// Discard changes - single file
-	const discardChangesMutation = trpc.changes.discardChanges.useMutation({
+	const openInFinderMutation = useMutation(() => ({
+		mutationFn: (input: { path: string }) => desktopRpc.external.openInFinder.mutate(input),
+	}));
+	const openInEditorMutation = useMutation(() => ({
+		mutationFn: (input: { path: string; cwd?: string }) =>
+			desktopRpc.external.openFileInEditor(input),
+	}));
+	const discardChangesMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string; filePath: string }) =>
+			desktopRpc.changes.discardChanges.mutate(input),
 		onSuccess: () => {
 			toast.success("Changes discarded");
 			refetch();
 		},
-		onError: (error) => {
-			toast.error(`Failed to discard changes: ${error.message}`);
-		}
-	});
-	const deleteUntrackedMutation = trpc.changes.deleteUntracked.useMutation({
+		onError: (error) => toast.error(`Failed to discard changes: ${error.message}`),
+	}));
+	const deleteUntrackedMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string; filePath: string }) =>
+			desktopRpc.changes.deleteUntracked.mutate(input),
 		onSuccess: () => {
 			toast.success("File deleted");
 			refetch();
 		},
-		onError: (error) => {
-			toast.error(`Failed to delete file: ${error.message}`);
-		}
-	});
-	// Discard changes - multiple files (batch)
-	const discardMultipleChangesMutation = trpc.changes.discardMultipleChanges.useMutation({
+		onError: (error) => toast.error(`Failed to delete file: ${error.message}`),
+	}));
+	const discardMultipleChangesMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string; filePaths: string[] }) =>
+			desktopRpc.changes.discardMultipleChanges.mutate(input),
 		onSuccess: () => {
 			toast.success("Changes discarded");
 			refetch();
 		},
-		onError: (error) => {
-			toast.error(`Failed to discard changes: ${error.message}`);
-		}
-	});
-	const deleteMultipleUntrackedMutation = trpc.changes.deleteMultipleUntracked.useMutation({
+		onError: (error) => toast.error(`Failed to discard changes: ${error.message}`),
+	}));
+	const deleteMultipleUntrackedMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string; filePaths: string[] }) =>
+			desktopRpc.changes.deleteMultipleUntracked.mutate(input),
 		onSuccess: () => {
 			toast.success("Files deleted");
 			refetch();
 		},
-		onError: (error) => {
-			toast.error(`Failed to delete files: ${error.message}`);
-		}
-	});
+		onError: (error) => toast.error(`Failed to delete files: ${error.message}`),
+	}));
 	// Discard confirmation dialog state - single file
 	const [discardFile, setDiscardFile] = createSignal<ChangedFile | null>(null);
 	// Discard confirmation dialog state - multiple files
@@ -255,35 +269,19 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 		setSelectedForCommit(new Set());
 		setHighlightedFiles(new Set());
 	});
-	// Combine all files into a flat list
 	const allFiles = createMemo(() => {
-		if (!status) return [];
-		const files: Array<{
-			file: ChangedFile;
-			category: ChangeCategory;
-		}> = [];
-		// Staged files
-		for (const file of status.staged) {
-			files.push({
-				file,
-				category: "staged"
-			});
+		const s = status();
+		if (!s) return [];
+		const files: Array<{ file: ChangedFile; category: ChangeCategory }> = [];
+		for (const file of s.staged) {
+			files.push({ file, category: "staged" });
 		}
-		// Unstaged files
-		for (const file of status.unstaged) {
-			files.push({
-				file,
-				category: "unstaged"
-			});
+		for (const file of s.unstaged) {
+			files.push({ file, category: "unstaged" });
 		}
-		// Untracked files
-		for (const file of status.untracked) {
-			files.push({
-				file,
-				category: "unstaged"
-			});
+		for (const file of s.untracked) {
+			files.push({ file, category: "unstaged" });
 		}
-		// Sort by full path alphabetically
 		files.sort((a, b) => a.file.path.localeCompare(b.file.path));
 		return files;
 	});
@@ -519,21 +517,6 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 			setDiscardFiles(filesToDiscard);
 		}
 	};
-	if (!worktreePath) {
-		return <div class="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4">
-				No worktree path available
-			</div>;
-	}
-	if (isLoading) {
-		return <div class="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4">
-				Loading changes...
-			</div>;
-	}
-	if (!status) {
-		return <div class="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4">
-				Unable to load changes
-			</div>;
-	}
 	// Handle single file discard confirmation
 	const handleConfirmDiscard = () => {
 		const file = discardFile();
@@ -594,7 +577,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	};
 	const handleRevealInFinder = (filePath: string) => {
 		const absolutePath = `${worktreePath}/${filePath}`;
-		openInFinderMutation.mutate(absolutePath);
+		openInFinderMutation.mutate({ path: absolutePath });
 	};
 	const handleOpenInEditor = (filePath: string) => {
 		const absolutePath = `${worktreePath}/${filePath}`;
@@ -603,7 +586,9 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 			cwd: worktreePath
 		});
 	};
-	return <>
+	// Use Switch/Match for proper SolidJS reactivity (if/return doesn't re-run on signal changes)
+	return (
+		<Switch fallback={<>
 			<div class="flex flex-col h-full">
 				<Tabs value={activeTab()} onValueChange={(v: string) => {
 		const newTab = v as "changes" | "history";
@@ -653,7 +638,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 						</Show>
 
 						{	/* Commit input */}
-						<CommitInput worktreePath={worktreePath} hasStagedChanges={selectedCount() > 0} onRefresh={handleRefresh} onCommitSuccess={handleCommitSuccess} stagedCount={selectedCount()} currentBranch={status.branch} selectedFilePaths={selectedFilePaths()} chatId={chatId} />
+						<CommitInput worktreePath={worktreePath} hasStagedChanges={selectedCount() > 0} onRefresh={handleRefresh} onCommitSuccess={handleCommitSuccess} stagedCount={selectedCount()} currentBranch={status()?.branch} selectedFilePaths={selectedFilePaths()} chatId={chatId} />
 					</TabsContent>
 
 					{ /* History tab content */}
@@ -713,5 +698,22 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</>;
- }
+		</>}>
+			<Match when={!worktreePath}>
+				<div class="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4">
+					No worktree path available
+				</div>
+			</Match>
+			<Match when={isLoading()}>
+				<div class="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4">
+					Loading changes...
+				</div>
+			</Match>
+			<Match when={!status()}>
+				<div class="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4">
+					Unable to load changes
+				</div>
+			</Match>
+		</Switch>
+	);
+}

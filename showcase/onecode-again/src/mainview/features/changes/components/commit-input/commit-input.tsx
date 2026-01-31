@@ -1,13 +1,13 @@
 import { Button } from "../../../../components/ui/button";
 import { toast } from "solid-sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
-import { createSignal } from "solid-js";
-import { trpc } from "../../../../lib/trpc";
+import { createSignal, Show } from "solid-js";
 import { cn } from "../../../../lib/utils";
 import { IconSpinner } from "../../../../components/ui/icons";
-import { useQueryClient } from "@tanstack/react-query";
-import { useAtomValue } from "../../../../lib/state/jotai";
+import { useMutation } from "@tanstack/solid-query";
 import { selectedOllamaModelAtom } from "../../../../lib/atoms";
+import { desktopRpc } from "../../../../lib/desktop-rpc";
+import { getQueryClient } from "../../../../contexts/QueryProvider";
 interface CommitInputProps {
 	worktreePath: string;
 	hasStagedChanges: boolean;
@@ -25,38 +25,43 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 	const [summary, setSummary] = createSignal("");
 	const [description, setDescription] = createSignal("");
 	const [isGenerating, setIsGenerating] = createSignal(false);
-	const queryClient = useQueryClient();
-	const selectedOllamaModel = useAtomValue(selectedOllamaModelAtom);
-	// AI commit message generation
-	const generateCommitMutation = trpc.chats.generateCommitMessage.useMutation();
-	// Use atomic commit when we have selected files (safer, single operation)
-	const atomicCommitMutation = trpc.changes.atomicCommit.useMutation({
+	const queryClient = getQueryClient();
+	const selectedOllamaModel = selectedOllamaModelAtom[0];
+
+	const generateCommitMutation = useMutation(() => ({
+		mutationFn: (input: { chatId: string; filePaths?: string[]; ollamaModel?: string | null }) =>
+			desktopRpc.chats.generateCommitMessage.mutate(input),
+	}));
+	const atomicCommitMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string; filePaths: string[]; message: string }) =>
+			desktopRpc.changes.atomicCommit.mutate(input),
 		onSuccess: () => {
 			setSummary("");
 			setDescription("");
-			// Invalidate the changes.getStatus query to force a fresh fetch
-			queryClient.invalidateQueries({ queryKey: [["changes", "getStatus"]] });
+			queryClient?.invalidateQueries({ queryKey: ["changes", "getStatus"] });
 			onRefresh();
 			onCommitSuccess?.();
 		},
-		onError: (error) => toast.error(`Commit failed: ${error.message}`)
-	});
-	// Fallback to regular commit for staged changes
-	const commitMutation = trpc.changes.commit.useMutation({
+		onError: (error) => toast.error(`Commit failed: ${error.message}`),
+	}));
+	const commitMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string; message: string }) =>
+			desktopRpc.changes.commit.mutate(input),
 		onSuccess: () => {
 			setSummary("");
 			setDescription("");
-			queryClient.invalidateQueries({ queryKey: [["changes", "getStatus"]] });
+			queryClient?.invalidateQueries({ queryKey: ["changes", "getStatus"] });
 			onRefresh();
 			onCommitSuccess?.();
 		},
-		onError: (error) => toast.error(`Commit failed: ${error.message}`)
-	});
-	const isPending = commitMutation.isPending || atomicCommitMutation.isPending || isGenerating;
+		onError: (error) => toast.error(`Commit failed: ${error.message}`),
+	}));
+	const isPending = () =>
+		commitMutation.isPending || atomicCommitMutation.isPending || isGenerating();
 	// Build full commit message from summary and description
 	const getCommitMessage = () => {
-		const trimmedSummary = summary.trim();
-		const trimmedDescription = description.trim();
+		const trimmedSummary = summary().trim();
+		const trimmedDescription = description().trim();
 		if (trimmedDescription) {
 			return `${trimmedSummary}\n\n${trimmedDescription}`;
 		}
@@ -74,16 +79,14 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 				console.log("[CommitInput] No message, generating with AI for files:", selectedFilePaths);
 				setIsGenerating(true);
 				try {
-					// Pass selected file paths to generate message only for those files
 					const result = await generateCommitMutation.mutateAsync({
 						chatId,
 						filePaths: selectedFilePaths,
-						ollamaModel: selectedOllamaModel
+						ollamaModel: selectedOllamaModel(),
 					});
-					console.log("[CommitInput] AI generated message:", result.message);
-					commitMessage = result.message;
-					// Also update the input field so user can see what was generated
-					setSummary(result.message);
+					console.log("[CommitInput] AI generated message:", result?.message);
+					commitMessage = result?.message ?? null;
+					if (result?.message) setSummary(result.message);
 				} catch (error) {
 					console.error("[CommitInput] Failed to generate message:", error);
 					toast.error("Failed to generate commit message");
@@ -101,13 +104,12 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 				atomicCommitMutation.mutate({
 					worktreePath,
 					filePaths: selectedFilePaths,
-					message: commitMessage
+					message: commitMessage,
 				});
 			} else {
-				// Fallback to regular commit for pre-staged changes
 				commitMutation.mutate({
 					worktreePath,
-					message: commitMessage
+					message: commitMessage,
 				});
 			}
 		} catch (error) {
@@ -126,12 +128,12 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 	};
 	const getTooltip = () => {
 		if (!hasStagedChanges) return "No staged changes";
-		if (!summary.trim()) return "AI will generate commit message";
+		if (!summary().trim()) return "AI will generate commit message";
 		return "Commit staged changes";
 	};
 	return <div class="flex flex-col gap-2 p-2 border-t border-border/50 bg-background">
 			{	/* Summary input - single line */}
-			<input type="text" placeholder="Summary (required)" value={summary} onInput={(e) => setSummary(e.currentTarget.value)} class={cn("w-full px-2 py-1.5 text-xs rounded-md", "bg-background border border-input", "placeholder:text-muted-foreground", "focus:outline-none focus:ring-1 focus:ring-ring")} onKeyDown={(e) => {
+			<input type="text" placeholder="Summary (required)" value={summary()} onInput={(e) => setSummary(e.currentTarget.value)} class={cn("w-full px-2 py-1.5 text-xs rounded-md", "bg-background border border-input", "placeholder:text-muted-foreground", "focus:outline-none focus:ring-1 focus:ring-ring")} onKeyDown={(e) => {
  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canCommit) {
 			e.preventDefault();
 			handleCommit();
@@ -139,7 +141,7 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 	}} />
 
 			{	/* Description textarea - multiline */}
-			<textarea placeholder="Description" value={description} onInput={(e) => setDescription(e.currentTarget.value)} class={cn("w-full px-2 py-1.5 text-xs rounded-md resize-none", "bg-background border border-input", "placeholder:text-muted-foreground", "focus:outline-none focus:ring-1 focus:ring-ring", "min-h-[60px]")} onKeyDown={(e) => {
+			<textarea placeholder="Description" value={description()} onInput={(e) => setDescription(e.currentTarget.value)} class={cn("w-full px-2 py-1.5 text-xs rounded-md resize-none", "bg-background border border-input", "placeholder:text-muted-foreground", "focus:outline-none focus:ring-1 focus:ring-ring", "min-h-[60px]")} onKeyDown={(e) => {
  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canCommit) {
 			e.preventDefault();
 			handleCommit();
@@ -149,11 +151,18 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 			{	/* Commit button - simple, no dropdown */}
 			<Tooltip>
 				<TooltipTrigger asChild>
-					<Button variant="default" size="sm" class="w-full h-7 text-xs overflow-hidden" onClick={handleCommit} disabled={!canCommit || isPending}>
-						{isPending ? <>
-								<IconSpinner class="h-3 w-3 mr-1.5 animate-spin" />
-								<span class="truncate">{isGenerating ? "Generating..." : "Committing..."}</span>
-							</> : <span class="truncate">{getCommitLabel()}</span>}
+					<Button variant="default" size="sm" class="w-full h-7 text-xs overflow-hidden" onClick={handleCommit} disabled={!canCommit || isPending()}>
+						<Show
+							when={isPending()}
+							fallback={<span class="truncate">{getCommitLabel()}</span>}
+						>
+							<IconSpinner class="h-3 w-3 mr-1.5 animate-spin" />
+							<span class="truncate">
+								<Show when={isGenerating()} fallback="Committing...">
+									Generating...
+								</Show>
+							</span>
+						</Show>
 					</Button>
 				</TooltipTrigger>
 				<TooltipContent side="top">{getTooltip()}</TooltipContent>

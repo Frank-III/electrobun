@@ -1,6 +1,4 @@
-"use client";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
-import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 import { Button } from "../../../components/ui/button";
 import { ExpandIcon, CollapseIcon, PlanIcon } from "../../../components/ui/icons";
 import { Kbd } from "../../../components/ui/kbd";
@@ -35,8 +33,8 @@ export function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false 
 	const isWrite = part.type === "tool-Write";
 	// Get mode from per-subChat atomFamily
 	const subChatModeAtom = createMemo(() => subChatModeAtomFamily(subChatId));
-	const subChatMode = useAtomValue(subChatModeAtom);
-	const setPendingBuildPlanSubChatId = useSetAtom(pendingBuildPlanSubChatIdAtom);
+	const subChatMode = subChatModeAtom[0];
+	const setPendingBuildPlanSubChatId = pendingBuildPlanSubChatIdAtom[1];
 	// Refs for scroll gradients (avoid re-renders)
 	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
 	const [topGradientRef, setTopGradientRef] = createSignal<HTMLDivElement>(null);
@@ -44,8 +42,8 @@ export function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false 
 	// Plan sidebar atoms - per subChat
 	const planSidebarOpenAtom = createMemo(() => planSidebarOpenAtomFamily(subChatId));
 	const currentPlanPathAtom = createMemo(() => currentPlanPathAtomFamily(subChatId));
-	const [, setIsPlanSidebarOpen] = useAtom(planSidebarOpenAtom);
-	const [, setCurrentPlanPath] = useAtom(currentPlanPathAtom);
+	const [, setIsPlanSidebarOpen] = planSidebarOpenAtom;
+	const [, setCurrentPlanPath] = currentPlanPathAtom;
 	// Only consider streaming if chat is actively streaming
 	const isActivelyStreaming = chatStatus === "streaming" || chatStatus === "submitted";
 	const isInputStreaming = part.state === "input-streaming" && isActivelyStreaming;
@@ -62,9 +60,9 @@ export function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false 
 	const hasVisibleContent = planContent.length > 0;
 	// Update scroll gradients via DOM (no state, no re-renders)
 	const updateScrollGradients = () => {
-		const content = contentRef.current;
-		const topGradient = topGradientRef.current;
-		const bottomGradient = bottomGradientRef.current;
+		const content = contentRef();
+		const topGradient = topGradientRef();
+		const bottomGradient = bottomGradientRef();
 		if (!content || !topGradient || !bottomGradient) return;
 		const { scrollTop, scrollHeight, clientHeight } = content;
 		const isScrollable = scrollHeight > clientHeight;
@@ -77,7 +75,7 @@ export function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false 
 	};
 	// Update gradients on scroll and expand state change
 	createEffect(() => {
-		const content = contentRef.current;
+		const content = contentRef();
 		if (!content) return;
 		content.addEventListener("scroll", updateScrollGradients);
 		// Initial check
@@ -140,8 +138,8 @@ export function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false 
 		handleToggleExpand();
 	}} class="p-1 rounded-md hover:bg-accent transition-[background-color,transform] duration-150 ease-out active:scale-95">
             <div class="relative w-4 h-4">
-              <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
-              <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
+              <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
+              <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
             </div>
           </button>
         </div>
@@ -155,7 +153,7 @@ export function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false 
 		background: "linear-gradient(to bottom, color-mix(in srgb, hsl(var(--muted)) 30%, hsl(var(--background))) 0%, transparent 100%)"
 	}} />
 
-        <div ref={contentRef} onClick={() => !isExpanded && setIsExpanded(true)} class={cn("text-xs overflow-hidden transition-all duration-200", isExpanded ? "max-h-[300px] overflow-y-auto" : "h-[72px] cursor-pointer hover:bg-muted/50")}>
+        <div ref={contentRef} onClick={() => !isExpanded() && setIsExpanded(true)} class={cn("text-xs overflow-hidden transition-all duration-200", isExpanded() ? "max-h-[300px] overflow-y-auto" : "h-[72px] cursor-pointer hover:bg-muted/50")}>
           <div class="px-3 py-2">
             <ChatMarkdownRenderer content={planContent} size="sm" />
           </div>

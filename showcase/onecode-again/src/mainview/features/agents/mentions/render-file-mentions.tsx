@@ -1,4 +1,4 @@
-"use client";
+import type { JSX } from "solid-js";
 import { createMemo } from "solid-js";
 import { getFileIconByExtension } from "./agents-file-mention";
 import { FilesIcon, SkillIcon, CustomAgentIcon, OriginalMCPIcon } from "../../../components/ui/icons";
@@ -11,29 +11,29 @@ function base64ToUtf8(base64: string): string {
 	return new TextDecoder().decode(bytes);
 }
 // Text selection icon - "A" with text cursor
-function TextSelectIcon({ className }: {
-	className?: string;
+function TextSelectIcon({ class: cls }: {
+	class?: string;
 }) {
-	return <svg viewBox="0 0 24 24" fill="none" class={className}>
-      <path fillRule="evenodd" clipRule="evenodd" d="M8.50027 4C8.91147 4 9.28067 4.25166 9.43107 4.63435L14.9311 18.6343C15.133 19.1484 14.88 19.7288 14.366 19.9308C13.8519 20.1327 13.2715 19.8797 13.0695 19.3657L11.3545 15H5.64607L3.93107 19.3657C3.72907 19.8797 3.14867 20.1327 2.63462 19.9308C2.12058 19.7288 1.86757 19.1484 2.06952 18.6343L7.56947 4.63435C7.71987 4.25166 8.08907 4 8.50027 4ZM6.43177 13H10.5688L8.50027 7.73484L6.43177 13Z" fill="currentColor" />
+	return <svg viewBox="0 0 24 24" fill="none" class={cls}>
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M8.50027 4C8.91147 4 9.28067 4.25166 9.43107 4.63435L14.9311 18.6343C15.133 19.1484 14.88 19.7288 14.366 19.9308C13.8519 20.1327 13.2715 19.8797 13.0695 19.3657L11.3545 15H5.64607L3.93107 19.3657C3.72907 19.8797 3.14867 20.1327 2.63462 19.9308C2.12058 19.7288 1.86757 19.1484 2.06952 18.6343L7.56947 4.63435C7.71987 4.25166 8.08907 4 8.50027 4ZM6.43177 13H10.5688L8.50027 7.73484L6.43177 13Z" fill="currentColor" />
       <path d="M17 2C16.4477 2 16 2.44772 16 3C16 3.55228 16.4477 4 17 4H18V20H17C16.4477 20 16 20.4477 16 21C16 21.5523 16.4477 22 17 22H21C21.5523 22 22 21.5523 22 21C22 20.4477 21.5523 20 21 20H20V4H21C21.5523 4 22 3.55228 22 3C22 2.44772 21.5523 2 21 2H17Z" fill="currentColor" />
     </svg>;
 }
 // Code selection icon - cursor arrow with text cursor
-function CodeSelectIcon({ className }: {
-	className?: string;
+function CodeSelectIcon({ class: cls }: {
+	class?: string;
 }) {
-	return <svg viewBox="0 0 24 24" fill="none" class={className}>
+	return <svg viewBox="0 0 24 24" fill="none" class={cls}>
       <path d="M14 2C13.4477 2 13 2.44772 13 3C13 3.55228 13.4477 4 14 4H15V20H14C13.4477 20 13 20.4477 13 21C13 21.5523 13.4477 22 14 22H18C18.5523 22 19 21.5523 19 21C19 20.4477 18.5523 20 18 20H17V4H18C18.5523 4 19 3.55228 19 3C19 2.44772 18.5523 2 18 2H14Z" fill="currentColor" />
       <path d="M4.29287 5.29289C4.68338 4.90237 5.31638 4.90237 5.70698 5.29289L11.707 11.2929C12.0974 11.6834 12.0975 12.3165 11.707 12.707L5.70698 18.707C5.31648 19.0975 4.68338 19.0974 4.29287 18.707C3.90237 18.3164 3.90237 17.6834 4.29287 17.2929L9.58587 11.9999L4.29287 6.70696C3.90237 6.31643 3.90237 5.68342 4.29287 5.29289Z" fill="currentColor" />
     </svg>;
 }
 // Custom folder icon matching design
-function FolderOpenIcon({ className }: {
-	className?: string;
+function FolderOpenIcon({ class: cls }: {
+	class?: string;
 }) {
-	return <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className}>
-      <path d="M4 8V6C4 4.89543 4.89543 4 6 4H14C15.1046 4 16 4.89543 16 6M4 8H8.17548C8.70591 8 9.21462 8.21071 9.58969 8.58579L11.4181 10.4142C11.7932 10.7893 12.3019 11 12.8323 11H16M4 8C3.44987 8 3.00391 8.44597 3.00391 8.99609V18C3.00391 19.1046 3.89934 20 5.00391 20H19.0039C20.1085 20 21.0039 19.1046 21.0039 18V12.0039C21.0039 11.4495 20.5544 11 20 11M16 11V6M16 11H20M16 6H18C19.1046 6 20 6.89543 20 8V11" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+	return <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={cls}>
+      <path d="M4 8V6C4 4.89543 4.89543 4 6 4H14C15.1046 4 16 4.89543 16 6M4 8H8.17548C8.70591 8 9.21462 8.21071 9.58969 8.58579L11.4181 10.4142C11.7932 10.7893 12.3019 11 12.8323 11H16M4 8C3.44987 8 3.00391 8.44597 3.00391 8.99609V18C3.00391 19.1046 3.89934 20 5.00391 20H19.0039C20.1085 20 21.0039 19.1046 21.0039 18V12.0039C21.0039 11.4495 20.5544 11 20 11M16 11V6M16 11H20M16 6H18C19.1046 6 20 6.89543 20 8V11" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
     </svg>;
 }
 interface ParsedMention {
@@ -304,12 +304,12 @@ export function useRenderFileMentions(text: string): JSX.Element[] {
 /**
 * Component to render text with file mentions
 */
-export function RenderFileMentions({ text, className }: {
+export function RenderFileMentions({ text, class: cls }: {
 	text: string;
-	className?: string;
+	class?: string;
 }) {
 	const nodes = useRenderFileMentions(text);
-	return <span class={className}>{nodes}</span>;
+	return <span class={cls}>{nodes}</span>;
 }
 /**
 * Extract all file/folder mentions from text

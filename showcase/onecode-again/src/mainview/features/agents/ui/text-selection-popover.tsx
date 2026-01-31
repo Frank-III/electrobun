@@ -1,4 +1,3 @@
-"use client";
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { useTextSelection, type TextSelectionSource } from "../context/text-selection-context";

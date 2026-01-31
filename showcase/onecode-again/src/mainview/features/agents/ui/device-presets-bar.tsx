@@ -1,4 +1,3 @@
-"use client";
 import { Motion, Presence } from "solid-motionone";
 import { createSignal, createEffect, Show, For } from "solid-js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
@@ -12,7 +11,7 @@ interface DevicePresetsBarProps {
 	onPresetChange: (preset: string) => void;
 	onWidthChange: (width: number) => void;
 	maxWidth: number;
-	className?: string;
+	class?: string;
 }
 
 export function DevicePresetsBar(props: DevicePresetsBarProps) {
@@ -46,10 +45,10 @@ export function DevicePresetsBar(props: DevicePresetsBarProps) {
 			animate={{ opacity: 1, height: "auto" }}
 			exit={{ opacity: 0, height: 0 }}
 			transition={{ duration: 0.2, easing: "ease-in-out" }}
-			class={props.className}
+			class={props.class}
 		>
 			<div class="flex items-center justify-center gap-2 px-4 py-2">
-				<Select value={props.selectedPreset} onValueChange={props.onPresetChange}>
+				<Select value={props.selectedPreset} onChange={props.onPresetChange}>
 					<SelectTrigger class="h-7 text-xs px-2 w-auto">
 						<SelectValue />
 					</SelectTrigger>

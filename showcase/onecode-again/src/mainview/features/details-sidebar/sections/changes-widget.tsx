@@ -1,6 +1,4 @@
-"use client";
 import { createSignal, createEffect, For, Show } from "solid-js";
-import { useAtom } from "../../../lib/state/jotai";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowUpRight } from "lucide-solid";
@@ -11,7 +9,8 @@ import { cn } from "@/lib/utils";
 import { useResolvedHotkeyDisplay } from "@/lib/hotkeys";
 import { viewedFilesAtomFamily } from "@/features/agents/atoms";
 import { FileListItem, getFileName, getFileDir } from "@/features/changes/components/file-list-item";
-import { trpc } from "@/lib/trpc";
+import { useMutation } from "@tanstack/solid-query";
+import { desktopRpc } from "@/lib/desktop-rpc";
 import type { ParsedDiffFile } from "../types";
 interface ChangesWidgetProps {
 	chatId: string;
@@ -58,9 +57,10 @@ export function ChangesWidget({ chatId, worktreePath, diffStats, parsedFileDiffs
 	// Resolved hotkey for tooltip
 	const openDiffHotkey = useResolvedHotkeyDisplay("open-diff");
 	// Viewed files state (same atom as diff sidebar)
-	const [viewedFiles] = useAtom(viewedFilesAtomFamily(chatId));
-	// Mutations for context menu actions
-	const openInFinderMutation = trpc.external.openInFinder.useMutation();
+	const [viewedFiles] = viewedFilesAtomFamily(chatId);
+	const openInFinderMutation = useMutation(() => ({
+		mutationFn: (input: { path: string }) => desktopRpc.external.openInFinder.mutate(input),
+	}));
 	// Selection state - all files selected by default
 	const [selectedForCommit, setSelectedForCommit] = createSignal(new Set());
 	const [hasInitializedSelection, setHasInitializedSelection] = createSignal(false);
@@ -76,7 +76,7 @@ export function ChangesWidget({ chatId, worktreePath, diffStats, parsedFileDiffs
 	};
 	// Initialize selection - select all files by default when data loads
 	createEffect(() => {
-		if (!hasInitializedSelection && displayFiles.length > 0) {
+		if (!hasInitializedSelection() && displayFiles.length > 0) {
 			const allPaths = new Set(displayFiles.map((f) => getDisplayPath(f)));
 			setSelectedForCommit(allPaths);
 			setHasInitializedSelection(true);
@@ -145,27 +145,31 @@ export function ChangesWidget({ chatId, worktreePath, diffStats, parsedFileDiffs
           <span class="text-xs font-medium text-foreground">Changes</span>
 
           { /* Stats in header - total lines changed */}
-          {hasChanges && displayStats && <span class="text-xs text-muted-foreground">
-              <span class="text-green-500">+{displayStats.additions}</span>
-              {" "}
-              <span class="text-red-500">-{displayStats.deletions}</span>
-            </span>}
+          <Show when={hasChanges && displayStats}>
+              <span class="text-xs text-muted-foreground">
+                <span class="text-green-500">+{displayStats!.additions}</span>
+                {" "}
+                <span class="text-red-500">-{displayStats!.deletions}</span>
+              </span>
+            </Show>
 
           { /* Spacer */}
           <div class="flex-1" />
 
           { /* Expand to sidebar button */}
-          {onExpand && <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={onExpand} class="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md opacity-0 group-hover:opacity-100 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0" aria-label="Expand changes">
-                  <ArrowUpRight class="h-3 w-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left">
-                {expandTooltip}
-                {openDiffHotkey && <Kbd>{openDiffHotkey}</Kbd>}
-              </TooltipContent>
-            </Tooltip>}
+          <Show when={onExpand}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={onExpand} class="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md opacity-0 group-hover:opacity-100 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0" aria-label="Expand changes">
+                    <ArrowUpRight class="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">
+                  {expandTooltip}
+                  <Show when={openDiffHotkey}><Kbd>{openDiffHotkey}</Kbd></Show>
+                </TooltipContent>
+              </Tooltip>
+            </Show>
         </div>
 
         { /* Content */}
@@ -210,7 +214,7 @@ export function ChangesWidget({ chatId, worktreePath, diffStats, parsedFileDiffs
                         await navigator.clipboard.writeText(filePath);
                       }}
                       onRevealInFinder={absolutePath ? () => {
-                        openInFinderMutation.mutate(absolutePath);
+                        openInFinderMutation.mutate({ path: absolutePath });
                       } : undefined}
                     />
                   );
@@ -221,9 +225,11 @@ export function ChangesWidget({ chatId, worktreePath, diffStats, parsedFileDiffs
             {	/* Action buttons */}
             <div class="flex gap-2 p-2 border-t border-border/50">
               { /* Commit button */}
-              {onCommit && <Button variant="default" size="sm" class="flex-1 h-7 text-xs" onClick={handleCommit} disabled={isCommitting || selectedCount === 0}>
+              <Show when={onCommit}>
+                <Button variant="default" size="sm" class="flex-1 h-7 text-xs" onClick={handleCommit} disabled={isCommitting || selectedCount === 0}>
                   {isCommitting ? "Committing..." : `Commit ${selectedCount} file${selectedCount !== 1 ? "s" : ""}`}
-                </Button>}
+                </Button>
+              </Show>
 
               { /* View diff button */}
               <Button variant="outline" size="sm" class={cn("h-7 text-xs", onCommit ? "flex-1" : "w-full")} onClick={() => onExpand?.()}>

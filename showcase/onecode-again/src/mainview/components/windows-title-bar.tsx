@@ -1,74 +1,91 @@
-"use client";
-import { createEffect, createSignal, onCleanup } from "solid-js";
-import { Minus, Square, X } from "lucide-solid";
-import { Button } from "./ui/button";
-/**
-* Windows title bar component for frameless windows
-* Provides window controls (minimize, maximize, close) and drag region
-*
-* Only shown on Windows when using frameless window (useNativeFrame = false)
-*/
-export function WindowsTitleBar() {
-	const [isMaximized, setIsMaximized] = createSignal(false);
-	const [hasNativeFrame, setHasNativeFrame] = createSignal(false);
-	const isWindows = typeof window !== "undefined" && window.desktopApi?.platform === "win32";
-	// Check actual window frame state
-	createEffect(() => {
-		if (!isWindows || !window.desktopApi?.getWindowFrameState) return;
-		const checkFrameState = async () => {
-			try {
-				const hasFrame = await window.desktopApi.getWindowFrameState();
-				setHasNativeFrame(hasFrame);
-			} catch {
-				setHasNativeFrame(false);
-			}
-		};
-		checkFrameState();
-	});
-	// Check window maximized state
-	createEffect(() => {
-		if (!isWindows || !window.desktopApi?.windowIsMaximized) return;
-		const checkMaximized = async () => {
-			const maximized = await window.desktopApi.windowIsMaximized();
-			setIsMaximized(maximized);
-		};
-		checkMaximized();
-		const handleFocus = () => checkMaximized();
-		window.addEventListener("focus", handleFocus);
-		onCleanup(() => window.removeEventListener("focus", handleFocus));
-	});
-	// Don't render on non-Windows or when using native frame
-	if (!isWindows || hasNativeFrame()) return null;
-	const handleMinimize = async () => {
-		await window.desktopApi?.windowMinimize();
-	};
-	const handleMaximize = async () => {
-		await window.desktopApi?.windowMaximize();
-		setTimeout(async () => {
-			const maximized = await window.desktopApi?.windowIsMaximized();
-			setIsMaximized(maximized ?? false);
-		}, 100);
-	};
-	const handleClose = async () => {
-		await window.desktopApi?.windowClose();
-	};
-	return <div class="h-8 flex-shrink-0 flex items-center justify-between bg-background border-b border-border/50" style={{ WebkitAppRegion: "drag" }}>
-      {	/* Left side - App title (draggable) */}
-      <div class="flex items-center gap-2 px-3 h-full">
-        <span class="text-xs font-medium text-foreground/70">1Code</span>
-      </div>
+import { createSignal, onCleanup, onMount } from "solid-js";
+import { desktopRpc } from "../lib/desktop-rpc";
 
-      { /* Right side - Window controls (non-draggable) */}
-      <div class="flex items-center h-full" style={{ WebkitAppRegion: "no-drag" }}>
-        <Button variant="ghost" size="icon" onClick={handleMinimize} class="h-full w-10 rounded-none hover:bg-foreground/10" aria-label="Minimize">
-          <Minus class="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" onClick={handleMaximize} class="h-full w-10 rounded-none hover:bg-foreground/10" aria-label={isMaximized() ? "Restore" : "Maximize"}>
-          <Square class="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="ghost" size="icon" onClick={handleClose} class="h-full w-10 rounded-none hover:bg-red-500/20 hover:text-red-500" aria-label="Close">
-          <X class="h-4 w-4" />
-        </Button>
+export function WindowsTitleBar() {
+  const [isMaximized, setIsMaximized] = createSignal(false);
+  const [hasFrame, setHasFrame] = createSignal(true);
+
+  const isWindows = typeof window !== "undefined" && desktopRpc;
+
+  onMount(async () => {
+    if (!isWindows) return;
+
+    try {
+      const { isMaximized: maximized } = await desktopRpc.window.isMaximized();
+      setIsMaximized(maximized);
+    } catch {
+      // Ignore errors
+    }
+  });
+
+  const handleMinimize = async () => {
+    await desktopRpc.window.minimize.mutate();
+  };
+
+  const handleMaximize = async () => {
+    await desktopRpc.window.maximize.mutate();
+    const { isMaximized: maximized } = await desktopRpc.window.isMaximized();
+    setIsMaximized(maximized);
+  };
+
+  const handleClose = async () => {
+    await desktopRpc.window.close.mutate();
+  };
+
+  return (
+    <div class="windows-titlebar h-10 bg-[#1e1e1e] flex items-center justify-between select-none">
+      <div class="flex-1 drag-region h-full flex items-center px-4">
+        <span class="text-sm text-gray-400">1Code Learn TS</span>
       </div>
-    </div>;
- }
+      <div class="flex">
+        <button
+          onClick={handleMinimize}
+          class="w-[46px] h-10 flex items-center justify-center hover:bg-white/10 text-white/90 transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12">
+            <rect x="0" y="5" width="12" height="2" fill="currentColor" />
+          </svg>
+        </button>
+        <button
+          onClick={handleMaximize}
+          class="w-[46px] h-10 flex items-center justify-center hover:bg-white/10 text-white/90 transition-colors"
+        >
+          {isMaximized() ? (
+            <svg width="12" height="12" viewBox="0 0 12 12">
+              <path
+                d="M1.5 3.5v7h7v-7h-7zM3 2h7v7"
+                stroke="currentColor"
+                stroke-width="1.5"
+                fill="none"
+              />
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 12 12">
+              <rect
+                x="1"
+                y="1"
+                width="10"
+                height="10"
+                stroke="currentColor"
+                stroke-width="1.5"
+                fill="none"
+              />
+            </svg>
+          )}
+        </button>
+        <button
+          onClick={handleClose}
+          class="w-[46px] h-10 flex items-center justify-center hover:bg-red-500 text-white/90 transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12">
+            <path
+              d="M1 1l10 10M11 1L1 11"
+              stroke="currentColor"
+              stroke-width="1.5"
+            />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}

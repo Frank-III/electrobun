@@ -3,7 +3,7 @@ import { CircleDot, GitMerge, GitPullRequest } from "lucide-solid";
 export type PRState = "open" | "merged" | "closed" | "draft";
 interface PRIconProps {
 	state: PRState;
-	className?: string;
+	class?: string;
 }
 const stateStyles: Record<PRState, string> = {
 	open: "text-emerald-500",
@@ -18,8 +18,8 @@ const stateStyles: Record<PRState, string> = {
 * - closed: red dot icon
 * - draft: muted pull request icon
 */
-export function PRIcon({ state, className }: PRIconProps) {
-	const baseClass = cn(stateStyles[state], className);
+export function PRIcon({ state, class: cls }: PRIconProps) {
+	const baseClass = cn(stateStyles[state],cls);
 	if (state === "merged") {
 		return <GitMerge class={baseClass} />;
 	}

@@ -1,6 +1,7 @@
 import { createSignal, createEffect, Show, For, onCleanup } from "solid-js";
 import { ChevronRight } from "lucide-solid";
-import { trpc } from "../../../lib/trpc";
+import { useQuery, useMutation } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { cn } from "../../../lib/utils";
 import { SkillIcon } from "../../ui/icons";
 // Hook to detect narrow screen
@@ -25,15 +26,23 @@ interface Skill {
 export function AgentsSkillsTab() {
 	const isNarrowScreen = useIsNarrowScreen();
 	const [expandedSkillName, setExpandedSkillName] = createSignal<string | null>(null);
-	const { data: skills = [], isLoading } = trpc.skills.list.useQuery(undefined);
-	const openInFinderMutation = trpc.external.openInFinder.useMutation();
-	const userSkills = () => skills().filter((s: Skill) => s.source === "user");
-	const projectSkills = () => skills().filter((s: Skill) => s.source === "project");
+	const skillsQuery = useQuery(() => ({
+		queryKey: ["skills", "list"],
+		queryFn: () => desktopRpc.skills.list({}),
+	}));
+	const skills = () => skillsQuery.data ?? [];
+	const isLoading = () => skillsQuery.isLoading;
+	const openInFinderMutation = useMutation(() => ({
+		mutationFn: (input: { path: string }) =>
+			desktopRpc.external.openInFinder.mutate(input),
+	}));
+	const userSkills = () => (skills() ?? []).filter((s: Skill) => s.source === "user");
+	const projectSkills = () => (skills() ?? []).filter((s: Skill) => s.source === "project");
 	const handleExpandSkill = (skillName: string) => {
 		setExpandedSkillName(expandedSkillName() === skillName ? null : skillName);
 	};
 	const handleOpenInFinder = (path: string) => {
-		openInFinderMutation.mutate(path);
+		openInFinderMutation.mutate({ path });
 	};
 	return <div class="p-6 space-y-6 overflow-y-auto max-h-[70vh]">
       {/* Header - hidden on narrow screens */}

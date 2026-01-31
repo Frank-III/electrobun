@@ -1,5 +1,6 @@
-import { createMemo, createEffect, onCleanup } from "solid-js";
-import { trpc } from "../../../../lib/trpc";
+import { createMemo, createEffect, onCleanup, Show } from "solid-js";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../../lib/desktop-rpc";
 import { formatRelativeDate } from "../../utils/date";
 import { FileText, ArrowUp } from "lucide-solid";
 import { cn } from "../../../../lib/utils";
@@ -25,33 +26,46 @@ interface HistoryViewProps {
 	pushCount?: number;
 }
 export function HistoryView({ worktreePath, selectedCommitHash, selectedFilePath, onCommitSelect, onFileSelect, pushCount }: HistoryViewProps) {
-	const { data: commits, isLoading, refetch: refetchHistory } = trpc.changes.getHistory.useQuery({
-		worktreePath,
-		limit: 50
-	}, {
+	const historyQuery = useQuery(() => ({
+		queryKey: ["changes", "getHistory", worktreePath, 50] as const,
+		queryFn: () => desktopRpc.changes.getHistory({ worktreePath, limit: 50 }),
 		enabled: !!worktreePath,
-		staleTime: 3e4
-	});
-	// Check if worktree is registered
-	const { data: isWorktreeRegistered } = trpc.changes.isWorktreeRegistered.useQuery({ worktreePath }, { enabled: !!worktreePath });
-	// Fetch files for selected commit
-	const { data: commitFiles, isLoading: isLoadingFiles, error: filesError, refetch: refetchFiles } = trpc.changes.getCommitFiles.useQuery({
-		worktreePath,
-		commitHash: selectedCommitHash!
-	}, {
+		staleTime: 3e4,
+	}));
+	const commits = () => historyQuery.data;
+	const isLoading = () => historyQuery.isLoading;
+	const refetchHistory = () => historyQuery.refetch();
+
+	const worktreeRegisteredQuery = useQuery(() => ({
+		queryKey: ["changes", "isWorktreeRegistered", worktreePath] as const,
+		queryFn: () => desktopRpc.changes.isWorktreeRegistered({ worktreePath }),
+		enabled: !!worktreePath,
+	}));
+	const isWorktreeRegistered = () => worktreeRegisteredQuery.data;
+
+	const commitFilesQuery = useQuery(() => ({
+		queryKey: ["changes", "getCommitFiles", worktreePath, selectedCommitHash ?? ""] as const,
+		queryFn: () =>
+			desktopRpc.changes.getCommitFiles({ worktreePath, commitHash: selectedCommitHash! }),
 		enabled: !!worktreePath && !!selectedCommitHash,
-		staleTime: 6e4
-	});
+		staleTime: 6e4,
+	}));
+	const commitFiles = () => commitFilesQuery.data;
+	const isLoadingFiles = () => commitFilesQuery.isLoading;
+	const filesError = () => commitFilesQuery.error;
+	const refetchFiles = () => commitFilesQuery.refetch();
 	// Auto-select first commit when history loads (if none selected)
 	createEffect(() => {
-		if (commits && commits.length > 0 && !selectedCommitHash && onCommitSelect) {
-			onCommitSelect(commits[0]);
+		const c = commits();
+		if (c && c.length > 0 && !selectedCommitHash && onCommitSelect) {
+			onCommitSelect(c[0]);
 		}
 	});
 	// Auto-select first file when commit files load
 	createEffect(() => {
-		if (commitFiles && commitFiles.length > 0 && selectedCommitHash && !selectedFilePath && onFileSelect) {
-			onFileSelect(commitFiles[0], selectedCommitHash);
+		const cf = commitFiles();
+		if (cf && cf.length > 0 && selectedCommitHash && !selectedFilePath && onFileSelect) {
+			onFileSelect(cf[0], selectedCommitHash);
 		}
 	});
 	// Refetch history and commit files when window gains focus
@@ -76,25 +90,39 @@ export function HistoryView({ worktreePath, selectedCommitHash, selectedFilePath
 			onFileSelect?.(file, selectedCommitHash);
 		}
 	};
-	if (isLoading) {
-		return <div class="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+	if (isLoading()) {
+		return (
+			<div class="flex-1 flex items-center justify-center text-muted-foreground text-sm">
 				Loading...
-			</div>;
+			</div>
+		);
 	}
-	if (!commits?.length) {
-		return <div class="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+	const commitsList = commits();
+	if (!commitsList?.length) {
+		return (
+			<div class="flex-1 flex items-center justify-center text-muted-foreground text-sm">
 				No commits yet
-			</div>;
+			</div>
+		);
 	}
-	return <div class="flex-1 overflow-y-auto">
-			{	/* Worktree not registered warning */}
-			{isWorktreeRegistered === false && worktreePath && <div class="p-4 bg-yellow-500/10 border border-yellow-500/20 text-yellow-600 text-xs">
+	return (
+		<div class="flex-1 overflow-y-auto">
+			<Show when={isWorktreeRegistered() === false && worktreePath}>
+				<div class="p-4 bg-yellow-500/10 border border-yellow-500/20 text-yellow-600 text-xs">
 					Worktree not registered. Cannot load commit files.
-				</div>}
-
-			{ /* Commits list - only commits, files are shown in right panel */}
-			{commits.map((commit, index) => <HistoryCommitItem key={commit.hash} commit={commit} isSelected={selectedCommitHash === commit.hash} isUnpushed={index < (pushCount || 0)} onClick={() => handleCommitClick(commit)} />)}
-		</div>;
+				</div>
+			</Show>
+			{commitsList.map((commit, index) => (
+				<HistoryCommitItem
+					key={commit.hash}
+					commit={commit}
+					isSelected={selectedCommitHash === commit.hash}
+					isUnpushed={index < (pushCount || 0)}
+					onClick={() => handleCommitClick(commit)}
+				/>
+			))}
+		</div>
+	);
 }
 function HistoryCommitItem({ commit, isSelected, isUnpushed, onClick }: {
 	commit: CommitInfo;
@@ -125,9 +153,9 @@ function HistoryCommitItem({ commit, isSelected, isUnpushed, onClick }: {
 							<span class="shrink-0">{timeAgo}</span>
 						</div>
 					</div>
-					{isUnpushed && <div class="flex items-center justify-center w-7 h-6 rounded bg-primary/10 shrink-0">
+					<Show when={isUnpushed}><div class="flex items-center justify-center w-7 h-6 rounded bg-primary/10 shrink-0">
 							<ArrowUp class="size-3.5 text-primary" />
-						</div>}
+						</div></Show>
 				</div>
 			</ContextMenuTrigger>
 			<ContextMenuContent class="w-48">
@@ -150,9 +178,9 @@ function CommitFileItem({ file, isSelected, onClick }: {
 	return <div class={cn("flex items-center gap-2 px-2 py-1 cursor-pointer transition-colors", "hover:bg-muted/80", isSelected && "bg-muted")} onClick={onClick}>
 			<FileText class="size-3.5 text-muted-foreground shrink-0 ml-5" />
 			<div class="flex-1 min-w-0 flex items-center overflow-hidden">
-				{dirPath && <span class="text-xs text-muted-foreground truncate flex-shrink min-w-0">
+				<Show when={dirPath}><span class="text-xs text-muted-foreground truncate flex-shrink min-w-0">
 						{dirPath}/
-					</span>}
+					</span></Show>
 				<span class="text-xs font-medium flex-shrink-0 whitespace-nowrap">
 					{fileName}
 				</span>

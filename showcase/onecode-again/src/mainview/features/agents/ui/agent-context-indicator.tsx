@@ -1,4 +1,3 @@
-"use client";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { cn } from "../../../lib/utils";
 // Claude model context windows
@@ -18,7 +17,7 @@ export interface MessageTokenData {
 interface AgentContextIndicatorProps {
 	tokenData: MessageTokenData;
 	modelId?: ModelId;
-	className?: string;
+	class?: string;
 	onCompact?: () => void;
 	isCompacting?: boolean;
 	disabled?: boolean;
@@ -33,23 +32,23 @@ function formatTokens(tokens: number): string {
 	return tokens.toString();
 }
 // Circular progress component
-function CircularProgress({ percent, size = 18, strokeWidth = 2, className }: {
+function CircularProgress({ percent, size = 18, strokeWidth = 2, class: cls }: {
 	percent: number;
 	size?: number;
 	strokeWidth?: number;
-	className?: string;
+	class?: string;
 }) {
 	const radius = (size - strokeWidth) / 2;
 	const circumference = 2 * Math.PI * radius;
 	const offset = circumference - percent / 100 * circumference;
-	return <svg width={size} height={size} class={cn("transform -rotate-90", className)}>
+	return <svg width={size} height={size} class={cn("transform -rotate-90",cls)}>
       {	/* Background circle */}
-      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={strokeWidth} class="text-muted-foreground/20" />
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" stroke-width={strokeWidth} class="text-muted-foreground/20" />
       { /* Progress circle */}
-      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" class="transition-all duration-300 text-muted-foreground/60" />
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" stroke-width={strokeWidth} stroke-dasharray={circumference} stroke-dashoffset={offset} stroke-linecap="round" class="transition-all duration-300 text-muted-foreground/60" />
     </svg>;
  }
-export function AgentContextIndicator({ tokenData, modelId = "sonnet", className, onCompact, isCompacting, disabled }: AgentContextIndicatorProps) {
+export function AgentContextIndicator({ tokenData, modelId = "sonnet", class: cls, onCompact, isCompacting, disabled }: AgentContextIndicatorProps) {
 	const totalTokens = tokenData.totalInputTokens + tokenData.totalOutputTokens;
 	const contextWindow = CONTEXT_WINDOWS[modelId];
 	const percentUsed = Math.min(100, totalTokens / contextWindow * 100);
@@ -57,8 +56,8 @@ export function AgentContextIndicator({ tokenData, modelId = "sonnet", className
 	const isClickable = onCompact && !disabled && !isCompacting;
 	return <Tooltip delayDuration={300}>
       <TooltipTrigger asChild>
-        <div onClick={isClickable ? onCompact : undefined} class={cn("h-4 w-4 flex items-center justify-center", isClickable ? "cursor-pointer hover:opacity-70 transition-opacity" : "cursor-default", disabled && "opacity-50", className)}>
-          <CircularProgress percent={percentUsed} size={14} strokeWidth={2.5} class={isCompacting ? "animate-pulse" : undefined} />
+        <div onClick={isClickable ? onCompact : undefined} class={cn("h-4 w-4 flex items-center justify-center", isClickable ? "cursor-pointer hover:opacity-70 transition-opacity" : "cursor-default", disabled && "opacity-50",cls)}>
+          <CircularProgress percent={percentUsed} size={14} stroke-width={2.5} class={isCompacting ? "animate-pulse" : undefined} />
         </div>
       </TooltipTrigger>
       <TooltipContent side="top" sideOffset={8}>

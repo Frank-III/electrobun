@@ -1,11 +1,11 @@
-import { createSignal, createEffect, onCleanup } from "solid-js";
+import { createSignal, createEffect, onCleanup, Show, type Accessor } from "solid-js";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import { IconSpinner } from "../../../icons";
 import { toast } from "solid-sonner";
 // Hook to detect narrow screen
-function useIsNarrowScreen(): boolean {
+function useIsNarrowScreen(): Accessor<boolean> {
 	const [isNarrow, setIsNarrow] = createSignal(false);
 	createEffect(() => {
 		const checkWidth = () => {
@@ -25,7 +25,7 @@ interface DesktopUser {
 	username: string | null;
 }
 export function AgentsProfileTab() {
-	const [user, setUser] = createSignal(null);
+	const [user, setUser] = createSignal<DesktopUser | null>(null);
 	const [fullName, setFullName] = createSignal("");
 	const [isSaving, setIsSaving] = createSignal(false);
 	const [isLoading, setIsLoading] = createSignal(true);
@@ -70,9 +70,11 @@ export function AgentsProfileTab() {
       {	/* Profile Settings Card */}
       <div class="space-y-2">
         { /* Header - hidden on narrow screens since it's in the navigation bar */}
-        {!isNarrowScreen && <div class="flex items-center justify-between pb-3 mb-4">
+        <Show when={!isNarrowScreen()}>
+          <div class="flex items-center justify-between pb-3 mb-4">
             <h3 class="text-sm font-medium text-foreground">Account</h3>
-          </div>}
+          </div>
+        </Show>
         <div class="bg-background rounded-lg border border-border overflow-hidden">
           <div class="p-4 space-y-6">
             { /* Full Name Field */}
@@ -84,7 +86,7 @@ export function AgentsProfileTab() {
                 </p>
               </div>
               <div class="flex-shrink-0 w-80">
-                <Input value={fullName} onInput={(e) => setFullName(e.currentTarget.value)} class="w-full" placeholder="Enter your name" />
+                <Input value={fullName()} onInput={(e) => setFullName(e.currentTarget.value)} class="w-full" placeholder="Enter your name" />
               </div>
             </div>
 
@@ -97,16 +99,18 @@ export function AgentsProfileTab() {
                 </p>
               </div>
               <div class="flex-shrink-0 w-80">
-                <Input value={user?.email || ""} disabled class="w-full opacity-60" />
+                <Input value={user()?.email || ""} disabled class="w-full opacity-60" />
               </div>
             </div>
           </div>
 
           { /* Save Button Footer */}
           <div class="bg-muted p-3 rounded-b-lg flex justify-end gap-3 border-t">
-            <Button onClick={handleSave} disabled={isSaving} size="sm" class="text-xs">
+            <Button onClick={handleSave} disabled={isSaving()} size="sm" class="text-xs">
               <div class="flex items-center justify-center gap-2">
-                {isSaving() && <IconSpinner class="h-3.5 w-3.5 text-current" />}
+                <Show when={isSaving()}>
+                  <IconSpinner class="h-3.5 w-3.5 text-current" />
+                </Show>
                 Save
               </div>
             </Button>

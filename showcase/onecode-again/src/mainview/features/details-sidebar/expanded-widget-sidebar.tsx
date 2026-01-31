@@ -1,6 +1,5 @@
-"use client";
-import { createEffect, createMemo, onCleanup } from "solid-js";
-import { useAtom } from "../../lib/state/store";
+import { createEffect, createMemo, onCleanup, Show } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import { X } from "lucide-solid";
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar";
 import { Button } from "@/components/ui/button";
@@ -35,7 +34,7 @@ interface ExpandedWidgetSidebarProps {
 export function ExpandedWidgetSidebar({ chatId, worktreePath, planPath, planRefetchTrigger, activeSubChatId, canOpenDiff, isDiffSidebarOpen, setIsDiffSidebarOpen, diffStats }: ExpandedWidgetSidebarProps) {
 	// Per-workspace expanded widget state
 	const expandedWidgetAtom = createMemo(() => expandedWidgetAtomFamily(chatId));
-	const [expandedWidget, setExpandedWidget] = useAtom(expandedWidgetAtom);
+	const [expandedWidget, setExpandedWidget] = expandedWidgetAtom;
 	// Get widget config
 	const widgetConfig = createMemo(() => WIDGET_REGISTRY.find((w) => w.id === expandedWidget));
 	// Close sidebar callback
@@ -72,10 +71,10 @@ export function ExpandedWidgetSidebar({ chatId, worktreePath, planPath, planRefe
         {	/* Header */}
         <div class="flex items-center justify-between pl-3 pr-1.5 h-10 bg-tl-background flex-shrink-0 border-b border-border/50">
           <div class="flex items-center gap-2">
-            {widgetConfig && <>
-                <widgetConfig.icon class="h-4 w-4 text-muted-foreground" />
-                <span class="text-sm font-medium">{widgetConfig.label}</span>
-              </>}
+            <Show when={widgetConfig()}>
+                <Dynamic component={widgetConfig()!.icon} class="h-4 w-4 text-muted-foreground" />
+                <span class="text-sm font-medium">{widgetConfig()!.label}</span>
+              </Show>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>

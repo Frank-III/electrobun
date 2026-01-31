@@ -60,10 +60,6 @@ export function createDebugHandlers() {
       return { success: true };
     },
 
-    debugLogout: async () => {
-      return { success: true };
-    },
-
     debugOpenUserDataFolder: async () => {
       try {
         const userDataPath = await Updater.appDataFolder();

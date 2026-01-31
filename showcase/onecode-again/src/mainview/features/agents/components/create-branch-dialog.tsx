@@ -1,4 +1,3 @@
-"use client";
 import { createSignal, createEffect, createMemo } from "solid-js";
 import { toast } from "solid-sonner";
 import { GitBranch, ChevronDown, Check } from "lucide-solid";
@@ -9,9 +8,12 @@ import { Label } from "../../../components/ui/label";
 import { Popover as PopoverPrimitive } from "@kobalte/core/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "../../../components/ui/command";
 import { IconSpinner } from "../../../components/ui/icons";
-import { trpc } from "../../../lib/trpc";
+import { useMutation } from "@tanstack/solid-query";
+import { getQueryClient } from "../../../contexts/QueryProvider";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { cn } from "../../../lib/utils";
 import { formatTimeAgo } from "../utils/format-time-ago";
+
 interface CreateBranchDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -34,27 +36,27 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
 	createEffect(() => {
 		setBaseBranch(defaultBranch);
 	});
-	// Reset search when popover closes
 	createEffect(() => {
-		if (!baseBranchOpen) {
+		if (!baseBranchOpen()) {
 			setBaseBranchSearch("");
 		}
 	});
-	// Filter branches based on search (limit to 50 for performance)
 	const filteredBaseBranches = createMemo(() => {
 		let filtered = branches;
-		if (baseBranchSearch.trim()) {
-			const search = baseBranchSearch.toLowerCase();
+		if (baseBranchSearch().trim()) {
+			const search = baseBranchSearch().toLowerCase();
 			filtered = branches.filter((b) => b.name.toLowerCase().includes(search));
 		}
 		return filtered.slice(0, 50);
 	});
-	const utils = trpc.useUtils();
-	const createBranchMutation = trpc.changes.createBranch.useMutation({
+
+	const queryClient = getQueryClient();
+	const createBranchMutation = useMutation(() => ({
+		mutationFn: (input: { projectPath: string; branchName: string; baseBranch: string }) =>
+			desktopRpc.changes.createBranch.mutate(input),
 		onSuccess: (data) => {
 			toast.success(`Branch '${data.branchName}' created successfully`);
-			// Invalidate branches query to refresh the list
-			utils.changes.getBranches.invalidate({ worktreePath: projectPath });
+			queryClient?.invalidateQueries({ queryKey: ["changes", "getBranches", projectPath] });
 			onBranchCreated(data.branchName);
 			onOpenChange(false);
 			setBranchName("");
@@ -62,23 +64,24 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
 		},
 		onError: (error) => {
 			toast.error(`Failed to create branch: ${error.message}`);
-		}
-	});
+		},
+	}));
 	const handleSubmit = (e: Event) => {
 		e.preventDefault();
-		if (!branchName.trim()) {
+		const name = branchName().trim();
+		const base = baseBranch();
+		if (!name) {
 			toast.error("Branch name is required");
 			return;
 		}
-		// Basic validation for branch name
-		if (!/^[a-zA-Z0-9._/-]+$/.test(branchName)) {
+		if (!/^[a-zA-Z0-9._/-]+$/.test(name)) {
 			toast.error("Branch name can only contain letters, numbers, dots, hyphens, underscores, and slashes");
 			return;
 		}
 		createBranchMutation.mutate({
 			projectPath,
-			branchName: branchName.trim(),
-			baseBranch
+			branchName: name,
+			baseBranch: base,
 		});
 	};
 	return <Dialog open={open} onOpenChange={onOpenChange}>
@@ -93,12 +96,12 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
             <Label for="branch-name" class="text-sm">
               Name
             </Label>
-            <Input id="branch-name" placeholder="feature/my-new-feature" value={branchName} onInput={(e) => setBranchName(e.currentTarget.value)} onKeyDown={(e) => {
- if (e.key === "Enter" && branchName.trim() && !createBranchMutation.isPending) {
+            <Input id="branch-name" placeholder="feature/my-new-feature" value={branchName()} onInput={(e) => setBranchName(e.currentTarget.value)} onKeyDown={(e) => {
+ if (e.key === "Enter" && branchName().trim() && !createBranchMutation.isPending) {
 			e.preventDefault();
 			handleSubmit(e);
 		}
-	}} autoFocus disabled={createBranchMutation.isPending} class="h-9" />
+	}} autofocus disabled={createBranchMutation.isPending} class="h-9" />
           </div>
 
           {	/* Base Branch Selection with Search */}
@@ -116,10 +119,10 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
               { /* NO Portal wrapper - content renders inside Dialog */}
               <PopoverPrimitive.Content class="z-50 w-full rounded-[10px] bg-popover p-0 text-sm text-popover-foreground shadow-lg border border-border outline-none dark data-[expanded]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[expanded]:fade-in-0 data-[closed]:zoom-out-95 data-[expanded]:zoom-in-95">
                 <Command>
-                  <CommandInput placeholder="Search branches..." value={baseBranchSearch} onValueChange={setBaseBranchSearch} />
+                  <CommandInput placeholder="Search branches..." value={baseBranchSearch()} onValueChange={setBaseBranchSearch} />
                   <CommandList class="max-h-[200px]">
-                    {filteredBaseBranches.length === 0 ? <CommandEmpty>No branches found.</CommandEmpty> : <CommandGroup>
-                        {filteredBaseBranches.map((branch) => <CommandItem key={branch.name} value={branch.name} onSelect={() => {
+                    {filteredBaseBranches().length === 0 ? <CommandEmpty>No branches found.</CommandEmpty> : <CommandGroup>
+                        {filteredBaseBranches().map((branch) => <CommandItem key={branch.name} value={branch.name} onSelect={() => {
  setBaseBranch(branch.name);
 		setBaseBranchOpen(false);
 	}} class="gap-2 cursor-pointer">
@@ -128,7 +131,7 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
                             {branch.committedAt && <span class="text-xs text-muted-foreground/70 shrink-0">
                                 {formatTimeAgo(branch.committedAt)}
                               </span>}
-                            {baseBranch === branch.name && <Check class="h-4 w-4 shrink-0" />}
+                            {baseBranch() === branch.name && <Check class="h-4 w-4 shrink-0" />}
                           </CommandItem>)}
                       </CommandGroup>}
                   </CommandList>
@@ -142,7 +145,7 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={createBranchMutation.isPending} class="transition-transform duration-150 active:scale-[0.97] rounded-md">
             Cancel
           </Button>
-          <Button type="button" onClick={(e) => handleSubmit(e)} disabled={!branchName.trim() || createBranchMutation.isPending} class="transition-transform duration-150 active:scale-[0.97] rounded-md">
+          <Button type="button" onClick={(e) => handleSubmit(e)} disabled={!branchName().trim() || createBranchMutation.isPending} class="transition-transform duration-150 active:scale-[0.97] rounded-md">
             {createBranchMutation.isPending ? <>
                 <IconSpinner class="w-4 h-4 mr-2" />
                 Creating...

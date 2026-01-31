@@ -1,12 +1,8 @@
-"use client";
 import { cn } from "../../../lib/utils";
-import { api } from "../../../lib/mock-api";
-import { trpc } from "../../../lib/trpc";
-import { keepPreviousData } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { createEffect, createMemo, createSignal, onCleanup, Show, For } from "solid-js";
-import { flushSync, Portal } from "solid-js/web";
-import { createRoot } from "solid-js/web";
-import { useAtomValue } from "../../../lib/state/jotai";
+import { Portal, render } from "solid-js/web";
 import type { FileMentionOption } from "./agents-mentions-editor";
 import { MENTION_PREFIXES } from "./agents-mentions-editor";
 import { sessionInfoAtom } from "../../../lib/atoms";
@@ -14,14 +10,15 @@ import { FilesIcon, IconSpinner, SkillIcon, CustomAgentIcon, OriginalMCPIcon } f
 import { ChevronRight } from "lucide-solid";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../../components/ui/tooltip";
 // Custom folder icon matching design
-function FolderOpenIcon({ className }: {
-	className?: string;
+function FolderOpenIcon({ class: cls }: {
+	class?: string;
 }) {
-	return <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={className}>
-      <path d="M4 8V6C4 4.89543 4.89543 4 6 4H14C15.1046 4 16 4.89543 16 6M4 8H8.17548C8.70591 8 9.21462 8.21071 9.58969 8.58579L11.4181 10.4142C11.7932 10.7893 12.3019 11 12.8323 11H16M4 8C3.44987 8 3.00391 8.44597 3.00391 8.99609V18C3.00391 19.1046 3.89934 20 5.00391 20H19.0039C20.1085 20 21.0039 19.1046 21.0039 18V12.0039C21.0039 11.4495 20.5544 11 20 11M16 11V6M16 11H20M16 6H18C19.1046 6 20 6.89543 20 8V11" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+	return <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={cls}>
+      <path d="M4 8V6C4 4.89543 4.89543 4 6 4H14C15.1046 4 16 4.89543 16 6M4 8H8.17548C8.70591 8 9.21462 8.21071 9.58969 8.58579L11.4181 10.4142C11.7932 10.7893 12.3019 11 12.8323 11H16M4 8C3.44987 8 3.00391 8.44597 3.00391 8.99609V18C3.00391 19.1046 3.89934 20 5.00391 20H19.0039C20.1085 20 21.0039 19.1046 21.0039 18V12.0039C21.0039 11.4495 20.5544 11 20 11M16 11V6M16 11H20M16 6H18C19.1046 6 20 6.89543 20 8V11" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
     </svg>;
 }
 import { TypeScriptIcon, JavaScriptIcon, PythonIcon, GoIcon, RustIcon, CodeIcon, ReactIcon, MarkdownInfoIcon, MarkdownIcon, CSSIcon, HTMLIcon, SCSSIcon, JSONIcon, YAMLIcon, ShellIcon, SQLIcon, GraphQLIcon, PrismaIcon, DockerIcon, TOMLIcon, JavaIcon, CIcon, CppIcon, CSharpIcon, PHPIcon, RubyIcon, KotlinIcon, VueIcon, SvelteIcon, AstroIcon, SwiftIcon, PDFIcon, SVGIcon } from "../../../icons/framework-icons";
+
 interface ChangedFile {
 	filePath: string;
 	displayPath: string;
@@ -232,11 +229,11 @@ export function getFileIconByExtension(filename: string, returnNullForUnknown = 
 	}
 }
 // Tool icon component (MCP icon) - slightly larger for visibility
-function ToolIcon({ className }: {
-	className?: string;
+function ToolIcon({ class: cls }: {
+	class?: string;
 }) {
 	// Override size to h-3.5 w-3.5 for better visibility
-	const sizeClass = className?.replace(/h-3\b/, "h-3.5").replace(/w-3\b/, "w-3.5") || className;
+	const sizeClass = cls?.replace(/h-3\b/, "h-3.5").replace(/w-3\b/, "w-3.5") || cls;
 	return <OriginalMCPIcon class={sizeClass} />;
 }
 /**
@@ -258,17 +255,12 @@ export function createFileIconElement(filename: string, type?: "file" | "folder"
 	container.style.position = "absolute";
 	container.style.visibility = "hidden";
 	document.body.appendChild(container);
-	// Create React element
-	const iconElement = createElement(IconComponent, { className: "h-3 w-3 text-muted-foreground flex-shrink-0" });
-	const root = createRoot(container);
-	// Render synchronously using flushSync
-	flushSync(() => {
-		root.render(iconElement);
-	});
+	// Render using SolidJS render
+	const dispose = render(() => <IconComponent class="h-3 w-3 text-muted-foreground flex-shrink-0" />, container);
 	// Extract the SVG element
 	const svgElement = container.querySelector("svg");
 	// Clean up
-	root.unmount();
+	dispose();
 	if (container.parentNode) {
 		document.body.removeChild(container);
 	}
@@ -283,7 +275,7 @@ export function createFileIconElement(filename: string, type?: "file" | "folder"
 		fallbackSvg.setAttribute("stroke-width", "2");
 		fallbackSvg.setAttribute("stroke-linecap", "round");
 		fallbackSvg.setAttribute("stroke-linejoin", "round");
-		fallbackSvg.className.baseVal = "h-3 w-3 text-muted-foreground flex-shrink-0";
+		fallbackSvg.classList.add("h-3", "w-3", "text-muted-foreground", "flex-shrink-0");
 		const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
 		path.setAttribute("d", "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z");
 		fallbackSvg.appendChild(path);
@@ -298,43 +290,43 @@ export function createFileIconElement(filename: string, type?: "file" | "folder"
 	return clonedSvg;
 }
 // Folder icon component for consistency with file icons
-function FolderIcon({ className }: {
-	className?: string;
+function FolderIcon({ class: cls }: {
+	class?: string;
 }) {
-	return <FolderOpenIcon class={className} />;
+	return <FolderOpenIcon class={cls} />;
 }
 // Skill icon component (local wrapper for getOptionIcon)
-function SkillIconWrapper({ className }: {
-	className?: string;
+function SkillIconWrapper({ class: cls }: {
+	class?: string;
 }) {
-	return <SkillIcon class={className} />;
+	return <SkillIcon class={cls} />;
 }
-function CustomAgentIconWrapper({ className }: {
-	className?: string;
+function CustomAgentIconWrapper({ class: cls }: {
+	class?: string;
 }) {
-	return <CustomAgentIcon class={className} />;
+	return <CustomAgentIcon class={cls} />;
 }
 // ToolIconWrapper removed - use ToolIcon instead (they were identical)
 // Category icon component
-function CategoryIcon({ className, categoryId }: {
-	className?: string;
+function CategoryIcon({ class: cls, categoryId }: {
+	class?: string;
 	categoryId: string;
 }) {
 	if (categoryId === "files") {
-		return <FilesIcon class={className} />;
+		return <FilesIcon class={cls} />;
 	}
 	if (categoryId === "skills") {
-		return <SkillIcon class={className} />;
+		return <SkillIcon class={cls} />;
 	}
 	if (categoryId === "agents") {
-		return <CustomAgentIcon class={className} />;
+		return <CustomAgentIcon class={cls} />;
 	}
 	if (categoryId === "tools") {
 		// Override size to h-3.5 w-3.5 for better visibility
-		const sizeClass = className?.replace(/h-3\b/, "h-3.5").replace(/w-3\b/, "w-3.5") || className;
+		const sizeClass = cls?.replace(/h-3\b/, "h-3.5").replace(/w-3\b/, "w-3.5") || cls;
 		return <OriginalMCPIcon class={sizeClass} />;
 	}
-	return <FilesIcon class={className} />;
+	return <FilesIcon class={cls} />;
 }
 /**
 * Get icon component for a file, folder, skill, agent, tool, or category option
@@ -346,10 +338,10 @@ export function getOptionIcon(option: {
 }) {
 	if (option.type === "category") {
 		// Return a wrapper component for categories
-		return function CategoryIconWrapper({ className }: {
-			className?: string;
+		return function CategoryIconWrapper({ class: cls }: {
+			class?: string;
 		}) {
-			return <CategoryIcon class={className} categoryId={option.id || ""} />;
+			return <CategoryIcon class={cls} categoryId={option.id || ""} />;
 		};
 	}
 	if (option.type === "skill") {
@@ -377,13 +369,13 @@ function renderFolderTree(path: string) {
 	const parts = path.split("/").filter(Boolean);
 	const lastIndex = parts.length - 1;
 	return <div class="flex flex-col gap-1 min-w-[220px]">
-      {parts.map((part, index) => {
-		const isLast = index === lastIndex;
-		return <div key={index} class={cn("flex items-center gap-1.5 text-xs", isLast ? "text-foreground" : "text-muted-foreground")} style={{ "padding-left": `${index * 20}px` }}>
-            <FolderOpenIcon class={cn("h-3.5 w-3.5 flex-shrink-0", isLast ? "text-foreground/70" : "text-muted-foreground")} />
-            <span class={isLast ? "font-medium" : ""}>{part}</span>
+      <For each={parts}>{(part, index) => {
+		const isLast = () => index() === lastIndex;
+		return <div class={cn("flex items-center gap-1.5 text-xs", isLast() ? "text-foreground" : "text-muted-foreground")} style={{ "padding-left": `${index() * 20}px` }}>
+            <FolderOpenIcon class={cn("h-3.5 w-3.5 flex-shrink-0", isLast() ? "text-foreground/70" : "text-muted-foreground")} />
+            <span class={isLast() ? "font-medium" : ""}>{part}</span>
           </div>;
-	})}
+	}}</For>
     </div>;
 }
 /**
@@ -513,17 +505,25 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	const [debouncedSearchText, setDebouncedSearchText] = createSignal(searchText);
 	const [hoverIndex, setHoverIndex] = createSignal(null);
 	// Get session info (MCP servers, tools) from atom
-	const sessionInfo = useAtomValue(sessionInfoAtom);
+	const sessionInfo = sessionInfoAtom[0];
 	// Fetch skills from filesystem (cached for 5 minutes)
-	const { data: skills = [], isFetching: isFetchingSkills } = trpc.skills.listEnabled.useQuery(undefined, {
+	const skillsQuery = useQuery(() => ({
+		queryKey: ["skills", "listEnabled", isOpen],
+		queryFn: () => desktopRpc.skills.listEnabled({}),
 		enabled: isOpen,
-		staleTime: 5 * 60 * 1e3
-	});
+		staleTime: 5 * 60 * 1e3,
+	}));
+	const skills = () => skillsQuery.data ?? [];
+	const isFetchingSkills = () => skillsQuery.isFetching;
 	// Fetch custom agents from filesystem (cached for 5 minutes)
-	const { data: customAgents = [], isFetching: isFetchingAgents } = trpc.agents.listEnabled.useQuery(undefined, {
+	const customAgentsQuery = useQuery(() => ({
+		queryKey: ["agents", "listEnabled", isOpen],
+		queryFn: () => desktopRpc.agents.listEnabled({}),
 		enabled: isOpen,
-		staleTime: 5 * 60 * 1e3
-	});
+		staleTime: 5 * 60 * 1e3,
+	}));
+	const customAgents = () => customAgentsQuery.data ?? [];
+	const isFetchingAgents = () => customAgentsQuery.isFetching;
 	// Debounce search text (300ms to match canvas implementation)
 	createEffect(() => {
 		const timer = setTimeout(() => {
@@ -534,30 +534,32 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	// For multi-word search, send only first word to API (server filters by that),
 	// then filter results on client by all words
 	const apiSearchQuery = createMemo(() => {
-		if (!debouncedSearchText) return "";
-		const words = debouncedSearchText.split(/\s+/).filter(Boolean);
+		if (!debouncedSearchText()) return "";
+		const words = debouncedSearchText().split(/\s+/).filter(Boolean);
 		return words[0] || "";
 	});
-	// Fetch files from API
-	// Priority: sandboxId (includes uncommitted) > branch (GitHub API) > cached file_tree
-	const { data: fileResults = [], isLoading, isFetching, error } = api.github.searchFiles.useQuery({
-		teamId: teamId!,
-		repository: repository!,
-		query: apiSearchQuery,
-		limit: 50,
-		sandboxId,
-		branch,
-		projectPath
-	}, {
-		enabled: isOpen && (!!projectPath || !!teamId && (!!repository || !!sandboxId || !!branch)),
+	// Fetch files from API (desktop: desktopRpc.files.search)
+	const fileSearchQuery = useQuery(() => ({
+		queryKey: ["files", "search", projectPath ?? "", apiSearchQuery(), 50] as const,
+		queryFn: () =>
+			desktopRpc.files.search({
+				projectPath: projectPath ?? "",
+				query: apiSearchQuery(),
+				limit: 50,
+			}),
+		enabled: isOpen && (!!projectPath || !!(teamId && (!!repository || !!sandboxId || !!branch))),
 		staleTime: 5e3,
 		refetchOnWindowFocus: false,
-		placeholderData: keepPreviousData
-	});
+		placeholderData: (prev: unknown) => prev,
+	}));
+	const fileResults = () => fileSearchQuery.data ?? [];
+	const isLoading = () => fileSearchQuery.isLoading;
+	const isFetching = () => fileSearchQuery.isFetching;
+	const error = () => fileSearchQuery.error;
 	// Convert changed files to options (shown at top in separate group)
-	const changedFileOptions: FileMentionOption[] = createMemo(() => {
+	const changedFileOptions = createMemo(() => {
 		if (!changedFiles.length) return [];
-		const searchLower = debouncedSearchText.toLowerCase();
+		const searchLower = debouncedSearchText().toLowerCase();
 		const mapped = changedFiles.filter((file) => matchesMultiWordSearch(file.filePath, searchLower)).map((file) => {
 			// Use displayPath (relative path) for UI display, filePath only for internal ID
 			const displayPath = file.displayPath || file.filePath;
@@ -575,14 +577,14 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 			};
 		});
 		// Sort by relevance using shared function
-		return sortFilesByRelevance(mapped, debouncedSearchText);
+		return sortFilesByRelevance(mapped, debouncedSearchText());
 	});
 	// Convert API results to options with truncated path
 	// Exclude files that are already in changedFileOptions
 	const changedFilePaths = createMemo(() => new Set(changedFiles.map((f) => f.filePath)));
-	const repoFileOptions: FileMentionOption[] = createMemo(() => {
-		const searchLower = debouncedSearchText.toLowerCase();
-		const mapped = fileResults.filter((file) => !changedFilePaths.has(file.path)).filter((file) => matchesMultiWordSearch(file.path, searchLower)).map((file) => {
+	const repoFileOptions = createMemo(() => {
+		const searchLower = debouncedSearchText().toLowerCase();
+		const mapped = fileResults().filter((file: any) => !changedFilePaths().has(file.path)).filter((file: any) => matchesMultiWordSearch(file.path, searchLower)).map((file: any) => {
 			// Get directory path (without filename/foldername) for inline display
 			const pathParts = file.path.split("/");
 			const dirPath = pathParts.slice(0, -1).join("/") || "/";
@@ -598,12 +600,12 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 			};
 		});
 		// Sort by relevance using shared function
-		return sortFilesByRelevance(mapped, debouncedSearchText);
+		return sortFilesByRelevance(mapped, debouncedSearchText());
 	});
 	// Convert skills to mention options
-	const skillOptions: FileMentionOption[] = createMemo(() => {
-		const searchLower = debouncedSearchText.toLowerCase();
-		return skills.filter((skill) => matchesMultiWordSearch(skill.name, searchLower) || matchesMultiWordSearch(skill.description, searchLower)).map((skill) => ({
+	const skillOptions = createMemo(() => {
+		const searchLower = debouncedSearchText().toLowerCase();
+		return (skills() ?? []).filter((skill: { name: string; description: string }) => matchesMultiWordSearch(skill.name, searchLower) || matchesMultiWordSearch(skill.description, searchLower)).map((skill: { name: string; description: string; path: string; source?: string }) => ({
 			id: `${MENTION_PREFIXES.SKILL}${skill.name}`,
 			label: skill.name,
 			path: skill.path,
@@ -615,9 +617,9 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 		}));
 	});
 	// Convert custom agents to mention options
-	const agentOptions: FileMentionOption[] = createMemo(() => {
-		const searchLower = debouncedSearchText.toLowerCase();
-		return customAgents.filter((agent) => matchesMultiWordSearch(agent.name, searchLower) || matchesMultiWordSearch(agent.description, searchLower)).map((agent) => ({
+	const agentOptions = createMemo(() => {
+		const searchLower = debouncedSearchText().toLowerCase();
+		return (customAgents() ?? []).filter((agent: { name: string; description: string }) => matchesMultiWordSearch(agent.name, searchLower) || matchesMultiWordSearch(agent.description, searchLower)).map((agent: { name: string; description: string; path: string; tools?: string[]; model?: string; source?: string }) => ({
 			id: `${MENTION_PREFIXES.AGENT}${agent.name}`,
 			label: agent.name,
 			path: agent.path,
@@ -632,19 +634,20 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	});
 	// Convert MCP tools to mention options (stable, doesn't depend on search)
 	// MCP tools have format like "mcp__servername__toolname"
-	const allToolOptions: FileMentionOption[] = createMemo(() => {
-		if (!sessionInfo?.tools || !sessionInfo?.mcpServers) return [];
+	const allToolOptions = createMemo(() => {
+		const info = sessionInfo();
+		if (!info?.tools || !info?.mcpServers) return [];
 		// Get connected MCP server names
-		const connectedServers = new Set(sessionInfo.mcpServers.filter((s) => s.status === "connected").map((s) => s.name));
+		const connectedServers = new Set(info.mcpServers.filter((s: { status: string; name: string }) => s.status === "connected").map((s: { name: string }) => s.name));
 		// Filter tools that belong to MCP servers (format: mcp__servername__toolname)
-		const mcpTools = sessionInfo.tools.filter((tool) => {
+		const mcpTools = info.tools.filter((tool: string) => {
 			if (!tool.startsWith("mcp__")) return false;
 			const parts = tool.split("__");
 			if (parts.length < 3) return false;
 			const serverName = parts[1];
 			return connectedServers.has(serverName);
 		});
-		return mcpTools.map((tool) => {
+		return mcpTools.map((tool: string) => {
 			const parts = tool.split("__");
 			const serverName = parts[1];
 			const toolName = parts.slice(2).join("__");
@@ -661,29 +664,29 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 		});
 	});
 	// Filtered tool options based on search
-	const toolOptions: FileMentionOption[] = createMemo(() => {
-		if (!debouncedSearchText) return allToolOptions;
-		const searchLower = debouncedSearchText.toLowerCase();
-		return allToolOptions.filter((tool) => {
+	const toolOptions = createMemo(() => {
+		if (!debouncedSearchText()) return allToolOptions();
+		const searchLower = debouncedSearchText().toLowerCase();
+		return allToolOptions().filter((tool: { label: string; path: string; mcpServer?: string }) => {
 			// Search by: display name, raw tool name, full path, server name
 			return matchesMultiWordSearch(tool.label, searchLower) || matchesMultiWordSearch(tool.path, searchLower) || matchesMultiWordSearch(tool.mcpServer || "", searchLower);
 		});
 	});
 	// Check if we have skills, agents, or tools
 	// Use base data (not search-filtered) for stable category display
-	const hasSkills = skills.length > 0;
-	const hasAgents = customAgents.length > 0;
-	const hasTools = allToolOptions.length > 0;
-	const hasOnlyFiles = !hasSkills && !hasAgents && !hasTools;
+	const hasSkills = () => (skills() ?? []).length > 0;
+	const hasAgents = () => (customAgents() ?? []).length > 0;
+	const hasTools = () => allToolOptions().length > 0;
+	const hasOnlyFiles = () => !hasSkills() && !hasAgents() && !hasTools();
 	// Determine if we're in a subpage view (or showing files directly when no skills/agents/tools)
-	const isInSubpage = showingFilesList || showingSkillsList || showingAgentsList || showingToolsList || hasOnlyFiles;
+	const isInSubpage = () => showingFilesList || showingSkillsList || showingAgentsList || showingToolsList || hasOnlyFiles();
 	// Filter category options based on available data
 	const availableCategoryOptions = createMemo(() => {
 		return CATEGORY_OPTIONS.filter((category) => {
 			if (category.id === "files") return true;
-			if (category.id === "skills") return hasSkills;
-			if (category.id === "agents") return hasAgents;
-			if (category.id === "tools") return hasTools;
+			if (category.id === "skills") return hasSkills();
+			if (category.id === "agents") return hasAgents();
+			if (category.id === "tools") return hasTools();
 			return true;
 		});
 	});
@@ -692,44 +695,44 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	// Root view shows changed files + category navigation options
 	// Search filters globally in root view, within category in subpage
 	// If no skills, agents, or tools, skip root view and show files directly
-	const options: FileMentionOption[] = createMemo(() => {
+	const options = createMemo(() => {
 		// SUBPAGE: Files (or if no skills/agents/tools, show files directly)
-		if (showingFilesList || hasOnlyFiles) {
-			const allFiles = [...changedFileOptions, ...repoFileOptions];
-			if (debouncedSearchText) {
-				return sortFilesByRelevance(allFiles, debouncedSearchText);
+		if (showingFilesList || hasOnlyFiles()) {
+			const allFiles = [...changedFileOptions(), ...repoFileOptions()];
+			if (debouncedSearchText()) {
+				return sortFilesByRelevance(allFiles, debouncedSearchText());
 			}
 			return allFiles;
 		}
 		// SUBPAGE: Skills
 		if (showingSkillsList) {
-			return skillOptions;
+			return skillOptions();
 		}
 		// SUBPAGE: Agents
 		if (showingAgentsList) {
-			return agentOptions;
+			return agentOptions();
 		}
 		// SUBPAGE: MCP Tools
 		if (showingToolsList) {
-			return toolOptions;
+			return toolOptions();
 		}
 		// ROOT VIEW
-		if (debouncedSearchText) {
+		if (debouncedSearchText()) {
 			// Global search: search across changed files + categories + skills + agents + tools + repo files
-			const searchLower = debouncedSearchText.toLowerCase();
-			const filteredCategories = availableCategoryOptions.filter((c) => c.label.toLowerCase().includes(searchLower));
+			const searchLower = debouncedSearchText().toLowerCase();
+			const filteredCategories = availableCategoryOptions().filter((c) => c.label.toLowerCase().includes(searchLower));
 			const allItems = [
-				...changedFileOptions,
+				...changedFileOptions(),
 				...filteredCategories,
-				...skillOptions,
-				...agentOptions,
-				...toolOptions,
-				...repoFileOptions
+				...skillOptions(),
+				...agentOptions(),
+				...toolOptions(),
+				...repoFileOptions()
 			];
-			return sortFilesByRelevance(allItems, debouncedSearchText);
+			return sortFilesByRelevance(allItems, debouncedSearchText());
 		}
 		// No search: Changed files FIRST (quick access), then category navigation
-		return [...changedFileOptions, ...availableCategoryOptions];
+		return [...changedFileOptions(), ...availableCategoryOptions()];
 	});
 	// Track previous values for smarter selection reset
 	let prevIsOpenRef = isOpen;
@@ -833,7 +836,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	// Calculate dropdown dimensions (matching canvas style)
 	// Narrower dropdown when showing only categories (no changed files)
 	const hasChangedFiles = changedFileOptions.length > 0;
-	const isRootView = !showingFilesList && !showingSkillsList && !showingAgentsList && !showingToolsList && !hasOnlyFiles;
+	const isRootView = !showingFilesList && !showingSkillsList && !showingAgentsList && !showingToolsList && !hasOnlyFiles();
 	// Narrow dropdown for root view (categories only) and skills/agents/tools subpages
 	// Wide dropdown for files (showingFilesList or hasOnlyFiles)
 	const useNarrowWidth = isRootView && !hasChangedFiles && !debouncedSearchText || showingSkillsList || showingAgentsList || showingToolsList;
@@ -891,7 +894,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 					}}
 				>
 					{/* Initial loading state (no previous data) */}
-					<Show when={isLoading && opts.length === 0}>
+					<Show when={isLoading() && opts.length === 0}>
 						<div class="flex items-center gap-1.5 h-7 px-1.5 mx-1 text-xs text-muted-foreground">
 							<IconSpinner class="h-3.5 w-3.5" />
 							<span>Loading files...</span>
@@ -899,28 +902,28 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 					</Show>
 
 					{/* Error state */}
-					<Show when={error}>
+					<Show when={error()}>
 						<div class="h-7 px-1.5 mx-1 flex items-center text-xs text-muted-foreground">
 							Error loading files
 						</div>
 					</Show>
 
 					{/* Empty state (only show when not fetching) */}
-					<Show when={!isLoading && !isFetching && !error && opts.length === 0}>
+					<Show when={!isLoading() && !isFetching() && !error() && opts.length === 0}>
 						<div class="h-7 px-1.5 mx-1 flex items-center text-xs text-muted-foreground">
 							{debouncedSearchText() ? `No files matching "${debouncedSearchText()}"` : "No files found"}
 						</div>
 					</Show>
 
 					{/* File list */}
-					<Show when={!isLoading && !error && opts.length > 0}>
+					<Show when={!isLoading() && !error() && opts.length > 0}>
 						{/* Header - only show in subpages or when searching, not in root view */}
-						<Show when={isInSubpage || debouncedSearchText()}>
+						<Show when={isInSubpage() || debouncedSearchText()}>
 							<div class="px-2.5 py-1.5 mx-1 text-xs font-medium text-muted-foreground flex items-center gap-1.5">
 								<span>
-									{showingFilesList || hasOnlyFiles ? "Files & Folders" : showingSkillsList ? "Skills" : showingAgentsList ? "Agents" : showingToolsList ? "MCP Tools" : "Results"}
+									{showingFilesList || hasOnlyFiles() ? "Files & Folders" : showingSkillsList ? "Skills" : showingAgentsList ? "Agents" : showingToolsList ? "MCP Tools" : "Results"}
 								</span>
-								<Show when={isFetching && !isLoading}>
+								<Show when={isFetching() && !isLoading()}>
 									<IconSpinner class="h-2.5 w-2.5" />
 								</Show>
 							</div>

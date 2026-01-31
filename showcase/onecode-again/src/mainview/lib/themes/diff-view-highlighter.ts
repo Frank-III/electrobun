@@ -53,7 +53,7 @@ type SyntaxNode = {
   startIndex: number
   endIndex: number
   properties?: {
-    className?: string[]
+    class?: string[]
     [key: string]: unknown
   }
   children?: SyntaxNode[]

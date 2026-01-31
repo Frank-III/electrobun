@@ -1,12 +1,10 @@
-"use client";
-import { createEffect, createSignal, onCleanup } from "solid-js";
+import { createEffect, onCleanup } from "solid-js";
 import { toast } from "solid-sonner";
-import { useMessageQueueStore } from "../stores/message-queue-store";
-import { useStreamingStatusStore } from "../stores/streaming-status-store";
+import { getMessageQueueState, useMessageQueueStore } from "../stores/message-queue-store";
+import { getStreamingStatusState, useStreamingStatusStore } from "../stores/streaming-status-store";
 import { useAgentSubChatStore } from "../stores/sub-chat-store";
 import { agentChatStore } from "../stores/agent-chat-store";
-import { trackMessageSent } from "../../../lib/analytics";
-import { appStore } from "../../../lib/jotai-store";
+import { appStore } from "../../../lib/app-store";
 import { loadingSubChatsAtom, setLoading, clearLoading } from "../atoms";
 import type { AgentQueueItem } from "../lib/queue-utils";
 // Delay between processing queue items (ms)
@@ -23,14 +21,15 @@ const QUEUE_PROCESS_DELAY = 1e3;
 */
 export function QueueProcessor() {
 	// Track which sub-chats are currently being processed to avoid double-sends
-	const [processingRef, setProcessingRef] = createSignal<Set<string>>(new Set());
+	// Using raw variables since these are mutable collections used in closures
+	let processing = new Set<string>();
 	// Track timers for cleanup
-	const [timersRef, setTimersRef] = createSignal<Map<string, NodeJS.Timeout>>(new Map());
+	let timers = new Map<string, NodeJS.Timeout>();
 	createEffect(() => {
 		// Function to process queue for a specific sub-chat
 		const processQueue = async (subChatId: string) => {
 			// Check if already processing this sub-chat
-			if (processingRef.current.has(subChatId)) {
+			if (processing.has(subChatId)) {
 				return;
 			}
 			// Check streaming status
@@ -49,11 +48,11 @@ export function QueueProcessor() {
 				return;
 			}
 			// Mark as processing
-			processingRef.current.add(subChatId);
+			processing.add(subChatId);
 			// Pop the first item from queue (atomic operation)
 			const item = useMessageQueueStore.getState().popItem(subChatId, queue[0].id);
 			if (!item) {
-				processingRef.current.delete(subChatId);
+				processing.delete(subChatId);
 				return;
 			}
 			try {
@@ -81,15 +80,6 @@ export function QueueProcessor() {
 						text: item.message
 					});
 				}
-				// Get mode from sub-chat store for analytics
-				const subChatMeta = useAgentSubChatStore.getState().allSubChats.find((sc) => sc.id === subChatId);
-				const mode = subChatMeta?.mode || "agent";
-				// Track message sent
-				trackMessageSent({
-					workspaceId: subChatId,
-					messageLength: item.message.length,
-					mode
-				});
 				// Update timestamps
 				useAgentSubChatStore.getState().updateSubChatTimestamp(subChatId);
 				// Set loading state for sidebar indicator
@@ -113,32 +103,33 @@ export function QueueProcessor() {
 				// Notify user
 				toast.error("Failed to send queued message. It will be retried.");
 			} finally {
-				processingRef.current.delete(subChatId);
+				processing.delete(subChatId);
 			}
 		};
 		// Schedule processing for a sub-chat with delay
 		const scheduleProcessing = (subChatId: string) => {
 			// Clear any existing timer for this sub-chat
-			const existingTimer = timersRef.current.get(subChatId);
+			const existingTimer = timers.get(subChatId);
 			if (existingTimer) {
 				clearTimeout(existingTimer);
 			}
 			// Schedule new processing
 			const timer = setTimeout(() => {
-				timersRef.current.delete(subChatId);
+				timers.delete(subChatId);
 				processQueue(subChatId);
 			}, QUEUE_PROCESS_DELAY);
-			timersRef.current.set(subChatId, timer);
+			timers.set(subChatId, timer);
 		};
 		// Check all queues and schedule processing for ready sub-chats
 		const checkAllQueues = () => {
-			const queues = useMessageQueueStore.getState().queues;
+			const queueState = useMessageQueueStore.getState();
+			const queues = queueState.queues;
 			for (const subChatId of Object.keys(queues)) {
 				const queue = queues[subChatId];
 				if (!queue || queue.length === 0) continue;
 				const status = useStreamingStatusStore.getState().getStatus(subChatId);
 				// Process when ready, or retry on error status
-				if ((status === "ready" || status === "error") && !processingRef.current.has(subChatId)) {
+				if ((status === "ready" || status === "error") && !processing.has(subChatId)) {
 					// If error status, clear it before retrying
 					if (status === "error") {
 						useStreamingStatusStore.getState().setStatus(subChatId, "ready");
@@ -147,21 +138,18 @@ export function QueueProcessor() {
 				}
 			}
 		};
-		// Subscribe to queue changes with selector (requires subscribeWithSelector middleware)
-		const unsubscribeQueue = useMessageQueueStore.subscribe((state) => state.queues, () => checkAllQueues());
-		// Subscribe to streaming status changes with selector
-		const unsubscribeStatus = useStreamingStatusStore.subscribe((state) => state.statuses, () => checkAllQueues());
-		// Initial check
+		// React to queue and status changes via Solid store reactivity (effect re-runs when these change)
+		const queueState = getMessageQueueState();
+		const statusState = getStreamingStatusState();
+		void queueState.queues;
+		void statusState.statuses;
 		checkAllQueues();
 		// Cleanup
 		onCleanup(() => {
-			unsubscribeQueue();
-			unsubscribeStatus();
-			// Clear all timers
-			for (const timer of timersRef.current.values()) {
+			for (const timer of timers.values()) {
 				clearTimeout(timer);
 			}
-			timersRef.current.clear();
+			timers.clear();
 		});
 	});
 	// This component doesn't render anything

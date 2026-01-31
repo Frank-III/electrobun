@@ -1,6 +1,21 @@
 declare const __SOLID_COMPILER__: string;
 
 // ============================================================================
+// Electrobun RPC (window.rpc)
+// ============================================================================
+// Typed RPC client: window.rpc.request matches AppRPC bun requests (see shared/rpc-schema.ts)
+
+import type { BunRequestClient } from "../shared/rpc-schema";
+
+declare global {
+  interface Window {
+    desktopApi?: DesktopApi;
+    /** Electrobun RPC: request client for bun procedures (typed via BunRequestClient). */
+    rpc?: { request: BunRequestClient };
+  }
+}
+
+// ============================================================================
 // DesktopApi Type Declarations
 // ============================================================================
 // Types for window.desktopApi provided by Electrobun native layer
@@ -137,6 +152,3 @@ interface DesktopApi {
   onShortcutNewAgent(callback: () => void): () => void;
 }
 
-interface Window {
-  desktopApi?: DesktopApi;
-}

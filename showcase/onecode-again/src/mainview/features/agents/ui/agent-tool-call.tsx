@@ -1,9 +1,8 @@
-"use client";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 interface AgentToolCallProps {
 	icon: Component<{
-		className?: string;
+		class?: string;
 	}>;
 	title: string;
 	subtitle?: string;

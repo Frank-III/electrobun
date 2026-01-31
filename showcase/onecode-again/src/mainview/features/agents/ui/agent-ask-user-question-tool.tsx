@@ -1,5 +1,3 @@
-"use client";
-import { useAtomValue } from "../../../lib/state/jotai";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { QuestionIcon } from "../../../components/ui/icons";
 import { QUESTIONS_SKIPPED_MESSAGE, QUESTIONS_TIMED_OUT_MESSAGE, askUserQuestionResultsAtom, pendingUserQuestionsAtom } from "../atoms";
@@ -29,10 +27,10 @@ export function AgentAskUserQuestionTool({ input, result, errorText, state, isEr
 	const questions = input?.questions ?? [];
 	const questionCount = questions.length;
 	// Get real-time results from atom (for immediate updates before DB sync)
-	const resultsMap = useAtomValue(askUserQuestionResultsAtom);
+	const resultsMap = askUserQuestionResultsAtom[0];
 	const realtimeResult = toolCallId ? resultsMap.get(toolCallId) : undefined;
 	// Check if the question dialog is currently shown for this tool
-	const pendingQuestionsMap = useAtomValue(pendingUserQuestionsAtom);
+	const pendingQuestionsMap = pendingUserQuestionsAtom[0];
 	const isDialogShown = toolCallId ? Array.from(pendingQuestionsMap.values()).some((q) => q.toolUseId === toolCallId) : false;
 	// Use realtime result if available, otherwise fall back to prop
 	const effectiveResult = realtimeResult ?? result;

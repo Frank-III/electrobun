@@ -1,6 +1,4 @@
-"use client";
 import { createSignal, createEffect, onCleanup, Show, createMemo } from "solid-js";
-import { useAtomValue } from "../../../lib/state/jotai";
 import { cn } from "../../../lib/utils";
 import { TypewriterText } from "../../../components/ui/typewriter-text";
 import { justCreatedIdsAtom } from "../atoms";
@@ -24,7 +22,7 @@ export function ChatTitleEditor(props: ChatTitleEditorProps) {
 	const [isSaving, setIsSaving] = createSignal(false);
 	let inputRef: HTMLInputElement | undefined;
 	let containerRef: HTMLDivElement | undefined;
-	const justCreatedIds = useAtomValue(justCreatedIdsAtom);
+	const justCreatedIds = justCreatedIdsAtom[0];
 	createEffect(() => {
 		if (!isEditing()) {
 			setEditValue(props.name);

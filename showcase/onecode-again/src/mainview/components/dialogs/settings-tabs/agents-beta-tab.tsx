@@ -1,8 +1,8 @@
-import { useAtom, useAtomValue } from "../../../lib/state/jotai";
 import { createSignal, createEffect, Show, For, onCleanup } from "solid-js";
 import type { Accessor } from "solid-js";
 import { historyEnabledAtom, showOfflineModeFeaturesAtom, autoOfflineModeAtom, selectedOllamaModelAtom, betaKanbanEnabledAtom } from "../../../lib/atoms";
-import { trpc } from "../../../lib/trpc";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { Switch } from "../../ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select";
 import { ExternalLinkIcon } from "../../ui/icons";
@@ -26,18 +26,18 @@ const MINIMUM_OLLAMA_VERSION = "0.14.2";
 const RECOMMENDED_MODEL = "qwen3-coder:30b";
 export function AgentsBetaTab() {
 	const isNarrowScreen = useIsNarrowScreen();
-	const [historyEnabled, setHistoryEnabled] = useAtom(historyEnabledAtom);
-	const [showOfflineFeatures, setShowOfflineFeatures] = useAtom(showOfflineModeFeaturesAtom);
-	const [autoOffline, setAutoOffline] = useAtom(autoOfflineModeAtom);
-	const [selectedOllamaModel, setSelectedOllamaModel] = useAtom(selectedOllamaModelAtom);
-	const [kanbanEnabled, setKanbanEnabled] = useAtom(betaKanbanEnabledAtom);
+	const [historyEnabled, setHistoryEnabled] = historyEnabledAtom;
+	const [showOfflineFeatures, setShowOfflineFeatures] = showOfflineModeFeaturesAtom;
+	const [autoOffline, setAutoOffline] = autoOfflineModeAtom;
+	const [selectedOllamaModel, setSelectedOllamaModel] = selectedOllamaModelAtom;
+	const [kanbanEnabled, setKanbanEnabled] = betaKanbanEnabledAtom;
 	const [copied, setCopied] = createSignal(false);
 	const [updateStatus, setUpdateStatus] = createSignal("idle");
-	const [updateVersion, setUpdateVersion] = createSignal(null);
-	const [currentVersion, setCurrentVersion] = createSignal(null);
+	const [updateVersion, setUpdateVersion] = createSignal<string | null>(null);
+	const [currentVersion, setCurrentVersion] = createSignal<string | null>(null);
 	// Get current version on mount
 	createEffect(() => {
-		window.desktopApi?.getVersion().then(setCurrentVersion);
+		desktopRpc.system.getVersion().then(setCurrentVersion);
 	});
 	// Check for updates with force flag to bypass cache
 	const handleCheckForUpdates = async () => {
@@ -64,10 +64,13 @@ export function AgentsBetaTab() {
 		}
 	};
 	// Get Ollama status
-	const { data: ollamaStatus } = trpc.ollama.getStatus.useQuery(undefined, {
+	const ollamaStatusQuery = useQuery(() => ({
+		queryKey: ["ollama", "getStatus"],
+		queryFn: () => desktopRpc.ollama.getStatus(),
 		refetchInterval: showOfflineFeatures() ? 3e4 : false,
-		enabled: showOfflineFeatures()
-	});
+		enabled: showOfflineFeatures(),
+	}));
+	const ollamaStatus = () => ollamaStatusQuery.data;
 	const handleCopy = () => {
 		navigator.clipboard.writeText(`ollama pull ${RECOMMENDED_MODEL}`);
 		setCopied(true);
@@ -144,11 +147,11 @@ export function AgentsBetaTab() {
                     Ollama Status
                   </span>
                   <p class="text-xs text-muted-foreground">
-                    {ollamaStatus?.ollama.available ? `Running - ${ollamaStatus.ollama.models.length} model${ollamaStatus.ollama.models.length !== 1 ? "s" : ""} installed` : "Not running or not installed"}
+                    {ollamaStatus()?.ollama.available ? `Running - ${ollamaStatus()!.ollama.models.length} model${ollamaStatus()!.ollama.models.length !== 1 ? "s" : ""} installed` : "Not running or not installed"}
                   </p>
                 </div>
                 <div class="flex items-center gap-1.5">
-                  <Show when={ollamaStatus?.ollama.available} fallback={<>
+                  <Show when={ollamaStatus()?.ollama.available} fallback={<>
                       <span class="h-2 w-2 rounded-full bg-muted-foreground/50" />
                       <span class="text-sm text-muted-foreground">Unavailable</span>
                     </>}>
@@ -159,7 +162,7 @@ export function AgentsBetaTab() {
               </div>
 
               { /* Model selector */}
-              <Show when={ollamaStatus?.ollama.available && ollamaStatus.ollama.models.length > 0}>
+              <Show when={ollamaStatus()?.ollama.available && (ollamaStatus()!.ollama.models.length > 0)}>
                 <div class="flex items-center justify-between gap-4">
                   <div class="flex-1 min-w-0">
                     <span class="text-sm font-medium text-foreground">
@@ -169,14 +172,14 @@ export function AgentsBetaTab() {
                       Select which model to use for offline mode
                     </p>
                   </div>
-                  <Select value={selectedOllamaModel() || ollamaStatus!.ollama.recommendedModel || ollamaStatus!.ollama.models[0]} onValueChange={(value) => setSelectedOllamaModel(value)}>
+                  <Select value={selectedOllamaModel() || ollamaStatus()!.ollama.recommendedModel || ollamaStatus()!.ollama.models[0]} onChange={(value: string) => setSelectedOllamaModel(value)}>
                     <SelectTrigger class="w-auto shrink-0">
                       <SelectValue placeholder="Select model" />
                     </SelectTrigger>
                     <SelectContent>
-                      <For each={ollamaStatus!.ollama.models}>
+                      <For each={ollamaStatus()!.ollama.models}>
                         {(model) => {
-                          const isRecommended = model === ollamaStatus!.ollama.recommendedModel;
+                          const isRecommended = model === ollamaStatus()!.ollama.recommendedModel;
                           return <SelectItem value={model}>
                             <span class="truncate">
                               {model}

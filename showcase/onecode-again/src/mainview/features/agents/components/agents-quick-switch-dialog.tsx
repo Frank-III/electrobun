@@ -1,8 +1,6 @@
-"use client";
 import { createMemo, Show } from "solid-js";
 import { Presence } from "solid-motionone";
 import { Portal } from "solid-js/web";
-import { useAtomValue } from "../../../lib/state/jotai";
 import { loadingSubChatsAtom } from "../atoms";
 import { AgentChatCard } from "./agent-chat-card";
 interface AgentsQuickSwitchDialogProps {
@@ -27,7 +25,7 @@ interface AgentsQuickSwitchDialogProps {
 export function AgentsQuickSwitchDialog({ isOpen, chats, selectedIndex, projectsMap, onHover }: AgentsQuickSwitchDialogProps) {
 	if (typeof window === "undefined") return null;
 	// Derive loading parent chat IDs from loadingSubChats Map
-	const loadingSubChats = useAtomValue(loadingSubChatsAtom);
+	const loadingSubChats = loadingSubChatsAtom[0];
 	const loadingChatIds = createMemo(() => new Set([...loadingSubChats.values()]));
 	return (
 		<Portal>

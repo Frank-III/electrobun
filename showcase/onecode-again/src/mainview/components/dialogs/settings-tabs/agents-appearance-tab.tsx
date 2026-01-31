@@ -1,7 +1,6 @@
 import { useTheme } from "../../../lib/hooks/use-theme";
 import { createSignal, createEffect, createMemo, Show, For, onCleanup } from "solid-js";
 import { IconSpinner } from "../../../icons";
-import { useAtom, useSetAtom } from "../../../lib/state/jotai";
 import { cn } from "../../../lib/utils";
 import { selectedFullThemeIdAtom, fullThemeDataAtom, systemLightThemeIdAtom, systemDarkThemeIdAtom, showWorkspaceIconAtom, alwaysExpandTodoListAtom, importedThemesAtom, type VSCodeFullTheme } from "../../../lib/atoms";
 import { BUILTIN_THEMES, getBuiltinThemeById, BUILTIN_THEME_NAMES } from "../../../lib/themes/builtin-themes";
@@ -35,11 +34,12 @@ function isVisibleColor(hex: string | undefined): boolean {
 	return true;
 }
 // Theme preview box with dot and "Aa" text
-function ThemePreviewBox({ theme, size = "md", className }: {
+function ThemePreviewBox(props: {
 	theme: VSCodeFullTheme | null;
 	size?: "sm" | "md";
-	className?: string;
+	class?: string;
 }) {
+	const { theme, size = "md", class: cls } = props;
 	const bgColor = theme?.colors?.["editor.background"] || "#1a1a1a";
 	// Get accent color, preferring button.background and skipping transparent colors
 	const getAccentColor = () => {
@@ -60,7 +60,7 @@ function ThemePreviewBox({ theme, size = "md", className }: {
 	const isDark = theme ? theme.type === "dark" : true;
 	const sizeClasses = size === "sm" ? "w-7 h-5 text-[9px] gap-0.5 rounded-sm" : "w-8 h-6 text-[10px] gap-1 rounded-sm";
 	const dotSize = size === "sm" ? "w-1 h-1" : "w-1.5 h-1.5";
-	return <div class={cn("flex-shrink-0 flex items-center justify-center font-semibold", sizeClasses, className)} style={{
+	return <div class={cn("flex-shrink-0 flex items-center justify-center font-semibold", sizeClasses,cls)} style={{
 		"background-color": bgColor,
 		"box-shadow": "inset 0 0 0 0.5px rgba(128, 128, 128, 0.3)"
 	}}>
@@ -77,15 +77,15 @@ export function AgentsAppearanceTab() {
 	const [mounted, setMounted] = createSignal(false);
 	const isNarrowScreen = useIsNarrowScreen();
 	// Theme atoms
-	const [selectedThemeId, setSelectedThemeId] = useAtom(selectedFullThemeIdAtom);
-	const [systemLightThemeId, setSystemLightThemeId] = useAtom(systemLightThemeIdAtom);
-	const [systemDarkThemeId, setSystemDarkThemeId] = useAtom(systemDarkThemeIdAtom);
-	const setFullThemeData = useSetAtom(fullThemeDataAtom);
-	const [importedThemes, setImportedThemes] = useAtom(importedThemesAtom);
+	const [selectedThemeId, setSelectedThemeId] = selectedFullThemeIdAtom;
+	const [systemLightThemeId, setSystemLightThemeId] = systemLightThemeIdAtom;
+	const [systemDarkThemeId, setSystemDarkThemeId] = systemDarkThemeIdAtom;
+	const setFullThemeData = fullThemeDataAtom[1];
+	const [importedThemes, setImportedThemes] = importedThemesAtom;
 	// Sidebar settings
-	const [showWorkspaceIcon, setShowWorkspaceIcon] = useAtom(showWorkspaceIconAtom);
+	const [showWorkspaceIcon, setShowWorkspaceIcon] = showWorkspaceIconAtom;
 	// To-do list preference
-	const [alwaysExpandTodoList, setAlwaysExpandTodoList] = useAtom(alwaysExpandTodoListAtom);
+	const [alwaysExpandTodoList, setAlwaysExpandTodoList] = alwaysExpandTodoListAtom;
 	// VS Code themes state
 	const [isScanning, setIsScanning] = createSignal(false);
 	createEffect(() => {
@@ -251,7 +251,7 @@ export function AgentsAppearanceTab() {
             </span>
           </div>
 
-          <Select value={selectedThemeId() ?? "system"} onValueChange={handleThemeChange}>
+          <Select value={selectedThemeId() ?? "system"} onChange={handleThemeChange}>
             <SelectTrigger class="w-auto px-2">
               <div class="flex items-center gap-2 min-w-0 -ml-[3px]">
                 <Show when={isSystemMode()} fallback={<>
@@ -332,7 +332,7 @@ export function AgentsAppearanceTab() {
                   </span>
                 </div>
 
-                <Select value={systemLightThemeId()} onValueChange={handleSystemLightThemeChange}>
+                <Select value={systemLightThemeId()} onChange={handleSystemLightThemeChange}>
                   <SelectTrigger class="w-auto px-2">
                     <div class="flex items-center gap-2 min-w-0 -ml-[3px]">
                       <ThemePreviewBox theme={systemLightTheme() || null} />
@@ -363,7 +363,7 @@ export function AgentsAppearanceTab() {
                   </span>
                 </div>
 
-                <Select value={systemDarkThemeId()} onValueChange={handleSystemDarkThemeChange}>
+                <Select value={systemDarkThemeId()} onChange={handleSystemDarkThemeChange}>
                   <SelectTrigger class="w-auto px-2">
                     <div class="flex items-center gap-2 min-w-0 -ml-[3px]">
                       <ThemePreviewBox theme={systemDarkTheme() || null} />

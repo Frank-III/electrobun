@@ -4,7 +4,6 @@
  */
 
 import { createEffect, onCleanup } from "solid-js"
-import { useAtomValue } from "../../../lib/state/jotai"
 import { isDesktopApp } from "../../../lib/utils/platform"
 import { desktopNotificationsEnabledAtom } from "../../../lib/atoms"
 
@@ -29,7 +28,7 @@ export interface NotificationOptions {
 }
 
 export function useDesktopNotifications() {
-  const notificationsEnabled = useAtomValue(desktopNotificationsEnabledAtom)
+  const notificationsEnabled = desktopNotificationsEnabledAtom[0]
 
   // track last notification time to throttle rapid-fire notifications
   let lastNotificationTime = 0

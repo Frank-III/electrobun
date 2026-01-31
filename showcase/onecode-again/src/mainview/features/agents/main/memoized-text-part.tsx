@@ -1,4 +1,3 @@
-"use client";
 import { createEffect, createSignal, onCleanup } from "solid-js";
 import { cn } from "../../../lib/utils";
 import { MemoizedMarkdown } from "../../../components/chat-markdown-renderer";
@@ -44,7 +43,7 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentM
 				fragments.push(text.slice(lastIndex, searchIndex));
 			}
 			const mark = document.createElement("mark");
-			mark.className = "search-highlight";
+			mark.class = "search-highlight";
 			mark.textContent = text.slice(searchIndex, searchIndex + searchText.length);
 			if (currentMatchIndex !== null && matchCounter === currentMatchIndex) {
 				mark.classList.add("search-highlight-current");
@@ -96,11 +95,13 @@ export function MemoizedTextPart({ text, messageId, partIndex, isFinalText, visi
 	// Apply DOM-based highlighting after render
 	// Skip during streaming to avoid performance issues
 	createEffect(() => {
-		if (!containerRef.current || isStreaming || !searchQuery) return;
-		highlightTextInDom(containerRef.current, searchQuery, currentMatchIndexInPart);
+		const el = containerRef();
+		if (!el || isStreaming || !searchQuery) return;
+		highlightTextInDom(el, searchQuery, currentMatchIndexInPart);
 		onCleanup(() => {
-			if (containerRef.current) {
-				const existingHighlights = containerRef.current.querySelectorAll(".search-highlight");
+			const currentEl = containerRef();
+			if (currentEl) {
+				const existingHighlights = currentEl.querySelectorAll(".search-highlight");
 				existingHighlights.forEach((el) => {
 					const parent = el.parentNode;
 					if (parent) {

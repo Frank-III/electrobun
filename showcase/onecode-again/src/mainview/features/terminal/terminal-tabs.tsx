@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, For } from "solid-js";
+import { createEffect, createSignal, onCleanup, For, Show } from "solid-js";
 import { X } from "lucide-solid";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -100,19 +100,19 @@ function TerminalTab(props: TerminalTabProps) {
             { /* Terminal name or input */}
             {props.isEditing ? <input ref={el => inputRef = el} type="text" value={editValue()} onInput={(e) => setEditValue(e.currentTarget.value)} onKeyDown={handleKeyDown} onBlur={handleBlur} onClick={(e) => e.stopPropagation()} class={cn("relative z-0 text-left flex-1 min-w-0 pr-1 bg-transparent outline-none border-none", props.small ? "text-xs" : "text-sm")} /> : <span ref={props.textRef} class="relative z-0 text-left flex-1 min-w-0 pr-1 overflow-hidden flex items-center gap-1.5 whitespace-nowrap select-none cursor-[inherit]">
                 <span>{props.terminal.name}</span>
-                {shortPath() && <span class="text-muted-foreground">{shortPath()}</span>}
+                <Show when={shortPath()}><span class="text-muted-foreground">{shortPath()}</span></Show>
               </span>}
 
             { /* Gradient fade on the right when text is truncated */}
-            {props.isTruncated && !props.isEditing && <div class={cn("absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-[1] rounded-r-md opacity-100 group-hover:opacity-0 transition-opacity duration-200", props.isActive ? "bg-gradient-to-l from-muted to-transparent" : "bg-gradient-to-l from-background to-transparent")} />}
+            <Show when={props.isTruncated && !props.isEditing}><div class={cn("absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-[1] rounded-r-md opacity-100 group-hover:opacity-0 transition-opacity duration-200", props.isActive ? "bg-gradient-to-l from-muted to-transparent" : "bg-gradient-to-l from-background to-transparent")} /></Show>
 
             { /* Close button - only show when hovered and multiple tabs */}
-            {!props.isOnly && !props.isEditing && <div class="absolute right-0 top-0 bottom-0 flex items-center justify-end pr-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+            <Show when={!props.isOnly && !props.isEditing}><div class="absolute right-0 top-0 bottom-0 flex items-center justify-end pr-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
                 <div class={cn("absolute right-0 top-0 bottom-0 w-9 flex items-center justify-center rounded-r-md", props.isActive ? "bg-[linear-gradient(to_left,hsl(var(--muted))_0%,hsl(var(--muted))_60%,transparent_100%)]" : "bg-[linear-gradient(to_left,color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--background)))_0%,color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--background)))_60%,transparent_100%)]")} />
                 <button type="button" onClick={handleCloseClick} class="relative z-20 hover:text-foreground rounded p-0.5 transition-[color,transform] duration-150 ease-out active:scale-[0.97]" aria-label="Close terminal">
                   <X class="h-3 w-3" />
                 </button>
-              </div>}
+              </div></Show>
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent class="w-48">
@@ -245,7 +245,7 @@ export function TerminalTabs(props: TerminalTabsProps) {
 	});
 	return <div class="relative flex-1 min-w-0 flex items-center h-7">
       {	/* Left gradient */}
-      {showLeftGradient() && <div class="absolute left-0 top-0 bottom-0 w-8 pointer-events-none z-30" style={{ background: props.terminalBg ? `linear-gradient(to right, ${props.terminalBg}, transparent)` : undefined }} />}
+      <Show when={showLeftGradient()}><div class="absolute left-0 top-0 bottom-0 w-8 pointer-events-none z-30" style={{ background: props.terminalBg ? `linear-gradient(to right, ${props.terminalBg}, transparent)` : undefined }} /></Show>
 
       { /* Scrollable tabs container - with padding-right for plus button */}
       <div ref={el => tabsContainerRef = el} class={cn("flex items-center px-1 py-1 -my-1 gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-hide", !props.hidePlusButton && "pr-12")} style={{ "-webkit-app-region": "no-drag" }}>
@@ -269,7 +269,7 @@ export function TerminalTabs(props: TerminalTabsProps) {
       </div>
 
       {	/* Plus button - absolute positioned on right with gradient cover */}
-      {!props.hidePlusButton && <div class="absolute right-0 top-0 bottom-0 flex items-center z-20" style={{ "-webkit-app-region": "no-drag" }}>
+      <Show when={!props.hidePlusButton}><div class="absolute right-0 top-0 bottom-0 flex items-center z-20" style={{ "-webkit-app-region": "no-drag" }}>
           { /* Gradient to cover content peeking from the left */}
           <div class="w-6 h-full" style={{ background: props.terminalBg ? `linear-gradient(to right, transparent, ${props.terminalBg})` : undefined }} />
           <div class="h-full flex items-center pr-1" style={{ "background-color": props.terminalBg }}>
@@ -282,6 +282,6 @@ export function TerminalTabs(props: TerminalTabsProps) {
               <TooltipContent side="bottom">New terminal</TooltipContent>
             </Tooltip>
           </div>
-        </div>}
+        </div></Show>
     </div>;
 }

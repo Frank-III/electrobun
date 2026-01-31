@@ -6,7 +6,7 @@ import { Utils } from "electrobun/bun";
 import { desc, eq } from "drizzle-orm";
 import { getDatabase, projects } from "./db";
 import { getGitRemoteInfo } from "./git";
-import { trackProjectOpened } from "./analytics";
+
 import { getLaunchDirectory } from "./cli";
 
 async function runCommand(command: string, args: string[], cwd?: string) {
@@ -73,11 +73,6 @@ export function createProjectsHandlers() {
           .returning()
           .get();
 
-        trackProjectOpened({
-          id: updatedProject!.id,
-          hasGitRemote: !!gitInfo.remoteUrl,
-        });
-
         return updatedProject;
       }
 
@@ -94,10 +89,7 @@ export function createProjectsHandlers() {
         .returning()
         .get();
 
-      trackProjectOpened({
-        id: newProject!.id,
-        hasGitRemote: !!gitInfo.remoteUrl,
-      });
+      // Analytics removed: trackProjectOpened was here
 
       return newProject;
     },
@@ -211,10 +203,6 @@ export function createProjectsHandlers() {
           .get();
 
         if (existing) {
-          trackProjectOpened({
-            id: existing.id,
-            hasGitRemote: !!existing.gitRemoteUrl,
-          });
           return existing;
         }
 
@@ -232,12 +220,7 @@ export function createProjectsHandlers() {
           .returning()
           .get();
 
-        trackProjectOpened({
-          id: newProject!.id,
-          hasGitRemote: !!gitInfo.remoteUrl,
-        });
-
-        return newProject;
+      return newProject;
       }
 
       await mkdir(reposDir, { recursive: true });
@@ -257,11 +240,6 @@ export function createProjectsHandlers() {
         })
         .returning()
         .get();
-
-      trackProjectOpened({
-        id: newProject!.id,
-        hasGitRemote: !!gitInfo.remoteUrl,
-      });
 
       return newProject;
     },

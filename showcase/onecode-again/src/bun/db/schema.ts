@@ -47,7 +47,9 @@ export const chats = sqliteTable(
     prUrl: text("pr_url"),
     prNumber: integer("pr_number"),
   },
-  (table) => [index("chats_worktree_path_idx").on(table.worktreePath)],
+  (table) => ({
+    worktreePathIdx: index("chats_worktree_path_idx").on(table.worktreePath),
+  }),
 );
 
 export const chatsRelations = relations(chats, ({ one, many }) => ({
@@ -85,35 +87,29 @@ export const subChatsRelations = relations(subChats, ({ one }) => ({
   }),
 }));
 
+// Claude Code credentials (legacy table for backward compatibility)
 export const claudeCodeCredentials = sqliteTable("claude_code_credentials", {
-  id: text("id").primaryKey().default("default"),
+  id: text("id").primaryKey(),
   oauthToken: text("oauth_token").notNull(),
-  connectedAt: integer("connected_at", { mode: "timestamp" }).$defaultFn(
-    () => new Date(),
-  ),
+  connectedAt: integer("connected_at", { mode: "timestamp" }),
   userId: text("user_id"),
 });
 
+// Anthropic accounts (multi-account support)
 export const anthropicAccounts = sqliteTable("anthropic_accounts", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => createId()),
-  email: text("email"),
-  displayName: text("display_name"),
+  id: text("id").primaryKey(),
   oauthToken: text("oauth_token").notNull(),
-  connectedAt: integer("connected_at", { mode: "timestamp" }).$defaultFn(
-    () => new Date(),
-  ),
-  lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
+  displayName: text("display_name"),
+  email: text("email"),
+  connectedAt: integer("connected_at", { mode: "timestamp" }),
   desktopUserId: text("desktop_user_id"),
 });
 
+// Anthropic settings (singleton for active account selection)
 export const anthropicSettings = sqliteTable("anthropic_settings", {
-  id: text("id").primaryKey().default("singleton"),
+  id: text("id").primaryKey(),
   activeAccountId: text("active_account_id"),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(
-    () => new Date(),
-  ),
+  updatedAt: integer("updated_at", { mode: "timestamp" }),
 });
 
 export type Project = typeof projects.$inferSelect;

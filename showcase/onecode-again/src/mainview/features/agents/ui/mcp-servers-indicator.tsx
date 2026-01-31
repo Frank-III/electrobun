@@ -1,14 +1,13 @@
-"use client";
-import { useAtom } from "../../../lib/state/jotai";
 import { ChevronRight, Loader2 } from "lucide-solid";
-import { createEffect, createMemo, createSignal } from "solid-js";
+import { createEffect, createMemo, createSignal, Show, splitProps } from "solid-js";
 import { Button } from "../../../components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { OriginalMCPIcon } from "../../../components/ui/icons";
 import { sessionInfoAtom, type MCPServerStatus } from "../../../lib/atoms";
 import { cn } from "../../../lib/utils";
-import { trpc } from "../../../lib/trpc";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 interface McpServersIndicatorProps {
 	projectPath?: string;
 }
@@ -21,19 +20,24 @@ interface McpServersIndicatorProps {
 * - Expandable servers showing their tools
 * - Link to configure in ~/.claude.json
 */
-export function McpServersIndicator({ projectPath }: McpServersIndicatorProps) {
-	const [sessionInfo, setSessionInfo] = useAtom(sessionInfoAtom);
+export function McpServersIndicator(props: McpServersIndicatorProps) {
+	const [local] = splitProps(props, ["projectPath"]);
+	const [sessionInfo, setSessionInfo] = sessionInfoAtom;
 	// Fetch MCP config on mount if we have projectPath and no session info yet
-	const { data: mcpConfig } = trpc.claude.getMcpConfig.useQuery({ projectPath: projectPath! }, {
-		enabled: !!projectPath && !sessionInfo?.mcpServers?.length,
-		staleTime: 5 * 60 * 1e3
-	});
+	const mcpQuery = useQuery(() => ({
+		queryKey: ["claude", "getMcpConfig", local.projectPath] as const,
+		queryFn: () => desktopRpc.claude.getMcpConfig({ projectPath: local.projectPath! }),
+		enabled: !!local.projectPath && !sessionInfo?.mcpServers?.length,
+		staleTime: 5 * 60 * 1e3,
+	}));
+	const mcpConfig = () => mcpQuery.data;
 	// Update sessionInfo with MCP config if we don't have it yet
 	createEffect(() => {
-		if (mcpConfig?.mcpServers?.length && !sessionInfo?.mcpServers?.length) {
+		const config = mcpConfig();
+		if (config?.mcpServers?.length && !sessionInfo?.mcpServers?.length) {
 			setSessionInfo((prev) => ({
 				tools: prev?.tools || [],
-				mcpServers: mcpConfig.mcpServers.map((s) => ({
+				mcpServers: config.mcpServers.map((s) => ({
 					name: s.name,
 					status: s.status
 				})),
@@ -113,7 +117,7 @@ export function McpServersIndicator({ projectPath }: McpServersIndicatorProps) {
 				e.preventDefault();
 				setFocusedIndex((prev) => {
 					const next = prev < serverCount - 1 ? prev + 1 : 0;
-					serverButtonsRef.current[next]?.focus();
+					serverButtonsRef()[next]?.focus();
 					return next;
 				});
 				break;
@@ -121,7 +125,7 @@ export function McpServersIndicator({ projectPath }: McpServersIndicatorProps) {
 				e.preventDefault();
 				setFocusedIndex((prev) => {
 					const next = prev > 0 ? prev - 1 : serverCount - 1;
-					serverButtonsRef.current[next]?.focus();
+					serverButtonsRef()[next]?.focus();
 					return next;
 				});
 				break;
@@ -152,7 +156,7 @@ export function McpServersIndicator({ projectPath }: McpServersIndicatorProps) {
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent>
-          {connectedCount} MCP server{connectedCount !== 1 ? "s" : ""} connected
+          {connectedCount()} MCP server{connectedCount() !== 1 ? "s" : ""} connected
         </TooltipContent>
       </Tooltip>
 
@@ -174,7 +178,11 @@ export function McpServersIndicator({ projectPath }: McpServersIndicatorProps) {
 		return <div key={server.name} role="listitem">
                 {		/* Server row */}
                 <button ref={(el) => {
- serverButtonsRef.current[index] = el;
+ setServerButtonsRef((prev) => {
+		const next = [...prev];
+		next[index] = el;
+		return next;
+	});
 		}} onClick={() => hasTools && toggleServer(server.name)} onFocus={() => setFocusedIndex(index)} class={cn("w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors", hasTools ? "hover:bg-muted/50 cursor-pointer" : "cursor-default", focusedIndex === index && "bg-muted/50")} aria-expanded={hasTools ? isExpanded : undefined} aria-controls={hasTools ? `tools-${server.name}` : undefined} tabIndex={0} title={server.error || getStatusText(server.status)}>
                   {		/* Expand/collapse chevron */}
                   <ChevronRight class={cn("h-3 w-3 text-muted-foreground transition-transform shrink-0", isExpanded && "rotate-90", !hasTools && "opacity-0")} aria-hidden="true" />
@@ -185,34 +193,43 @@ export function McpServersIndicator({ projectPath }: McpServersIndicatorProps) {
                   { /* Server name and version */}
                   <div class="flex-1 min-w-0">
                     <span class="truncate block">{server.name}</span>
-                    {server.serverInfo?.version && <span class="text-[10px] text-muted-foreground/70 truncate block">
+                    <Show when={server.serverInfo?.version}>
+                      <span class="text-[10px] text-muted-foreground/70 truncate block">
                         v{server.serverInfo.version}
-                      </span>}
+                      </span>
+                    </Show>
                   </div>
 
                   { /* Tool count badge */}
-                  {hasTools && <span class="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">
+                  <Show when={hasTools}>
+                    <span class="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">
                       {tools.length} tool{tools.length !== 1 ? "s" : ""}
-                    </span>}
+                    </span>
+                  </Show>
                 </button>
 
                 { /* Error message */}
-                {server.error && <div class="pl-10 pr-3 pb-1 text-[10px] text-red-500/80 truncate" title={server.error}>
+                <Show when={server.error}>
+                  <div class="pl-10 pr-3 pb-1 text-[10px] text-red-500/80 truncate" title={server.error}>
                     {server.error}
-                  </div>}
+                  </div>
+                </Show>
 
                 { /* Tools list (expanded) */}
-                {isExpanded && hasTools && <div id={`tools-${server.name}`} class="pl-8 pr-3 py-1 space-y-0.5" role="list" aria-label={`Tools for ${server.name}`}>
+                <Show when={isExpanded && hasTools}>
+                  <div id={`tools-${server.name}`} class="pl-8 pr-3 py-1 space-y-0.5" role="list" aria-label={`Tools for ${server.name}`}>
                     {tools.map((tool: string) => <div key={tool} class="text-xs text-muted-foreground py-0.5 truncate" title={tool} role="listitem">
                         {tool}
                       </div>)}
-                  </div>}
+                  </div>
+                </Show>
               </div>;
  })}
         </div>
 
         {	/* Plugins section */}
-        {sessionInfo.plugins && sessionInfo.plugins.length > 0 && <>
+        <Show when={sessionInfo.plugins && sessionInfo.plugins.length > 0}>
+          <>
             <div class="border-t px-3 py-2">
               <h4 class="font-medium text-sm" id="plugins-title">
                 Plugins
@@ -224,7 +241,8 @@ export function McpServersIndicator({ projectPath }: McpServersIndicatorProps) {
                   <span class="truncate">{plugin.name}</span>
                 </div>)}
             </div>
-          </>}
+          </>
+        </Show>
 
         { /* Footer with config hint */}
         <div class="border-t px-3 py-2 text-xs text-muted-foreground">

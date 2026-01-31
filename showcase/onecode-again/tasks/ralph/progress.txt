@@ -35,6 +35,9 @@ Started: 2026-01-28
 - solid-motionone transition uses `easing` prop, not `ease` (Framer Motion style)
 - Use `<Presence exitBeforeEnter>` for AnimatePresence mode="wait" behavior
 - window.desktopApi is typed in src/types/globals.d.ts - use `window.desktopApi?.method()` not `(window as any).desktopApi`
+- React's `useId` hook becomes SolidJS's `createUniqueId()`
+- React's `flushSync` is not needed - SolidJS signals update synchronously
+- React's `createRoot`/`render` pattern: `const dispose = render(() => <Component />, container); dispose()` in SolidJS
 
 ---
 
@@ -499,4 +502,22 @@ Thread: https://ampcode.com/threads/T-019c0681-e024-74d5-9617-507dca3f83de
   - Functions that intentionally return cleanup callbacks (like `subscribe()` methods) should NOT be converted
   - SolidJS auto-tracks dependencies - no need for dependency arrays
   - Many hook files still had React imports (useEffect, useRef, useCallback) which were also converted
+---
+
+## 2026-01-28 - US-026
+Thread: https://ampcode.com/threads/T-019c0699-f2d9-77a6-9b76-9f8fa0476d6e
+- Build verification - fixed remaining React patterns that prevented build
+- Files changed:
+  - src/mainview/icons/framework-icons.tsx - useId -> createUniqueId (React hook doesn't exist in SolidJS)
+  - src/mainview/features/agents/mentions/agents-file-mention.tsx - flushSync/createRoot -> render (SolidJS pattern for rendering to DOM)
+  - src/mainview/components/update-banner.tsx - removed flushSync (SolidJS signals are synchronous)
+  - src/mainview/features/agents/main/active-chat.tsx - removed flushSync (SolidJS signals are synchronous)
+  - Deleted 200+ stale .js transpiled files from previous React build
+- **Learnings for future iterations:**
+  - useId from React doesn't exist in SolidJS - use createUniqueId instead
+  - flushSync is a React concept - SolidJS signals update synchronously by default, so it's not needed
+  - createRoot/render pattern in React becomes render() from solid-js/web which returns a dispose function
+  - When rendering SolidJS components to DOM imperatively, use: `const dispose = render(() => <Component />, container); dispose()`
+  - Backend (src/bun/) has pre-existing electrobun type errors unrelated to this migration
+  - The UI build (bun run ui:build) passes successfully with 739 files
 ---

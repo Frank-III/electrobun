@@ -1,6 +1,4 @@
-"use client";
 import { createMemo, createSignal } from "solid-js";
-import { useAtom } from "../../lib/state/jotai";
 import { GripVertical, Box, TerminalSquare, ListTodo } from "lucide-solid";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -27,8 +25,8 @@ function getWidgetIcon(widgetId: WidgetId) {
 export function WidgetSettingsPopup({ workspaceId, isRemoteChat = false }: WidgetSettingsPopupProps) {
 	const visibilityAtom = createMemo(() => widgetVisibilityAtomFamily(workspaceId));
 	const orderAtom = createMemo(() => widgetOrderAtomFamily(workspaceId));
-	const [visibleWidgets, setVisibleWidgets] = useAtom(visibilityAtom);
-	const [widgetOrder, setWidgetOrder] = useAtom(orderAtom);
+	const [visibleWidgets, setVisibleWidgets] = visibilityAtom;
+	const [widgetOrder, setWidgetOrder] = orderAtom;
 	// Drag state
 	const [draggedWidget, setDraggedWidget] = createSignal(null);
 	const [dragOverWidget, setDragOverWidget] = createSignal(null);
@@ -52,7 +50,7 @@ export function WidgetSettingsPopup({ workspaceId, isRemoteChat = false }: Widge
 	const handleDragOver = (e: DragEvent, widgetId: WidgetId) => {
 		e.preventDefault();
 		e.dataTransfer.dropEffect = "move";
-		if (draggedWidget && draggedWidget !== widgetId) {
+		if (draggedWidget() && draggedWidget() !== widgetId) {
 			setDragOverWidget(widgetId);
 		}
 	};
@@ -61,7 +59,7 @@ export function WidgetSettingsPopup({ workspaceId, isRemoteChat = false }: Widge
 	};
 	const handleDrop = (e: DragEvent, targetWidgetId: WidgetId) => {
 		e.preventDefault();
-		if (!draggedWidget || draggedWidget === targetWidgetId) {
+		if (!draggedWidget() || draggedWidget() === targetWidgetId) {
 			setDraggedWidget(null);
 			setDragOverWidget(null);
 			return;

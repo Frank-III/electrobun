@@ -1,5 +1,6 @@
-import type { ChatTransport, UIMessage } from "ai"
-import { toast } from "solid-sonner"
+import type { UIMessage, UIMessageChunk } from "../../../../shared/chat-rpc";
+import type { RpcChatTransport } from "./rpc-chat";
+import { toast } from "solid-sonner";
 
 // Cache the API base URL (fetched once from main process)
 let cachedApiBase: string | null = null
@@ -11,8 +12,6 @@ async function getApiBase(): Promise<string> {
   }
   return cachedApiBase
 }
-
-type UIMessageChunk = any
 
 type RemoteChatTransportConfig = {
   chatId: string
@@ -31,15 +30,18 @@ function generateStreamId(): string {
 }
 
 /**
- * Remote chat transport for sandbox chats
- * Uses IPC streaming to communicate with the web backend (bypasses CORS)
+ * Remote chat transport for sandbox chats (backend uses Claude Agent SDK).
+ * Uses IPC streaming to communicate with the web backend (bypasses CORS).
  */
-export class RemoteChatTransport implements ChatTransport<UIMessage> {
+export class RemoteChatTransport implements RpcChatTransport {
   constructor(private config: RemoteChatTransportConfig) {}
 
   async sendMessages(options: {
-    messages: UIMessage[]
-    abortSignal?: AbortSignal
+    trigger: "submit-message" | "regenerate-message";
+    chatId: string;
+    messageId: string | undefined;
+    messages: UIMessage[];
+    abortSignal: AbortSignal | undefined;
   }): Promise<ReadableStream<UIMessageChunk>> {
     if (!window.desktopApi?.streamFetch) {
       console.error("[RemoteTransport] Desktop API not available")
@@ -167,7 +169,7 @@ export class RemoteChatTransport implements ChatTransport<UIMessage> {
           }
 
           try {
-            const chunk = JSON.parse(data)
+            const chunk = JSON.parse(data) as UIMessageChunk
             chunkCount++
             if (chunkCount <= 3) {
               console.log(`[RemoteTransport] Chunk #${chunkCount}`, {
@@ -191,9 +193,9 @@ export class RemoteChatTransport implements ChatTransport<UIMessage> {
     }
 
     // Set up IPC listeners
-    cleanupChunk = window.desktopApi.onStreamChunk(streamId, processBytes)
+    cleanupChunk = window.desktopApi!.onStreamChunk(streamId, processBytes)
 
-    cleanupDone = window.desktopApi.onStreamDone(streamId, () => {
+    cleanupDone = window.desktopApi!.onStreamDone(streamId, () => {
       console.log(`[RemoteTransport] DONE sub=${subId} chunks=${chunkCount}`)
       streamDone = true
       if (resolveNext) {
@@ -202,7 +204,7 @@ export class RemoteChatTransport implements ChatTransport<UIMessage> {
       }
     })
 
-    cleanupError = window.desktopApi.onStreamError(streamId, (error: string) => {
+    cleanupError = window.desktopApi!.onStreamError(streamId, (error: string) => {
       console.error(`[RemoteTransport] Stream error sub=${subId}:`, error)
       streamError = new Error(error)
       if (rejectNext) {
@@ -268,7 +270,9 @@ export class RemoteChatTransport implements ChatTransport<UIMessage> {
     })
   }
 
-  async reconnectToStream(): Promise<ReadableStream<UIMessageChunk> | null> {
+  async reconnectToStream(_options: {
+    chatId: string
+  }): Promise<ReadableStream<UIMessageChunk> | null> {
     // TODO: Implement stream reconnection using stream_id from sub-chat
     return null
   }

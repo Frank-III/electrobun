@@ -1,7 +1,6 @@
-"use client";
-import { useAtomValue } from "../../../lib/state/jotai";
+import type { JSX } from "solid-js";
 import { ListTree } from "lucide-solid";
-import { createMemo, createSignal } from "solid-js";
+import { createMemo, createSignal, Show } from "solid-js";
 import { CollapseIcon, ExpandIcon, IconTextUndo, PlanIcon } from "../../../components/ui/icons";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { cn } from "../../../lib/utils";
@@ -68,15 +67,17 @@ interface CollapsibleStepsProps {
 	children: JSX.Element;
 	defaultExpanded?: boolean;
 }
-function CollapsibleSteps({ stepsCount, children, defaultExpanded = false }: CollapsibleStepsProps) {
-	const [isExpanded, setIsExpanded] = createSignal(defaultExpanded);
-	if (stepsCount === 0) return null;
-	return <div class="mb-2" data-collapsible-steps="true">
+function CollapsibleSteps(props: CollapsibleStepsProps) {
+	const stepsCount = () => props.stepsCount;
+	const [isExpanded, setIsExpanded] = createSignal(props.defaultExpanded ?? false);
+	return (
+		<Show when={(stepsCount()) > 0} fallback={null}>
+			<div class="mb-2" data-collapsible-steps="true">
       <div class="flex items-center justify-between rounded-md py-0.5 px-2 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setIsExpanded(!isExpanded)}>
         <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
           <ListTree class="w-3.5 h-3.5 flex-shrink-0" />
           <span class="font-medium whitespace-nowrap">
-            {stepsCount} {stepsCount === 1 ? "step" : "steps"}
+            {stepsCount()} {stepsCount() === 1 ? "step" : "steps"}
           </span>
         </div>
         <button class="p-1 rounded-md hover:bg-accent transition-[background-color,transform] duration-150 ease-out active:scale-95" onClick={(e) => {
@@ -89,8 +90,12 @@ function CollapsibleSteps({ stepsCount, children, defaultExpanded = false }: Col
           </div>
         </button>
       </div>
-      {isExpanded() && <div class="mt-1 space-y-1.5">{children}</div>}
-    </div>;
+      <Show when={isExpanded()}>
+          <div class="mt-1 space-y-1.5">{props.children}</div>
+        </Show>
+    </div>
+		</Show>
+	);
 }
 // ============================================================================
 // ASSISTANT MESSAGE ITEM - MEMOIZED BY MESSAGE ID + PARTS LENGTH
@@ -173,23 +178,24 @@ function areMessagePropsEqual(prev: AssistantMessageItemProps, next: AssistantMe
 	// Nothing changed - skip re-render
 	return true;
 }
-export function AssistantMessageItem({ message, isLastMessage, isStreaming, status, isMobile, subChatId, chatId, sandboxSetupStatus = "ready" }: AssistantMessageItemProps) {
-	const onRollback = useAtomValue(rollbackHandlerAtom);
-	const isRollingBack = useAtomValue(isRollingBackAtom);
-	const messageParts = message?.parts || [];
-	const contentParts = createMemo(() => messageParts.filter((p: any) => p.type !== "step-start"));
-	const shouldShowPlanning = sandboxSetupStatus === "ready" && isStreaming && isLastMessage && contentParts.length === 0;
-	const { nestedToolsMap, nestedToolIds, orphanTaskGroups, orphanToolCallIds, orphanFirstToolCallIds } = createMemo(() => {
+export function AssistantMessageItem(props: AssistantMessageItemProps) {
+	const onRollback = rollbackHandlerAtom[0];
+	const isRollingBack = isRollingBackAtom[0];
+	const messageParts = () => props.message?.parts || [];
+	const contentParts = createMemo(() => messageParts().filter((p: any) => p.type !== "step-start"));
+	const shouldShowPlanning = createMemo(() => (props.sandboxSetupStatus ?? "ready") === "ready" && props.isStreaming && props.isLastMessage && contentParts().length === 0);
+	const toolDataMemo = createMemo(() => {
+		const parts = messageParts();
 		const nestedToolsMap = new Map<string, any[]>();
 		const nestedToolIds = new Set<string>();
-		const taskPartIds = new Set(messageParts.filter((p: any) => p.type === "tool-Task" && p.toolCallId).map((p: any) => p.toolCallId));
+		const taskPartIds = new Set(parts.filter((p: any) => p.type === "tool-Task" && p.toolCallId).map((p: any) => p.toolCallId));
 		const orphanTaskGroups = new Map<string, {
 			parts: any[];
 			firstToolCallId: string;
 		}>();
 		const orphanToolCallIds = new Set<string>();
 		const orphanFirstToolCallIds = new Set<string>();
-		for (const part of messageParts) {
+		for (const part of parts) {
 			if (part.toolCallId?.includes(":")) {
 				const parentId = part.toolCallId.split(":")[0];
 				if (taskPartIds.has(parentId)) {
@@ -221,6 +227,12 @@ export function AssistantMessageItem({ message, isLastMessage, isStreaming, stat
 			orphanFirstToolCallIds
 		};
 	});
+	// Derived accessors for tool data
+	const nestedToolsMap = createMemo(() => toolDataMemo().nestedToolsMap);
+	const nestedToolIds = createMemo(() => toolDataMemo().nestedToolIds);
+	const orphanTaskGroups = createMemo(() => toolDataMemo().orphanTaskGroups);
+	const orphanToolCallIds = createMemo(() => toolDataMemo().orphanToolCallIds);
+	const orphanFirstToolCallIds = createMemo(() => toolDataMemo().orphanFirstToolCallIds);
 	// Collect all plan operations (Write/Edit) for unified handling
 	const planOpsSummary = createMemo(() => {
 		const operations: Array<{
@@ -228,8 +240,9 @@ export function AssistantMessageItem({ message, isLastMessage, isStreaming, stat
 			part: any;
 			index: number;
 		}> = [];
-		for (let i = 0; i < messageParts.length; i++) {
-			const part = messageParts[i];
+		const parts = messageParts();
+		for (let i = 0; i < parts.length; i++) {
+			const part = parts[i];
 			const filePath = part.input?.file_path || "";
 			if ((part.type === "tool-Write" || part.type === "tool-Edit") && isPlanFile(filePath)) {
 				operations.push({
@@ -257,11 +270,12 @@ export function AssistantMessageItem({ message, isLastMessage, isStreaming, stat
 		};
 	});
 	// Collapsing logic: collapse only if final text exists after tools
-	const { shouldCollapse, visibleStepsCount, collapseBeforeIndex } = createMemo(() => {
+	const collapseDataMemo = createMemo(() => {
+		const parts = messageParts();
 		let lastToolIndex = -1;
 		let lastTextIndex = -1;
-		for (let i = 0; i < messageParts.length; i++) {
-			const part = messageParts[i];
+		for (let i = 0; i < parts.length; i++) {
+			const part = parts[i];
 			// Ignore ExitPlanMode - it's not a real tool for the user
 			if (part.type?.startsWith("tool-") && part.type !== "tool-ExitPlanMode") {
 				lastToolIndex = i;
@@ -272,18 +286,21 @@ export function AssistantMessageItem({ message, isLastMessage, isStreaming, stat
 		}
 		const hasToolsAndFinalText = lastToolIndex !== -1 && lastTextIndex > lastToolIndex;
 		const finalTextIndex = hasToolsAndFinalText ? lastTextIndex : -1;
-		const hasFinalText = finalTextIndex !== -1 && (!isStreaming || !isLastMessage);
+		const hasFinalText = finalTextIndex !== -1 && (!isStreaming || !props.isLastMessage);
 		// Collapse only when there's final text after tools
 		const shouldCollapse = hasFinalText;
 		const collapseBeforeIndex = hasFinalText ? finalTextIndex : -1;
 		// Calculate visible steps count for collapsible header
-		const stepParts = shouldCollapse && collapseBeforeIndex !== -1 ? messageParts.slice(0, collapseBeforeIndex) : [];
-		const visibleStepsCount = stepParts.filter((p: any) => {
+		const stepPartsLocal = shouldCollapse && collapseBeforeIndex !== -1 ? messageParts.slice(0, collapseBeforeIndex) : [];
+		const nestedIds = nestedToolIds();
+		const orphanIds = orphanToolCallIds();
+		const orphanFirstIds = orphanFirstToolCallIds();
+		const visibleStepsCount = stepPartsLocal.filter((p: any) => {
 			if (p.type === "step-start") return false;
 			if (p.type === "tool-TaskOutput") return false;
 			if (p.type === "tool-ExitPlanMode") return false;
-			if (p.toolCallId && nestedToolIds.has(p.toolCallId)) return false;
-			if (p.toolCallId && orphanToolCallIds.has(p.toolCallId) && !orphanFirstToolCallIds.has(p.toolCallId)) return false;
+			if (p.toolCallId && nestedIds.has(p.toolCallId)) return false;
+			if (p.toolCallId && orphanIds.has(p.toolCallId) && !orphanFirstIds.has(p.toolCallId)) return false;
 			if (p.type === "text" && !p.text?.trim()) return false;
 			return true;
 		}).length;
@@ -293,59 +310,63 @@ export function AssistantMessageItem({ message, isLastMessage, isStreaming, stat
 			collapseBeforeIndex
 		};
 	});
+	// Derived accessors for collapse data
+	const shouldCollapse = createMemo(() => collapseDataMemo().shouldCollapse);
+	const visibleStepsCount = createMemo(() => collapseDataMemo().visibleStepsCount);
+	const collapseBeforeIndex = createMemo(() => collapseDataMemo().collapseBeforeIndex);
 	// Check if any plan operation is in collapsed steps (before collapseBeforeIndex)
 	const hasPlanInCollapsedSteps = createMemo(() => {
-		if (!shouldCollapse || collapseBeforeIndex === -1) return false;
-		return planOpsSummary.operations.some((op) => op.index < collapseBeforeIndex);
+		if (!shouldCollapse() || collapseBeforeIndex() === -1) return false;
+		return planOpsSummary().operations.some((op: { index: number }) => op.index < collapseBeforeIndex());
 	});
 	// Get the last plan operation from collapsed steps for showing card
 	const lastCollapsedPlanOp = createMemo(() => {
-		if (!hasPlanInCollapsedSteps) return null;
-		const collapsedOps = planOpsSummary.operations.filter((op) => op.index < collapseBeforeIndex);
+		if (!hasPlanInCollapsedSteps()) return null;
+		const collapsedOps = planOpsSummary().operations.filter((op: { index: number }) => op.index < collapseBeforeIndex());
 		return collapsedOps[collapsedOps.length - 1] || null;
 	});
 	const stepParts = createMemo(() => {
-		if (!shouldCollapse || collapseBeforeIndex === -1) return [];
-		return messageParts.slice(0, collapseBeforeIndex);
+		if (!shouldCollapse() || collapseBeforeIndex() === -1) return [];
+		return messageParts.slice(0, collapseBeforeIndex());
 	});
 	const finalParts = createMemo(() => {
-		if (!shouldCollapse || collapseBeforeIndex === -1) return messageParts;
-		return messageParts.slice(collapseBeforeIndex);
+		if (!shouldCollapse() || collapseBeforeIndex() === -1) return messageParts;
+		return messageParts.slice(collapseBeforeIndex());
 	});
 	const hasTextContent = createMemo(() => messageParts.some((p: any) => p.type === "text" && p.text?.trim()));
-	const msgMetadata = message?.metadata as AgentMessageMetadata;
+	const msgMetadata = props.message?.metadata as AgentMessageMetadata;
 	const renderPart = (part: any, idx: number, isFinal = false) => {
 		if (part.type === "step-start") return null;
 		if (part.type === "tool-TaskOutput") return null;
-		if (part.toolCallId && orphanToolCallIds.has(part.toolCallId)) {
-			if (!orphanFirstToolCallIds.has(part.toolCallId)) return null;
+		if (part.toolCallId && orphanToolCallIds().has(part.toolCallId)) {
+			if (!orphanFirstToolCallIds().has(part.toolCallId)) return null;
 			const parentId = part.toolCallId.split(":")[0];
-			const group = orphanTaskGroups.get(parentId);
+			const group = orphanTaskGroups().get(parentId);
 			if (group) {
-				return <AgentTaskTool key={idx} part={{
+				return <AgentTaskTool part={{
 					type: "tool-Task",
 					toolCallId: parentId,
 					input: {
 						subagent_type: "unknown-agent",
 						description: "Incomplete task"
 					}
-				}} nestedTools={group.parts} chatStatus={status} />;
+				}} nestedTools={group.parts} chatStatus={props.status} />;
 			}
 		}
-		if (part.toolCallId && nestedToolIds.has(part.toolCallId)) return null;
+		if (part.toolCallId && nestedToolIds().has(part.toolCallId)) return null;
 		if (part.type === "exploring-group") return null;
 		if (part.type === "text") {
 			if (!part.text?.trim()) return null;
-			const isFinalText = isFinal && idx === collapseBeforeIndex;
-			const isTextStreaming = isLastMessage && isStreaming;
-			return <MemoizedTextPart key={idx} text={part.text} messageId={message.id} partIndex={idx} isFinalText={isFinalText} visibleStepsCount={visibleStepsCount} isStreaming={isTextStreaming} />;
+			const isFinalText = isFinal && idx === collapseBeforeIndex();
+			const isTextStreaming = props.isLastMessage && props.isStreaming;
+			return <MemoizedTextPart text={part.text} messageId={props.message.id} partIndex={idx} isFinalText={isFinalText} visibleStepsCount={visibleStepsCount()} isStreaming={isTextStreaming} />;
 		}
 		if (part.type === "tool-Task") {
-			const nestedTools = nestedToolsMap.get(part.toolCallId) || [];
-			return <AgentTaskTool key={idx} part={part} nestedTools={nestedTools} chatStatus={status} />;
+			const nestedTools = nestedToolsMap().get(part.toolCallId) || [];
+			return <AgentTaskTool part={part} nestedTools={nestedTools} chatStatus={props.status} />;
 		}
-		if (part.type === "tool-Bash") return <AgentBashTool key={idx} part={part} messageId={message.id} partIndex={idx} chatStatus={status} />;
-		if (part.type === "tool-Thinking") return <AgentThinkingTool key={idx} part={part} chatStatus={status} />;
+		if (part.type === "tool-Bash") return <AgentBashTool part={part} messageId={props.message.id} partIndex={idx} chatStatus={props.status} />;
+		if (part.type === "tool-Thinking") return <AgentThinkingTool part={part} chatStatus={props.status} />;
 		// Plan files: unified handling
 		// - In collapsed steps: all show mini indicator, last collapsed op's card shown separately after finalParts
 		// - In final parts: all but last show mini indicator, last shows full card
@@ -353,12 +374,14 @@ export function AssistantMessageItem({ message, isLastMessage, isStreaming, stat
 			const filePath = part.input?.file_path || "";
 			if (isPlanFile(filePath)) {
 				// Use part.toolCallId to find operation since idx may be adjusted for collapsed parts
-				const opIndex = planOpsSummary.operations.findIndex((op) => op.part.toolCallId === part.toolCallId);
+				const ops = planOpsSummary().operations;
+				const opIndex = ops.findIndex((op: { part: { toolCallId: string } }) => op.part.toolCallId === part.toolCallId);
 				if (opIndex === -1) return null;
-				const originalIndex = planOpsSummary.operations[opIndex]?.index ?? -1;
-				const isInCollapsedSteps = shouldCollapse && collapseBeforeIndex !== -1 && originalIndex < collapseBeforeIndex;
-				const isLastCollapsedOp = lastCollapsedPlanOp?.part.toolCallId === part.toolCallId;
-				const isLastOperation = opIndex === planOpsSummary.operations.length - 1;
+				const originalIndex = ops[opIndex]?.index ?? -1;
+				const isInCollapsedSteps = shouldCollapse() && collapseBeforeIndex() !== -1 && originalIndex < collapseBeforeIndex();
+				const lastCollapsed = lastCollapsedPlanOp();
+				const isLastCollapsedOp = lastCollapsed?.part.toolCallId === part.toolCallId;
+				const isLastOperation = opIndex === ops.length - 1;
 				// If this is the last collapsed plan op, hide it here (card shown after CollapsibleSteps)
 				if (isInCollapsedSteps && isLastCollapsedOp) {
 					return null;
@@ -369,9 +392,9 @@ export function AssistantMessageItem({ message, isLastMessage, isStreaming, stat
 				const showMiniIndicator = isInCollapsedSteps || !isLastOperation;
 				if (showMiniIndicator) {
 					const isWrite = part.type === "tool-Write";
-					const { isPending } = getToolStatus(part, status);
-					const isOpStreaming = isPending || part.state === "input-streaming" && isStreaming && isLastMessage;
-					return <div key={idx} class="flex items-center gap-1.5 px-2 py-0.5">
+					const { isPending } = getToolStatus(part, props.status);
+					const isOpStreaming = isPending || part.state === "input-streaming" && props.isStreaming && props.isLastMessage;
+					return <div class="flex items-center gap-1.5 px-2 py-0.5">
               <span class="text-xs text-muted-foreground">
                 {isOpStreaming ? <TextShimmer as="span" duration={1.2}>
                     {isWrite ? "Creating plan..." : "Updating plan..."}
@@ -380,82 +403,95 @@ export function AssistantMessageItem({ message, isLastMessage, isStreaming, stat
             </div>;
 				}
 				// Last operation in final parts: show full card
-				return <AgentPlanFileTool key={idx} part={part} chatStatus={status} subChatId={subChatId} isEdit={part.type === "tool-Edit"} />;
+				return <AgentPlanFileTool part={part} chatStatus={props.status} subChatId={props.subChatId} isEdit={part.type === "tool-Edit"} />;
 			}
 		}
-		if (part.type === "tool-Edit") return <AgentEditTool key={idx} part={part} messageId={message.id} partIndex={idx} chatStatus={status} />;
-		if (part.type === "tool-Write") return <AgentEditTool key={idx} part={part} messageId={message.id} partIndex={idx} chatStatus={status} />;
-		if (part.type === "tool-WebSearch") return <AgentWebSearchCollapsible key={idx} part={part} chatStatus={status} />;
-		if (part.type === "tool-WebFetch") return <AgentWebFetchTool key={idx} part={part} chatStatus={status} />;
-		if (part.type === "tool-PlanWrite") return <AgentPlanTool key={idx} part={part} chatStatus={status} />;
+		if (part.type === "tool-Edit") return <AgentEditTool part={part} messageId={props.message.id} partIndex={idx} chatStatus={props.status} />;
+		if (part.type === "tool-Write") return <AgentEditTool part={part} messageId={props.message.id} partIndex={idx} chatStatus={props.status} />;
+		if (part.type === "tool-WebSearch") return <AgentWebSearchCollapsible part={part} chatStatus={props.status} />;
+		if (part.type === "tool-WebFetch") return <AgentWebFetchTool part={part} chatStatus={props.status} />;
+		if (part.type === "tool-PlanWrite") return <AgentPlanTool part={part} chatStatus={props.status} />;
 		// ExitPlanMode tool is hidden - plan is shown in sidebar instead
 		if (part.type === "tool-ExitPlanMode") {
 			return null;
 		}
 		if (part.type === "tool-TodoWrite") {
-			return <AgentTodoTool key={idx} part={part} chatStatus={status} subChatId={subChatId} />;
+			return <AgentTodoTool part={part} chatStatus={props.status} subChatId={props.subChatId} />;
 		}
 		if (part.type === "tool-AskUserQuestion") {
-			const { isPending, isError } = getToolStatus(part, status);
-			return <AgentAskUserQuestionTool key={idx} input={part.input} result={part.result} errorText={(part as any).errorText || (part as any).error} state={isPending ? "call" : "result"} isError={isError} isStreaming={isStreaming && isLastMessage} toolCallId={part.toolCallId} />;
+			const { isPending, isError } = getToolStatus(part, props.status);
+			return <AgentAskUserQuestionTool input={part.input} result={part.result} errorText={(part as any).errorText || (part as any).error} state={isPending ? "call" : "result"} isError={isError} isStreaming={props.isStreaming && props.isLastMessage} toolCallId={part.toolCallId} />;
 		}
 		if (part.type in AgentToolRegistry) {
 			const meta = AgentToolRegistry[part.type];
-			const { isPending, isError } = getToolStatus(part, status);
-			return <AgentToolCall key={idx} icon={meta.icon} title={meta.title(part)} subtitle={meta.subtitle?.(part)} isPending={isPending} isError={isError} />;
+			const { isPending, isError } = getToolStatus(part, props.status);
+			return <AgentToolCall icon={meta.icon} title={meta.title(part)} subtitle={meta.subtitle?.(part)} isPending={isPending} isError={isError} />;
 		}
 		if (part.type?.startsWith("tool-")) {
-			return <div key={idx} class="text-xs text-muted-foreground py-0.5 px-2">
+			return <div class="text-xs text-muted-foreground py-0.5 px-2">
           {part.type.replace("tool-", "")}
         </div>;
 		}
 		return null;
 	};
-	if (!message) return null;
-	return <div data-assistant-message-id={message.id} class="group/message w-full mb-4">
+	return (
+		<Show when={props.message} fallback={null}>
+			<div data-assistant-message-id={props.message!.id} class="group/message w-full mb-4">
       <div class="flex flex-col gap-1.5">
-        {shouldCollapse && visibleStepsCount > 0 && <CollapsibleSteps stepsCount={visibleStepsCount}>
+        <Show when={shouldCollapse() && visibleStepsCount() > 0}>
+          <CollapsibleSteps stepsCount={visibleStepsCount()}>
             {(() => {
-		const grouped = groupExploringTools(stepParts, nestedToolIds);
+		const grouped = groupExploringTools(stepParts(), nestedToolIds());
 		return grouped.map((part: any, idx: number) => {
 			if (part.type === "exploring-group") {
 				const isLast = idx === grouped.length - 1;
-				const isGroupStreaming = isStreaming && isLastMessage && isLast;
-				return <AgentExploringGroup key={idx} parts={part.parts} chatStatus={status} isStreaming={isGroupStreaming} />;
+				const isGroupStreaming = props.isStreaming && props.isLastMessage && isLast;
+				return <AgentExploringGroup parts={part.parts} chatStatus={props.status} isStreaming={isGroupStreaming} />;
 			}
 			return renderPart(part, idx, false);
 		});
 	})()}
-          </CollapsibleSteps>}
+          </CollapsibleSteps>
+        </Show>
 
         {(() => {
-		const grouped = groupExploringTools(finalParts, nestedToolIds);
+		const grouped = groupExploringTools(finalParts(), nestedToolIds());
 		return grouped.map((part: any, idx: number) => {
 			if (part.type === "exploring-group") {
 				const isLast = idx === grouped.length - 1;
-				const isGroupStreaming = isStreaming && isLastMessage && isLast;
-				return <AgentExploringGroup key={idx} parts={part.parts} chatStatus={status} isStreaming={isGroupStreaming} />;
+				const isGroupStreaming = props.isStreaming && props.isLastMessage && isLast;
+				return <AgentExploringGroup parts={part.parts} chatStatus={props.status} isStreaming={isGroupStreaming} />;
 			}
-			return renderPart(part, shouldCollapse ? collapseBeforeIndex + idx : idx, shouldCollapse);
+			return renderPart(part, shouldCollapse() ? collapseBeforeIndex() + idx : idx, shouldCollapse());
 		});
 	})()}
 
         {	/* Show plan card after finalParts if any plan operation was in collapsed steps */}
-        {shouldCollapse && lastCollapsedPlanOp && <AgentPlanFileTool part={lastCollapsedPlanOp.part} chatStatus={status} subChatId={subChatId} isEdit={lastCollapsedPlanOp.type === "edit"} />}
+        <Show when={shouldCollapse() && lastCollapsedPlanOp()}>
+          <AgentPlanFileTool part={lastCollapsedPlanOp()!.part} chatStatus={props.status} subChatId={props.subChatId} isEdit={lastCollapsedPlanOp()!.type === "edit"} />
+        </Show>
 
-        {shouldShowPlanning && <AgentToolCall icon={AgentToolRegistry["tool-planning"].icon} title={AgentToolRegistry["tool-planning"].title({})} isPending={true} isError={false} />}
+        <Show when={shouldShowPlanning()}>
+          <AgentToolCall icon={AgentToolRegistry["tool-planning"].icon} title={AgentToolRegistry["tool-planning"].title({})} isPending={true} isError={false} />
+        </Show>
 
       </div>
 
-      {hasTextContent && (!isStreaming || !isLastMessage) && <div class="flex justify-between items-center h-6 px-2 mt-1">
-          <div class="flex items-center gap-0.5">
-            <CopyButton text={getMessageTextContent(message)} isMobile={isMobile} />
-            <PlayButton text={getMessageTextContent(message)} isMobile={isMobile} />
-            {onRollback && (message.metadata as any)?.sdkMessageUuid && <button onClick={() => onRollback(message)} disabled={isStreaming || isRollingBack()} tabIndex={-1} class={cn("p-1.5 rounded-md transition-[background-color,transform] duration-150 ease-out hover:bg-accent active:scale-[0.97]", (isStreaming || isRollingBack()) && "opacity-50 cursor-not-allowed")}>
-                <IconTextUndo class="w-3.5 h-3.5 text-muted-foreground" />
-              </button>}
+      <Show when={hasTextContent() && (!props.isStreaming || !props.isLastMessage)}>
+          <div class="flex justify-between items-center h-6 px-2 mt-1">
+            <div class="flex items-center gap-0.5">
+              <CopyButton text={getMessageTextContent(props.message)} isMobile={props.isMobile} />
+              <PlayButton text={getMessageTextContent(props.message)} isMobile={props.isMobile} />
+              <Show when={onRollback() && (props.message.metadata as any)?.sdkMessageUuid}>
+                <button onClick={() => onRollback()!(props.message)} disabled={props.isStreaming || isRollingBack()} tabIndex={-1} class={cn("p-1.5 rounded-md transition-[background-color,transform] duration-150 ease-out hover:bg-accent active:scale-[0.97]", (props.isStreaming || isRollingBack()) && "opacity-50 cursor-not-allowed")}>
+                  <IconTextUndo class="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
+              </Show>
+            </div>
+            <AgentMessageUsage metadata={msgMetadata} isStreaming={props.isStreaming} isMobile={props.isMobile} />
           </div>
-          <AgentMessageUsage metadata={msgMetadata} isStreaming={isStreaming} isMobile={isMobile} />
-        </div>}
-    </div>;
+        </Show>
+    </div>
+		</Show>
+	);
 }

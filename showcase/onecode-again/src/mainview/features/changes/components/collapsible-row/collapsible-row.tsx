@@ -9,12 +9,12 @@ interface CollapsibleRowProps {
 	header: JSX.Element;
 	children: JSX.Element;
 	showChevron?: boolean;
-	className?: string;
+	class?: string;
 	triggerClassName?: string;
 	contentClassName?: string;
 }
-export function CollapsibleRow({ isExpanded, onToggle, header, children, showChevron = true, className, triggerClassName, contentClassName }: CollapsibleRowProps) {
-	return <Collapsible open={isExpanded} onOpenChange={onToggle} class={cn("min-w-0", className)}>
+export function CollapsibleRow({ isExpanded, onToggle, header, children, showChevron = true, class: cls, triggerClassName, contentClassName }: CollapsibleRowProps) {
+	return <Collapsible open={isExpanded} onOpenChange={onToggle} class={cn("min-w-0",cls)}>
 			<CollapsibleTrigger class={cn("w-full flex items-center gap-1.5 px-1.5 py-1 text-left rounded-sm", "hover:bg-accent/50 cursor-pointer transition-colors", triggerClassName)}>
 				<Show when={showChevron}>
 					<ChevronRight class={cn("size-2.5 text-muted-foreground shrink-0 transition-transform duration-150", isExpanded && "rotate-90")} />

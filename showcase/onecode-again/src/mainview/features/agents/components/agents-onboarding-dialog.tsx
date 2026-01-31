@@ -1,12 +1,10 @@
-"use client";
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { Motion, Presence } from "solid-motionone";
 import { Portal } from "solid-js/web";
 // Desktop: stub for next/image
-const Image = ({ src, alt, width, height, className }: any) => <img src={src} alt={alt} width={width} height={height} class={className} />;
+const Image = ({ src, alt, width, height, class: cls }: any) => <img src={src} alt={alt} width={width} height={height} class={cls} />;
 import { useTheme } from "../../../lib/hooks/use-theme";
 import { X } from "lucide-solid";
-import { useAtom } from "../../../lib/state/jotai";
 import { Button } from "../../../components/ui/button";
 import { agentsDebugModeAtom } from "../atoms";
 const EASING_CURVE = [
@@ -23,7 +21,7 @@ export function AgentsOnboardingDialog() {
 	const [isOpen, setIsOpen] = createSignal(false);
 	let openAtRef = 0;
 	const { resolvedTheme } = useTheme();
-	const [debugMode, setDebugMode] = useAtom(agentsDebugModeAtom);
+	const [debugMode, setDebugMode] = agentsDebugModeAtom;
 	createEffect(() => {
 		setMounted(true);
 		// Check if debug mode wants to reset onboarding

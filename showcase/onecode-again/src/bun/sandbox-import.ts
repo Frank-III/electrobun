@@ -225,7 +225,6 @@ export async function importSandboxToWorktree(
   worktreePath: string,
   apiUrl: string,
   sandboxId: string,
-  token: string,
   fullExport = false,
   sessionId?: string,
 ): Promise<{ success: boolean; error?: string; claudeSessions?: ExportClaudeSession[] }> {
@@ -238,9 +237,6 @@ export async function importSandboxToWorktree(
     const exportUrl = `${apiUrl}/api/agents/sandbox/${sandboxId}/export${queryString}`;
     const response = await fetch(exportUrl, {
       method: "GET",
-      headers: {
-        "X-Desktop-Token": token,
-      },
     });
 
     if (!response.ok || !response.body) {
@@ -350,15 +346,6 @@ async function writeClaudeSession(
   await writeFile(indexPath, JSON.stringify(indexData, null, 2), "utf-8");
 }
 
-function getDesktopToken(): string | null {
-  return (
-    process.env.DESKTOP_TOKEN ||
-    process.env.TWENTYFIRST_DESKTOP_TOKEN ||
-    process.env.X_DESKTOP_TOKEN ||
-    null
-  );
-}
-
 export function createSandboxImportHandlers() {
   return {
     sandboxImportImportSandboxChat: async ({
@@ -375,12 +362,7 @@ export function createSandboxImportHandlers() {
       chatName?: string;
     }) => {
       const db = await getDatabase();
-      const token = getDesktopToken();
       const apiUrl = getApiUrl();
-
-      if (!token) {
-        throw new Error("Not authenticated");
-      }
 
       const project = db.select().from(projects).where(eq(projects.id, projectId)).get();
       if (!project) {
@@ -393,7 +375,6 @@ export function createSandboxImportHandlers() {
 
       const chatResponse = await fetch(chatExportUrl, {
         method: "GET",
-        headers: { "X-Desktop-Token": token },
       });
 
       if (!chatResponse.ok) {
@@ -424,7 +405,6 @@ export function createSandboxImportHandlers() {
         worktreeResult.worktreePath,
         apiUrl,
         sandboxId,
-        token,
         false,
         targetSessionId,
       );
@@ -501,12 +481,7 @@ export function createSandboxImportHandlers() {
       targetPath: string;
     }) => {
       const db = await getDatabase();
-      const token = getDesktopToken();
       const apiUrl = getApiUrl();
-
-      if (!token) {
-        throw new Error("Not authenticated");
-      }
 
       const chatExportUrl = remoteSubChatId
         ? `${apiUrl}/api/agents/chat/${remoteChatId}/export?subChatId=${remoteSubChatId}`
@@ -514,7 +489,6 @@ export function createSandboxImportHandlers() {
 
       const chatResponse = await fetch(chatExportUrl, {
         method: "GET",
-        headers: { "X-Desktop-Token": token },
       });
 
       if (!chatResponse.ok) {
@@ -538,7 +512,6 @@ export function createSandboxImportHandlers() {
         targetPath,
         apiUrl,
         sandboxId,
-        token,
         true,
         targetSessionId,
       );
@@ -557,9 +530,10 @@ export function createSandboxImportHandlers() {
             finalOwner = metaOwner;
             finalRepo = metaRepo;
             finalProvider = "github";
-            finalRemoteUrl = `https://github.com/${metaOwner}/${metaRepo}`;
-            await runGit(targetPath, ["remote", "add", "origin", finalRemoteUrl]).catch(async () => {
-              await runGit(targetPath, ["remote", "set-url", "origin", finalRemoteUrl]).catch(() => {});
+            const remoteUrl = `https://github.com/${metaOwner}/${metaRepo}`;
+            finalRemoteUrl = remoteUrl;
+            await runGit(targetPath, ["remote", "add", "origin", remoteUrl]).catch(async () => {
+              await runGit(targetPath, ["remote", "set-url", "origin", remoteUrl]).catch(() => {});
             });
           }
         }

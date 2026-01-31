@@ -9,13 +9,18 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const lib = b.addSharedLibrary(.{
+    const lib = b.addLibrary(.{
         .name = "electrobun_vt",
-        .root_source_file = b.path("terminal_vt.zig"),
-        .target = target,
-        .optimize = optimize,
+        .linkage = .dynamic,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("terminal_vt.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "ghostty-vt", .module = ghostty_dep.module("ghostty-vt") },
+            },
+        }),
     });
 
-    lib.root_module.addImport("ghostty-vt", ghostty_dep.module("ghostty-vt"));
     b.installArtifact(lib);
 }

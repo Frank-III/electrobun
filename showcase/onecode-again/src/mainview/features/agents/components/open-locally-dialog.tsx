@@ -1,17 +1,17 @@
-"use client";
 import { Motion, Presence } from "solid-motionone";
 import { Show } from "solid-js";
 import { createEffect, createSignal, onCleanup, For } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Button } from "../../../components/ui/button";
-import { trpc } from "../../../lib/trpc";
+import { useMutation, useQueryClient } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { toast } from "solid-sonner";
-import { useSetAtom } from "../../../lib/state/jotai";
 import { selectedAgentChatIdAtom } from "../atoms";
 import { chatSourceModeAtom } from "../../../lib/atoms";
 import type { RemoteChat } from "../../../lib/remote-api";
 import { Folder, Download, Check } from "lucide-solid";
 import { agentChatStore } from "../stores/agent-chat-store";
+
 interface Project {
 	id: string;
 	name: string;
@@ -37,52 +37,60 @@ const INTERACTION_DELAY_MS = 250;
 export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProjects, allProjects, remoteSubChatId }: OpenLocallyDialogProps) {
 	const [mounted, setMounted] = createSignal(false);
 	let openAtRef = 0;
-	const setSelectedChatId = useSetAtom(selectedAgentChatIdAtom);
-	const setChatSourceMode = useSetAtom(chatSourceModeAtom);
-	const utils = trpc.useUtils();
+	const setSelectedChatId = selectedAgentChatIdAtom[1];
+	const setChatSourceMode = chatSourceModeAtom[1];
+	const queryClient = useQueryClient();
 	// For multiple projects view
 	const [selectedProjectId, setSelectedProjectId] = createSignal(null);
 	// Mutations
-	const locateMutation = trpc.projects.locateAndAddProject.useMutation();
-	const importMutation = trpc.sandboxImport.importSandboxChat.useMutation({
+	const locateMutation = useMutation(() => ({
+		mutationFn: (input: { expectedOwner: string; expectedRepo: string }) =>
+			desktopRpc.projects.locateAndAddProject.mutate(input),
+	}));
+	const importMutation = useMutation(() => ({
+		mutationFn: (input: Parameters<typeof desktopRpc.sandboxImport.importSandboxChat.mutate>[0]) =>
+			desktopRpc.sandboxImport.importSandboxChat.mutate(input),
 		onSuccess: async (result) => {
 			toast.success("Opened locally");
-			// 1. Clear stale Chat instances from cache
 			agentChatStore.clear();
-			// 2. Invalidate list queries
-			utils.chats.list.invalidate();
-			utils.projects.list.invalidate();
-			// 3. Prefetch: Wait for chat data to be in cache before switching
-			await utils.chats.get.fetch({ id: result.chatId });
-			// 4. Now safe to switch - data is ready
+			queryClient.invalidateQueries({ queryKey: ["chats", "list"] });
+			queryClient.invalidateQueries({ queryKey: ["projects", "list"] });
+			await queryClient.fetchQuery({
+				queryKey: ["chats", "get", result.chatId],
+				queryFn: () => desktopRpc.chats.get({ id: result.chatId }),
+			});
 			setChatSourceMode("local");
 			setSelectedChatId(result.chatId);
 			onClose();
 		},
-		onError: (error) => {
+		onError: (error: Error) => {
 			toast.error(`Import failed: ${error.message}`);
-		}
-	});
-	const pickDestMutation = trpc.projects.pickCloneDestination.useMutation();
-	const cloneMutation = trpc.sandboxImport.cloneFromSandbox.useMutation({
+		},
+	}));
+	const pickDestMutation = useMutation(() => ({
+		mutationFn: (input: { suggestedName: string }) =>
+			desktopRpc.projects.pickCloneDestination.mutate(input),
+	}));
+	const cloneMutation = useMutation(() => ({
+		mutationFn: (input: Parameters<typeof desktopRpc.sandboxImport.cloneFromSandbox.mutate>[0]) =>
+			desktopRpc.sandboxImport.cloneFromSandbox.mutate(input),
 		onSuccess: async (result) => {
 			toast.success("Cloned and opened locally");
-			// 1. Clear stale Chat instances from cache
 			agentChatStore.clear();
-			// 2. Invalidate list queries
-			utils.projects.list.invalidate();
-			utils.chats.list.invalidate();
-			// 3. Prefetch: Wait for chat data to be in cache before switching
-			await utils.chats.get.fetch({ id: result.chatId });
-			// 4. Now safe to switch - data is ready
+			queryClient.invalidateQueries({ queryKey: ["projects", "list"] });
+			queryClient.invalidateQueries({ queryKey: ["chats", "list"] });
+			await queryClient.fetchQuery({
+				queryKey: ["chats", "get", result.chatId],
+				queryFn: () => desktopRpc.chats.get({ id: result.chatId }),
+			});
 			setChatSourceMode("local");
 			setSelectedChatId(result.chatId);
 			onClose();
 		},
-		onError: (error) => {
+		onError: (error: Error) => {
 			toast.error(`Clone failed: ${error.message}`);
-		}
-	});
+		},
+	}));
 	const isAnyLoading = importMutation.isPending || locateMutation.isPending || pickDestMutation.isPending || cloneMutation.isPending;
 	createEffect(() => {
 		setMounted(true);

@@ -1,12 +1,13 @@
-"use client";
 import { cn } from "../../../lib/utils";
-import { trpc } from "../../../lib/trpc";
+import { useQuery, useQueryClient } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { createEffect, createMemo, createSignal, onCleanup, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { IconSpinner } from "../../../components/ui/icons";
 import type { SlashCommandOption, SlashTriggerPayload } from "./types";
 import { filterBuiltinCommands, BUILTIN_SLASH_COMMANDS } from "./builtin-commands";
 import type { AgentMode } from "../atoms";
+
 interface AgentsSlashCommandProps {
 	isOpen: boolean;
 	onClose: () => void;
@@ -33,14 +34,18 @@ export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, posi
 		onCleanup(() => clearTimeout(timer));
 	});
 	// Fetch custom commands from filesystem
-	const { data: fileCommands = [], isLoading } = trpc.commands.list.useQuery({ projectPath }, {
+	const fileCommandsQuery = useQuery(() => ({
+		queryKey: ["commands", "list", projectPath],
+		queryFn: () => desktopRpc.commands.list({ projectPath }),
 		enabled: isOpen,
 		staleTime: 3e4,
-		refetchOnWindowFocus: false
-	});
+		refetchOnWindowFocus: false,
+	}));
+	const fileCommands = () => fileCommandsQuery.data ?? [];
+	const isLoading = () => fileCommandsQuery.isLoading;
 	// Transform FileCommand to SlashCommandOption
-	const customCommands: SlashCommandOption[] = createMemo(() => {
-		return fileCommands.map((cmd) => ({
+	const customCommands = createMemo(() => {
+		return (fileCommands() ?? []).map((cmd) => ({
 			id: `custom:${cmd.source}:${cmd.name}`,
 			name: cmd.name,
 			command: `/${cmd.name}`,
@@ -52,8 +57,7 @@ export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, posi
 	});
 	// State for loading command content
 	const [isLoadingContent, setIsLoadingContent] = createSignal(false);
-	// tRPC utils for fetching command content
-	const trpcUtils = trpc.useUtils();
+	const queryClient = useQueryClient();
 	// Handle command selection - fetch content for custom commands
 	const handleSelect = async (option: SlashCommandOption) => {
 		// For builtin commands, call onSelect directly
@@ -65,7 +69,10 @@ export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, posi
 		if (option.path) {
 			setIsLoadingContent(true);
 			try {
-				const result = await trpcUtils.commands.getContent.fetch({ path: option.path });
+				const result = await queryClient.fetchQuery({
+					queryKey: ["commands", "getContent", option.path],
+					queryFn: () => desktopRpc.commands.getContent({ path: option.path! }),
+				});
 				// Call onSelect with the fetched prompt
 				onSelect({
 					...option,
@@ -84,7 +91,7 @@ export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, posi
 		}
 	};
 	// Combine builtin and repository commands, filtered by search
-	const options: SlashCommandOption[] = createMemo(() => {
+	const options = createMemo(() => {
 		let builtinFiltered = filterBuiltinCommands(debouncedSearchText);
 		// Hide /plan when already in Plan mode, hide /agent when already in Agent mode
 		if (mode !== undefined) {
@@ -209,7 +216,6 @@ export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, posi
 		document.addEventListener("mousedown", handleClickOutside);
 		onCleanup(() => document.removeEventListener("mousedown", handleClickOutside));
 	});
-	if (!isOpen) return null;
 	// Calculate dropdown dimensions (matching file mention style)
 	const dropdownWidth = 320;
 	const itemHeight = 28;
@@ -248,6 +254,7 @@ export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, posi
 	const computedMaxHeight = Math.max(80, Math.min(requestedHeight, placeAbove ? availableAbove - gap : availableBelow - gap));
 	const transformY = placeAbove ? "translateY(-100%)" : "translateY(0)";
 	return (
+		<Show when={isOpen} fallback={null}>
 		<Portal mount={document.body}>
 			<div
 				ref={el => dropdownRef = el}
@@ -296,7 +303,7 @@ export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, posi
 				</Show>
 
 				{/* Loading state for repository commands */}
-				<Show when={isLoading}>
+				<Show when={isLoading()}>
 					<div class="flex items-center gap-1.5 h-7 px-1.5 mx-1 text-xs text-muted-foreground">
 						<IconSpinner class="h-3.5 w-3.5" />
 						<span>Loading commands...</span>
@@ -304,12 +311,13 @@ export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, posi
 				</Show>
 
 				{/* Empty state */}
-				<Show when={!isLoading && opts.length === 0}>
+				<Show when={!isLoading() && opts.length === 0}>
 					<div class="h-7 px-1.5 mx-1 flex items-center text-xs text-muted-foreground">
 						{debouncedSearchText() ? `No commands matching "${debouncedSearchText()}"` : "No commands available"}
 					</div>
 				</Show>
 			</div>
 		</Portal>
+		</Show>
 	);
 }

@@ -1,4 +1,5 @@
 import { Utils } from "electrobun/bun";
+import { existsSync, statSync } from "node:fs";
 import { GhosttyTerminal } from "./ghostty-ffi";
 
 interface ManagedTerminal {
@@ -10,9 +11,12 @@ interface ManagedTerminal {
   shell: string;
   cwd: string;
   title: string;
+  oscBuffer: string;
 }
 
 const terminals = new Map<string, ManagedTerminal>();
+const textDecoder = new TextDecoder();
+const MAX_OSC_BUFFER = 8 * 1024;
 
 function detectShell(): { shell: string; args: string[] } {
   const env = process.env;
@@ -23,15 +27,25 @@ function detectShell(): { shell: string; args: string[] } {
 
   if (process.platform === "win32") {
     const pwsh7 = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
-    try {
-      Bun.spawnSync(["test", "-f", pwsh7]);
+    if (existsSync(pwsh7)) {
       return { shell: pwsh7, args: [] };
-    } catch {
-      return { shell: env.COMSPEC || "cmd.exe", args: [] };
     }
+    return { shell: env.COMSPEC || "cmd.exe", args: [] };
   }
 
   return { shell: "/bin/sh", args: [] };
+}
+
+function resolveCwd(cwd?: string): string {
+  const fallback = process.env.HOME || process.env.USERPROFILE || "/";
+  if (!cwd) return fallback;
+  try {
+    const stat = statSync(cwd);
+    if (stat.isDirectory()) return cwd;
+  } catch {
+    return fallback;
+  }
+  return fallback;
 }
 
 function buildEnv(userEnv?: Record<string, string>): Record<string, string> {
@@ -43,6 +57,44 @@ function buildEnv(userEnv?: Record<string, string>): Record<string, string> {
     TERM_PROGRAM: "electrobun",
     ...userEnv,
   };
+}
+
+function extractOscTitles(input: string): { titles: string[]; rest: string } {
+  let buffer = input;
+  const titles: string[] = [];
+
+  while (true) {
+    const oscIndex = buffer.search(/\x1b\](0|2);/);
+    if (oscIndex === -1) {
+      return { titles, rest: buffer.slice(-MAX_OSC_BUFFER) };
+    }
+
+    const semicolonIndex = buffer.indexOf(";", oscIndex + 2);
+    if (semicolonIndex === -1) {
+      return { titles, rest: buffer.slice(oscIndex).slice(-MAX_OSC_BUFFER) };
+    }
+
+    const belIndex = buffer.indexOf("\x07", semicolonIndex + 1);
+    const stIndex = buffer.indexOf("\x1b\\", semicolonIndex + 1);
+    let endIndex = -1;
+    let endLength = 1;
+
+    if (belIndex !== -1 && (stIndex === -1 || belIndex < stIndex)) {
+      endIndex = belIndex;
+      endLength = 1;
+    } else if (stIndex !== -1) {
+      endIndex = stIndex;
+      endLength = 2;
+    }
+
+    if (endIndex === -1) {
+      return { titles, rest: buffer.slice(oscIndex).slice(-MAX_OSC_BUFFER) };
+    }
+
+    const title = buffer.slice(semicolonIndex + 1, endIndex);
+    titles.push(title);
+    buffer = buffer.slice(endIndex + endLength);
+  }
 }
 
 export function createTerminalHandlers(
@@ -67,36 +119,39 @@ export function createTerminalHandlers(
       const detected = detectShell();
       const shellPath = shellOverride || detected.shell;
       const shellArgs = detected.args;
-      const resolvedCwd = cwd || process.env.HOME || "/";
+      const resolvedCwd = resolveCwd(cwd);
+      const safeCols = Math.max(2, cols);
+      const safeRows = Math.max(2, rows);
 
-      const vt = new GhosttyTerminal(cols, rows);
+      const vt = new GhosttyTerminal(safeCols, safeRows);
 
       const proc = Bun.spawn([shellPath, ...shellArgs], {
         cwd: resolvedCwd,
         env: buildEnv(userEnv),
         terminal: {
-          cols,
-          rows,
+          cols: safeCols,
+          rows: safeRows,
           data(_terminal: any, rawData: string | Uint8Array) {
             const str = typeof rawData === "string"
               ? rawData
-              : new TextDecoder().decode(rawData);
+              : textDecoder.decode(rawData);
 
-            const oscMatch = str.match(/\x1b\](?:0|2);([^\x07]*)\x07/);
-            if (oscMatch) {
-              const t = terminals.get(id);
-              if (t) {
-                t.title = oscMatch[1];
-                sendTitle(id, oscMatch[1]);
+            const t = terminals.get(id);
+            if (t) {
+              const parsed = extractOscTitles(t.oscBuffer + str);
+              t.oscBuffer = parsed.rest;
+              for (const title of parsed.titles) {
+                t.title = title;
+                sendTitle(id, title);
               }
-            }
 
-            if (str.includes("\x07")) {
-              sendBell(id);
-            }
+              if (str.includes("\x07")) {
+                sendBell(id);
+              }
 
-            vt.feed(rawData);
-            sendData(id, str);
+              vt.feed(rawData);
+              sendData(id, str);
+            }
           },
         },
       });
@@ -105,14 +160,16 @@ export function createTerminalHandlers(
         proc,
         terminal: proc.terminal,
         vt,
-        cols,
-        rows,
+        cols: safeCols,
+        rows: safeRows,
         shell: shellPath,
         cwd: resolvedCwd,
         title: shellPath.split("/").pop() || "terminal",
+        oscBuffer: "",
       };
 
       terminals.set(id, managed);
+      sendTitle(id, managed.title);
 
       proc.exited.then((exitCode) => {
         sendExit(id, exitCode ?? 0);
@@ -141,9 +198,15 @@ export function createTerminalHandlers(
     destroy: ({ id }: { id: string }) => {
       const t = terminals.get(id);
       if (!t) return;
-      t.proc.kill("SIGHUP");
-      t.terminal.close();
-      t.vt.destroy();
+      try {
+        t.proc.kill("SIGHUP");
+      } catch {}
+      try {
+        t.terminal.close();
+      } catch {}
+      try {
+        t.vt.destroy();
+      } catch {}
       terminals.delete(id);
     },
 
@@ -202,9 +265,15 @@ export function createTerminalHandlers(
 
 export function destroyAll() {
   for (const [, t] of terminals) {
-    t.proc.kill("SIGKILL");
-    t.terminal.close();
-    t.vt.destroy();
+    try {
+      t.proc.kill("SIGKILL");
+    } catch {}
+    try {
+      t.terminal.close();
+    } catch {}
+    try {
+      t.vt.destroy();
+    } catch {}
   }
   terminals.clear();
 }

@@ -1,10 +1,9 @@
-"use client";
-import { createMemo, createEffect, createSignal, onCleanup } from "solid-js";
-import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
+import { createMemo, createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { loadingSubChatsAtom, agentsSubChatUnseenChangesAtom, agentsSubChatsSidebarModeAtom, pendingUserQuestionsAtom } from "../atoms";
 import { widgetVisibilityAtomFamily, unifiedSidebarEnabledAtom } from "../../details-sidebar/atoms";
 import { chatSourceModeAtom } from "../../../lib/atoms";
-import { trpc } from "../../../lib/trpc";
+import { useQuery, useMutation } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { X, Plus, AlignJustify, Play, TerminalSquare } from "lucide-solid";
 import { IconSpinner, PlanIcon, AgentIcon, IconOpenSidebarRight, PinFilledIcon, DiffIcon, ClockIcon, QuestionIcon } from "../../../components/ui/icons";
 import { Button } from "../../../components/ui/button";
@@ -17,7 +16,6 @@ import { getShortcutKey } from "../../../lib/utils/platform";
 import { useResolvedHotkeyDisplay } from "../../../lib/hotkeys";
 import { ContextMenu, ContextMenuTrigger } from "../../../components/ui/context-menu";
 import { InlineEdit } from "./inline-edit";
-import { api } from "../../../lib/mock-api";
 import { toast } from "solid-sonner";
 import { SearchCombobox } from "../../../components/ui/search-combobox";
 import { SubChatContextMenu } from "./sub-chat-context-menu";
@@ -57,9 +55,9 @@ function SearchHistoryPopover(props: SearchHistoryPopoverProps & { ref?: (ref: S
 		return <div class="flex items-center gap-2 flex-1 min-w-0">
         <div class="flex-shrink-0 w-4 h-4 flex items-center justify-center relative">
           {hasPendingQuestion ? <QuestionIcon class="w-4 h-4 text-blue-500" /> : isLoading ? <IconSpinner class="w-4 h-4 text-muted-foreground" /> : mode === "plan" ? <PlanIcon class="w-4 h-4 text-muted-foreground" /> : <AgentIcon class="w-4 h-4 text-muted-foreground" />}
-          {(hasPendingPlan || hasUnseen) && !isLoading && !hasPendingQuestion && <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-popover flex items-center justify-center">
+          <Show when={(hasPendingPlan || hasUnseen) && !isLoading && !hasPendingQuestion}><div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-popover flex items-center justify-center">
               <div class={cn("w-1.5 h-1.5 rounded-full", hasPendingPlan ? "bg-amber-500" : "bg-[#307BD0]")} />
-            </div>}
+            </div></Show>
         </div>
         <span class="text-sm truncate flex-1">
           {subChat.name || "New Chat"}
@@ -106,20 +104,20 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 	const allSubChats = subChatStore.allSubChats;
 	const parentChatId = subChatStore.chatId;
 	const togglePinSubChat = subChatStore.togglePinSubChat;
-	const [loadingSubChats] = useAtom(loadingSubChatsAtom);
-	const subChatUnseenChanges = useAtomValue(agentsSubChatUnseenChangesAtom);
-	const [subChatsSidebarMode, setSubChatsSidebarMode] = useAtom(agentsSubChatsSidebarModeAtom);
-	const pendingQuestionsMap = useAtomValue(pendingUserQuestionsAtom);
+	const [loadingSubChats] = loadingSubChatsAtom;
+	const subChatUnseenChanges = agentsSubChatUnseenChangesAtom[0];
+	const [subChatsSidebarMode, setSubChatsSidebarMode] = agentsSubChatsSidebarModeAtom;
+	const pendingQuestionsMap = pendingUserQuestionsAtom[0];
 	// Overview sidebar state - to check if widgets are visible
-	const isUnifiedSidebarEnabled = useAtomValue(unifiedSidebarEnabledAtom);
-	const chatSourceMode = useAtomValue(chatSourceModeAtom);
+	const isUnifiedSidebarEnabled = unifiedSidebarEnabledAtom[0];
+	const chatSourceMode = chatSourceModeAtom[0];
 	const widgetVisibilityAtom = createMemo(() => widgetVisibilityAtomFamily(chatId || ""));
-	const widgetVisibility = useAtomValue(widgetVisibilityAtom);
+	const widgetVisibility = widgetVisibilityAtom[0];
 	// Show standalone buttons when:
 	// 1. Unified sidebar is disabled (use legacy sidebars), OR
 	// 2. Unified sidebar is enabled but the widget is hidden by user, OR
 	// 3. Sandbox mode (DetailsSidebar doesn't render without worktreePath)
-	const showDiffButton = !isUnifiedSidebarEnabled || !widgetVisibility.includes("diff") || chatSourceMode === "sandbox";
+	const showDiffButton = !isUnifiedSidebarEnabled || !widgetVisibility.includes("diff") || chatSourceMode() === "sandbox";
 	const showTerminalButton = !isUnifiedSidebarEnabled || !widgetVisibility.includes("terminal");
 	// Resolved hotkeys for tooltips
 	const openDiffHotkey = useResolvedHotkeyDisplay("open-diff");
@@ -127,15 +125,19 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 	const archiveAgentHotkey = useResolvedHotkeyDisplay("archive-agent");
 	const newAgentHotkey = useResolvedHotkeyDisplay("new-agent");
 	// Pending plan approvals from DB - only for open sub-chats
-	const { data: pendingPlanApprovalsData } = trpc.chats.getPendingPlanApprovals.useQuery({ openSubChatIds }, {
+	const pendingPlanQuery = useQuery(() => ({
+		queryKey: ["chats", "getPendingPlanApprovals", openSubChatIds] as const,
+		queryFn: () => desktopRpc.chats.getPendingPlanApprovals(openSubChatIds),
 		refetchInterval: 5e3,
 		enabled: openSubChatIds.length > 0,
-		placeholderData: (prev) => prev
-	});
+		placeholderData: (prev) => prev,
+	}));
+	const pendingPlanApprovalsData = () => pendingPlanQuery.data;
 	const pendingPlanApprovals = createMemo(() => {
 		const set = new Set<string>();
-		if (pendingPlanApprovalsData) {
-			for (const { subChatId } of pendingPlanApprovalsData) {
+		const data = pendingPlanApprovalsData();
+		if (data) {
+			for (const { subChatId } of data) {
 				set.add(subChatId);
 			}
 		}
@@ -206,20 +208,20 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 	const [editingSubChatId, setEditingSubChatId] = createSignal(null);
 	const [editName, setEditName] = createSignal("");
 	const [editLoading, setEditLoading] = createSignal(false);
-	const renameMutation = api.agents.renameSubChat.useMutation({
-		onSuccess: (_, variables) => {
-			// Update local store
+	const renameMutation = useMutation(() => ({
+		mutationFn: (args: { subChatId: string; name: string }) =>
+			desktopRpc.chats.renameSubChat.mutate({ id: args.subChatId, name: args.name }),
+		onSuccess: (_data: unknown, variables: { subChatId: string; name: string }) => {
 			useAgentSubChatStore.getState().updateSubChatName(variables.subChatId, variables.name);
 		},
-		onError: (error) => {
-			// Show helpful error message (like Canvas)
+		onError: (error: { data?: { code?: string } }) => {
 			if (error.data?.code === "NOT_FOUND") {
 				toast.error("Send a message first before renaming this chat");
 			} else {
 				toast.error("Failed to rename chat");
 			}
-		}
-	});
+		},
+	}));
 	const handleRenameClick = (subChat: SubChatMeta) => {
 		// Allow rename attempt, will show toast if not in DB yet (like Canvas)
 		setEditingSubChatId(subChat.id);
@@ -268,7 +270,7 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 	createEffect(() => {
 		const handleHistoryHotkey = (e: KeyboardEvent) => {
 			// Only in tabs mode (sidebar closed)
-			if (subChatsSidebarMode !== "tabs") return;
+			if (subChatsSidebarMode() !== "tabs") return;
 			if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
 				// Don't trigger if already focused on an input/textarea
 				const activeEl = document.activeElement;
@@ -378,20 +380,20 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 	});
 	return <div class="flex items-center gap-1 h-7 w-full" style={{ WebkitAppRegion: "drag" }}>
       {	/* Burger button - hidden when sub-chats sidebar is open (it moves into sidebar) */}
-      {onBackToChats && subChatsSidebarMode === "tabs" && <Button variant="ghost" size="icon" onClick={onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0" aria-label="Back to chats" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={onBackToChats && subChatsSidebarMode() === "tabs"}><Button variant="ghost" size="icon" onClick={onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0" aria-label="Back to chats" style={{ WebkitAppRegion: "no-drag" }}>
           <AlignJustify class="h-4 w-4" />
           <span class="sr-only">Back to chats</span>
-        </Button>}
+        </Button></Show>
 
       { /* Open sidebar button - only on desktop when in tabs mode */}
-      {!isMobile && subChatsSidebarMode === "tabs" && <Tooltip>
+      <Show when={!isMobile && subChatsSidebarMode() === "tabs"}><Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon" onClick={() => setSubChatsSidebarMode("sidebar")} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
               <IconOpenSidebarRight class="h-4 w-4 scale-x-[-1]" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">Open chats pane</TooltipContent>
-        </Tooltip>}
+        </Tooltip></Show>
 
       <div class="relative flex-1 min-w-0 flex items-center" style={{ WebkitAppRegion: "no-drag" }}>
         { /* Left gradient - visibility controlled via ref */}
@@ -401,7 +403,7 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
         <div ref={(el) => tabsContainerRef = el} class={cn(
  "flex items-center px-1 py-1 -my-1 gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-hide pr-12",
 		// Hide tabs when sidebar is open (desktop) or when only one chat exists
-		subChatsSidebarMode === "sidebar" && !isMobile && "hidden",
+		subChatsSidebarMode() === "sidebar" && !isMobile && "hidden",
 		hasSingleChat && "hidden"
 	)}>
           {hasNoChats ? null : openSubChats.map((subChat, index) => {
@@ -451,18 +453,18 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 			}
 		}} class={cn("group relative flex items-center text-sm rounded-md transition-colors duration-75 cursor-pointer h-6 flex-shrink-0", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", editingSubChatId === subChat.id ? "overflow-visible px-0" : "overflow-hidden px-1.5 py-0.5 whitespace-nowrap min-w-[50px] gap-1.5", isActive ? "bg-muted text-foreground max-w-[180px]" : "hover:bg-muted/80 max-w-[150px]")}>
                         {		/* Icon: question icon (priority) OR loading spinner OR mode icon with badge (hide when editing) */}
-                        {editingSubChatId !== subChat.id && <div class="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center relative">
+                        <Show when={editingSubChatId !== subChat.id}><div class="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center relative">
                             {hasPendingQuestion ? <QuestionIcon class="w-3.5 h-3.5 text-blue-500" /> : isLoading ? <IconSpinner class="w-3.5 h-3.5 text-muted-foreground" /> : <>
                                 { /* Main mode icon */}
                                 {mode === "plan" ? <PlanIcon class="w-3.5 h-3.5 text-muted-foreground" /> : <AgentIcon class="w-3.5 h-3.5 text-muted-foreground" />}
                                 { /* Badge in bottom-right corner: amber dot (plan) > unseen dot > pin icon */}
-                                {(hasPendingPlan || hasUnseen || isPinned) && <div class={cn("absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full flex items-center justify-center", isActive ? "bg-muted" : "bg-background")}>
+                                <Show when={(hasPendingPlan || hasUnseen || isPinned)}><div class={cn("absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full flex items-center justify-center", isActive ? "bg-muted" : "bg-background")}>
                                     {hasPendingPlan ? <div class="w-1.5 h-1.5 rounded-full bg-amber-500" /> : hasUnseen ? <div class="w-1.5 h-1.5 rounded-full bg-[#307BD0]" /> : isPinned ? <PinFilledIcon class="w-2 h-2 text-muted-foreground" /> : null}
-                                  </div>}
+                                  </div></Show>
                               </>}
-                          </div>}
+                          </div></Show>
 
-                        {editingSubChatId === subChat.id ? <InlineEdit value={editName()} onChange={setEditName} onSave={() => handleEditSave(subChat)} onCancel={() => handleEditCancel(subChat)} isEditing={true} disabled={editLoading()} className="text-sm !px-1 !py-0 !h-6 min-w-[100px] border border-input rounded-md !ring-0 !shadow-none focus-visible:!ring-0 focus-visible:!ring-offset-0 focus-visible:!border-input" /> : <span ref={(el) => {
+                        {editingSubChatId === subChat.id ? <InlineEdit value={editName()} onChange={setEditName} onSave={() => handleEditSave(subChat)} onCancel={() => handleEditCancel(subChat)} isEditing={true} disabled={editLoading()} class="text-sm !px-1 !py-0 !h-6 min-w-[100px] border border-input rounded-md !ring-0 !shadow-none focus-visible:!ring-0 focus-visible:!ring-offset-0 focus-visible:!border-input" /> : <span ref={(el) => {
                         if (el) {
                         textRefs.set(subChat.id, el);
                         } else {
@@ -473,10 +475,10 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
                         </span>}
 
                         {		/* Gradient fade on the right when text is truncated and not editing - visibility controlled via DOM */}
-                        {editingSubChatId !== subChat.id && <div data-truncate-gradient class={cn("absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-[1] rounded-r-md opacity-100 group-hover:opacity-0 transition-opacity duration-200", isActive ? "bg-gradient-to-l from-muted to-transparent" : "bg-gradient-to-l from-background to-transparent")} style={{ display: truncatedTabs.has(subChat.id) ? "block" : "none" }} />}
+                        <Show when={editingSubChatId !== subChat.id}><div data-truncate-gradient class={cn("absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-[1] rounded-r-md opacity-100 group-hover:opacity-0 transition-opacity duration-200", isActive ? "bg-gradient-to-l from-muted to-transparent" : "bg-gradient-to-l from-background to-transparent")} style={{ display: truncatedTabs.has(subChat.id) ? "block" : "none" }} /></Show>
 
                         { /* Close button - only show when hovered and multiple tabs and not editing */}
-                        {openSubChats.length > 1 && editingSubChatId !== subChat.id && <div class="absolute right-0 top-0 bottom-0 flex items-center justify-end pr-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+                        <Show when={openSubChats.length > 1 && editingSubChatId !== subChat.id}><div class="absolute right-0 top-0 bottom-0 flex items-center justify-end pr-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
                               <div class={cn("absolute right-0 top-0 bottom-0 w-9 flex items-center justify-center rounded-r-md", isActive ? "bg-[linear-gradient(to_left,hsl(var(--muted))_0%,hsl(var(--muted))_60%,transparent_100%)]" : "bg-[linear-gradient(to_left,color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--background)))_0%,color-mix(in_srgb,hsl(var(--muted))_80%,hsl(var(--background)))_60%,transparent_100%)]")} />
                               <span role="button" tabIndex={-1} onClick={(e) => {
  e.stopPropagation();
@@ -484,7 +486,7 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 		}} class="relative z-20 hover:text-foreground rounded p-0.5 transition-[color,transform] duration-150 ease-out active:scale-[0.97] cursor-pointer" title={isActive && archiveAgentHotkey ? `Close tab (${archiveAgentHotkey})` : "Close tab"}>
                                 <X class="h-3 w-3" />
                               </span>
-                            </div>}
+                            </div></Show>
                       </button>
                     </ContextMenuTrigger>
                     <SubChatContextMenu subChat={subChat} isPinned={isPinned} onTogglePin={togglePinSubChat} onRename={handleRenameClick} onArchive={onCloseTab} onArchiveOthers={onCloseOtherTabs} isOnlyChat={openSubChats.length === 1} showCloseTabOptions={true} onCloseTab={onCloseTab} onCloseOtherTabs={onCloseOtherTabs} onCloseTabsToRight={onCloseTabsToRight} visualIndex={index} hasTabsToRight={hasTabsToRight} canCloseOtherTabs={openSubChats.length > 2} chatId={parentChatId} />
@@ -493,7 +495,7 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
         </div>
 
         {	/* Plus button - absolute positioned on right with gradient cover */}
-        {(isMobile || !isMobile && subChatsSidebarMode === "tabs") && <div class="absolute right-0 top-0 bottom-0 flex items-center z-20">
+        <Show when={isMobile || (!isMobile && subChatsSidebarMode() === "tabs")}><div class="absolute right-0 top-0 bottom-0 flex items-center z-20">
             { /* Gradient to cover content peeking from the left */}
             <div class="w-6 h-full bg-gradient-to-r from-transparent to-background" />
             <div class="h-full flex items-center bg-background pr-1">
@@ -505,21 +507,21 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
                   New chat
-                  {newAgentHotkey && <Kbd>{newAgentHotkey}</Kbd>}
+                  <Show when={newAgentHotkey}><Kbd>{newAgentHotkey}</Kbd></Show>
                 </TooltipContent>
               </Tooltip>
             </div>
-          </div>}
+          </div></Show>
       </div>
 
       { /* Action buttons - always visible on mobile, on desktop only in tabs mode */}
-      {(isMobile || !isMobile && subChatsSidebarMode === "tabs") && <div class="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={isMobile || (!isMobile && subChatsSidebarMode() === "tabs")}><div class="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" }}>
           <SearchHistoryPopover ref={(r) => searchHistoryPopoverRef = r} sortedSubChats={sortedSubChats()} loadingSubChats={loadingSubChats()} subChatUnseenChanges={subChatUnseenChanges()} pendingQuestionsMap={pendingQuestionsMap()} pendingPlanApprovals={pendingPlanApprovals()} allSubChatsLength={allSubChats.length} onSelect={handleSelectFromHistory} />
-        </div>}
+        </div></Show>
 
       { /* Diff button - visible on desktop when unified sidebar is disabled OR diff widget is hidden */}
       { /* Only show if onOpenDiff is provided (clickable action available) */}
-      {!isMobile && canOpenDiff && showDiffButton && onOpenDiff && <div class="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={!isMobile && canOpenDiff && showDiffButton && onOpenDiff}><div class="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" onClick={() => onOpenDiff?.()} class="h-6 w-6 p-0 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md flex items-center justify-center hover:bg-foreground/10">
@@ -529,13 +531,13 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <span>View changes</span>
-              {openDiffHotkey && <Kbd>{openDiffHotkey}</Kbd>}
+              <Show when={openDiffHotkey}><Kbd>{openDiffHotkey}</Kbd></Show>
             </TooltipContent>
           </Tooltip>
-        </div>}
+        </div></Show>
 
       { /* Terminal button - visible on desktop when unified sidebar is disabled OR terminal widget is hidden */}
-      {!isMobile && canOpenTerminal && showTerminalButton && <div class="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={!isMobile && canOpenTerminal && showTerminalButton}><div class="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" onClick={() => onOpenTerminal?.()} class="h-6 w-6 p-0 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md flex items-center justify-center hover:bg-foreground/10">
@@ -545,26 +547,26 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <span>Open terminal</span>
-              {toggleTerminalHotkey && <Kbd>{toggleTerminalHotkey}</Kbd>}
+              <Show when={toggleTerminalHotkey}><Kbd>{toggleTerminalHotkey}</Kbd></Show>
             </TooltipContent>
           </Tooltip>
-        </div>}
+        </div></Show>
 
       { /* Diff button - only on mobile when diff is available */}
-      {isMobile && onOpenDiff && canOpenDiff && <div class="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={isMobile && onOpenDiff && canOpenDiff}><div class="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
           <Button variant="ghost" size="icon" onClick={onOpenDiff} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 flex items-center justify-center">
             <DiffIcon class="h-4 w-4" />
             <span class="sr-only">Open diff</span>
           </Button>
-        </div>}
+        </div></Show>
 
       { /* Play button - only on mobile when preview is available */}
-      {isMobile && onOpenPreview && canOpenPreview && <div class="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={isMobile && onOpenPreview && canOpenPreview}><div class="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
           <Button variant="ghost" size="icon" onClick={onOpenPreview} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 flex items-center justify-center">
             <Play class="h-4 w-4" />
             <span class="sr-only">Open preview</span>
           </Button>
-        </div>}
+        </div></Show>
 
     </div>;
  }

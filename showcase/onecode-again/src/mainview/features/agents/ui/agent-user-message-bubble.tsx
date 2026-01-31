@@ -1,4 +1,3 @@
-"use client";
 import { createSignal, createEffect, createMemo, onCleanup } from "solid-js";
 import { cn } from "../../../lib/utils";
 import { useOverflowDetection } from "../../../hooks/use-overflow-detection";
@@ -51,7 +50,7 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentO
 				fragments.push(text.slice(lastIndex, searchIndex));
 			}
 			const mark = document.createElement("mark");
-			mark.className = "search-highlight";
+			mark.class = "search-highlight";
 			mark.textContent = text.slice(searchIndex, searchIndex + searchText.length);
 			if (currentOffset !== null && currentLength !== null) {
 				const matchStart = globalOffset + searchIndex;
@@ -98,10 +97,11 @@ export function AgentUserMessageBubble({ messageId, textContent, imageParts = []
 	const [prevHadHighlight, setPrevHadHighlight] = createSignal(false);
 	// Scroll to current highlight within the user message bubble
 	createEffect(() => {
-		if (hasCurrentSearchHighlight && contentRef.current) {
+		const el = contentRef();
+		if (hasCurrentSearchHighlight && el) {
 			// Wait for DOM highlighting to be applied
 			requestAnimationFrame(() => {
-				const highlightEl = contentRef.current?.querySelector(".search-highlight-current");
+				const highlightEl = contentRef()?.querySelector(".search-highlight-current");
 				if (highlightEl) {
 					highlightEl.scrollIntoView({
 						behavior: "smooth",
@@ -111,10 +111,11 @@ export function AgentUserMessageBubble({ messageId, textContent, imageParts = []
 			});
 		}
 		// Reset scroll position when search leaves this message
-		if (prevHadHighlight.current && !hasCurrentSearchHighlight && contentRef.current) {
-			contentRef.current.scrollTop = 0;
+		const currentEl = contentRef();
+		if (prevHadHighlight() && !hasCurrentSearchHighlight && currentEl) {
+			currentEl.scrollTop = 0;
 		}
-		prevHadHighlight.current = hasCurrentSearchHighlight;
+		setPrevHadHighlight(hasCurrentSearchHighlight);
 	});
 	// Apply DOM-based highlighting after render
 	createEffect(() => {
@@ -151,16 +152,16 @@ export function AgentUserMessageBubble({ messageId, textContent, imageParts = []
           {	/* Show text mentions (quote/diff) as blocks above text bubble - only if not rendered by parent */}
           {!skipTextMentionBlocks && textMentions.length > 0 && <TextMentionBlocks mentions={textMentions} />}
           { /* Text bubble with overflow detection */}
-          {cleanedText ? <div ref={contentRef} onClick={() => showGradient && !hasCurrentSearchHighlight && setIsExpanded(true)} class={cn(
+          {cleanedText ? <div ref={contentRef} onClick={() => showGradient() && !hasCurrentSearchHighlight && setIsExpanded(true)} class={cn(
  "relative bg-input-background border px-3 py-2 rounded-xl whitespace-pre-wrap text-sm transition-all duration-200 max-h-[100px]",
 		// When searching in this message, allow scroll; otherwise hide overflow
 		hasCurrentSearchHighlight ? "overflow-y-auto" : "overflow-hidden",
 		// Cursor and hover only when can expand (not during search)
-		showGradient && !hasCurrentSearchHighlight && "cursor-pointer hover:brightness-110"
+		showGradient() && !hasCurrentSearchHighlight && "cursor-pointer hover:brightness-110"
 	)} data-message-id={messageId} data-part-index={0} data-part-type="text">
               <RenderFileMentions text={cleanedText} />
               {	/* Show gradient only when collapsed and not searching in this message */}
-              {showGradient && !hasCurrentSearchHighlight && <div class="absolute bottom-0 left-0 right-0 h-10 pointer-events-none bg-gradient-to-t from-[hsl(var(--input-background))] to-transparent rounded-b-xl" />}
+              {showGradient() && !hasCurrentSearchHighlight && <div class="absolute bottom-0 left-0 right-0 h-10 pointer-events-none bg-gradient-to-t from-[hsl(var(--input-background))] to-transparent rounded-b-xl" />}
             </div> : (imageParts.length > 0 || textMentions.length > 0) && !skipTextMentionBlocks ? <div class="bg-input-background border px-3 py-2 rounded-xl text-sm text-muted-foreground italic">
               {(() => {
  const parts: string[] = [];

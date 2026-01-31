@@ -50,7 +50,11 @@ declare module "electrobun/bun" {
   };
 
   export class BrowserView<T> {
-    rpc?: { send: (name: string, payload: unknown) => void };
+    rpc?: { 
+      send: T extends { webview: { messages: infer M } } 
+        ? { [K in keyof M]: (payload: M[K]) => void }
+        : Record<string, (payload: unknown) => void>;
+    };
     on(event: "dom-ready", handler: () => void): void;
     static defineRPC<T>(config: {
       maxRequestTime?: number;
@@ -107,10 +111,33 @@ declare module "electrobun/bun" {
       directory?: boolean;
       multiple?: boolean;
     }) => Promise<string[]>;
-    openExternal: (url: string) => void;
+    openExternal: (url: string) => boolean;
+    openPath: (path: string) => boolean;
+    showItemInFolder: (path: string) => void;
+    moveToTrash: (path: string) => boolean;
     clipboard: {
       writeText: (text: string) => void;
       readText: () => Promise<string>;
     };
+  };
+
+  export const Updater: {
+    appDataFolder: () => Promise<string>;
+    checkForUpdates: () => Promise<void>;
+    localInfo: {
+      version: () => Promise<string>;
+      hash: () => Promise<string>;
+      channel: () => Promise<string>;
+      bucketUrl: () => Promise<string>;
+    };
+    getLocallocalInfo: () => Promise<{
+      version: string;
+      hash: string;
+      channel: string;
+      bucketUrl: string;
+      name: string;
+      identifier: string;
+    }>;
+    channelBucketUrl: () => Promise<string>;
   };
 }

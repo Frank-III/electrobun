@@ -41,7 +41,9 @@ async function getDatabasePath(): Promise<string> {
 }
 
 function getMigrationsPath(): string {
-  return join(import.meta.dir, "..", "legacy", "drizzle");
+  const { resolve } = require("path");
+  const resourcesFolder = resolve("../Resources/");
+  return join(resourcesFolder, "app", "bun", "legacy", "drizzle");
 }
 
 export async function initDatabase() {

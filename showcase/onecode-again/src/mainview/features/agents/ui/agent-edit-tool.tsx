@@ -1,6 +1,4 @@
-"use client";
-import { createSignal, createEffect, createMemo, onCleanup } from "solid-js";
-import { useSetAtom } from "../../../lib/state/jotai";
+import { createSignal, createEffect, createMemo, onCleanup, Show, For } from "solid-js";
 import { useCodeTheme } from "../../../lib/hooks/use-code-theme";
 import { highlightCode } from "../../../lib/themes/shiki-theme-loader";
 import { IconSpinner, ExpandIcon, CollapseIcon } from "../../../components/ui/icons";
@@ -156,8 +154,8 @@ export function AgentEditTool({ part, messageId, partIndex, chatStatus }: AgentE
 	const { isPending, isInterrupted } = getToolStatus(part, chatStatus);
 	const codeTheme = useCodeTheme();
 	// Atoms for opening diff sidebar and focusing on file
-	const setDiffSidebarOpen = useSetAtom(agentsDiffSidebarOpenAtom);
-	const setFocusedDiffFile = useSetAtom(agentsFocusedDiffFileAtom);
+	const setDiffSidebarOpen = agentsDiffSidebarOpenAtom[1];
+	const setFocusedDiffFile = agentsFocusedDiffFileAtom[1];
 	// Determine tool type
 	const isWriteMode = part.type === "tool-Write";
 	const toolPrefix = isWriteMode ? "tool-Write" : "tool-Edit";
@@ -225,7 +223,7 @@ export function AgentEditTool({ part, messageId, partIndex, chatStatus }: AgentE
 		}
 	};
 	const handleFilenameClick = (e: MouseEvent) => {
-		if (displayPath) {
+		if (displayPath()) {
 			e.stopPropagation();
 			handleOpenInDiff();
 		}
@@ -310,15 +308,15 @@ export function AgentEditTool({ part, messageId, partIndex, chatStatus }: AgentE
 			return;
 		}
 		const now = Date.now();
-		const timeSinceLastUpdate = now - lastStreamingUpdateRef.current;
+		const timeSinceLastUpdate = now - lastStreamingUpdateRef();
 		// Throttle to ~10 updates per second (100ms intervals)
 		if (timeSinceLastUpdate >= 100) {
-			lastStreamingUpdateRef.current = now;
+			setLastStreamingUpdateRef(now);
 			setThrottledStreamingContent(streamingContent);
 		} else {
 			// Schedule update for remaining time
 			const timer = setTimeout(() => {
-				lastStreamingUpdateRef.current = Date.now();
+				setLastStreamingUpdateRef(Date.now());
 				setThrottledStreamingContent(streamingContent);
 			}, 100 - timeSinceLastUpdate);
 			onCleanup(() => clearTimeout(timer));
@@ -392,8 +390,10 @@ export function AgentEditTool({ part, messageId, partIndex, chatStatus }: AgentE
 	return <div data-message-id={messageId} data-part-index={partIndex} data-part-type={toolPrefix} data-tool-file-path={displayPath} class="rounded-lg border border-border bg-muted/30 overflow-hidden mx-2">
       {	/* Header - clickable to expand, fixed height to prevent layout shift */}
       <div onClick={hasVisibleContent ? handleHeaderClick : undefined} class={cn("flex items-center justify-between pl-2.5 pr-0.5 h-7", hasVisibleContent && !isPending && !isInputStreaming && "cursor-pointer hover:bg-muted/50 transition-colors duration-150")}>
-        <div onClick={handleFilenameClick} class={cn("flex items-center gap-1.5 text-xs truncate flex-1 min-w-0", displayPath && "cursor-pointer hover:text-foreground")}>
-          {FileIcon && <FileIcon class="w-2.5 h-2.5 flex-shrink-0 text-muted-foreground" />}
+        <div onClick={handleFilenameClick} class={cn("flex items-center gap-1.5 text-xs truncate flex-1 min-w-0", displayPath() && "cursor-pointer hover:text-foreground")}>
+          <Show when={FileIcon}>
+              <FileIcon class="w-2.5 h-2.5 flex-shrink-0 text-muted-foreground" />
+            </Show>
           { /* Filename with shimmer during progress */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -417,39 +417,51 @@ export function AgentEditTool({ part, messageId, partIndex, chatStatus }: AgentE
                 <span class="text-green-600 dark:text-green-400">
                   +{diffStats.addedLines}
                 </span>
-                {diffStats.removedLines > 0 && <span class="text-red-600 dark:text-red-400">
-                    -{diffStats.removedLines}
-                  </span>}
+                <Show when={diffStats?.removedLines && diffStats.removedLines > 0}>
+                      <span class="text-red-600 dark:text-red-400">
+                        -{diffStats!.removedLines}
+                      </span>
+                    </Show>
               </> : null}
           </div>
 
           { /* Expand/Collapse button - show when has visible content and not streaming */}
           { /* Always render container for consistent spacing */}
           <div class="w-6 h-6 flex items-center justify-center">
-            {hasVisibleContent && !isPending && !isInputStreaming && <button onClick={handleExpandButtonClick} class="p-1 rounded-md hover:bg-accent transition-[background-color,transform] duration-150 ease-out active:scale-95">
-                <div class="relative w-4 h-4">
-                  <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isOutputExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
-                  <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isOutputExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
-                </div>
-              </button>}
+            <Show when={hasVisibleContent && !isPending && !isInputStreaming}>
+                <button onClick={handleExpandButtonClick} class="p-1 rounded-md hover:bg-accent transition-[background-color,transform] duration-150 ease-out active:scale-95">
+                  <div class="relative w-4 h-4">
+                    <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isOutputExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
+                    <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isOutputExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
+                  </div>
+                </button>
+              </Show>
           </div>
         </div>
       </div>
 
       { /* Content - git-style diff with syntax highlighting */}
-      {hasVisibleContent && <div onClick={handleContentClick} class={cn(
+      <Show when={hasVisibleContent}>
+        <div onClick={handleContentClick} class={cn(
  "border-t border-border transition-colors duration-150 font-mono text-xs",
-		isOutputExpanded ? "max-h-[200px] overflow-y-auto" : "h-[72px] overflow-hidden",
+		isOutputExpanded() ? "max-h-[200px] overflow-y-auto" : "h-[72px] overflow-hidden",
 		!isOutputExpanded && !isPending && !isInputStreaming && "cursor-pointer hover:bg-muted/50",
 		// When streaming with > 3 lines, use flex to push content to bottom
 		isInputStreaming && shouldAlignBottom && "flex flex-col justify-end"
 	)}>
-          {	/* Display lines - either streaming content or completed diff */}
-          {displayLines.length > 0 ? <div class={cn(isInputStreaming && shouldAlignBottom && "flex-shrink-0")}>
-              {displayLines.map((line: DiffLine, idx: number) => <DiffLineRow key={`${line.type}-${idx}`} line={line} highlightedHtml={highlightedMap.get(idx)} />)}
-            </div> : throttledStreamingContent || newString ? <div class={cn("px-2.5 py-1.5 text-green-700 dark:text-green-300 whitespace-pre-wrap break-all", isInputStreaming && shouldAlignBottom && "flex-shrink-0")}>
-              {isInputStreaming && !isOutputExpanded ? (throttledStreamingContent || newString).slice(-500) : throttledStreamingContent || newString}
-            </div> : null}
-        </div>}
+          { /* Display lines - either streaming content or completed diff */}
+          <Show when={displayLines.length > 0} fallback={
+            <Show when={throttledStreamingContent || newString}>
+              <div class={cn("px-2.5 py-1.5 text-green-700 dark:text-green-300 whitespace-pre-wrap break-all", isInputStreaming && shouldAlignBottom && "flex-shrink-0")}>
+                {isInputStreaming && !isOutputExpanded ? (throttledStreamingContent || newString).slice(-500) : throttledStreamingContent || newString}
+              </div>
+            </Show>
+          }>
+            <div class={cn(isInputStreaming && shouldAlignBottom && "flex-shrink-0")}>
+              <For each={displayLines}>{(line: DiffLine, idx) => <DiffLineRow key={`${line.type}-${idx()}`} line={line} highlightedHtml={highlightedMap.get(idx())} />}</For>
+            </div>
+          </Show>
+        </div>
+      </Show>
     </div>;
 }

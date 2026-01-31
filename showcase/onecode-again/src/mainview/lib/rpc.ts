@@ -1,11 +1,12 @@
-import type { AppRPC } from "../shared/rpc-schema"
+import type { BunRequestClient } from "../../shared/rpc-schema"
 
-export type BunRequests = AppRPC["bun"]["requests"]
+export type { BunRequestClient }
+export type BunRequests = import("../../shared/rpc-schema").BunRequestsSchema
 
-export function getRpc(): BunRequests {
-  const rpc = (window as any)?.rpc?.request
+export function getRpc(): BunRequestClient {
+  const rpc = window.rpc?.request
   if (!rpc) {
     throw new Error("RPC is not available in this window")
   }
-  return rpc as BunRequests
+  return rpc
 }

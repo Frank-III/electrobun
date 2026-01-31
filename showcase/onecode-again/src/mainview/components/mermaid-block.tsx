@@ -1,7 +1,6 @@
 import { createSignal, createEffect, onCleanup, Show } from "solid-js";
 import { useTheme } from "../lib/hooks/use-theme";
 import { Copy, Check, Download, AlertTriangle, RotateCcw, Maximize2, X, ZoomIn, ZoomOut, RotateCcw as ResetZoom } from "lucide-solid";
-import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch";
 import { cn } from "../lib/utils";
 import { Dialog, DialogContent, DialogPortal, DialogTitle } from "./ui/dialog";
 import { Dialog as DialogPrimitive } from "@kobalte/core/dialog";
@@ -117,21 +116,107 @@ const getMermaidConfig = (isDark: boolean): Record<string, unknown> => ({
 	securityLevel: "loose" as const,
 	fontFamily: "inherit"
 });
-// Zoom controls component for the fullscreen viewer
-function ZoomControls() {
-	const { zoomIn, zoomOut, resetTransform } = useControls();
-	return <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/50 rounded-full px-4 py-2 z-10">
-      <button onClick={() => zoomOut()} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-white" type="button" aria-label="Zoom out (-)">
-        <ZoomOut class="size-5" />
-      </button>
-      <button onClick={() => zoomIn()} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-white" type="button" aria-label="Zoom in (+)">
-        <ZoomIn class="size-5" />
-      </button>
-      <div class="w-px h-5 bg-white/20 mx-1" />
-      <button onClick={() => resetTransform()} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-white" type="button" aria-label="Reset zoom (0)">
-        <ResetZoom class="size-5" />
-      </button>
-    </div>;
+const MIN_SCALE = 0.1;
+const MAX_SCALE = 8;
+const ZOOM_STEP = 0.15;
+
+/** Native zoom/pan wrapper for fullscreen diagram. Solid-friendly, no React deps. */
+function DiagramZoomPan(props: { content: string; contentClass: string }) {
+	const [scale, setScale] = createSignal(1);
+	const [x, setX] = createSignal(0);
+	const [y, setY] = createSignal(0);
+	const [isPanning, setIsPanning] = createSignal(false);
+	const [lastPointer, setLastPointer] = createSignal<{ x: number; y: number } | null>(null);
+
+	const zoomIn = () => setScale((s) => Math.min(MAX_SCALE, s + ZOOM_STEP));
+	const zoomOut = () => setScale((s) => Math.max(MIN_SCALE, s - ZOOM_STEP));
+	const resetTransform = () => {
+		setScale(1);
+		setX(0);
+		setY(0);
+	};
+
+	const onWheel = (e: WheelEvent) => {
+		e.preventDefault();
+		const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+		setScale((s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s + delta)));
+	};
+	const onPointerDown = (e: PointerEvent) => {
+		if (e.button !== 0) return;
+		setIsPanning(true);
+		setLastPointer({ x: e.clientX, y: e.clientY });
+	};
+	const onPointerMove = (e: PointerEvent) => {
+		if (!isPanning()) return;
+		const last = lastPointer();
+		if (last) {
+			setX((px) => px + e.clientX - last.x);
+			setY((py) => py + e.clientY - last.y);
+			setLastPointer({ x: e.clientX, y: e.clientY });
+		}
+	};
+	const onPointerUp = () => {
+		setIsPanning(false);
+		setLastPointer(null);
+	};
+
+	createEffect(() => {
+		if (!isPanning()) return;
+		window.addEventListener("pointermove", onPointerMove);
+		window.addEventListener("pointerup", onPointerUp);
+		onCleanup(() => {
+			window.removeEventListener("pointermove", onPointerMove);
+			window.removeEventListener("pointerup", onPointerUp);
+		});
+	});
+
+	let containerRef: HTMLDivElement | undefined;
+	createEffect(() => {
+		const el = containerRef;
+		if (!el) return;
+		el.addEventListener("wheel", onWheel, { passive: false });
+		onCleanup(() => el.removeEventListener("wheel", onWheel));
+	});
+
+	return (
+		<div
+			ref={(el) => (containerRef = el)}
+			class="w-full h-full overflow-hidden touch-none"
+			style={{ cursor: isPanning() ? "grabbing" : "grab" }}
+			role="img"
+			aria-label="Diagram"
+			onPointerDown={onPointerDown}
+		>
+			<div class="absolute inset-0 flex items-center justify-center">
+				<div
+					class={cn("mermaid-diagram-fullscreen p-8 [&_svg]:max-w-none [&_svg]:h-auto", props.contentClass)}
+					innerHTML={props.content}
+					style={{
+						transform: `translate(${x()}px, ${y()}px) scale(${scale()})`,
+						"transform-origin": "center center"
+					}}
+				/>
+			</div>
+			<ZoomControls zoomIn={zoomIn} zoomOut={zoomOut} resetTransform={resetTransform} />
+		</div>
+	);
+}
+
+function ZoomControls(props: { zoomIn: () => void; zoomOut: () => void; resetTransform: () => void }) {
+	return (
+		<div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/50 rounded-full px-4 py-2 z-10 pointer-events-auto">
+			<button onClick={() => props.zoomOut()} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-white" type="button" aria-label="Zoom out (-)">
+				<ZoomOut class="size-5" />
+			</button>
+			<button onClick={() => props.zoomIn()} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-white" type="button" aria-label="Zoom in (+)">
+				<ZoomIn class="size-5" />
+			</button>
+			<div class="w-px h-5 bg-white/20 mx-1" />
+			<button onClick={() => props.resetTransform()} class="p-1.5 rounded-full hover:bg-white/10 transition-colors text-white" type="button" aria-label="Reset zoom (0)">
+				<ResetZoom class="size-5" />
+			</button>
+		</div>
+	);
 }
 // Debounce delay before attempting to render
 const RENDER_DEBOUNCE_MS = 600;
@@ -148,23 +233,14 @@ function StreamingPlaceholder() {
     </div>;
 }
 // Main mermaid block - handles actual rendering when not streaming
-function MermaidBlockInner({ code }: {
-	code: string;
-}) {
+function MermaidBlockInner(props: { code: string }) {
 	const { resolvedTheme } = useTheme();
 	const isDark = resolvedTheme() === "dark";
-	const [renderState, setRenderState] = createSignal(() => {
-		// Check cache on initial render
-		const cacheKey = `${code}-${isDark ? "dark" : "light"}`;
-		const cached = mermaidCache.get(cacheKey);
-		if (cached) {
-			return {
-				status: "success",
-				svg: cached
-			};
-		}
-		return { status: "idle" };
-	});
+	// Check cache on initial render
+	const cacheKey = `${props.code}-${isDark ? "dark" : "light"}`;
+	const cachedSvg = mermaidCache.get(cacheKey);
+	const initialState: RenderState = cachedSvg ? { status: "success", svg: cachedSvg } : { status: "idle" };
+	const [renderState, setRenderState] = createSignal<RenderState>(initialState);
 	const [copied, setCopied] = createSignal(false);
 	const [isFullscreen, setIsFullscreen] = createSignal(false);
 	const [renderIdRef, setRenderIdRef] = createSignal(0);
@@ -174,40 +250,40 @@ function MermaidBlockInner({ code }: {
 	const [lastRenderedThemeRef, setLastRenderedThemeRef] = createSignal<boolean | null>(null);
 	const doRender = async () => {
 		// Increment render ID to handle race conditions
-		renderIdRef.current += 1;
-		const currentRenderId = renderIdRef.current;
+		const currentRenderId = renderIdRef() + 1;
+		setRenderIdRef(currentRenderId);
 		setRenderState({ status: "loading" });
 		try {
 			const mermaidModule = await getMermaid();
 			const mermaid = mermaidModule.default;
 			// Check if this render is still current
-			if (currentRenderId !== renderIdRef.current) return;
+			if (currentRenderId !== renderIdRef()) return;
 			// Initialize/reinitialize mermaid with current theme
 			mermaid.initialize(getMermaidConfig(isDark));
 			// Generate unique ID for this render
 			const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-			const { svg } = await mermaid.render(id, code);
+			const { svg } = await mermaid.render(id, props.code);
 			// Check again if this render is still current
-			if (currentRenderId !== renderIdRef.current) return;
+			if (currentRenderId !== renderIdRef()) return;
 			// Cache the result for future remounts
-			const cacheKey = `${code}-${isDark ? "dark" : "light"}`;
+			const cacheKey = `${props.code}-${isDark ? "dark" : "light"}`;
 			mermaidCache.set(cacheKey, svg);
 			setRenderState({
 				status: "success",
 				svg
 			});
-			lastRenderedCodeRef.current = code;
-			lastRenderedThemeRef.current = isDark;
+			setLastRenderedCodeRef(props.code);
+			setLastRenderedThemeRef(isDark);
 			// Clean up any error artifacts mermaid left in DOM
 			cleanupMermaidErrors();
 		} catch (error) {
-			if (currentRenderId !== renderIdRef.current) return;
+			if (currentRenderId !== renderIdRef()) return;
 			const message = error instanceof Error ? error.message : "Failed to render diagram";
 			// Clean up error SVGs that mermaid adds to DOM
 			cleanupMermaidErrors();
 			// Check if this is a parse/syntax error (incomplete diagram)
 			const isParseError = message.toLowerCase().includes("parse error") || message.toLowerCase().includes("syntax error") || message.toLowerCase().includes("expecting") || message.toLowerCase().includes("unexpected") || message.toLowerCase().includes("no diagram type detected") || message.toLowerCase().includes("lexical error");
-			if (isParseError && !lastRenderedCodeRef.current) {
+			if (isParseError && !lastRenderedCodeRef()) {
 				// Show "Creating diagram..." only if we haven't successfully rendered before
 				setRenderState({ status: "parsing" });
 			} else {
@@ -220,7 +296,7 @@ function MermaidBlockInner({ code }: {
 	};
 	const renderDiagram = () => {
 		// Skip if code is too short
-		if (code.trim().length < 10) {
+		if (props.code.trim().length < 10) {
 			setRenderState({ status: "idle" });
 			return;
 		}
@@ -244,57 +320,60 @@ function MermaidBlockInner({ code }: {
 			const quotes = (str.match(/"/g) || []).length;
 			return quotes % 2 !== 0;
 		};
-		const looksIncomplete = hasUnclosedBrackets(code) || hasUnclosedBraces(code) || hasUnclosedParens(code) || hasUnclosedQuotes(code);
+		const looksIncomplete = hasUnclosedBrackets(props.code) || hasUnclosedBraces(props.code) || hasUnclosedParens(props.code) || hasUnclosedQuotes(props.code);
 		if (looksIncomplete) {
 			setRenderState({ status: "parsing" });
 			return;
 		}
 		// Debounce: wait for code to stabilize before rendering
 		// This prevents rapid-fire render attempts during streaming
-		if (debounceTimeoutRef.current) {
-			clearTimeout(debounceTimeoutRef.current);
+		const currentTimeout = debounceTimeoutRef();
+		if (currentTimeout) {
+			clearTimeout(currentTimeout);
 		}
 		// Show loading state while waiting
 		setRenderState({ status: "parsing" });
-		debounceTimeoutRef.current = setTimeout(() => {
+		setDebounceTimeoutRef(setTimeout(() => {
 			doRender();
-		}, RENDER_DEBOUNCE_MS);
+		}, RENDER_DEBOUNCE_MS));
 	};
 	// Render on mount and when code/theme changes
 	createEffect(() => {
 		// Check if we have a cached result
-		const cacheKey = `${code}-${isDark ? "dark" : "light"}`;
+		const cacheKey = `${props.code}-${isDark ? "dark" : "light"}`;
 		const cached = mermaidCache.get(cacheKey);
 		if (cached) {
 			setRenderState({
 				status: "success",
 				svg: cached
 			});
-			lastRenderedCodeRef.current = code;
-			lastRenderedThemeRef.current = isDark;
+			setLastRenderedCodeRef(props.code);
+			setLastRenderedThemeRef(isDark);
 			return;
 		}
 		// Only re-render if code or theme actually changed
-		if (code === lastRenderedCodeRef.current && isDark === lastRenderedThemeRef.current) {
+		if (props.code === lastRenderedCodeRef() && isDark === lastRenderedThemeRef()) {
 			return;
 		}
 		renderDiagram();
 	});
 	// Cleanup mermaid artifacts and debounce timeout on unmount
 	onCleanup(() => {
-		if (debounceTimeoutRef.current) {
-			clearTimeout(debounceTimeoutRef.current);
+		const currentTimeout = debounceTimeoutRef();
+		if (currentTimeout) {
+			clearTimeout(currentTimeout);
 		}
 		cleanupMermaidErrors();
 	});
 	const handleCopy = async () => {
-		await navigator.clipboard.writeText(code);
+		await navigator.clipboard.writeText(props.code);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 2e3);
 	};
 	const handleDownload = async () => {
-		if (renderState.status !== "success") return;
-		const blob = new Blob([renderState.svg], { type: "image/svg+xml" });
+		const state = renderState();
+		if (state.status !== "success") return;
+		const blob = new Blob([state.svg], { type: "image/svg+xml" });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement("a");
 		a.href = url;
@@ -318,40 +397,40 @@ function MermaidBlockInner({ code }: {
               <Check class={cn("absolute inset-0 w-3 h-3 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", copied() ? "opacity-100 scale-100" : "opacity-0 scale-50")} />
             </div>
           </button>
-          {renderState.status === "success" && <>
+          <Show when={renderState().status === "success"}>
               <button onClick={handleDownload} tabIndex={-1} class="p-1" title="Download SVG">
                 <Download class="w-3 h-3 text-muted-foreground hover:text-foreground transition-colors" />
               </button>
               <button onClick={openFullscreen} tabIndex={-1} class="p-1" title="View fullscreen">
                 <Maximize2 class="w-3 h-3 text-muted-foreground hover:text-foreground transition-colors" />
               </button>
-            </>}
+          </Show>
         </div>
 
         { /* Content */}
         <div class="p-4 min-h-[60px] flex items-center justify-center">
-          <Show when={renderState.status === "idle"}>
+          <Show when={renderState().status === "idle"}>
             <div class="text-muted-foreground text-sm">
               Waiting for diagram...
             </div>
           </Show>
 
-          <Show when={renderState.status === "loading" || renderState.status === "parsing"}>
+          <Show when={renderState().status === "loading" || renderState().status === "parsing"}>
             <div class="flex items-center gap-2 text-muted-foreground text-sm">
               <div class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
               <span>Creating diagram...</span>
             </div>
           </Show>
 
-          <Show when={renderState.status === "success"}>
-            <div class={cn("mermaid-diagram w-full overflow-x-auto cursor-pointer", "[&_svg]:max-w-full [&_svg]:h-auto [&_svg]:mx-auto")} onClick={openFullscreen} innerHTML={renderState.svg} />
+          <Show when={renderState().status === "success" ? renderState() as RenderState & { status: "success" } : undefined}>
+            {(state) => <div class={cn("mermaid-diagram w-full overflow-x-auto cursor-pointer", "[&_svg]:max-w-full [&_svg]:h-auto [&_svg]:mx-auto")} onClick={openFullscreen} innerHTML={state().svg} />}
           </Show>
 
-          <Show when={renderState.status === "error"}>
-            <div class="w-full">
+          <Show when={renderState().status === "error" ? renderState() as RenderState & { status: "error" } : undefined}>
+            {(state) => <div class="w-full">
               <div class="flex items-start gap-2 text-destructive text-sm mb-3">
                 <AlertTriangle class="h-4 w-4 shrink-0 mt-0.5" />
-                <span class="break-words">{renderState.message}</span>
+                <span class="break-words">{state().message}</span>
               </div>
               <div class="flex gap-2">
                 <button onClick={renderDiagram} class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md bg-muted hover:bg-accent transition-colors">
@@ -364,16 +443,16 @@ function MermaidBlockInner({ code }: {
                   Show diagram code
                 </summary>
                 <pre class="mt-2 p-2 rounded bg-muted text-xs overflow-x-auto whitespace-pre-wrap break-words font-mono">
-                  {code}
+                  {props.code}
                 </pre>
               </details>
-            </div>
+            </div>}
           </Show>
         </div>
       </div>
 
-      { /* Fullscreen dialog with zoom/pan using react-zoom-pan-pinch */}
-      <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+      { /* Fullscreen dialog with native zoom/pan (Solid-friendly) */}
+      <Dialog open={isFullscreen()} onOpenChange={setIsFullscreen}>
         <DialogPortal>
           <DialogPrimitive.Overlay class="fixed inset-0 z-50 bg-black/90 data-[expanded]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[expanded]:fade-in-0" />
           <DialogPrimitive.Content class="fixed inset-0 z-50 flex items-center justify-center outline-none overflow-hidden" onPointerDownOutside={(e) => e.preventDefault()}>
@@ -386,16 +465,14 @@ function MermaidBlockInner({ code }: {
               <X class="size-6" />
             </button>
 
-            { /* Diagram viewer with zoom/pan */}
-            <Show when={renderState.status === "success"}>
-              <div class="w-full h-full overflow-hidden">
-                <TransformWrapper initialScale={1} minScale={.1} maxScale={8} centerOnInit limitToBounds={false} wheel={{ smoothStep: .1 }} panning={{ velocityDisabled: true }}>
-                  <ZoomControls />
-                  <TransformComponent wrapperClass="!w-full !h-full" contentClass="!w-full !h-full flex items-center justify-center">
-                    <div class={cn("mermaid-diagram-fullscreen p-8", "[&_svg]:max-w-none [&_svg]:h-auto", isDark ? "" : "[&_svg]:filter [&_svg]:drop-shadow-lg")} innerHTML={renderState.svg} />
-                  </TransformComponent>
-                </TransformWrapper>
-              </div>
+            { /* Diagram viewer with native zoom/pan */}
+            <Show when={renderState().status === "success" ? renderState() as RenderState & { status: "success" } : undefined}>
+              {(state) => (
+                <DiagramZoomPan
+                  content={state().svg}
+                  contentClass={cn("[&_svg]:max-w-none [&_svg]:h-auto", isDark ? "" : "[&_svg]:filter [&_svg]:drop-shadow-lg")}
+                />
+              )}
             </Show>
 
             { /* Keyboard hints */}
@@ -439,13 +516,14 @@ function getBlockId(code: string): string {
 }
 // Exported component that handles streaming state
 // When streaming, shows placeholder. When done, renders the diagram.
-export function MermaidBlock({ code, isStreaming = false }: MermaidBlockProps) {
-	const blockId = getBlockId(code);
-	const codeComplete = looksComplete(code);
+export function MermaidBlock(props: MermaidBlockProps) {
+	const isStreaming = props.isStreaming ?? false;
+	const blockId = getBlockId(props.code);
+	const codeComplete = looksComplete(props.code);
 	// Once streaming ends for this block, mark it as finished globally
 	createEffect(() => {
-		if (!isStreaming && codeComplete) {
-			finishedStreamingBlocks.add(blockId);
+		if (!(props.isStreaming ?? false) && looksComplete(props.code)) {
+			finishedStreamingBlocks.add(getBlockId(props.code));
 		}
 	});
 	// Check if this block has finished streaming before (survives remounts)
@@ -458,6 +536,6 @@ export function MermaidBlock({ code, isStreaming = false }: MermaidBlockProps) {
 		return <StreamingPlaceholder />;
 	}
 	// Otherwise try to render the diagram
-	return <MermaidBlockInner code={code} />;
+	return <MermaidBlockInner code={props.code} />;
 }
 MermaidBlock.displayName = "MermaidBlock";

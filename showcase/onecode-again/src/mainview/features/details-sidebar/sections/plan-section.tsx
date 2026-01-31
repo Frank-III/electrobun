@@ -1,9 +1,8 @@
-"use client";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
-import { useAtom } from "../../../lib/state/jotai";
 import { IconSpinner, PlanIcon } from "@/components/ui/icons";
 import { ChatMarkdownRenderer } from "@/components/chat-markdown-renderer";
-import { trpc } from "@/lib/trpc";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "@/lib/desktop-rpc";
 import { planContentCacheAtomFamily } from "../atoms";
 interface PlanSectionProps {
 	chatId: string;
@@ -22,16 +21,25 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
 	const [topGradientRef, setTopGradientRef] = createSignal<HTMLDivElement>(null);
 	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement>(null);
 	// Plan content cache to avoid flashing loading state
-	const [planCache, setPlanCache] = useAtom(planContentCacheAtomFamily(chatId));
-	// Fetch plan file content using tRPC
-	const { data: planContent, isLoading, error, refetch } = trpc.files.readFile.useQuery({ filePath: planPath! }, { enabled: !!planPath });
+	const [planCache, setPlanCache] = planContentCacheAtomFamily(chatId);
+	// Fetch plan file content via desktop RPC
+	const planQuery = useQuery(() => ({
+		queryKey: ["files", "readFile", planPath] as const,
+		queryFn: () => desktopRpc.files.readFile({ filePath: planPath! }),
+		enabled: !!planPath,
+	}));
+	const planContent = () => planQuery.data;
+	const isLoading = () => planQuery.isLoading;
+	const error = () => planQuery.error;
+	const refetch = () => planQuery.refetch();
 	// Update cache when content loads successfully
 	createEffect(() => {
-		if (planContent && planPath) {
+		const content = planContent();
+		if (content && planPath) {
 			setPlanCache({
-				content: planContent,
+				content,
 				planPath,
-				isReady: true
+				isReady: true,
 			});
 		}
 	});
@@ -47,9 +55,9 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
 	});
 	// Update scroll gradients via DOM (no state, no re-renders)
 	const updateScrollGradients = () => {
-		const content = contentRef.current;
-		const topGradient = topGradientRef.current;
-		const bottomGradient = bottomGradientRef.current;
+		const content = contentRef();
+		const topGradient = topGradientRef();
+		const bottomGradient = bottomGradientRef();
 		if (!content || !topGradient || !bottomGradient) return;
 		const { scrollTop, scrollHeight, clientHeight } = content;
 		const isScrollable = scrollHeight > clientHeight;
@@ -62,7 +70,7 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
 	};
 	// Update gradients on scroll
 	createEffect(() => {
-		const content = contentRef.current;
+		const content = contentRef();
 		if (!content) return;
 		content.addEventListener("scroll", updateScrollGradients);
 		// Initial check
@@ -76,22 +84,22 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
 	// Use cached content while loading new content to prevent flashing
 	// Show cached content if: loading new content OR error occurred but we have cache
 	const displayContent = createMemo(() => {
-		// If we have fresh content, use it
-		if (planContent) return planContent;
-		// If loading or error, use cached content (same plan path)
+		const content = planContent();
+		if (content) return content;
 		if (planCache?.isReady && planCache.planPath === planPath) {
 			return planCache.content;
 		}
 		return null;
 	});
 	// Only show loading if we have no content to display at all
-	const showLoading = isLoading && !displayContent;
+	const showLoading = createMemo(() => isLoading() && !displayContent());
 	// Only show error if we have no content to display at all
-	const showError = error && !displayContent;
+	const showError = createMemo(() => error() && !displayContent());
 	// Extract plan title from markdown (first H1)
 	const planTitle = createMemo(() => {
-		if (!displayContent) return "Plan";
-		const match = displayContent.match(/^#\s+(.+)$/m);
+		const content = displayContent();
+		if (!content) return "Plan";
+		const match = content.match(/^#\s+(.+)$/m);
 		return match ? match[1] : "Plan";
 	});
 	// No plan path - don't render anything (parent should hide the widget)
@@ -99,13 +107,13 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
 		return null;
 	}
 	// Show loading only if we have no cached content
-	if (showLoading) {
+	if (showLoading()) {
 		return <div class="flex items-center justify-center py-8">
         <IconSpinner class="h-5 w-5 text-muted-foreground" />
       </div>;
 	}
 	// Show error only if we have no cached content
-	if (showError) {
+	if (showError()) {
 		return <div class="px-3 py-4 text-center">
         <p class="text-xs text-muted-foreground">
           Failed to load plan
@@ -113,7 +121,7 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
       </div>;
 	}
 	// No content at all (shouldn't happen if planPath is set)
-	if (!displayContent) {
+	if (!displayContent()) {
 		return null;
 	}
 	return <div class="flex flex-col">
@@ -126,7 +134,7 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
 	}} />
 
         <div ref={contentRef} class={`px-2 py-2 overflow-y-auto allow-text-selection ${isExpanded ? "" : "max-h-64"}`} data-plan-path={planPath}>
-          <ChatMarkdownRenderer content={displayContent} size="sm" />
+          <ChatMarkdownRenderer content={displayContent()!} size="sm" />
         </div>
 
         {	/* Bottom scroll gradient */}

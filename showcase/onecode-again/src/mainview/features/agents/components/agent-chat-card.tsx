@@ -1,25 +1,24 @@
-"use client";
 import { createSignal } from "solid-js";
 import { cn } from "../../../lib/utils";
 import { GitHubLogo, IconSpinner, PlanIcon, AgentIcon } from "../../../components/ui/canvas-icons";
-import { useAtomValue } from "../../../lib/state/jotai";
 import { agentsUnseenChangesAtom, lastChatModesAtom } from "../atoms";
 // GitHub avatar with loading placeholder
-function GitHubAvatar({ gitOwner, className = "h-4 w-4" }: {
+function GitHubAvatar(props: {
 	gitOwner: string;
-	className?: string;
+	class?: string;
 }) {
+	const cls = props.class ?? "h-4 w-4";
 	const [isLoaded, setIsLoaded] = createSignal(false);
 	const [hasError, setHasError] = createSignal(false);
 	const handleLoad = () => setIsLoaded(true);
 	const handleError = () => setHasError(true);
 	if (hasError()) {
-		return <GitHubLogo class={cn(className, "text-muted-foreground flex-shrink-0")} />;
+		return <GitHubLogo class={cn(cls, "text-muted-foreground flex-shrink-0")} />;
 	}
-	return <div class={cn(className, "relative flex-shrink-0")}>
+	return <div class={cn(cls, "relative flex-shrink-0")}>
       {	/* Placeholder background while loading */}
       {!isLoaded() && <div class="absolute inset-0 rounded-sm bg-muted" />}
-      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={cn(className, "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
+      <img src={`https://github.com/${props.gitOwner}.png?size=64`} alt={props.gitOwner} class={cn(cls, "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
     </div>;
  }
 interface AgentChatCardProps {
@@ -66,8 +65,8 @@ function ChatIconWithBadge({ isLoading, hasUnseenChanges, lastMode, isSelected =
  }
 export function AgentChatCard({ chat, isSelected, isLoading, onClick, onMouseEnter, variant = "sidebar", gitOwner, gitProvider, repoName }: AgentChatCardProps) {
 	// Get status atoms
-	const unseenChanges = useAtomValue(agentsUnseenChangesAtom);
-	const lastChatModes = useAtomValue(lastChatModesAtom);
+	const unseenChanges = agentsUnseenChangesAtom[0];
+	const lastChatModes = lastChatModesAtom[0];
 	const hasUnseenChanges = unseenChanges().has(chat.id);
 	const lastMode = lastChatModes().get(chat.id) || "agent";
 	// isLoading is already derived from loadingSubChatsAtom (local tracking)

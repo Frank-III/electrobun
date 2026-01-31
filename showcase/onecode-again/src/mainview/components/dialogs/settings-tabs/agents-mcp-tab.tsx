@@ -1,8 +1,8 @@
-"use client";
 import { ChevronRight, ExternalLink, Loader2, RefreshCw } from "lucide-solid";
 import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { useQuery, useMutation } from "@tanstack/solid-query";
 import { toast } from "solid-sonner";
-import { trpc } from "../../../lib/trpc";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
 import { OriginalMCPIcon } from "../../ui/icons";
@@ -122,16 +122,28 @@ export function AgentsMcpTab() {
 	const [expandedServer, setExpandedServer] = createSignal<string | null>(null);
 	// Fetch ALL MCP config (global + all projects) - includes tools for connected servers
 	// Uses long staleTime since data is prefetched at app startup and user can manually refresh
-	const { data: allMcpConfig, isLoading: isLoadingConfig, refetch } = trpc.claude.getAllMcpConfig.useQuery(undefined, { staleTime: 10 * 60 * 1e3 });
+	const allMcpConfigQuery = useQuery(() => ({
+		queryKey: ["claude", "getAllMcpConfig"],
+		queryFn: () => desktopRpc.claude.getAllMcpConfig(),
+		staleTime: 10 * 60 * 1e3,
+	}));
+	const allMcpConfig = () => allMcpConfigQuery.data;
+	const isLoadingConfig = () => allMcpConfigQuery.isLoading;
+	const refetch = () => allMcpConfigQuery.refetch();
 	// Refresh state - true during initial load OR manual refresh
 	const [isManualRefreshing, setIsManualRefreshing] = createSignal(false);
-	const isRefreshing = isLoadingConfig || isManualRefreshing;
-	// tRPC
-	const startOAuthMutation = trpc.claude.startMcpOAuth.useMutation();
-	const openInFinderMutation = trpc.external.openInFinder.useMutation();
+	const isRefreshing = () => isLoadingConfig() || isManualRefreshing();
+	const startOAuthMutation = useMutation(() => ({
+		mutationFn: (input: { serverName: string; projectPath: string }) =>
+			desktopRpc.claude.startMcpOAuth.mutate(input),
+	}));
+	const openInFinderMutation = useMutation(() => ({
+		mutationFn: (input: { path: string }) =>
+			desktopRpc.external.openInFinder.mutate(input),
+	}));
 	// Process groups for display (filter out empty groups)
-	type McpGroup = NonNullable<typeof allMcpConfig>["groups"][number];
-	const groups = createMemo(() => (allMcpConfig?.groups || []).filter((g: McpGroup) => g.mcpServers.length > 0));
+	type McpGroup = NonNullable<ReturnType<typeof allMcpConfig>>["groups"][number];
+	const groups = createMemo(() => (allMcpConfig()?.groups || []).filter((g: McpGroup) => g.mcpServers.length > 0));
 	const totalServers = createMemo(() => groups().reduce((acc: number, g: McpGroup) => acc + g.mcpServers.length, 0));
 	const handleToggleServer = (serverKey: string) => {
 		setExpandedServer(expandedServer() === serverKey ? null : serverKey);
@@ -173,7 +185,7 @@ export function AgentsMcpTab() {
 		}
 	};
 	const handleOpenGlobalClaudeJson = () => {
-		openInFinderMutation.mutate("~/.claude.json");
+		openInFinderMutation.mutate({ path: "~/.claude.json" });
 	};
 	return <div class="p-6 space-y-6 h-full">
       {	/* Header */}
@@ -181,8 +193,8 @@ export function AgentsMcpTab() {
         <div class="flex flex-col space-y-1.5 text-center sm:text-left">
           <div class="flex items-center gap-1">
             <h3 class="text-sm font-semibold text-foreground">MCP Servers</h3>
-            <button onClick={() => handleRefresh()} disabled={isRefreshing} class="h-6 w-6 inline-flex items-center justify-center text-foreground/50 hover:text-foreground disabled:opacity-50 disabled:pointer-events-none transition-colors">
-              <Show when={isRefreshing} fallback={<RefreshCw class="h-3.5 w-3.5" />}>
+            <button onClick={() => handleRefresh()} disabled={isRefreshing()} class="h-6 w-6 inline-flex items-center justify-center text-foreground/50 hover:text-foreground disabled:opacity-50 disabled:pointer-events-none transition-colors">
+              <Show when={isRefreshing()} fallback={<RefreshCw class="h-3.5 w-3.5" />}>
                 <Loader2 class="h-3.5 w-3.5 animate-spin" />
               </Show>
             </button>
@@ -224,7 +236,7 @@ export function AgentsMcpTab() {
 
       { /* Servers List */}
       <div class="space-y-4">
-        <Show when={!isLoadingConfig} fallback={
+        <Show when={!isLoadingConfig()} fallback={
           <div class="bg-background rounded-lg border border-border p-6 text-center">
             <Loader2 class="h-6 w-6 text-muted-foreground/50 mx-auto mb-3 animate-spin" />
             <p class="text-sm text-muted-foreground">

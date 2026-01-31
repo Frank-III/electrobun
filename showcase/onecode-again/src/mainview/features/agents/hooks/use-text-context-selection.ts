@@ -1,4 +1,4 @@
-import { createSignal, type Accessor } from "solid-js"
+import { createSignal, createEffect, type Accessor } from "solid-js"
 import {
   type SelectedTextContext,
   type DiffTextContext,
@@ -28,9 +28,13 @@ export function useTextContextSelection(): UseTextContextSelectionReturn {
   const textContextsRef = { current: [] as SelectedTextContext[] }
   const diffTextContextsRef = { current: [] as DiffTextContext[] }
 
-  // Keep refs in sync with state
-  textContextsRef.current = textContexts()
-  diffTextContextsRef.current = diffTextContexts()
+  // Keep refs in sync with state using effects
+  createEffect(() => {
+    textContextsRef.current = textContexts()
+  })
+  createEffect(() => {
+    diffTextContextsRef.current = diffTextContexts()
+  })
 
   const addTextContext = (text: string, sourceMessageId: string) => {
     const trimmedText = text.trim()

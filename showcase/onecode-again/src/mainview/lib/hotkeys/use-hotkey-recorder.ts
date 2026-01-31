@@ -166,7 +166,7 @@ export function useHotkeyRecorder({
   // Reset state when recording starts (not when it stops, to avoid flicker)
   createEffect(() => {
     if (isRecording()) {
-      setModifiers(new Set())
+      setModifiers(new Set<string>())
       setMainKey(null)
       hasRecordedRef = false
     }

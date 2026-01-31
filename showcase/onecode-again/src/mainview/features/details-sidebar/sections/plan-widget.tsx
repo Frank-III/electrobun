@@ -1,12 +1,11 @@
-"use client";
 import { createSignal, createEffect, createMemo, onCleanup } from "solid-js";
-import { useAtom } from "../../../lib/state/jotai";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import { PlanIcon, ExpandIcon, CollapseIcon, IconSpinner } from "@/components/ui/icons";
 import { ChatMarkdownRenderer } from "@/components/chat-markdown-renderer";
-import { trpc } from "@/lib/trpc";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "@/lib/desktop-rpc";
 import { planContentCacheAtomFamily } from "../atoms";
 import type { AgentMode } from "../../agents/atoms";
 interface PlanWidgetProps {
@@ -40,16 +39,23 @@ export function PlanWidget({ chatId, activeSubChatId, planPath, refetchTrigger, 
 	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
 	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement>(null);
 	// Plan content cache to avoid flashing loading state
-	const [planCache, setPlanCache] = useAtom(planContentCacheAtomFamily(effectiveChatId));
-	// Fetch plan file content using tRPC
-	const { data: planContent, isLoading, error, refetch } = trpc.files.readFile.useQuery({ filePath: planPath! }, { enabled: !!planPath });
+	const [planCache, setPlanCache] = planContentCacheAtomFamily(effectiveChatId);
+	// Fetch plan file content via desktop RPC
+	const planQuery = useQuery(() => ({
+		queryKey: ["files", "readFile", planPath] as const,
+		queryFn: () => desktopRpc.files.readFile({ filePath: planPath! }),
+		enabled: !!planPath,
+	}));
+	const planContent = () => planQuery.data;
+	const refetch = () => planQuery.refetch();
 	// Update cache when content loads successfully
 	createEffect(() => {
-		if (planContent && planPath) {
+		const content = planContent();
+		if (content && planPath) {
 			setPlanCache({
-				content: planContent,
+				content,
 				planPath,
-				isReady: true
+				isReady: true,
 			});
 		}
 	});
@@ -61,16 +67,18 @@ export function PlanWidget({ chatId, activeSubChatId, planPath, refetchTrigger, 
 	});
 	// Use cached content while loading new content to prevent flashing
 	const displayContent = createMemo(() => {
-		if (planContent) return planContent;
-		if (planCache?.isReady && planCache.planPath === planPath) {
-			return planCache.content;
+		const content = planContent();
+		if (content) return content;
+		const cache = planCache;
+		if (cache?.isReady && cache.planPath === planPath) {
+			return cache.content;
 		}
 		return null;
 	});
 	// Only show loading if we have no content to display
-	const showLoading = isLoading && !displayContent;
+	const showLoading = () => planQuery.isLoading && !displayContent();
 	// Only show error if we have no content to display
-	const showError = error && !displayContent;
+	const showError = () => !!planQuery.error && !displayContent();
 	// Toggle expand state
 	const handleToggleExpand = (e: MouseEvent) => {
 		e.stopPropagation();
@@ -78,8 +86,8 @@ export function PlanWidget({ chatId, activeSubChatId, planPath, refetchTrigger, 
 	};
 	// Update scroll gradient via DOM (no state, no re-renders)
 	const updateScrollGradient = () => {
-		const content = contentRef.current;
-		const bottomGradient = bottomGradientRef.current;
+		const content = contentRef();
+		const bottomGradient = bottomGradientRef();
 		if (!content || !bottomGradient) return;
 		const { scrollTop, scrollHeight, clientHeight } = content;
 		const isScrollable = scrollHeight > clientHeight;
@@ -88,7 +96,7 @@ export function PlanWidget({ chatId, activeSubChatId, planPath, refetchTrigger, 
 	};
 	// Update gradient on scroll and content changes
 	createEffect(() => {
-		const content = contentRef.current;
+		const content = contentRef();
 		if (!content) return;
 		content.addEventListener("scroll", updateScrollGradient);
 		updateScrollGradient();
@@ -116,35 +124,37 @@ export function PlanWidget({ chatId, activeSubChatId, planPath, refetchTrigger, 
 	}} class="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground">
               View plan
             </Button>
-            {mode === "plan" && onApprovePlan && <Button size="sm" onClick={(e) => {
-		e.stopPropagation();
-		onApprovePlan();
-	}} class="h-5 px-2 text-[10px] font-medium rounded transition-transform duration-150 active:scale-[0.97]">
+            <Show when={mode === "plan" && onApprovePlan}>
+              <Button size="sm" onClick={(e) => {
+                e.stopPropagation();
+                onApprovePlan();
+              }} class="h-5 px-2 text-[10px] font-medium rounded transition-transform duration-150 active:scale-[0.97]">
                 Approve
                 <Kbd class="ml-1 text-primary-foreground/70">⌘↵</Kbd>
-              </Button>}
+              </Button>
+            </Show>
           </div>
 
           {	/* Expand/Collapse button */}
-          <Button variant="ghost" size="icon" onClick={handleToggleExpand} class="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0" aria-label={isExpanded ? "Collapse plan" : "Expand plan"}>
+          <Button variant="ghost" size="icon" onClick={handleToggleExpand} class="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0" aria-label={isExpanded() ? "Collapse plan" : "Expand plan"}>
             <div class="relative w-3.5 h-3.5">
-              <ExpandIcon class={cn("absolute inset-0 w-3.5 h-3.5 transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
-              <CollapseIcon class={cn("absolute inset-0 w-3.5 h-3.5 transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
+              <ExpandIcon class={cn("absolute inset-0 w-3.5 h-3.5 transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
+              <CollapseIcon class={cn("absolute inset-0 w-3.5 h-3.5 transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
             </div>
           </Button>
         </div>
 
         { /* Content */}
         <div>
-          {showLoading ? <div class="flex items-center justify-center py-8">
+          {showLoading() ? <div class="flex items-center justify-center py-8">
               <IconSpinner class="h-5 w-5 text-muted-foreground" />
-            </div> : showError ? <div class="px-3 py-4 text-center">
+            </div> : showError() ? <div class="px-3 py-4 text-center">
               <p class="text-xs text-muted-foreground">Failed to load plan</p>
-            </div> : !displayContent ? <div class="px-3 py-4 text-center">
+            </div> : !displayContent() ? <div class="px-3 py-4 text-center">
               <p class="text-xs text-muted-foreground">No plan content</p>
             </div> : <div class="relative">
-              <div ref={contentRef} class={cn("px-2 py-2 allow-text-selection", isExpanded ? "" : "max-h-64 overflow-hidden")}>
-                <ChatMarkdownRenderer content={displayContent} size="sm" />
+              <div ref={contentRef} class={cn("px-2 py-2 allow-text-selection", isExpanded() ? "" : "max-h-64 overflow-hidden")}>
+                <ChatMarkdownRenderer content={displayContent()!} size="sm" />
               </div>
 
               { /* Bottom scroll gradient */}

@@ -6,7 +6,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/
 import { cn } from "../../../../lib/utils";
 import { createSignal, Index, Show } from "solid-js";
 import { Minus as HiMiniMinus, Plus as HiMiniPlus } from "lucide-solid";
-import { trpc } from "../../../../lib/trpc";
+import { useMutation } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../../lib/desktop-rpc";
 import { ClipboardIcon, ExternalLinkIcon, FolderIcon, PlusIcon, TrashIcon, UndoIcon } from "../../../../components/ui/icons";
 import { Minus, Plus } from "lucide-solid";
 import type { ChangedFile } from "../../../../../shared/changes-types";
@@ -64,8 +65,13 @@ export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats =
 			onUnstage();
 		}
 	};
-	const openInFinderMutation = trpc.external.openInFinder.useMutation();
-	const openInEditorMutation = trpc.external.openFileInEditor.useMutation();
+	const openInFinderMutation = useMutation(() => ({
+		mutationFn: (input: { path: string }) => desktopRpc.external.openInFinder.mutate(input),
+	}));
+	const openInEditorMutation = useMutation(() => ({
+		mutationFn: (input: { path: string; cwd?: string }) =>
+			desktopRpc.external.openFileInEditor(input),
+	}));
 	const absolutePath = worktreePath ? `${worktreePath}/${file.path}` : null;
 	const handleCopyPath = async () => {
 		if (absolutePath) {
@@ -77,7 +83,7 @@ export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats =
 	};
 	const handleRevealInFinder = () => {
 		if (absolutePath) {
-			openInFinderMutation.mutate(absolutePath);
+			openInFinderMutation.mutate({ path: absolutePath });
 		}
 	};
 	const handleOpenInEditor = () => {
@@ -100,12 +106,16 @@ export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats =
 	const discardDialogTitle = isDeleteAction ? `Delete "${fileName}"?` : `Discard changes to "${fileName}"?`;
 	const discardDialogDescription = isDeleteAction ? "This will permanently delete this file. This action cannot be undone." : "This will revert all changes to this file. This action cannot be undone.";
 	const fileContent = <div class={cn("group w-full flex items-stretch gap-1 px-1.5 text-left rounded-sm", "cursor-pointer transition-colors overflow-hidden", isSelected ? "bg-muted" : "hover:bg-muted/80")}>
-			{hasIndent && <LevelIndicators level={level} />}
+			<Show when={hasIndent}>
+				<LevelIndicators level={level} />
+			</Show>
 
 			{	/* Checkbox for staging (GitHub Desktop style) */}
-			{showCheckbox && (onStage || onUnstage) && <div class="flex items-center px-0.5" onClick={(e) => e.stopPropagation()}>
+			<Show when={showCheckbox && (onStage || onUnstage)}>
+				<div class="flex items-center px-0.5" onClick={(e) => e.stopPropagation()}>
 					<Checkbox checked={isStaged} onCheckedChange={handleCheckboxChange} disabled={isActioning} class="size-3.5" />
-				</div>}
+				</div>
+			</Show>
 
 			<button type="button" onClick={onClick} onDoubleClick={onDoubleClick} class={cn("flex items-center gap-1.5 flex-1 min-w-0", hasIndent ? "py-0.5" : "py-1")}>
 				<span class={cn("shrink-0 flex items-center text-xs", statusBadgeColor)}>
@@ -120,42 +130,54 @@ export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats =
 						</TooltipTrigger>
 						<TooltipContent side="right">{file.path}</TooltipContent>
 					</Tooltip>
-					{showStatsDisplay && <span class="flex items-center gap-0.5 text-[10px] font-mono shrink-0 whitespace-nowrap opacity-60">
-							{file.additions > 0 && <span class="text-green-600 dark:text-green-500">
+					<Show when={showStatsDisplay}>
+						<span class="flex items-center gap-0.5 text-[10px] font-mono shrink-0 whitespace-nowrap opacity-60">
+							<Show when={file.additions > 0}>
+								<span class="text-green-600 dark:text-green-500">
 									+{file.additions}
-								</span>}
-							{file.deletions > 0 && <span class="text-red-600 dark:text-red-400">
+								</span>
+							</Show>
+							<Show when={file.deletions > 0}>
+								<span class="text-red-600 dark:text-red-400">
 									-{file.deletions}
-								</span>}
-						</span>}
+								</span>
+							</Show>
+						</span>
+					</Show>
 				</span>
 			</button>
 
 			{ /* Hover actions (only when checkbox is not shown) */}
-			{!showCheckbox && hasAction && <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-					{onStage && <Tooltip>
+			<Show when={!showCheckbox && hasAction}>
+				<div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+					<Show when={onStage}>
+						<Tooltip>
 							<TooltipTrigger asChild>
 								<Button variant="ghost" size="icon" class="size-5 hover:bg-accent" onClick={(e) => {
- e.stopPropagation();
-		onStage();
+		e.stopPropagation();
+		onStage?.();
 	}} disabled={isActioning}>
 									<HiMiniPlus class="size-3" />
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent side="right">Stage</TooltipContent>
-						</Tooltip>}
-					{onUnstage && <Tooltip>
+						</Tooltip>
+					</Show>
+					<Show when={onUnstage}>
+						<Tooltip>
 							<TooltipTrigger asChild>
 								<Button variant="ghost" size="icon" class="size-5 hover:bg-accent" onClick={(e) => {
 		e.stopPropagation();
-		onUnstage();
+		onUnstage?.();
 	}} disabled={isActioning}>
 									<HiMiniMinus class="size-3" />
 								</Button>
 							</TooltipTrigger>
 							<TooltipContent side="right">Unstage</TooltipContent>
-						</Tooltip>}
-				</div>}
+						</Tooltip>
+					</Show>
+				</div>
+			</Show>
 		</div>;
 	if (!worktreePath) {
 		return fileContent;
@@ -182,21 +204,29 @@ export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats =
 						Open in Editor
 					</ContextMenuItem>
 
-					{(onStage || onUnstage || onDiscard) && <ContextMenuSeparator />}
+					<Show when={onStage || onUnstage || onDiscard}>
+						<ContextMenuSeparator />
+					</Show>
 
-					{onStage && <ContextMenuItem onClick={onStage} disabled={isActioning}>
+					<Show when={onStage}>
+						<ContextMenuItem onClick={onStage} disabled={isActioning}>
 							<Plus class="mr-2 size-4" />
 							Stage
-						</ContextMenuItem>}
+						</ContextMenuItem>
+					</Show>
 
-					{onUnstage && <ContextMenuItem onClick={onUnstage} disabled={isActioning}>
+					<Show when={onUnstage}>
+						<ContextMenuItem onClick={onUnstage} disabled={isActioning}>
 							<Minus class="mr-2 size-4" />
 							Unstage
-						</ContextMenuItem>}
+						</ContextMenuItem>
+					</Show>
 
-					{onDiscard && <ContextMenuItem onClick={handleDiscardClick} disabled={isActioning} class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
+					<Show when={onDiscard}>
+						<ContextMenuItem onClick={handleDiscardClick} disabled={isActioning} class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
 							{discardLabel}
-						</ContextMenuItem>}
+						</ContextMenuItem>
+					</Show>
 				</ContextMenuContent>
 			</ContextMenu>
 
@@ -215,7 +245,9 @@ export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats =
 							Cancel
 						</Button>
 						<Button variant="destructive" size="sm" onClick={handleConfirmDiscard}>
-							{isDeleteAction ? "Delete" : "Discard"}
+							<Show when={isDeleteAction} fallback="Discard">
+								Delete
+							</Show>
 						</Button>
 					</AlertDialogFooter>
 				</AlertDialogContent>

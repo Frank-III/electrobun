@@ -1,4 +1,3 @@
-"use client";
 import type { JSX, ParentComponent } from "solid-js";
 import { splitProps } from "solid-js";
 import { cn } from "../../lib/utils";

@@ -1,12 +1,10 @@
-"use client"
-
 import { createEffect, onCleanup } from "solid-js"
-import { useAtom } from "../../../lib/state/jotai"
-import { createStoredSignal } from "../../../lib/state/signal-storage"
+import { createPersistedSignal } from "../../../lib/state/signal-storage"
 import { isDesktopApp } from "../../../lib/utils/platform"
+import { desktopRpc } from "../../../lib/desktop-rpc"
 
 // Track pending notifications count for badge
-const pendingNotificationsAtom = createStoredSignal<number>(
+const pendingNotificationsAtom = createPersistedSignal<number>(
   "desktop-pending-notifications",
   0,
 )
@@ -58,7 +56,7 @@ function generateBadgeIcon(count: number): string {
  * - Clears badge when window regains focus
  */
 export function useDesktopNotifications() {
-  const [pendingCount, setPendingCount] = useAtom(pendingNotificationsAtom)
+  const [pendingCount, setPendingCount] = pendingNotificationsAtom
   let isInitialized = false
 
   // Subscribe to window focus changes
@@ -72,32 +70,22 @@ export function useDesktopNotifications() {
       isWindowFocused = true
       // Clear badge when window gains focus
       setPendingCount(0)
-      window.desktopApi?.setBadge(null)
+      desktopRpc.notifications.setBadge.mutate({ count: null })
     }
 
     const handleBlur = () => {
       isWindowFocused = false
     }
 
-    // Use both window events and Electron API
+    // Use window focus events (Electrobun doesn't have onFocusChange API)
     window.addEventListener("focus", handleFocus)
     window.addEventListener("blur", handleBlur)
-
-    // Also subscribe to Electron focus events
-    const unsubscribe = window.desktopApi?.onFocusChange?.((focused: boolean) => {
-      if (focused) {
-        handleFocus()
-      } else {
-        handleBlur()
-      }
-    })
 
     isInitialized = true
 
     onCleanup(() => {
       window.removeEventListener("focus", handleFocus)
       window.removeEventListener("blur", handleBlur)
-      unsubscribe?.()
     })
   })
 
@@ -106,21 +94,8 @@ export function useDesktopNotifications() {
     if (!isDesktopApp() || typeof window === "undefined") return
 
     const count = pendingCount()
-    if (count > 0) {
-      window.desktopApi?.setBadge(count)
-
-      // Windows: Generate and set overlay icon with badge number
-      if (window.desktopApi?.platform === "win32" && window.desktopApi?.setBadgeIcon) {
-        const badgeImage = generateBadgeIcon(count)
-        window.desktopApi.setBadgeIcon(badgeImage)
-      }
-    } else {
-      window.desktopApi?.setBadge(null)
-      // Clear overlay icon on Windows
-      if (window.desktopApi?.platform === "win32" && window.desktopApi?.setBadgeIcon) {
-        window.desktopApi.setBadgeIcon(null)
-      }
-    }
+    desktopRpc.notifications.setBadge.mutate({ count: count > 0 ? count : null })
+    // Note: Windows overlay icon not supported in Electrobun yet
   })
 
   /**
@@ -135,8 +110,8 @@ export function useDesktopNotifications() {
       // Increment badge count
       setPendingCount((prev) => prev + 1)
 
-      // Show native notification
-      window.desktopApi?.showNotification({
+      // Show native notification via Electrobun
+      desktopRpc.notifications.show.mutate({
         title: "Agent finished",
         body: `${agentName} completed the task`,
       })
@@ -156,7 +131,7 @@ export function useDesktopNotifications() {
     pendingCount,
     clearBadge: () => {
       setPendingCount(0)
-      window.desktopApi?.setBadge(null)
+      desktopRpc.notifications.setBadge.mutate({ count: null })
     },
   }
 }
@@ -169,7 +144,7 @@ export function showAgentNotification(agentName: string) {
 
   // Only notify if window is not focused
   if (!document.hasFocus()) {
-    window.desktopApi?.showNotification({
+    desktopRpc.notifications.show.mutate({
       title: "Agent finished",
       body: `${agentName} completed the task`,
     })

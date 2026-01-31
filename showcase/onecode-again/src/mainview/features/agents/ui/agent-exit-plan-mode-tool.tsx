@@ -1,4 +1,3 @@
-"use client";
 import { ChatMarkdownRenderer } from "../../../components/chat-markdown-renderer";
 interface ExitPlanModeToolPart {
 	type: string;

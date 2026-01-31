@@ -1,7 +1,6 @@
-"use client";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import type { JSX } from "solid-js";
+import { createVirtualizer } from "@tanstack/solid-virtual";
 import { createSignal, createEffect, createMemo, onCleanup, Show } from "solid-js";
-import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
 import { AlignJustify, Plus, Zap } from "lucide-solid";
 import { Portal } from "solid-js/web";
 import { Button } from "../../../components/ui/button";
@@ -14,12 +13,13 @@ import { defaultAgentModeAtom } from "../../../lib/atoms";
 import { ProjectSelector } from "../components/project-selector";
 import { WorkModeSelector } from "../components/work-mode-selector";
 // import { selectedTeamIdAtom } from "@/lib/atoms/team"
-import { atom } from "../../../lib/state/jotai";
+import { atom } from "../../../lib/state/store";
 const selectedTeamIdAtom = createSignal<string | null>(null);
 import { agentsSettingsDialogOpenAtom, agentsSettingsDialogActiveTabAtom, customClaudeConfigAtom, normalizeCustomClaudeConfig, showOfflineModeFeaturesAtom, selectedOllamaModelAtom, customHotkeysAtom, chatSourceModeAtom } from "../../../lib/atoms";
-// Desktop uses real tRPC
+// Desktop uses desktop RPC + Solid Query
 import { toast } from "solid-sonner";
-import { trpc } from "../../../lib/trpc";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { AgentsSlashCommand, COMMAND_PROMPTS, BUILTIN_SLASH_COMMANDS, type SlashCommandOption } from "../commands";
 import { useAgentsFileUpload } from "../hooks/use-agents-file-upload";
 import { usePastedTextFiles } from "../hooks/use-pasted-text-files";
@@ -41,6 +41,7 @@ import { formatTimeAgo } from "../utils/format-time-ago";
 import { handlePasteEvent } from "../utils/paste-text";
 import { loadGlobalDrafts, saveGlobalDrafts, generateDraftId, deleteNewChatDraft, markDraftVisible, type DraftProject } from "../lib/drafts";
 import { CLAUDE_MODELS } from "../lib/models";
+
 // import type { PlanType } from "@/lib/config/subscription-plans"
 type PlanType = string;
 // Codex icon (OpenAI style)
@@ -49,35 +50,38 @@ const CodexIcon = (props: JSX.SvgSVGAttributes<SVGSVGElement>) => <svg viewBox="
   </svg>;
 // Hook to get available models (including offline models if Ollama is available and debug enabled)
 function useAvailableModels() {
-	const showOfflineFeatures = useAtomValue(showOfflineModeFeaturesAtom);
-	const { data: ollamaStatus } = trpc.ollama.getStatus.useQuery(undefined, {
-		refetchInterval: showOfflineFeatures() ? 3e4 : false,
-		enabled: showOfflineFeatures()
-	});
+	const showOfflineFeatures = showOfflineModeFeaturesAtom[0];
+	const ollamaQuery = useQuery(() => ({
+		queryKey: ["ollama", "getStatus"] as const,
+		queryFn: () => desktopRpc.ollama.getStatus(),
+		refetchInterval: () => (showOfflineFeatures() ? 3e4 : false),
+		enabled: !!showOfflineFeatures(),
+	}));
+	const ollamaStatus = () => ollamaQuery.data;
 	const baseModels = CLAUDE_MODELS;
-	const isOffline = ollamaStatus ? !ollamaStatus.internet.online : false;
-	const hasOllama = ollamaStatus?.ollama.available && (ollamaStatus.ollama.models?.length ?? 0) > 0;
-	const ollamaModels = ollamaStatus?.ollama.models || [];
-	const recommendedModel = ollamaStatus?.ollama.recommendedModel;
+	const isOffline = () => (ollamaStatus() ? !ollamaStatus()!.internet.online : false);
+	const hasOllama = () => ollamaStatus()?.ollama.available && (ollamaStatus()?.ollama.models?.length ?? 0) > 0;
+	const ollamaModels = () => ollamaStatus()?.ollama.models || [];
+	const recommendedModel = () => ollamaStatus()?.ollama.recommendedModel;
 	// Only show offline models if:
 	// 1. Debug flag is enabled (showOfflineFeatures)
 	// 2. Ollama is available with models
 	// 3. User is actually offline
-	if (showOfflineFeatures() && hasOllama && isOffline) {
+	if (showOfflineFeatures() && hasOllama() && isOffline()) {
 		return {
 			models: baseModels,
-			ollamaModels,
-			recommendedModel,
-			isOffline,
-			hasOllama: true
+			ollamaModels: ollamaModels(),
+			recommendedModel: recommendedModel(),
+			isOffline: isOffline(),
+			hasOllama: true,
 		};
 	}
 	return {
 		models: baseModels,
 		ollamaModels: [] as string[],
 		recommendedModel: undefined as string | undefined,
-		isOffline,
-		hasOllama: false
+		isOffline: isOffline(),
+		hasOllama: false,
 	};
 }
 // Agent providers
@@ -105,69 +109,81 @@ interface NewChatFormProps {
 export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewChatFormProps = {}) {
 	// UNCONTROLLED: just track if editor has content for send button
 	const [hasContent, setHasContent] = createSignal(false);
-	const [selectedTeamId] = useAtom(selectedTeamIdAtom);
-	const [selectedChatId, setSelectedChatId] = useAtom(selectedAgentChatIdAtom);
-	const setSelectedChatIsRemote = useSetAtom(selectedChatIsRemoteAtom);
-	const setChatSourceMode = useSetAtom(chatSourceModeAtom);
-	const [selectedDraftId, setSelectedDraftId] = useAtom(selectedDraftIdAtom);
-	const [sidebarOpen, setSidebarOpen] = useAtom(agentsSidebarOpenAtom);
+	const [selectedTeamId] = selectedTeamIdAtom;
+	const [selectedChatId, setSelectedChatId] = selectedAgentChatIdAtom;
+	const setSelectedChatIsRemote = selectedChatIsRemoteAtom[1];
+	const setChatSourceMode = chatSourceModeAtom[1];
+	const [selectedDraftId, setSelectedDraftId] = selectedDraftIdAtom;
+	const [sidebarOpen, setSidebarOpen] = agentsSidebarOpenAtom;
 	// Current draft ID being edited (generated when user starts typing in empty form)
 	const [currentDraftIdRef, setCurrentDraftIdRef] = createSignal<string | null>(null);
-	const unseenChanges = useAtomValue(agentsUnseenChangesAtom);
+	const unseenChanges = agentsUnseenChangesAtom[0];
 	// Check if any chat has unseen changes
 	const hasAnyUnseenChanges = unseenChanges().size > 0;
-	const [lastSelectedRepo, setLastSelectedRepo] = useAtom(lastSelectedRepoAtom);
-	const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom);
+	const [lastSelectedRepo, setLastSelectedRepo] = lastSelectedRepoAtom;
+	const [selectedProject, setSelectedProject] = selectedProjectAtom;
 	// Fetch projects to validate selectedProject exists
-	const { data: projectsList, isLoading: isLoadingProjects } = trpc.projects.list.useQuery();
+	const projectsQuery = useQuery(() => ({
+		queryKey: ["projects", "list"] as const,
+		queryFn: () => desktopRpc.projects.list.query(),
+	}));
+	const projectsList = () => projectsQuery.data;
+	const isLoadingProjects = () => projectsQuery.isLoading;
 	// Validate selected project exists in DB
 	// While loading, trust the stored value to prevent flicker
 	const validatedProject = createMemo(() => {
-		if (!selectedProject) return null;
+		const proj = selectedProject();
+		if (!proj) return null;
 		// While loading, trust localStorage value to prevent flicker
-		if (isLoadingProjects) return selectedProject;
+		if (isLoadingProjects()) return proj;
 		// After loading, validate against DB
-		if (!projectsList) return null;
-		const exists = projectsList.some((p) => p.id === selectedProject.id);
-		return exists ? selectedProject : null;
+		const list = projectsList();
+		if (!list) return null;
+		const exists = list.some((p) => p.id === proj.id);
+		return exists ? proj : null;
 	});
 	// Clear invalid project from storage
 	createEffect(() => {
-		if (selectedProject && projectsList && !validatedProject()) {
+		if (selectedProject() && projectsList() && !validatedProject()) {
 			setSelectedProject(null);
 		}
 	});
-	const [lastSelectedAgentId, setLastSelectedAgentId] = useAtom(lastSelectedAgentIdAtom);
-	const [lastSelectedModelId, setLastSelectedModelId] = useAtom(lastSelectedModelIdAtom);
+	const [lastSelectedAgentId, setLastSelectedAgentId] = lastSelectedAgentIdAtom;
+	const [lastSelectedModelId, setLastSelectedModelId] = lastSelectedModelIdAtom;
 	// Mode for new chat - uses user's default preference directly
 	// Note: defaultAgentMode is initialized synchronously via atomWithStorage with getOnInit: true
-	const defaultAgentMode = useAtomValue(defaultAgentModeAtom);
-	const [agentMode, setAgentMode] = createSignal(() => defaultAgentMode);
+	const defaultAgentMode = defaultAgentModeAtom[0];
+	const [agentMode, setAgentMode] = createSignal(defaultAgentMode());
 	// Toggle mode helper
 	const toggleMode = () => {
-		setAgentMode(getNextMode);
+		setAgentMode(getNextMode(agentMode()));
 	};
-	const [workMode, setWorkMode] = useAtom(lastSelectedWorkModeAtom);
-	const debugMode = useAtomValue(agentsDebugModeAtom);
-	const customClaudeConfig = useAtomValue(customClaudeConfigAtom);
-	const normalizedCustomClaudeConfig = normalizeCustomClaudeConfig(customClaudeConfig);
+	const [workMode, setWorkMode] = lastSelectedWorkModeAtom;
+	const debugMode = agentsDebugModeAtom[0];
+	const customClaudeConfig = customClaudeConfigAtom[0];
+	const normalizedCustomClaudeConfig = normalizeCustomClaudeConfig(customClaudeConfig());
 	const hasCustomClaudeConfig = Boolean(normalizedCustomClaudeConfig);
-	const setSettingsDialogOpen = useSetAtom(agentsSettingsDialogOpenAtom);
-	const setSettingsActiveTab = useSetAtom(agentsSettingsDialogActiveTabAtom);
-	const justCreatedIds = useAtomValue(justCreatedIdsAtom);
+	const setSettingsDialogOpen = agentsSettingsDialogOpenAtom[1];
+	const setSettingsActiveTab = agentsSettingsDialogActiveTabAtom[1];
+	const justCreatedIds = justCreatedIdsAtom[0];
 	const [repoSearchQuery, setRepoSearchQuery] = createSignal("");
 	const [createBranchDialogOpen, setCreateBranchDialogOpen] = createSignal(false);
 	// Worktree config banner state
-	const [worktreeBannerDismissed, setWorktreeBannerDismissed] = createSignal(() => {
+	const [worktreeBannerDismissed, setWorktreeBannerDismissed] = createSignal((() => {
 		try {
 			return localStorage.getItem("worktree-banner-dismissed") === "true";
 		} catch {
 			return false;
 		}
-	});
+	})());
 	// Check if project has worktree config
-	const { data: worktreeConfigData } = trpc.worktreeConfig.get.useQuery({ projectId: validatedProject?.id ?? "" }, { enabled: !!validatedProject?.id && workMode === "worktree" && !worktreeBannerDismissed });
-	const showWorktreeBanner = workMode === "worktree" && validatedProject && !worktreeBannerDismissed() && worktreeConfigData && !worktreeConfigData.config;
+	const worktreeConfigQuery = useQuery(() => ({
+		queryKey: ["worktreeConfig", "get", validatedProject()?.id] as const,
+		queryFn: () => desktopRpc.worktreeConfig.get({ projectId: validatedProject()!.id }),
+		enabled: !!validatedProject()?.id && workMode() === "worktree" && !worktreeBannerDismissed(),
+	}));
+	const worktreeConfigData = () => worktreeConfigQuery.data;
+	const showWorktreeBanner = () => workMode() === "worktree" && !!validatedProject() && !worktreeBannerDismissed() && !!worktreeConfigData() && !worktreeConfigData()?.config;
 	const handleDismissWorktreeBanner = () => {
 		setWorktreeBannerDismissed(true);
 		try {
@@ -176,8 +192,9 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	};
 	const handleConfigureWorktree = () => {
 		// Open the project-specific worktree settings tab
-		if (validatedProject?.id) {
-			setSettingsActiveTab(`project-${validatedProject.id}` as any);
+		const project = validatedProject();
+		if (project?.id) {
+			setSettingsActiveTab(`project-${project.id}` as any);
 			setSettingsDialogOpen(true);
 		}
 	};
@@ -187,25 +204,26 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 		if (!match) return null;
 		return `${match[1]}/${match[2].replace(/\.git$/, "")}`;
 	};
-	const [selectedAgent, setSelectedAgent] = createSignal(() => agents.find((a) => a.id === lastSelectedAgentId) || agents[0]);
+	const [selectedAgent, setSelectedAgent] = createSignal(agents.find((a) => a.id === lastSelectedAgentId()) || agents[0]);
 	// Get available models (with offline support)
 	const availableModels = useAvailableModels();
-	const [selectedOllamaModel, setSelectedOllamaModel] = useAtom(selectedOllamaModelAtom);
-	const [selectedModel, setSelectedModel] = createSignal(() => availableModels.models.find((m) => m.id === lastSelectedModelId) || availableModels.models[1]);
+	const [selectedOllamaModel, setSelectedOllamaModel] = selectedOllamaModelAtom;
+	const [selectedModel, setSelectedModel] = createSignal(availableModels.models.find((m) => m.id === lastSelectedModelId()) || availableModels.models[1]);
 	// Determine current Ollama model (selected or recommended)
-	const currentOllamaModel = selectedOllamaModel || availableModels.recommendedModel || availableModels.ollamaModels[0];
+	const currentOllamaModel = () => selectedOllamaModel() || availableModels.recommendedModel || availableModels.ollamaModels[0];
 	const [repoPopoverOpen, setRepoPopoverOpen] = createSignal(false);
 	const [branchPopoverOpen, setBranchPopoverOpen] = createSignal(false);
-	const [lastSelectedBranches, setLastSelectedBranches] = useAtom(lastSelectedBranchesAtom);
+	const [lastSelectedBranches, setLastSelectedBranches] = lastSelectedBranchesAtom;
 	const [branchSearch, setBranchSearch] = createSignal("");
-	const [selectedBranchType, setSelectedBranchType] = createSignal(undefined);
+	const [selectedBranchType, setSelectedBranchType] = createSignal<"local" | "remote" | undefined>(undefined);
 	// Get/set selected branch for current project (persisted per project)
-	const selectedBranch = validatedProject?.id ? lastSelectedBranches[validatedProject.id]?.name || "" : "";
+	const selectedBranch = createMemo(() => validatedProject()?.id ? lastSelectedBranches()[validatedProject()!.id]?.name || "" : "");
 	const setSelectedBranch = (branch: string, type?: "local" | "remote") => {
-		if (validatedProject?.id && type) {
+		const project = validatedProject();
+		if (project?.id && type) {
 			setLastSelectedBranches((prev) => ({
 				...prev,
-				[validatedProject.id]: {
+				[project.id]: {
 					name: branch,
 					type
 				}
@@ -213,13 +231,14 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 			setSelectedBranchType(type);
 		}
 	};
-	const [branchListRef, setBranchListRef] = createSignal<HTMLDivElement>(null);
-	const [editorRef, setEditorRef] = createSignal<AgentsMentionsEditorHandle>(null);
-	const [fileInputRef, setFileInputRef] = createSignal<HTMLInputElement>(null);
+	const [branchListRef, setBranchListRef] = createSignal<HTMLDivElement | null>(null);
+	const [editorRef, setEditorRef] = createSignal<AgentsMentionsEditorHandle | null>(null);
+	const [fileInputRef, setFileInputRef] = createSignal<HTMLInputElement | null>(null);
 	// Restore selectedBranchType from persisted storage when project changes
 	createEffect(() => {
-		if (validatedProject?.id) {
-			const stored = lastSelectedBranches[validatedProject.id];
+		const project = validatedProject();
+		if (project?.id) {
+			const stored = lastSelectedBranches()[project.id];
 			if (stored?.type) {
 				setSelectedBranchType(stored.type);
 			} else {
@@ -233,7 +252,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	const { images, handleAddAttachments, removeImage, clearImages, isUploading } = useAgentsFileUpload();
 	// Pasted text files - use a stable temp ID for new chat
 	const [tempPastedIdRef, setTempPastedIdRef] = createSignal(`new-chat-${Date.now()}`);
-	const { pastedTexts, addPastedText, removePastedText, clearPastedTexts } = usePastedTextFiles(tempPastedIdRef.current);
+	const { pastedTexts, addPastedText, removePastedText, clearPastedTexts } = usePastedTextFiles(tempPastedIdRef());
 	// File contents cache - stores content for file mentions (keyed by mentionId)
 	// This content gets added to the prompt when sending, without showing a separate card
 	const [fileContentsRef, setFileContentsRef] = createSignal<Map<string, string>>(new Map());
@@ -257,22 +276,29 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 		left: 0
 	});
 	// Mode tooltip state (floating tooltip like canvas)
-	const [modeTooltip, setModeTooltip] = createSignal(null);
+	const [modeTooltip, setModeTooltip] = createSignal<{ visible: boolean; position: { top: number; left: number }; mode: string } | null>(null);
 	const [tooltipTimeoutRef, setTooltipTimeoutRef] = createSignal<ReturnType<typeof setTimeout> | null>(null);
 	const [hasShownTooltipRef, setHasShownTooltipRef] = createSignal(false);
 	const [modeDropdownOpen, setModeDropdownOpen] = createSignal(false);
 	const [isModelDropdownOpen, setIsModelDropdownOpen] = createSignal(false);
 	// Voice input state
-	const customHotkeys = useAtomValue(customHotkeysAtom);
+	const customHotkeys = customHotkeysAtom[0]();
 	const { isRecording: isVoiceRecording, audioLevel: voiceAudioLevel, startRecording, stopRecording, cancelRecording } = useVoiceRecording();
 	const [isTranscribing, setIsTranscribing] = createSignal(false);
-	const transcribeMutation = trpc.voice.transcribe.useMutation();
+	const transcribeMutation = useMutation(() => ({
+		mutationFn: (input: { audioBase64: string; format: string; language?: string }) =>
+			desktopRpc.voice.transcribe.mutate(input),
+	}));
 	// Check if voice input is available (authenticated OR has OPENAI_API_KEY)
-	const { data: voiceAvailability } = trpc.voice.isAvailable.useQuery();
-	const isVoiceAvailable = voiceAvailability?.available ?? false;
+	const voiceAvailabilityQuery = useQuery(() => ({
+		queryKey: ["voice", "isAvailable"] as const,
+		queryFn: () => desktopRpc.voice.isAvailable(),
+	}));
+	const voiceAvailability = () => voiceAvailabilityQuery.data;
+	const isVoiceAvailable = () => voiceAvailability()?.available ?? false;
 	// Voice input handlers
 	const handleVoiceMouseDown = async () => {
-		if (isUploading || isTranscribing || isVoiceRecording()) return;
+		if (isUploading() || isTranscribing() || isVoiceRecording()) return;
 		try {
 			await startRecording();
 		} catch (err) {
@@ -280,7 +306,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 		}
 	};
 	const handleVoiceMouseUp = async () => {
-		if (!isVoiceRecording) return;
+		if (!isVoiceRecording()) return;
 		try {
 			const blob = await stopRecording();
 			if (blob.size < 1e3) {
@@ -291,17 +317,17 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 			const base64 = await blobToBase64(blob);
 			const format = getAudioFormat(blob.type);
 			const result = await transcribeMutation.mutateAsync({
-				audio: base64,
-				format
+				audioBase64: base64,
+				format,
 			});
-			if (result.text && result.text.trim()) {
-				const currentValue = editorRef.current?.getValue() || "";
+			if (result?.text && result.text.trim()) {
+				const currentValue = editorRef()?.getValue() || "";
 				// Clean transcribed text - remove any remaining whitespace issues
 				const transcribed = result.text.replace(/[\r\n\t]+/g, " ").replace(/ +/g, " ").trim();
 				// Add space separator only if current text exists and doesn't end with whitespace
 				const needsSpace = currentValue.length > 0 && !/\s$/.test(currentValue);
 				const newValue = currentValue + (needsSpace ? " " : "") + transcribed;
-				editorRef.current?.setValue(newValue);
+				editorRef()?.setValue(newValue);
 				setHasContent(true);
 			}
 		} catch (err) {
@@ -311,7 +337,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 		}
 	};
 	const handleVoiceMouseLeave = () => {
-		if (isVoiceRecording) {
+		if (isVoiceRecording()) {
 			cancelRecording();
 		}
 	};
@@ -382,7 +408,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 			// Stop recording when the main key (or any modifier for modifier-only hotkeys) is released
 			if (!isMainKeyRelease(e)) return;
 			// Only stop if we're currently recording
-			if (isVoiceRecording) {
+			if (isVoiceRecording()) {
 				e.preventDefault();
 				e.stopPropagation();
 				handleVoiceMouseUp();
@@ -397,59 +423,63 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	});
 	// Shift+Tab handler for mode switching (now handled inside input component via onShiftTab prop)
 	// Keyboard shortcut: Enter to focus input when not already focused
-	useFocusInputOnEnter(editorRef);
+	useFocusInputOnEnter(editorRef() ?? undefined);
 	// Keyboard shortcut: Cmd+Esc to toggle focus/blur
-	useToggleFocusOnCmdEsc(editorRef);
+	useToggleFocusOnCmdEsc(editorRef() ?? undefined);
 	// Fetch repos from team
 	// Desktop: no remote repos, we use local projects
-	const reposData = { repositories: [] };
+	type RepoType = { id: string; name: string; full_name: string; sandbox_status: "not_setup" | "in_progress" | "ready" | "error"; pushed_at?: string };
+	const reposData = { repositories: [] as RepoType[] };
 	const isLoadingRepos = false;
 	// Memoize repos arrays to prevent useEffect from running on every keystroke
 	// Apply debug mode simulations
 	const repos = createMemo(() => {
-		if (debugMode.enabled && debugMode.simulateNoRepos) {
-			return [];
+		const dm = debugMode();
+		if (dm?.enabled && dm?.simulateNoRepos) {
+			return [] as RepoType[];
 		}
 		return reposData?.repositories || [];
 	});
 	const readyRepos = createMemo(() => {
-		if (debugMode.enabled && debugMode.simulateNoReadyRepos) {
-			return [];
+		const dm = debugMode();
+		if (dm?.enabled && dm?.simulateNoReadyRepos) {
+			return [] as RepoType[];
 		}
-		return repos.filter((r) => r.sandbox_status === "ready");
+		return repos().filter((r) => r.sandbox_status === "ready");
 	});
-	const notReadyRepos = createMemo(() => repos.filter((r) => r.sandbox_status !== "ready"));
+	const notReadyRepos = createMemo(() => repos().filter((r) => r.sandbox_status !== "ready"));
 	// Use state to avoid hydration mismatch
-	const [resolvedRepo, setResolvedRepo] = createSignal(null);
+	const [resolvedRepo, setResolvedRepo] = createSignal<RepoType | null>(null);
 	// Derive selected repo from saved or first available (client-side only)
 	// Now includes all repos, not just ready ones
 	createEffect(() => {
-		if (lastSelectedRepo) {
+		const lastRepo = lastSelectedRepo();
+		if (lastRepo) {
 			// For public imports, use lastSelectedRepo directly (it won't be in repos list)
-			if (lastSelectedRepo.isPublicImport) {
+			if (lastRepo.isPublicImport) {
 				setResolvedRepo({
-					id: lastSelectedRepo.id,
-					name: lastSelectedRepo.name,
-					full_name: lastSelectedRepo.full_name,
-					sandbox_status: lastSelectedRepo.sandbox_status || "not_setup"
-				} as (typeof repos)[0]);
+					id: lastRepo.id,
+					name: lastRepo.name,
+					full_name: lastRepo.full_name,
+					sandbox_status: lastRepo.sandbox_status || "not_setup"
+				} as RepoType);
 				return;
 			}
 			// Look in all repos by id or full_name
 			// Only compare IDs when lastSelectedRepo.id is non-empty (old localStorage data might have empty id)
-			const stillExists = repos.find((r) => lastSelectedRepo.id && r.id === lastSelectedRepo.id || r.full_name === lastSelectedRepo.full_name);
+			const stillExists = repos().find((r) => lastRepo.id && r.id === lastRepo.id || r.full_name === lastRepo.full_name);
 			if (stillExists) {
 				setResolvedRepo(stillExists);
 				return;
 			}
 		}
-		if (repos.length === 0) {
+		if (repos().length === 0) {
 			setResolvedRepo(null);
 			return;
 		}
 		// Auto-save first repo if none saved (prefer ready repos, then any)
-		if (!lastSelectedRepo && repos.length > 0) {
-			const firstRepo = readyRepos[0] || repos[0];
+		if (!lastRepo && repos().length > 0) {
+			const firstRepo = readyRepos()[0] || repos()[0];
 			setLastSelectedRepo({
 				id: firstRepo.id,
 				name: firstRepo.name,
@@ -457,31 +487,40 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 				sandbox_status: firstRepo.sandbox_status
 			});
 		}
-		setResolvedRepo(readyRepos[0] || repos[0] || null);
+		setResolvedRepo(readyRepos()[0] || repos()[0] || null);
 	});
 	// Desktop: fetch branches from local git repository
-	const branchesQuery = trpc.changes.getBranches.useQuery({ worktreePath: validatedProject?.path || "" }, {
-		enabled: !!validatedProject?.path,
-		staleTime: 3e4
-	});
-	const fetchRemoteMutation = trpc.changes.fetchRemote.useMutation();
+	const branchesQuery = useQuery(() => ({
+		queryKey: ["changes", "getBranches", validatedProject()?.path] as const,
+		queryFn: () => desktopRpc.changes.getBranches({ worktreePath: validatedProject()!.path || "" }),
+		enabled: !!validatedProject()?.path,
+		staleTime: 3e4,
+	}));
+	const fetchRemoteMutation = useMutation(() => ({
+		mutationFn: (input: { worktreePath: string }) => desktopRpc.changes.fetchRemote.mutate(input),
+	}));
 	// Manual refresh branches
 	const handleRefreshBranches = () => {
-		if (validatedProject?.path) {
-			fetchRemoteMutation.mutate({ worktreePath: validatedProject.path }, {
-				onSuccess: () => {
-					branchesQuery.refetch();
+		const project = validatedProject();
+		if (project?.path) {
+			fetchRemoteMutation.mutate(
+				{ worktreePath: project.path },
+				{
+					onSuccess: () => {
+						branchesQuery.refetch();
+					},
+					onError: (error: Error) => {
+						console.error("Failed to fetch remote branches:", error);
+					},
 				},
-				onError: (error) => {
-					console.error("Failed to fetch remote branches:", error);
-				}
-			});
+			);
 		}
 	};
 	// Transform branch data to match web app format
 	const branches = createMemo(() => {
-		if (!branchesQuery.data) return [];
-		const { local, remote, defaultBranch } = branchesQuery.data;
+		const data = branchesQuery.data;
+		if (!data) return [];
+		const { local, remote, defaultBranch } = data;
 		const result: Array<{
 			name: string;
 			type: "local" | "remote";
@@ -522,25 +561,26 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	});
 	// Filter branches based on search
 	const filteredBranches = createMemo(() => {
-		if (!branchSearch.trim()) return branches;
-		const search = branchSearch.toLowerCase();
-		return branches.filter((b) => b.name.toLowerCase().includes(search));
+		if (!branchSearch().trim()) return branches();
+		const search = branchSearch().toLowerCase();
+		return branches().filter((b) => b.name.toLowerCase().includes(search));
 	});
-	// Virtualizer for branch list - only active when popover is open
-	const branchVirtualizer = useVirtualizer({
-		count: filteredBranches.length,
-		getScrollElement: () => branchListRef.current,
+	// Virtualizer for branch list (Solid) - only active when popover is open
+	const branchVirtualizer = createVirtualizer({
+		get count() {
+			return filteredBranches().length;
+		},
+		getScrollElement: () => branchListRef(),
 		estimateSize: () => 28,
 		overscan: 5,
-		enabled: branchPopoverOpen
+		get enabled() {
+			return branchPopoverOpen();
+		}
 	});
 	// Force virtualizer to re-measure when popover opens
 	createEffect(() => {
 		if (branchPopoverOpen()) {
-			// Small delay to ensure ref is attached
-			const timer = setTimeout(() => {
-				branchVirtualizer.measure();
-			}, 0);
+			const timer = setTimeout(() => branchVirtualizer.measure(), 0);
 			onCleanup(() => clearTimeout(timer));
 		}
 	});
@@ -551,13 +591,15 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	};
 	// Set default branch when project/branches change (only if no saved branch for this project)
 	createEffect(() => {
-		if (branchesQuery.data?.defaultBranch && validatedProject?.id && !selectedBranch) {
+		const project = validatedProject();
+		if (branchesQuery.data?.defaultBranch && project?.id && !selectedBranch()) {
 			// Find the default branch in the branches list to get its type
 			// Prefer local over remote if both exist
-			const defaultBranchObj = branches.find((b) => b.name === branchesQuery.data.defaultBranch && b.isDefault && b.type === "local") || branches.find((b) => b.name === branchesQuery.data.defaultBranch && b.isDefault && b.type === "remote");
+			const branchList = branches();
+			const defaultBranchObj = branchList.find((b) => b.name === branchesQuery.data!.defaultBranch && b.isDefault && b.type === "local") || branchList.find((b) => b.name === branchesQuery.data!.defaultBranch && b.isDefault && b.type === "remote");
 			// Fallback to "local" if branch not found in list (shouldn't happen but prevents empty selector)
 			const branchType = defaultBranchObj?.type || "local";
-			setSelectedBranch(branchesQuery.data.defaultBranch, branchType);
+			setSelectedBranch(branchesQuery.data!.defaultBranch, branchType);
 		}
 	});
 	// Auto-focus input when NewChatForm is shown (when clicking "New Chat")
@@ -566,7 +608,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 		if (isMobileFullscreen) return;
 		// Small delay to ensure DOM is ready and animations complete
 		const timeoutId = setTimeout(() => {
-			editorRef.current?.focus();
+			editorRef()?.focus();
 		}, 150);
 		onCleanup(() => clearTimeout(timeoutId));
 	});
@@ -577,38 +619,40 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	// Restore draft when a specific draft is selected from sidebar
 	// Or clear editor when "New Workspace" is clicked (selectedDraftId becomes null)
 	createEffect(() => {
-		const hadDraftBefore = prevSelectedDraftIdRef.current !== null;
-		prevSelectedDraftIdRef.current = selectedDraftId;
-		if (!selectedDraftId) {
+		const hadDraftBefore = prevSelectedDraftIdRef() !== null;
+		setPrevSelectedDraftIdRef(selectedDraftId());
+		if (!selectedDraftId()) {
 			// No draft selected - only clear if we had a draft before (user clicked "New Workspace")
 			// Don't clear if user is currently typing (currentDraftIdRef has a value)
 			if (hadDraftBefore) {
-				currentDraftIdRef.current = null;
-				lastSavedTextRef.current = "";
-				if (editorRef.current) {
-					editorRef.current.clear();
+				setCurrentDraftIdRef(null);
+				setLastSavedTextRef("");
+				if (editorRef()) {
+					editorRef()!.clear();
 					setHasContent(false);
 				}
 				// Fetch remote branches in background when starting new workspace
-				if (validatedProject?.path) {
+				if (validatedProject()?.path) {
 					handleRefreshBranches();
 				}
 			}
 			return;
 		}
 		const globalDrafts = loadGlobalDrafts();
-		const draft = globalDrafts[selectedDraftId];
+		const draftId = selectedDraftId();
+		if (!draftId) return;
+		const draft = globalDrafts[draftId];
 		if (draft?.text) {
-			currentDraftIdRef.current = selectedDraftId;
-			lastSavedTextRef.current = draft.text;
+			setCurrentDraftIdRef(draftId);
+			setLastSavedTextRef(draft.text);
 			// Try to set value immediately if editor is ready
-			if (editorRef.current) {
-				editorRef.current.setValue(draft.text);
+			if (editorRef()) {
+				editorRef()!.setValue(draft.text);
 				setHasContent(true);
 			} else {
 				// Fallback: wait for editor to initialize (rare case)
 				const timeoutId = setTimeout(() => {
-					editorRef.current?.setValue(draft.text);
+					editorRef()?.setValue(draft.text);
 					setHasContent(true);
 				}, 50);
 				onCleanup(() => clearTimeout(timeoutId));
@@ -620,13 +664,14 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	createEffect(() => {
 		onCleanup(() => {
 			// On unmount, mark current draft as visible so it appears in sidebar
-			if (currentDraftIdRef.current) {
-				markDraftVisible(currentDraftIdRef.current);
+			const draftId = currentDraftIdRef();
+			if (draftId) {
+				markDraftVisible(draftId);
 			}
 		});
 	});
 	// Filter all repos by search (combined list) and sort by preview status
-	const filteredRepos = repos.filter((repo) => repo.name.toLowerCase().includes(repoSearchQuery.toLowerCase()) || repo.full_name.toLowerCase().includes(repoSearchQuery.toLowerCase())).sort((a, b) => {
+	const filteredRepos = createMemo(() => repos().filter((repo) => repo.name.toLowerCase().includes(repoSearchQuery().toLowerCase()) || repo.full_name.toLowerCase().includes(repoSearchQuery().toLowerCase())).sort((a, b) => {
 		// 1. Repos with preview (sandbox_status === "ready") come first
 		const aHasPreview = a.sandbox_status === "ready";
 		const bHasPreview = b.sandbox_status === "ready";
@@ -636,18 +681,20 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 		const aDate = a.pushed_at ? new Date(a.pushed_at).getTime() : 0;
 		const bDate = b.pushed_at ? new Date(b.pushed_at).getTime() : 0;
 		return bDate - aDate;
-	});
-	// Create chat mutation (real tRPC)
-	const utils = trpc.useUtils();
-	const createChatMutation = trpc.chats.create.useMutation({
-		onSuccess: (data) => {
+	}));
+	// Create chat mutation (desktop RPC)
+	const queryClient = useQueryClient();
+	const createChatMutation = useMutation(() => ({
+		mutationFn: (input: Parameters<typeof desktopRpc.chats.create.mutate>[0]) =>
+			desktopRpc.chats.create.mutate(input),
+		onSuccess: (data: Awaited<ReturnType<typeof desktopRpc.chats.create.mutate>>) => {
 			// Clear editor, images, pasted texts, and file contents cache only on success
-			editorRef.current?.clear();
+			editorRef()?.clear();
 			clearImages();
 			clearPastedTexts();
-			fileContentsRef.current.clear();
+			fileContentsRef().clear();
 			clearCurrentDraft();
-			utils.chats.list.invalidate();
+			queryClient.invalidateQueries({ queryKey: ["chats", "list"] });
 			setSelectedChatId(data.id);
 			// New chats are always local
 			setSelectedChatIsRemote(false);
@@ -660,59 +707,54 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 			const justCreated = justCreatedIds();
 			ids.forEach((id) => justCreated.add(id));
 		},
-		onError: (error) => {
+		onError: (error: Error) => {
 			toast.error(error.message);
-		}
-	});
+		},
+	}));
 	// Open folder mutation for selecting a project
-	const openFolder = trpc.projects.openFolder.useMutation({ onSuccess: (project) => {
-		if (project) {
-			// Optimistically update the projects list cache to prevent "Select repo" flash
-			// This ensures validatedProject can find the new project immediately
-			utils.projects.list.setData(undefined, (oldData) => {
-				if (!oldData) return [project];
-				// Check if project already exists (reopened existing project)
-				const exists = oldData.some((p) => p.id === project.id);
-				if (exists) {
-					// Update existing project's timestamp
-					return oldData.map((p) => p.id === project.id ? {
-						...p,
-						updatedAt: project.updatedAt
-					} : p);
-				}
-				// Add new project at the beginning
-				return [project, ...oldData];
-			});
-			setSelectedProject({
-				id: project.id,
-				name: project.name,
-				path: project.path,
-				gitRemoteUrl: project.gitRemoteUrl,
-				gitProvider: project.gitProvider as "github" | "gitlab" | "bitbucket" | null,
-				gitOwner: project.gitOwner,
-				gitRepo: project.gitRepo
-			});
-		}
-	} });
+	const openFolder = useMutation(() => ({
+		mutationFn: () => desktopRpc.projects.openFolder.mutate({}),
+		onSuccess: (project: Awaited<ReturnType<typeof desktopRpc.projects.openFolder.mutate>>) => {
+			if (project) {
+				// Optimistically update the projects list cache to prevent "Select repo" flash
+				queryClient.setQueryData(["projects", "list"], (oldData: typeof project[] | undefined) => {
+					if (!oldData) return [project];
+					const exists = oldData.some((p) => p.id === project.id);
+					if (exists) {
+						return oldData.map((p) => (p.id === project.id ? { ...p, updatedAt: project.updatedAt } : p));
+					}
+					return [project, ...oldData];
+				});
+				setSelectedProject({
+					id: project.id,
+					name: project.name,
+					path: project.path,
+					gitRemoteUrl: project.gitRemoteUrl,
+					gitProvider: project.gitProvider as "github" | "gitlab" | "bitbucket" | null,
+					gitOwner: project.gitOwner,
+					gitRepo: project.gitRepo,
+				});
+			}
+		},
+	}));
 	const handleOpenFolder = async () => {
 		await openFolder.mutateAsync();
 	};
-	const getAgentIcon = (agentId: string, className?: string) => {
+	const getAgentIcon = (agentId: string, cls?: string) => {
 		switch (agentId) {
-			case "claude-code": return <ClaudeCodeIcon class={className} />;
-			case "cursor": return <CursorIcon class={className} />;
-			case "codex": return <CodexIcon class={className} />;
+			case "claude-code": return <ClaudeCodeIcon class={cls} />;
+			case "cursor": return <CursorIcon class={cls} />;
+			case "codex": return <CodexIcon class={cls} />;
 			default: return null;
 		}
 	};
-	const trpcUtils = trpc.useUtils();
 	const handleSend = async () => {
 		// Get value from uncontrolled editor
-		let message = editorRef.current?.getValue() || "";
+		let message = editorRef()?.getValue() || "";
 		// Allow send if there's text, images, or pasted text files
 		const hasText = message.trim().length > 0;
-		const hasImages = images.filter((img) => !img.isLoading && img.url).length > 0;
-		const hasPastedTexts = pastedTexts.length > 0;
+		const hasImages = images().filter((img) => !img.isLoading && img.url).length > 0;
+		const hasPastedTexts = pastedTexts().length > 0;
 		if (!hasText && !hasImages && !hasPastedTexts || !selectedProject) {
 			return;
 		}
@@ -726,10 +768,10 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 			if (!builtinNames.has(commandName)) {
 				// This is a custom command - load content and replace $ARGUMENTS
 				try {
-					const commands = await trpcUtils.commands.list.fetch({ projectPath: validatedProject?.path });
-					const cmd = commands.find((c) => c.name.toLowerCase() === commandName.toLowerCase());
+					const commands = await desktopRpc.commands.list({ projectPath: validatedProject()?.path });
+					const cmd = commands.find((c: { name: string }) => c.name.toLowerCase() === commandName.toLowerCase());
 					if (cmd) {
-						const { content } = await trpcUtils.commands.getContent.fetch({ path: cmd.path });
+						const { content } = await desktopRpc.commands.getContent({ path: cmd.path });
 						// Replace $ARGUMENTS with the provided args
 						message = content.replace(/\$ARGUMENTS/g, args.trim());
 					}
@@ -755,7 +797,7 @@ type MessagePart = {
 			filePath: string;
 			content: string;
 		};
-		const parts: MessagePart[] = images.filter((img) => !img.isLoading && img.url).map((img) => ({
+		const parts: MessagePart[] = images().filter((img) => !img.isLoading && img.url).map((img) => ({
 			type: "data-image" as const,
 			data: {
 				url: img.url!,
@@ -767,8 +809,8 @@ type MessagePart = {
 		// Add pasted text as pasted mentions (format: pasted:size:preview|filepath)
 		// Using | as separator since filepath can contain colons
 		let finalMessage = message.trim();
-		if (pastedTexts.length > 0) {
-			const pastedMentions = pastedTexts.map((pt) => {
+		if (pastedTexts().length > 0) {
+			const pastedMentions = pastedTexts().map((pt) => {
 				// Sanitize preview to remove special characters that break mention parsing
 				const sanitizedPreview = pt.preview.replace(/[:\[\]|]/g, "");
 				return `@[${MENTION_PREFIXES.PASTED}${pt.size}:${sanitizedPreview}|${pt.filePath}]`;
@@ -783,8 +825,8 @@ type MessagePart = {
 		}
 		// Add cached file contents as hidden parts (sent to agent but not displayed in UI)
 		// These are from dropped text files - content is embedded so agent sees it immediately
-		if (fileContentsRef.current.size > 0) {
-			for (const [mentionId, content] of fileContentsRef.current.entries()) {
+		if (fileContentsRef().size > 0) {
+			for (const [mentionId, content] of fileContentsRef().entries()) {
 				// Extract file path from mentionId (file:local:path or file:external:path)
 				const filePath = mentionId.replace(/^file:(local|external):/, "");
 				parts.push({
@@ -796,13 +838,13 @@ type MessagePart = {
 		}
 		// Create chat with selected project, branch, and initial message
 		createChatMutation.mutate({
-			projectId: selectedProject.id,
+			projectId: selectedProject()!.id,
 			name: message.trim().slice(0, 50),
 			initialMessageParts: parts.length > 0 ? parts : undefined,
-			baseBranch: workMode === "worktree" ? selectedBranch || undefined : undefined,
-			branchType: workMode === "worktree" ? selectedBranchType : undefined,
-			useWorktree: workMode === "worktree",
-			mode: agentMode
+			baseBranch: workMode() === "worktree" ? selectedBranch() || undefined : undefined,
+			branchType: workMode() === "worktree" ? selectedBranchType() : undefined,
+			useWorktree: workMode() === "worktree",
+			mode: agentMode()
 		});
 		// Editor, images, and pasted texts are cleared in onSuccess callback
 	};
@@ -827,7 +869,7 @@ type MessagePart = {
 			}
 		}
 		// Otherwise: insert mention as normal
-		editorRef.current?.insertMention(mention);
+		editorRef()?.insertMention(mention);
 		setShowMentionDropdown(false);
 		// Reset subpage state
 		setShowingFilesList(false);
@@ -838,43 +880,47 @@ type MessagePart = {
 	// Save draft to localStorage when content changes
 	const handleContentChange = (hasContent: boolean) => {
 		setHasContent(hasContent);
-		const text = editorRef.current?.getValue() || "";
+		const text = editorRef()?.getValue() || "";
 		// Skip if text hasn't changed
-		if (text === lastSavedTextRef.current) {
+		if (text === lastSavedTextRef()) {
 			return;
 		}
-		lastSavedTextRef.current = text;
+		setLastSavedTextRef(text);
 		const globalDrafts = loadGlobalDrafts();
-		if (text.trim() && validatedProject) {
+		if (text.trim() && validatedProject()) {
 			// If no current draft ID, create a new one
-			if (!currentDraftIdRef.current) {
-				currentDraftIdRef.current = generateDraftId();
+			if (!currentDraftIdRef()) {
+				setCurrentDraftIdRef(generateDraftId());
 			}
-			const key = currentDraftIdRef.current;
-			globalDrafts[key] = {
-				text,
-				updatedAt: Date.now(),
-				project: {
-					id: validatedProject.id,
-					name: validatedProject.name,
-					path: validatedProject.path,
-					gitOwner: validatedProject.gitOwner,
-					gitRepo: validatedProject.gitRepo,
-					gitProvider: validatedProject.gitProvider
-				}
-			};
+			const key = currentDraftIdRef()!;
+			const project = validatedProject();
+			if (project) {
+				globalDrafts[key] = {
+					text,
+					updatedAt: Date.now(),
+					project: {
+						id: project.id,
+						name: project.name,
+						path: project.path,
+						gitOwner: project.gitOwner,
+						gitRepo: project.gitRepo,
+						gitProvider: project.gitProvider
+					}
+				};
+			}
 			saveGlobalDrafts(globalDrafts);
-		} else if (currentDraftIdRef.current) {
+		} else if (currentDraftIdRef()) {
 			// Text is empty - delete the current draft
-			deleteNewChatDraft(currentDraftIdRef.current);
-			currentDraftIdRef.current = null;
+			deleteNewChatDraft(currentDraftIdRef()!);
+			setCurrentDraftIdRef(null);
 		}
 	};
 	// Clear current draft when chat is created
 	const clearCurrentDraft = () => {
-		if (!currentDraftIdRef.current) return;
-		deleteNewChatDraft(currentDraftIdRef.current);
-		currentDraftIdRef.current = null;
+		const draftId = currentDraftIdRef();
+		if (!draftId) return;
+		deleteNewChatDraft(draftId);
+		setCurrentDraftIdRef(null);
 		setSelectedDraftId(null);
 	};
 	// Memoized callbacks to prevent re-renders
@@ -921,21 +967,21 @@ type MessagePart = {
 	};
 	const handleSlashSelect = (command: SlashCommandOption) => {
 		// Clear the slash command text from editor
-		editorRef.current?.clearSlashCommand();
+		editorRef()?.clearSlashCommand();
 		setShowSlashDropdown(false);
 		// Handle builtin commands that change app state (no text input needed)
 		if (command.category === "builtin") {
 			switch (command.name) {
 				case "clear":
-					editorRef.current?.clear();
+					editorRef()?.clear();
 					return;
 				case "plan":
-					if (agentMode !== "plan") {
+					if (agentMode() !== "plan") {
 						setAgentMode("plan");
 					}
 					return;
 				case "agent":
-					if (agentMode === "plan") {
+					if (agentMode() === "plan") {
 						setAgentMode("agent");
 					}
 					return;
@@ -943,7 +989,7 @@ type MessagePart = {
 		}
 		// For all other commands (builtin prompts and custom):
 		// insert the command and let user add arguments or press Enter to send
-		editorRef.current?.setValue(`/${command.name} `);
+		editorRef()?.setValue(`/${command.name} `);
 	};
 	// Paste handler for images, plain text, and large text (saved as files)
 	const handlePaste = (e: ClipboardEvent) => handlePasteEvent(e, handleAddAttachments, addPastedText);
@@ -1055,7 +1101,7 @@ type MessagePart = {
 	const handleDrop = async (e: DragEvent) => {
 		e.preventDefault();
 		setIsDragOver(false);
-		const droppedFiles = Array.from(e.dataTransfer.files);
+		const droppedFiles = Array.from(e.dataTransfer?.files ?? []);
 		// Separate images from other files
 		const imageFiles: File[] = [];
 		const otherFiles: File[] = [];
@@ -1074,15 +1120,16 @@ type MessagePart = {
 		// Process other files - for text files, read content and add as file mention
 		for (const file of otherFiles) {
 			// Get file path using Electron's webUtils API (more reliable than file.path)
-			const filePath: string | undefined = window.webUtils?.getPathForFile?.(file) || (file as File & {
+			const filePath: string | undefined = (window as Window & { webUtils?: { getPathForFile?: (file: File) => string } }).webUtils?.getPathForFile?.(file) || (file as File & {
 				path?: string;
 			}).path;
 			let mentionId: string;
 			let mentionPath: string;
 			// Check if file is inside the project
-			if (validatedProject?.path && filePath && filePath.startsWith(validatedProject.path)) {
+			const project = validatedProject();
+			if (project?.path && filePath && filePath.startsWith(project.path)) {
 				// Project file: use relative path with file:local: prefix
-				const relativePath = filePath.slice(validatedProject.path.length).replace(/^\//, "");
+				const relativePath = filePath.slice(project.path.length).replace(/^\//, "");
 				mentionId = `file:local:${relativePath}`;
 				mentionPath = relativePath;
 			} else if (filePath) {
@@ -1104,7 +1151,7 @@ type MessagePart = {
 			// Show file chip, content will be added to prompt on send
 			if (isTextFile && isSmallEnough && filePath) {
 				// Add file chip for visual representation
-				editorRef.current?.insertMention({
+				editorRef()?.insertMention({
 					id: mentionId,
 					label: fileName,
 					path: mentionPath,
@@ -1113,8 +1160,8 @@ type MessagePart = {
 				});
 				// Read and cache content (will be added to prompt on send)
 				try {
-					const content = await trpcUtils.files.readFile.fetch({ filePath });
-					fileContentsRef.current.set(mentionId, content);
+					const content = await desktopRpc.files.readFile({ filePath });
+					fileContentsRef().set(mentionId, content);
 				} catch (err) {
 					// If reading fails, chip is still there - agent can try to read via path
 					console.error(`[handleDrop] Failed to read file content ${filePath}:`, err);
@@ -1122,7 +1169,7 @@ type MessagePart = {
 			} else {
 				// For binary files, large files - add as mention only
 				// mentionPath contains full absolute path for external files
-				editorRef.current?.insertMention({
+				editorRef()?.insertMention({
 					id: mentionId,
 					label: fileName,
 					path: mentionPath,
@@ -1134,27 +1181,27 @@ type MessagePart = {
 		// Focus after state update - use double rAF to wait for React render
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
-				editorRef.current?.focus();
+				editorRef()?.focus();
 			});
 		});
 	};
 	// Context items for images and pasted text files
-	const contextItems = images.length > 0 || pastedTexts.length > 0 ? <div class="flex flex-wrap gap-[6px]">
+	const contextItems = createMemo(() => images().length > 0 || pastedTexts().length > 0 ? <div class="flex flex-wrap gap-[6px]">
         {(() => {
 		// Build allImages array for gallery navigation
-		const allImages = images.filter((img) => img.url && !img.isLoading).map((img) => ({
+		const allImages = images().filter((img) => img.url && !img.isLoading).map((img) => ({
 			id: img.id,
 			filename: img.filename,
 			url: img.url
 		}));
-		return images.map((img, idx) => <AgentImageItem key={img.id} id={img.id} filename={img.filename} url={img.url} isLoading={img.isLoading} onRemove={() => removeImage(img.id)} allImages={allImages} imageIndex={idx} />);
+		return images().map((img, idx) => <AgentImageItem id={img.id} filename={img.filename} url={img.url} isLoading={img.isLoading} onRemove={() => removeImage(img.id)} allImages={allImages} imageIndex={idx} />);
 	})()}
-        {pastedTexts.map((pt) => <AgentPastedTextItem key={pt.id} filePath={pt.filePath} filename={pt.filename} size={pt.size} preview={pt.preview} onRemove={() => removePastedText(pt.id)} />)}
-      </div> : null;
+        {pastedTexts().map((pt) => <AgentPastedTextItem filePath={pt.filePath} filename={pt.filename} size={pt.size} preview={pt.preview} onRemove={() => removePastedText(pt.id)} />)}
+      </div> : null);
 	// Handle container click to focus editor
 	const handleContainerClick = (e: MouseEvent) => {
 		if (e.target === e.currentTarget || !(e.target as HTMLElement).closest("button, [contenteditable]")) {
-			editorRef.current?.focus();
+			editorRef()?.focus();
 		}
 	};
 	return <div class="flex h-full flex-col">
@@ -1163,64 +1210,64 @@ type MessagePart = {
         <div class="flex-1 min-w-0 flex items-center gap-2">
           {isMobileFullscreen ? <Button variant="ghost" size="icon" onClick={onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="All projects">
               <AlignJustify class="h-4 w-4" />
-            </Button> : <AgentsHeaderControls isSidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} hasUnseenChanges={hasAnyUnseenChanges} />}
+            </Button> : <AgentsHeaderControls isSidebarOpen={sidebarOpen()} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} hasUnseenChanges={hasAnyUnseenChanges} />}
         </div>
       </div>
 
       <div class="flex flex-1 items-center justify-center overflow-y-auto relative">
         <div class="w-full max-w-2xl space-y-4 md:space-y-6 relative z-10 px-4">
           { /* Title - only show when project is selected */}
-          {validatedProject && <div class="text-center">
+          {validatedProject() && <div class="text-center">
               <h1 class="text-2xl md:text-4xl font-medium tracking-tight">
                 What do you want to get done?
               </h1>
             </div>}
 
           { /* Input Area or Select Repo State */}
-          {!validatedProject ? <div class="flex justify-center">
+          {!validatedProject() ? <div class="flex justify-center">
               <button onClick={handleOpenFolder} disabled={openFolder.isPending} class="h-8 px-3 bg-primary text-primary-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-primary/90 active:scale-[0.97] shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] disabled:opacity-50 disabled:cursor-not-allowed">
                 {openFolder.isPending ? "Opening..." : "Select repo"}
               </button>
             </div> : <div class="relative w-full" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
               <div class="relative w-full cursor-text" onClick={handleContainerClick}>
-                <PromptInput class={cn("border bg-input-background relative z-10 p-2 rounded-xl transition-[border-color,box-shadow] duration-150", isDragOver() && "ring-2 ring-primary/50 border-primary/50", isFocused() && !isDragOver() && "ring-2 ring-primary/50")} maxHeight={240} onSubmit={handleSend} contextItems={contextItems}>
+                <PromptInput class={cn("border bg-input-background relative z-10 p-2 rounded-xl transition-[border-color,box-shadow] duration-150", isDragOver() && "ring-2 ring-primary/50 border-primary/50", isFocused() && !isDragOver() && "ring-2 ring-primary/50")} maxHeight={240} onSubmit={handleSend} contextItems={contextItems()}>
                   <PromptInputContextItems />
                   <div class="relative">
-                    <AgentsMentionsEditor ref={editorRef} onTrigger={handleMentionTrigger} onCloseTrigger={handleCloseTrigger} onSlashTrigger={handleSlashTrigger} onCloseSlashTrigger={handleCloseSlashTrigger} onContentChange={handleContentChange} onSubmit={handleSend} onShiftTab={toggleMode} placeholder="Plan, @ for context, / for commands" class={cn("bg-transparent max-h-[240px] overflow-y-auto p-1", isMobileFullscreen ? "min-h-[56px]" : "min-h-[44px]")} onPaste={handlePaste} disabled={createChatMutation.isPending} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} />
+                    <AgentsMentionsEditor ref={setEditorRef} onTrigger={handleMentionTrigger} onCloseTrigger={handleCloseTrigger} onSlashTrigger={handleSlashTrigger} onCloseSlashTrigger={handleCloseSlashTrigger} onContentChange={handleContentChange} onSubmit={handleSend} onShiftTab={toggleMode} placeholder="Plan, @ for context, / for commands" class={cn("bg-transparent max-h-[240px] overflow-y-auto p-1", isMobileFullscreen ? "min-h-[56px]" : "min-h-[44px]")} onPaste={handlePaste} disabled={createChatMutation.isPending} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} />
                   </div>
                   <PromptInputActions class="w-full">
                     <div class="flex items-center gap-0.5 flex-1 min-w-0">
                       { /* Mode toggle (Agent/Plan) */}
-                      <DropdownMenu open={modeDropdownOpen} onOpenChange={(open) => {
+                      <DropdownMenu open={modeDropdownOpen()} onOpenChange={(open) => {
  setModeDropdownOpen(open);
 		if (!open) {
-			if (tooltipTimeoutRef.current) {
-				clearTimeout(tooltipTimeoutRef.current);
-				tooltipTimeoutRef.current = null;
+			if (tooltipTimeoutRef()) {
+				clearTimeout(tooltipTimeoutRef()!);
+				setTooltipTimeoutRef(null);
 			}
 			setModeTooltip(null);
-			hasShownTooltipRef.current = false;
+			setHasShownTooltipRef(false);
 		}
 	}}>
                         <DropdownMenuTrigger class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
-                          {agentMode === "plan" ? <PlanIcon class="h-3.5 w-3.5" /> : <AgentIcon class="h-3.5 w-3.5" />}
-                          <span>{agentMode === "plan" ? "Plan" : "Agent"}</span>
+                          {agentMode() === "plan" ? <PlanIcon class="h-3.5 w-3.5" /> : <AgentIcon class="h-3.5 w-3.5" />}
+                          <span>{agentMode() === "plan" ? "Plan" : "Agent"}</span>
                           <IconChevronDown class="h-3 w-3 shrink-0 opacity-50" />
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start" sideOffset={6} class="!min-w-[116px] !w-[116px]" onCloseAutoFocus={(e) => e.preventDefault()}>
                           <DropdownMenuItem onClick={() => {
 		// Clear tooltip before closing dropdown (onMouseLeave won't fire)
-		if (tooltipTimeoutRef.current) {
-			clearTimeout(tooltipTimeoutRef.current);
-			tooltipTimeoutRef.current = null;
+		if (tooltipTimeoutRef()) {
+			clearTimeout(tooltipTimeoutRef()!);
+			setTooltipTimeoutRef(null);
 		}
 		setModeTooltip(null);
 		setAgentMode("agent");
 		setModeDropdownOpen(false);
-	}} class="justify-between gap-2" onMouseEnter={(e) => {
-		if (tooltipTimeoutRef.current) {
-			clearTimeout(tooltipTimeoutRef.current);
-			tooltipTimeoutRef.current = null;
+	}} class="justify-between gap-2" onMouseEnter={(e: MouseEvent & { currentTarget: HTMLElement }) => {
+		if (tooltipTimeoutRef()) {
+			clearTimeout(tooltipTimeoutRef()!);
+			setTooltipTimeoutRef(null);
 		}
 		const rect = e.currentTarget.getBoundingClientRect();
 		const showTooltip = () => {
@@ -1232,18 +1279,18 @@ type MessagePart = {
 				},
 				mode: "agent"
 			});
-			hasShownTooltipRef.current = true;
-			tooltipTimeoutRef.current = null;
+			setHasShownTooltipRef(true);
+			setTooltipTimeoutRef(null);
 		};
-		if (hasShownTooltipRef.current) {
+		if (hasShownTooltipRef()) {
 			showTooltip();
 		} else {
-			tooltipTimeoutRef.current = setTimeout(showTooltip, 1e3);
+			setTooltipTimeoutRef(setTimeout(showTooltip, 1e3));
 		}
 	}} onMouseLeave={() => {
-		if (tooltipTimeoutRef.current) {
-			clearTimeout(tooltipTimeoutRef.current);
-			tooltipTimeoutRef.current = null;
+		if (tooltipTimeoutRef()) {
+			clearTimeout(tooltipTimeoutRef()!);
+			setTooltipTimeoutRef(null);
 		}
 		setModeTooltip(null);
 	}}>
@@ -1251,21 +1298,21 @@ type MessagePart = {
                               <AgentIcon class="w-4 h-4 text-muted-foreground" />
                               <span>Agent</span>
                             </div>
-                            {agentMode !== "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
+                            {agentMode() !== "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => {
 		// Clear tooltip before closing dropdown (onMouseLeave won't fire)
-		if (tooltipTimeoutRef.current) {
-			clearTimeout(tooltipTimeoutRef.current);
-			tooltipTimeoutRef.current = null;
+		if (tooltipTimeoutRef()) {
+			clearTimeout(tooltipTimeoutRef()!);
+			setTooltipTimeoutRef(null);
 		}
 		setModeTooltip(null);
 		setAgentMode("plan");
 		setModeDropdownOpen(false);
-	}} class="justify-between gap-2" onMouseEnter={(e) => {
-		if (tooltipTimeoutRef.current) {
-			clearTimeout(tooltipTimeoutRef.current);
-			tooltipTimeoutRef.current = null;
+	}} class="justify-between gap-2" onMouseEnter={(e: MouseEvent & { currentTarget: HTMLElement }) => {
+		if (tooltipTimeoutRef()) {
+			clearTimeout(tooltipTimeoutRef()!);
+			setTooltipTimeoutRef(null);
 		}
 		const rect = e.currentTarget.getBoundingClientRect();
 		const showTooltip = () => {
@@ -1277,18 +1324,18 @@ type MessagePart = {
 				},
 				mode: "plan"
 			});
-			hasShownTooltipRef.current = true;
-			tooltipTimeoutRef.current = null;
+			setHasShownTooltipRef(true);
+			setTooltipTimeoutRef(null);
 		};
-		if (hasShownTooltipRef.current) {
+		if (hasShownTooltipRef()) {
 			showTooltip();
 		} else {
-			tooltipTimeoutRef.current = setTimeout(showTooltip, 1e3);
+			setTooltipTimeoutRef(setTimeout(showTooltip, 1e3));
 		}
 	}} onMouseLeave={() => {
-		if (tooltipTimeoutRef.current) {
-			clearTimeout(tooltipTimeoutRef.current);
-			tooltipTimeoutRef.current = null;
+		if (tooltipTimeoutRef()) {
+			clearTimeout(tooltipTimeoutRef()!);
+			setTooltipTimeoutRef(null);
 		}
 		setModeTooltip(null);
 	}}>
@@ -1296,19 +1343,19 @@ type MessagePart = {
                               <PlanIcon class="w-4 h-4 text-muted-foreground" />
                               <span>Plan</span>
                             </div>
-                            {agentMode === "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
+                            {agentMode() === "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
-                        <Show when={modeTooltip?.visible}>
+                        <Show when={modeTooltip()?.visible}>
                           <Portal mount={document.body}>
                             <div class="fixed z-[100000]" style={{
-                              top: `${modeTooltip.position.top + 14}px`,
-                              left: `${modeTooltip.position.left}px`,
+                              top: `${modeTooltip()!.position.top + 14}px`,
+                              left: `${modeTooltip()!.position.left}px`,
                               transform: "translateY(-50%)"
                             }}>
                               <div data-tooltip="true" class="relative rounded-[12px] bg-popover px-2.5 py-1.5 text-xs text-popover-foreground dark max-w-[150px]">
                                 <span>
-                                  {modeTooltip.mode === "agent" ? "Apply changes directly without a plan" : "Create a plan before making changes"}
+                                  {modeTooltip()!.mode === "agent" ? "Apply changes directly without a plan" : "Create a plan before making changes"}
                                 </span>
                               </div>
                             </div>
@@ -1317,19 +1364,19 @@ type MessagePart = {
                       </DropdownMenu>
 
                       {	/* Model selector - shows Ollama models when offline, Claude models when online */}
-                      {availableModels.isOffline && availableModels.hasOllama ? <DropdownMenu open={isModelDropdownOpen} onOpenChange={setIsModelDropdownOpen}>
+                      {availableModels.isOffline && availableModels.hasOllama ? <DropdownMenu open={isModelDropdownOpen()} onOpenChange={setIsModelDropdownOpen}>
                           <DropdownMenuTrigger asChild>
                             <button class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 border border-border">
                               <Zap class="h-4 w-4" />
-                              <span>{currentOllamaModel || "Select model"}</span>
+                              <span>{currentOllamaModel() || "Select model"}</span>
                               <IconChevronDown class="h-3 w-3 shrink-0 opacity-50" />
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="start" class="w-[240px]">
                             {availableModels.ollamaModels.map((model) => {
- const isSelected = model === currentOllamaModel;
+ const isSelected = model === currentOllamaModel();
 		const isRecommended = model === availableModels.recommendedModel;
-		return <DropdownMenuItem key={model} onClick={() => setSelectedOllamaModel(model)} class="gap-2 justify-between">
+		return <DropdownMenuItem onClick={() => setSelectedOllamaModel(model)} class="gap-2 justify-between">
                                   <div class="flex items-center gap-1.5">
                                     <Zap class="h-4 w-4 text-muted-foreground shrink-0" />
                                     <span>
@@ -1341,7 +1388,7 @@ type MessagePart = {
                                 </DropdownMenuItem>;
 	})}
                           </DropdownMenuContent>
-                        </DropdownMenu> : <DropdownMenu open={hasCustomClaudeConfig ? false : isModelDropdownOpen} onOpenChange={(open) => {
+                        </DropdownMenu> : <DropdownMenu open={hasCustomClaudeConfig ? false : isModelDropdownOpen()} onOpenChange={(open) => {
 		if (!hasCustomClaudeConfig) {
 			setIsModelDropdownOpen(open);
 		}
@@ -1351,7 +1398,7 @@ type MessagePart = {
                               <ClaudeCodeIcon class="h-3.5 w-3.5" />
                               <span>
                                 {hasCustomClaudeConfig ? "Custom Model" : <>
-                                    {selectedModel?.name}{" "}
+                                    {selectedModel()?.name}{" "}
                                     <span class="text-muted-foreground">4.5</span>
                                   </>}
                               </span>
@@ -1360,8 +1407,8 @@ type MessagePart = {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="start" class="w-[200px]">
                             {availableModels.models.map((model) => {
-		const isSelected = selectedModel?.id === model.id;
-		return <DropdownMenuItem key={model.id} onClick={() => {
+		const isSelected = selectedModel()?.id === model.id;
+		return <DropdownMenuItem onClick={() => {
 			setSelectedModel(model);
 			setLastSelectedModelId(model.id);
 		}} class="gap-2 justify-between">
@@ -1381,17 +1428,17 @@ type MessagePart = {
 
                     <div class="flex items-center gap-0.5 ml-auto flex-shrink-0">
                       {	/* Hidden file input */}
-                      <input type="file" ref={fileInputRef} hidden accept="image/jpeg,image/png" multiple onChange={(e) => {
+                      <input type="file" ref={setFileInputRef} hidden accept="image/jpeg,image/png" multiple onChange={(e) => {
  const files = Array.from(e.target.files || []);
 		handleAddAttachments(files);
 		e.target.value = "";
 	}} />
                       {	/* Voice wave indicator or Attachment button */}
-                      {isVoiceRecording ? <VoiceWaveIndicator isRecording={isVoiceRecording} audioLevel={voiceAudioLevel} /> : <Button variant="ghost" size="icon" class="h-7 w-7 rounded-sm outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" onClick={() => fileInputRef.current?.click()} disabled={images.length >= 5}>
+                      {isVoiceRecording() ? <VoiceWaveIndicator isRecording={isVoiceRecording()} audioLevel={voiceAudioLevel()} /> : <Button variant="ghost" size="icon" class="h-7 w-7 rounded-sm outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" onClick={() => fileInputRef()?.click()} disabled={images().length >= 5}>
                           <AttachIcon class="h-4 w-4" />
                         </Button>}
                       <div class="ml-1">
-                        <AgentSendButton isStreaming={false} isSubmitting={createChatMutation.isPending || isUploading} disabled={Boolean(!hasContent || !selectedProject || isUploading)} onClick={handleSend} mode={agentMode} hasContent={hasContent} showVoiceInput={isVoiceAvailable} isRecording={isVoiceRecording} isTranscribing={isTranscribing} onVoiceMouseDown={handleVoiceMouseDown} onVoiceMouseUp={handleVoiceMouseUp} onVoiceMouseLeave={handleVoiceMouseLeave} />
+                        <AgentSendButton isStreaming={false} isSubmitting={createChatMutation.isPending || isUploading()} disabled={Boolean(!hasContent() || !selectedProject() || isUploading())} onClick={handleSend} mode={agentMode()} hasContent={hasContent()} showVoiceInput={isVoiceAvailable()} isRecording={isVoiceRecording()} isTranscribing={isTranscribing()} onVoiceMouseDown={handleVoiceMouseDown} onVoiceMouseUp={handleVoiceMouseUp} onVoiceMouseLeave={handleVoiceMouseLeave} />
                       </div>
                     </div>
                   </PromptInputActions>
@@ -1402,10 +1449,10 @@ type MessagePart = {
                   <ProjectSelector />
 
                   { /* Work mode selector - between project and branch */}
-                  {validatedProject() && <WorkModeSelector value={workMode} onChange={setWorkMode} disabled={createChatMutation.isPending} />}
+                  {validatedProject() && <WorkModeSelector value={workMode()} onChange={setWorkMode} disabled={createChatMutation.isPending} />}
 
                   { /* Branch selector - only visible when worktree mode is selected */}
-                  {validatedProject() && workMode === "worktree" && <Popover open={branchPopoverOpen()} onOpenChange={(open) => {
+                  {validatedProject() && workMode() === "worktree" && <Popover open={branchPopoverOpen()} onOpenChange={(open) => {
  if (!open) {
 			setBranchSearch("");
 		}
@@ -1415,7 +1462,7 @@ type MessagePart = {
                         <button class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" disabled={branchesQuery.isLoading}>
                           <BranchIcon class="w-4 h-4" />
                           <span class="truncate max-w-[100px]">
-                            {selectedBranch || branchesQuery.data?.defaultBranch || "main"}
+                            {selectedBranch() || branchesQuery.data?.defaultBranch || "main"}
                           </span>
                           <IconChevronDown class="w-3 h-3 opacity-50" />
                         </button>
@@ -1424,7 +1471,7 @@ type MessagePart = {
                         {	/* Search input with Create button */}
                         <div class="flex items-center gap-1.5 h-7 px-1.5 mx-1 my-1 rounded-md bg-muted/50">
                           <SearchIcon class="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <input type="text" placeholder="Search branches..." value={branchSearch} onInput={(e) => setBranchSearch(e.currentTarget.value)} class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" autoFocus />
+                          <input type="text" placeholder="Search branches..." value={branchSearch()} onInput={(e) => setBranchSearch(e.currentTarget.value)} class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" autofocus />
                           <Button size="sm" variant="ghost" class="h-6 px-1.5 flex items-center gap-1 text-xs shrink-0" onClick={(e) => {
  e.preventDefault();
 		e.stopPropagation();
@@ -1437,18 +1484,18 @@ type MessagePart = {
                         </div>
 
                         {	/* Virtualized branch list */}
-                        {filteredBranches.length === 0 ? <div class="py-6 text-center text-sm text-muted-foreground">
+                        {filteredBranches().length === 0 ? <div class="py-6 text-center text-sm text-muted-foreground">
                             No branches found.
-                          </div> : <div ref={branchListRef} class="overflow-auto py-1 scrollbar-hide" style={{ height: Math.min(filteredBranches.length * 32 + 8, 300) }}>
+                          </div> : <div ref={setBranchListRef} class="overflow-auto py-1 scrollbar-hide" style={{ height: `${Math.min(filteredBranches().length * 32 + 8, 300)}px` }}>
                             <div style={{
  height: `${branchVirtualizer.getTotalSize()}px`,
 		width: "100%",
 		position: "relative"
 	}}>
                               {branchVirtualizer.getVirtualItems().map((virtualItem) => {
-		const branch = filteredBranches[virtualItem.index];
-		const isSelected = selectedBranch === branch.name && selectedBranchType === branch.type || !selectedBranch && branch.isDefault && branch.type === "local";
-		return <button key={`${branch.type}-${branch.name}`} onClick={() => {
+		const branch = filteredBranches()[virtualItem.index];
+		const isSelected = selectedBranch() === branch.name && selectedBranchType() === branch.type || !selectedBranch() && branch.isDefault && branch.type === "local";
+		return <button onClick={() => {
 			setSelectedBranch(branch.name, branch.type);
 			setBranchPopoverOpen(false);
 			setBranchSearch("");
@@ -1478,13 +1525,13 @@ type MessagePart = {
                     </Popover>}
 
                   {	/* Create Branch Dialog */}
-                  {validatedProject && <CreateBranchDialog open={createBranchDialogOpen} onOpenChange={setCreateBranchDialogOpen} projectPath={validatedProject.path} branches={branches} defaultBranch={branchesQuery.data?.defaultBranch || "main"} onBranchCreated={(branchName) => {
+                  {validatedProject() && <CreateBranchDialog open={createBranchDialogOpen()} onOpenChange={setCreateBranchDialogOpen} projectPath={validatedProject()!.path} branches={branches()} defaultBranch={branchesQuery.data?.defaultBranch || "main"} onBranchCreated={(branchName) => {
  setSelectedBranch(branchName, "local");
 	}} />}
                 </div>
 
                 {	/* Worktree config banner - absolute positioned to avoid layout shift */}
-                {showWorktreeBanner && <div class="absolute left-0 right-0 top-full mt-2 ml-[5px] mr-[5px] p-3 pb-4 bg-muted/50 rounded-lg border border-border space-y-3">
+                {showWorktreeBanner() && <div class="absolute left-0 right-0 top-full mt-2 ml-[5px] mr-[5px] p-3 pb-4 bg-muted/50 rounded-lg border border-border space-y-3">
                     <p class="text-sm text-muted-foreground">
                       Configure a worktree setup script to install dependencies or copy environment variables.
                     </p>
@@ -1494,9 +1541,10 @@ type MessagePart = {
                       </Button>
                       <Button size="sm" onClick={() => {
  const prompt = COMMAND_PROMPTS["worktree-setup"];
-		if (prompt && validatedProject) {
+		const project = validatedProject();
+		if (prompt && project) {
 			createChatMutation.mutate({
-				projectId: validatedProject.id,
+				projectId: project.id,
 				name: "Worktree Setup",
 				initialMessageParts: [{
 					type: "text",
@@ -1521,10 +1569,10 @@ type MessagePart = {
 		setShowingSkillsList(false);
 		setShowingAgentsList(false);
 		setShowingToolsList(false);
-	}} onSelect={handleMentionSelect} searchText={mentionSearchText} position={mentionPosition} projectPath={validatedProject?.path} showingFilesList={showingFilesList} showingSkillsList={showingSkillsList} showingAgentsList={showingAgentsList} showingToolsList={showingToolsList} />
+	}} onSelect={handleMentionSelect} searchText={mentionSearchText()} position={mentionPosition()} projectPath={validatedProject()?.path} showingFilesList={showingFilesList()} showingSkillsList={showingSkillsList()} showingAgentsList={showingAgentsList()} showingToolsList={showingToolsList()} />
 
                 {	/* Slash command dropdown */}
-                <AgentsSlashCommand isOpen={showSlashDropdown} onClose={handleCloseSlashTrigger} onSelect={handleSlashSelect} searchText={slashSearchText} position={slashPosition} projectPath={validatedProject?.path} mode={agentMode} disabledCommands={["clear"]} />
+                <AgentsSlashCommand isOpen={showSlashDropdown()} onClose={handleCloseSlashTrigger} onSelect={handleSlashSelect} searchText={slashSearchText()} position={slashPosition()} projectPath={validatedProject()?.path} mode={agentMode()} disabledCommands={["clear"]} />
               </div>
             </div>}
         </div>

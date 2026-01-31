@@ -1,4 +1,5 @@
-import { trpc } from "../../../lib/trpc";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { GitPullRequest } from "lucide-solid";
 import { IconSpinner } from "../../../components/ui/icons";
 interface PrStatusBarProps {
@@ -23,13 +24,14 @@ export function PrStatusBar({ chatId, prUrl, prNumber }: PrStatusBarProps) {
 		prNumber
 	});
 	// Poll PR status every 30 seconds
-	const { data: status, isLoading } = trpc.chats.getPrStatus.useQuery({ chatId }, { refetchInterval: 3e4 });
-	console.log("[PrStatusBar] Query state:", {
-		isLoading,
-		status,
-		pr: status?.pr
-	});
-	const pr = status?.pr;
+	const prStatusQuery = useQuery(() => ({
+		queryKey: ["chats", "getPrStatus", chatId],
+		queryFn: () => desktopRpc.chats.getPrStatus({ chatId }),
+		refetchInterval: 3e4,
+	}));
+	const status = () => prStatusQuery.data;
+	const isLoading = () => prStatusQuery.isLoading;
+	const pr = () => status()?.pr;
 	const handleOpenPr = () => {
 		window.desktopApi.openExternal(prUrl);
 	};
@@ -41,8 +43,8 @@ export function PrStatusBar({ chatId, prUrl, prNumber }: PrStatusBarProps) {
       </button>
 
       { /* Status */}
-      {isLoading ? <IconSpinner class="h-3.5 w-3.5" /> : pr ? <span class="text-xs font-mono text-muted-foreground">
-          {getStatusLabel(pr.state as PrState, pr.reviewDecision as ReviewDecision)}
+      {isLoading() ? <IconSpinner class="h-3.5 w-3.5" /> : pr() ? <span class="text-xs font-mono text-muted-foreground">
+          {getStatusLabel(pr()!.state as PrState, pr()!.reviewDecision as ReviewDecision)}
         </span> : null}
     </div>;
  }

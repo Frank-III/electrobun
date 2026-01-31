@@ -41,7 +41,7 @@ const Button: ParentComponent<ButtonProps> = (props) => {
 	return <button class={cn(buttonVariants({
 		variant: local.variant,
 		size: local.size,
-		className: local.class
+		class: local.class
 	}))} ref={local.ref} {...others}>
       {local.children}
     </button>;

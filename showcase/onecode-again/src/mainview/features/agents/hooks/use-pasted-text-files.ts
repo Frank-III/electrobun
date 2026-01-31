@@ -1,5 +1,6 @@
-import { createSignal, type Accessor } from "solid-js"
-import { trpc } from "../../../lib/trpc"
+import { createSignal, createEffect, type Accessor } from "solid-js"
+import { useMutation } from "@tanstack/solid-query"
+import { desktopRpc } from "../../../lib/desktop-rpc"
 
 export interface PastedTextFile {
   id: string
@@ -22,10 +23,15 @@ export function usePastedTextFiles(subChatId: string): UsePastedTextFilesReturn 
   const [pastedTexts, setPastedTexts] = createSignal<PastedTextFile[]>([])
   const pastedTextsRef = { current: [] as PastedTextFile[] }
 
-  // Keep ref in sync with state
-  pastedTextsRef.current = pastedTexts()
+  // Keep ref in sync with state using effect
+  createEffect(() => {
+    pastedTextsRef.current = pastedTexts()
+  })
 
-  const writePastedTextMutation = trpc.files.writePastedText.useMutation()
+  const writePastedTextMutation = useMutation(() => ({
+    mutationFn: (input: { subChatId: string; text: string; filename?: string }) =>
+      desktopRpc.files.writePastedText.mutate(input),
+  }))
 
   const addPastedText = async (text: string) => {
     try {

@@ -1,5 +1,3 @@
-"use client"
-
 import { createMemo, createSignal } from "solid-js"
 import { createSignalMap, type SignalFamily } from "../../../lib/state/signal-map"
 

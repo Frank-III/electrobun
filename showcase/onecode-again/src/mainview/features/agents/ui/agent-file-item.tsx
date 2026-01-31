@@ -1,4 +1,3 @@
-"use client";
 import { createSignal } from "solid-js";
 import { X, FileText, FileCode, FileJson } from "lucide-solid";
 import { IconSpinner } from "../../../components/ui/icons";
@@ -71,7 +70,7 @@ export function AgentFileItem({ id, filename, url, size, isLoading = false, onRe
 	}} class={`absolute -top-1.5 -right-1.5 size-4 rounded-full bg-background border border-border
                      flex items-center justify-center transition-[opacity,transform] duration-150 ease-out active:scale-[0.97] z-10
                      text-muted-foreground hover:text-foreground
-                     ${isHovered ? "opacity-100" : "opacity-0"}`} type="button">
+                     ${isHovered() ? "opacity-100" : "opacity-0"}`} type="button">
           <X class="size-3" />
         </button>}
     </div>;

@@ -11,7 +11,8 @@ import { useResolvedHotkeyDisplay } from "@/lib/hotkeys";
 import { Terminal } from "./terminal";
 import { TerminalTabs } from "./terminal-tabs";
 import { getDefaultTerminalBg } from "./helpers";
-import { terminalSidebarOpenAtomFamily, terminalSidebarWidthAtom, terminalsAtom, activeTerminalIdAtom, terminalCwdAtom } from "./atoms";
+import type { SignalPair } from "@/lib/state/signal-map";
+import { useTerminalStore } from "./terminal-store-context";
 import { desktopRpc } from "@/lib/desktop-rpc";
 import type { TerminalInstance } from "./types";
 // Animation constants - keep in sync with ResizableSidebar animationDuration
@@ -51,12 +52,20 @@ function getNextTerminalName(terminals: TerminalInstance[]): string {
 	return `Terminal ${maxNumber + 1}`;
 }
 export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClose }: TerminalSidebarProps) {
-	// Per-chat terminal sidebar state
-	const terminalSidebarAtom = createMemo(() => terminalSidebarOpenAtomFamily(chatId));
-	const [isOpen, setIsOpen] = terminalSidebarAtom();
-	const [allTerminals, setAllTerminals] = terminalsAtom;
-	const [allActiveIds, setAllActiveIds] = activeTerminalIdAtom;
-	const [terminalCwds] = terminalCwdAtom;
+	const [store, setStore] = useTerminalStore();
+	const isOpen = () => store.sidebarOpenByChatId[chatId] ?? false;
+	const setIsOpen = (value: boolean | ((prev: boolean) => boolean)) => {
+		const next = typeof value === "function" ? value(isOpen()) : value;
+		setStore("sidebarOpenByChatId", chatId, next);
+	};
+	const terminalCwds = () => store.cwdByPaneId;
+	const widthAtom: SignalPair<number> = [
+		() => store.sidebarWidth,
+		(v: number | ((prev: number) => number)) => {
+			const next = typeof v === "function" ? v(store.sidebarWidth) : v;
+			setStore("sidebarWidth", next);
+		},
+	];
 	// Theme detection for terminal background
 	const { resolvedTheme } = useTheme();
 	const isDark = resolvedTheme() === "dark";
@@ -75,12 +84,12 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
 		return getDefaultTerminalBg(isDark);
 	});
 	// Get terminals for this chat
-	const terminals = createMemo(() => allTerminals()[chatId] || []);
+	const terminals = createMemo(() => store.terminalsByChatId[chatId] || []);
 	// Get active terminal ID for this chat
-	const activeTerminalId = createMemo(() => allActiveIds()[chatId] || null);
+	const activeTerminalId = createMemo(() => store.activeTerminalIdByChatId[chatId] ?? null);
 	// Get the active terminal instance
 	const activeTerminal = createMemo(() => terminals().find((t) => t.id === activeTerminalId()) || null);
-	// tRPC mutation for killing terminal sessions
+	// Kill terminal session on backend
 	const killTerminal = (paneId: string) => desktopRpc.terminal.kill.mutate({ paneId });
 	// Create a new terminal - stable callback
 	const createTerminal = () => {
@@ -95,22 +104,12 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
 			name,
 			createdAt: Date.now()
 		};
-		setAllTerminals((prev) => ({
-			...prev,
-			[currentChatId]: [...prev[currentChatId] || [], newTerminal]
-		}));
-		// Set as active
-		setAllActiveIds((prev) => ({
-			...prev,
-			[currentChatId]: id
-		}));
+		setStore("terminalsByChatId", currentChatId, [...currentTerminals, newTerminal]);
+		setStore("activeTerminalIdByChatId", currentChatId, id);
 	};
 	// Select a terminal - stable callback
 	const selectTerminal = (id: string) => {
-		setAllActiveIds((prev) => ({
-			...prev,
-			[chatId]: id
-		}));
+		setStore("activeTerminalIdByChatId", chatId, id);
 	};
 	// Close a terminal - stable callback
 	const closeTerminal = (id: string) => {
@@ -118,77 +117,43 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
 		const currentActiveId = activeTerminalId();
 		const terminal = currentTerminals.find((t) => t.id === id);
 		if (!terminal) return;
-		// Kill the session on the backend
 		killTerminal(terminal.paneId);
-		// Remove from state
 		const newTerminals = currentTerminals.filter((t) => t.id !== id);
-		setAllTerminals((prev) => ({
-			...prev,
-			[chatId]: newTerminals
-		}));
-		// If we closed the active terminal, switch to another
+		setStore("terminalsByChatId", chatId, newTerminals);
 		if (currentActiveId === id) {
-			const newActive = newTerminals[newTerminals.length - 1]?.id || null;
-			setAllActiveIds((prev) => ({
-				...prev,
-				[chatId]: newActive
-			}));
+			setStore("activeTerminalIdByChatId", chatId, newTerminals[newTerminals.length - 1]?.id ?? null);
 		}
 	};
 	// Rename a terminal - stable callback
 	const renameTerminal = (id: string, name: string) => {
-		setAllTerminals((prev) => ({
-			...prev,
-			[chatId]: (prev[chatId] || []).map((t) => t.id === id ? {
-				...t,
-				name
-			} : t)
-		}));
+		const current = store.terminalsByChatId[chatId] || [];
+		setStore(
+			"terminalsByChatId",
+			chatId,
+			current.map((t) => (t.id === id ? { ...t, name } : t))
+		);
 	};
 	// Close other terminals - stable callback
 	const closeOtherTerminals = (id: string) => {
 		const currentTerminals = terminals();
-		// Kill all terminals except the one with the given id
 		currentTerminals.forEach((terminal) => {
-			if (terminal.id !== id) {
-				killTerminal(terminal.paneId);
-			}
+			if (terminal.id !== id) killTerminal(terminal.paneId);
 		});
-		// Keep only the terminal with the given id
 		const remainingTerminal = currentTerminals.find((t) => t.id === id);
-		setAllTerminals((prev) => ({
-			...prev,
-			[chatId]: remainingTerminal ? [remainingTerminal] : []
-		}));
-		// Set the remaining terminal as active
-		setAllActiveIds((prev) => ({
-			...prev,
-			[chatId]: id
-		}));
+		setStore("terminalsByChatId", chatId, remainingTerminal ? [remainingTerminal] : []);
+		setStore("activeTerminalIdByChatId", chatId, id);
 	};
 	// Close terminals to the right - stable callback
 	const closeTerminalsToRight = (id: string) => {
 		const currentTerminals = terminals();
 		const index = currentTerminals.findIndex((t) => t.id === id);
 		if (index === -1) return;
-		// Kill terminals to the right
-		const terminalsToClose = currentTerminals.slice(index + 1);
-		terminalsToClose.forEach((terminal) => {
-			killTerminal(terminal.paneId);
-		});
-		// Keep only terminals up to and including the one with the given id
+		currentTerminals.slice(index + 1).forEach((terminal) => killTerminal(terminal.paneId));
 		const remainingTerminals = currentTerminals.slice(0, index + 1);
-		setAllTerminals((prev) => ({
-			...prev,
-			[chatId]: remainingTerminals
-		}));
-		// If active terminal was closed, switch to the last remaining one
+		setStore("terminalsByChatId", chatId, remainingTerminals);
 		const currentActiveId = activeTerminalId();
 		if (currentActiveId && !remainingTerminals.find((t) => t.id === currentActiveId)) {
-			setAllActiveIds((prev) => ({
-				...prev,
-				[chatId]: remainingTerminals[remainingTerminals.length - 1]?.id || null
-			}));
+			setStore("activeTerminalIdByChatId", chatId, remainingTerminals[remainingTerminals.length - 1]?.id ?? null);
 		}
 	};
 	// Close sidebar callback - stable
@@ -271,7 +236,7 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
       </div>;
 	}
 	// Desktop sidebar layout
-	return <ResizableSidebar isOpen={isOpen()} onClose={closeSidebar} widthAtom={terminalSidebarWidthAtom} side="right" minWidth={300} maxWidth={800} animationDuration={SIDEBAR_ANIMATION_DURATION_SECONDS} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-background border-l" style={{
+	return <ResizableSidebar isOpen={isOpen()} onClose={closeSidebar} widthAtom={widthAtom} side="right" minWidth={300} maxWidth={800} animationDuration={SIDEBAR_ANIMATION_DURATION_SECONDS} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-background border-l" style={{
 		"border-left-width": "0.5px",
 		overflow: "hidden"
 	}}>
@@ -288,7 +253,7 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 Close terminal
-                {toggleTerminalHotkey && <Kbd>{toggleTerminalHotkey}</Kbd>}
+                <Show when={toggleTerminalHotkey}><Kbd>{toggleTerminalHotkey}</Kbd></Show>
               </TooltipContent>
             </Tooltip>
           </div>

@@ -3,6 +3,7 @@
  * Centralized keyboard shortcut handling
  */
 
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { createEffect, createMemo, onCleanup } from "solid-js"
 import {
   AGENT_ACTIONS,
@@ -155,7 +156,7 @@ export function useAgentsHotkeys(
   // Listen for Cmd+N via IPC from main process (menu accelerator)
   createEffect(() => {
     if (!enabled) return
-    if (!window.desktopApi?.onShortcutNewAgent) return
+    // TODO: Use GlobalShortcut API in Bun: GlobalShortcut.register("CmdOrCtrl+N", handler)
 
     const cleanup = window.desktopApi.onShortcutNewAgent(() => {
       console.log("[Hotkey] Cmd+N received via IPC, executing create-new-agent")

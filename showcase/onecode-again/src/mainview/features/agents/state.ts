@@ -106,14 +106,12 @@ export const MODEL_ID_MAP: Record<string, string> = {
 export const [selectedAgentChatId, setSelectedAgentChatId] = createWindowState<string | null>(
   "agents:selectedChatId",
   null,
-  { getOnInit: true }
 )
 
 /** Whether the selected chat is a remote (sandbox) chat */
 export const [selectedChatIsRemote, setSelectedChatIsRemote] = createWindowState<boolean>(
   "agents:selectedChatIsRemote",
   false,
-  { getOnInit: true }
 )
 
 /** Previous agent chat ID - used to navigate back after archiving */
@@ -159,25 +157,21 @@ export function clearLoadingSubChat(subChatId: string) {
 export const [lastSelectedRepo, setLastSelectedRepo] = createStoredState<SavedRepo | null>(
   "agents:lastSelectedRepo",
   null,
-  { getOnInit: true }
 )
 
-export const [selectedProject, setSelectedProject] = createWindowState<SelectedProject>(
+export const [selectedProject, setSelectedProject] = createWindowState<SelectedProject | null>(
   "agents:selectedProject",
   null,
-  { getOnInit: true }
 )
 
 export const [lastSelectedAgentId, setLastSelectedAgentId] = createStoredState<string>(
   "agents:lastSelectedAgentId",
   "claude-code",
-  { getOnInit: true }
 )
 
 export const [lastSelectedModelId, setLastSelectedModelId] = createStoredState<string>(
   "agents:lastSelectedModelId",
   "sonnet",
-  { getOnInit: true }
 )
 
 // ============================================
@@ -187,7 +181,6 @@ export const [lastSelectedModelId, setLastSelectedModelId] = createStoredState<s
 const subChatModesStorage = createStoredState<Record<string, AgentMode>>(
   "agents:subChatModes",
   {},
-  { getOnInit: true }
 )
 
 export const subChatModeFamily = createKeyedStateFamily<string, AgentMode>("agent")
@@ -218,23 +211,20 @@ export function setSubChatMode(subChatId: string, mode: AgentMode) {
 export const [agentsSidebarOpen, setAgentsSidebarOpen] = createWindowState<boolean>(
   "agents-sidebar-open",
   true,
-  { getOnInit: true }
 )
 
 export const [agentsSidebarWidth, setAgentsSidebarWidth] = createStoredState<number>(
   "agents-sidebar-width",
   224,
-  { getOnInit: true }
 )
 
 export const [agentsSubChatsSidebarMode, setAgentsSubChatsSidebarMode] = createWindowState<
   "tabs" | "sidebar"
->("agents-subchats-mode", "tabs", { getOnInit: true })
+>("agents-subchats-mode", "tabs")
 
 export const [agentsSubChatsSidebarWidth, setAgentsSubChatsSidebarWidth] = createStoredState<number>(
   "agents-subchats-sidebar-width",
   200,
-  { getOnInit: true }
 )
 
 // ============================================
@@ -244,7 +234,6 @@ export const [agentsSubChatsSidebarWidth, setAgentsSubChatsSidebarWidth] = creat
 const previewPathsStorage = createStoredState<Record<string, string>>(
   "agents:previewPaths",
   {},
-  { getOnInit: true }
 )
 
 export const previewPathFamily = {
@@ -261,7 +250,6 @@ export const previewPathFamily = {
 const viewportModesStorage = createStoredState<Record<string, "desktop" | "mobile">>(
   "agents:viewportModes",
   {},
-  { getOnInit: true }
 )
 
 export const viewportModeFamily = {
@@ -278,7 +266,6 @@ export const viewportModeFamily = {
 const previewScalesStorage = createStoredState<Record<string, number>>(
   "agents:previewScales",
   {},
-  { getOnInit: true }
 )
 
 export const previewScaleFamily = {
@@ -301,7 +288,6 @@ interface MobileDeviceSettings {
 const mobileDevicesStorage = createStoredState<Record<string, MobileDeviceSettings>>(
   "agents:mobileDevices",
   {},
-  { getOnInit: true }
 )
 
 const defaultMobileDevice: MobileDeviceSettings = {
@@ -324,13 +310,11 @@ export const mobileDeviceFamily = {
 export const [agentsPreviewSidebarWidth, setAgentsPreviewSidebarWidth] = createStoredState<number>(
   "agents-preview-sidebar-width",
   500,
-  { getOnInit: true }
 )
 
 export const [agentsPreviewSidebarOpen, setAgentsPreviewSidebarOpen] = createWindowState<boolean>(
   "agents-preview-sidebar-open",
   true,
-  { getOnInit: true }
 )
 
 // ============================================
@@ -340,31 +324,26 @@ export const [agentsPreviewSidebarOpen, setAgentsPreviewSidebarOpen] = createWin
 export const [agentsDiffSidebarWidth, setAgentsDiffSidebarWidth] = createStoredState<number>(
   "agents-diff-sidebar-width",
   800,
-  { getOnInit: true }
 )
 
 export const [agentsChangesPanelWidth, setAgentsChangesPanelWidth] = createStoredState<number>(
   "agents-changes-panel-width",
   280,
-  { getOnInit: true }
 )
 
 export const [agentsChangesPanelCollapsed, setAgentsChangesPanelCollapsed] = createStoredState<boolean>(
   "agents-changes-panel-collapsed",
   true,
-  { getOnInit: true }
 )
 
 export const [diffViewDisplayMode, setDiffViewDisplayMode] = createStoredState<DiffViewDisplayMode>(
   "agents:diffViewDisplayMode",
   "center-peek",
-  { getOnInit: true }
 )
 
 const diffSidebarOpenStorage = createWindowState<Record<string, boolean>>(
   "agents:diffSidebarOpen",
   {},
-  { getOnInit: true }
 )
 
 const diffSidebarOpenRuntime = createSignal<Record<string, boolean>>({})
@@ -396,7 +375,6 @@ export function setDiffSidebarOpen(chatId: string, isOpen: boolean | ((prev: boo
 export const [agentsDiffSidebarOpen, setAgentsDiffSidebarOpen] = createWindowState<boolean>(
   "agents-diff-sidebar-open",
   false,
-  { getOnInit: true }
 )
 
 export const [agentsFocusedDiffFile, setAgentsFocusedDiffFile] = createSignal<string | null>(null)
@@ -479,7 +457,6 @@ export const [agentsDebugMode, setAgentsDebugMode] = createStoredState<AgentsDeb
     forceStep: null,
     simulateCompleted: false,
   },
-  { getOnInit: true }
 )
 
 // ============================================

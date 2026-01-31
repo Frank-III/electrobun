@@ -1,5 +1,5 @@
 import type { ComponentProps, ValidComponent } from "solid-js";
-import { mergeProps, splitProps } from "solid-js";
+import { mergeProps, splitProps, Show } from "solid-js";
 import { Tooltip as TooltipPrimitive } from "@kobalte/core/tooltip";
 import { cn } from "../../lib/utils";
 
@@ -37,7 +37,9 @@ export function TooltipContent<T extends ValidComponent = "div">(props: TooltipC
 				{...rest}
 			>
 				{local.children}
-				{local.showArrow && <TooltipPrimitive.Arrow class="-my-px fill-popover drop-shadow-[0_1px_0_hsl(var(--border))]" />}
+				<Show when={local.showArrow}>
+					<TooltipPrimitive.Arrow class="-my-px fill-popover drop-shadow-[0_1px_0_hsl(var(--border))]" />
+				</Show>
 			</TooltipPrimitive.Content>
 		</TooltipPrimitive.Portal>
 	);

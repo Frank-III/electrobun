@@ -1,5 +1,4 @@
-"use client";
-import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
 import { useTheme } from "../../../lib/hooks/use-theme";
 import { fullThemeDataAtom } from "@/lib/atoms";
 import { ArrowUpRight } from "lucide-solid";
@@ -11,7 +10,7 @@ import { useResolvedHotkeyDisplay } from "@/lib/hotkeys";
 import { Terminal } from "@/features/terminal/terminal";
 import { TerminalTabs } from "@/features/terminal/terminal-tabs";
 import { getDefaultTerminalBg } from "@/features/terminal/helpers";
-import { terminalsAtom, activeTerminalIdAtom, terminalCwdAtom } from "@/features/terminal/atoms";
+import { useTerminalStore } from "@/features/terminal/terminal-store-context";
 import { useMutation } from "@tanstack/solid-query";
 import { desktopRpc } from "@/lib/desktop-rpc";
 import type { TerminalInstance } from "@/features/terminal/types";
@@ -41,10 +40,8 @@ function getNextTerminalName(terminals: TerminalInstance[]): string {
 * Memoized to prevent re-renders when parent updates
 */
 export function TerminalWidget({ chatId, cwd, onExpand }: TerminalWidgetProps) {
-	// Terminal state - reuse existing atoms
-	const [allTerminals, setAllTerminals] = terminalsAtom;
-	const [allActiveIds, setAllActiveIds] = activeTerminalIdAtom;
-	const [terminalCwds] = terminalCwdAtom;
+	const [store, setStore] = useTerminalStore();
+	const terminalCwds = () => store.cwdByPaneId;
 	// Theme detection for terminal background
 	const { resolvedTheme } = useTheme();
 	const isDark = resolvedTheme() === "dark";
@@ -60,41 +57,23 @@ export function TerminalWidget({ chatId, cwd, onExpand }: TerminalWidgetProps) {
 		}
 		return getDefaultTerminalBg(isDark);
 	});
-	// Get terminals for this chat
-	const terminals = createMemo(() => allTerminals()[chatId] || []);
-	const activeTerminalId = createMemo(() => allActiveIds()[chatId] || null);
+	const terminals = createMemo(() => store.terminalsByChatId[chatId] || []);
+	const activeTerminalId = createMemo(() => store.activeTerminalIdByChatId[chatId] ?? null);
 	const activeTerminal = createMemo(() => terminals().find((t) => t.id === activeTerminalId()) || null);
 	const killMutation = useMutation(() => ({
 		mutationFn: (input: { paneId: string }) => desktopRpc.terminal.kill.mutate(input),
 	}));
 	// Callback functions - read props/derived values directly
 	const createTerminal = () => {
-		const currentChatId = chatId;
 		const currentTerminals = terminals();
 		const id = generateTerminalId();
-		const paneId = generatePaneId(currentChatId, id);
+		const paneId = generatePaneId(chatId, id);
 		const name = getNextTerminalName(currentTerminals);
-		const newTerminal: TerminalInstance = {
-			id,
-			paneId,
-			name,
-			createdAt: Date.now()
-		};
-		setAllTerminals((prev) => ({
-			...prev,
-			[currentChatId]: [...prev[currentChatId] || [], newTerminal]
-		}));
-		setAllActiveIds((prev) => ({
-			...prev,
-			[currentChatId]: id
-		}));
+		const newTerminal: TerminalInstance = { id, paneId, name, createdAt: Date.now() };
+		setStore("terminalsByChatId", chatId, [...currentTerminals, newTerminal]);
+		setStore("activeTerminalIdByChatId", chatId, id);
 	};
-	const selectTerminal = (id: string) => {
-		setAllActiveIds((prev) => ({
-			...prev,
-			[chatId]: id
-		}));
-	};
+	const selectTerminal = (id: string) => setStore("activeTerminalIdByChatId", chatId, id);
 	const closeTerminal = (id: string) => {
 		const currentTerminals = terminals();
 		const currentActiveId = activeTerminalId();
@@ -102,63 +81,34 @@ export function TerminalWidget({ chatId, cwd, onExpand }: TerminalWidgetProps) {
 		if (!terminal) return;
 		killMutation.mutate({ paneId: terminal.paneId });
 		const newTerminals = currentTerminals.filter((t) => t.id !== id);
-		setAllTerminals((prev) => ({
-			...prev,
-			[chatId]: newTerminals
-		}));
+		setStore("terminalsByChatId", chatId, newTerminals);
 		if (currentActiveId === id) {
-			const newActive = newTerminals[newTerminals.length - 1]?.id || null;
-			setAllActiveIds((prev) => ({
-				...prev,
-				[chatId]: newActive
-			}));
+			setStore("activeTerminalIdByChatId", chatId, newTerminals[newTerminals.length - 1]?.id ?? null);
 		}
 	};
 	const renameTerminal = (id: string, name: string) => {
-		setAllTerminals((prev) => ({
-			...prev,
-			[chatId]: (prev[chatId] || []).map((t) => t.id === id ? {
-				...t,
-				name
-			} : t)
-		}));
+		const current = store.terminalsByChatId[chatId] || [];
+		setStore("terminalsByChatId", chatId, current.map((t) => (t.id === id ? { ...t, name } : t)));
 	};
 	const closeOtherTerminals = (id: string) => {
 		const currentTerminals = terminals();
 		currentTerminals.forEach((terminal) => {
-			if (terminal.id !== id) {
-				killMutation.mutate({ paneId: terminal.paneId });
-			}
+			if (terminal.id !== id) killMutation.mutate({ paneId: terminal.paneId });
 		});
 		const remainingTerminal = currentTerminals.find((t) => t.id === id);
-		setAllTerminals((prev) => ({
-			...prev,
-			[chatId]: remainingTerminal ? [remainingTerminal] : []
-		}));
-		setAllActiveIds((prev) => ({
-			...prev,
-			[chatId]: id
-		}));
+		setStore("terminalsByChatId", chatId, remainingTerminal ? [remainingTerminal] : []);
+		setStore("activeTerminalIdByChatId", chatId, id);
 	};
 	const closeTerminalsToRight = (id: string) => {
 		const currentTerminals = terminals();
 		const index = currentTerminals.findIndex((t) => t.id === id);
 		if (index === -1) return;
-		const terminalsToClose = currentTerminals.slice(index + 1);
-		terminalsToClose.forEach((terminal) => {
-			killMutation.mutate({ paneId: terminal.paneId });
-		});
+		currentTerminals.slice(index + 1).forEach((terminal) => killMutation.mutate({ paneId: terminal.paneId }));
 		const remainingTerminals = currentTerminals.slice(0, index + 1);
-		setAllTerminals((prev) => ({
-			...prev,
-			[chatId]: remainingTerminals
-		}));
+		setStore("terminalsByChatId", chatId, remainingTerminals);
 		const currentActiveId = activeTerminalId();
 		if (currentActiveId && !remainingTerminals.find((t) => t.id === currentActiveId)) {
-			setAllActiveIds((prev) => ({
-				...prev,
-				[chatId]: remainingTerminals[remainingTerminals.length - 1]?.id || null
-			}));
+			setStore("activeTerminalIdByChatId", chatId, remainingTerminals[remainingTerminals.length - 1]?.id ?? null);
 		}
 	};
 	// Auto-create first terminal when section is rendered and no terminals exist
@@ -180,7 +130,9 @@ export function TerminalWidget({ chatId, cwd, onExpand }: TerminalWidgetProps) {
         {	/* Widget Header with Tabs - like terminal-sidebar.tsx */}
 	      <div class="flex items-center gap-1 pl-1 pr-2 py-1.5 select-none group" style={{ "background-color": terminalBg() }}>
           { /* Terminal Tabs - directly without wrapper, like in terminal-sidebar.tsx */}
-	        {terminals().length > 0 && <TerminalTabs terminals={terminals()} activeTerminalId={activeTerminalId()} cwds={terminalCwds()} initialCwd={cwd} terminalBg={terminalBg()} hidePlusButton small onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />}
+	        <Show when={terminals().length > 0}>
+	          <TerminalTabs terminals={terminals()} activeTerminalId={activeTerminalId()} cwds={terminalCwds()} initialCwd={cwd} terminalBg={terminalBg()} hidePlusButton small onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />
+	        </Show>
 
           { /* Plus button after tabs */}
           <Tooltip>
@@ -193,17 +145,19 @@ export function TerminalWidget({ chatId, cwd, onExpand }: TerminalWidgetProps) {
           </Tooltip>
 
           { /* Expand to sidebar button */}
-          {onExpand && <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={onExpand} class="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md opacity-0 group-hover:opacity-100 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0" aria-label="Expand terminal">
-                  <ArrowUpRight class="h-3 w-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left">
-                Expand to sidebar
-                {toggleTerminalHotkey && <Kbd>{toggleTerminalHotkey}</Kbd>}
-              </TooltipContent>
-            </Tooltip>}
+          <Show when={onExpand}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={onExpand} class="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md opacity-0 group-hover:opacity-100 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0" aria-label="Expand terminal">
+                    <ArrowUpRight class="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">
+                  Expand to sidebar
+                  <Show when={toggleTerminalHotkey}><Kbd>{toggleTerminalHotkey}</Kbd></Show>
+                </TooltipContent>
+              </Tooltip>
+            </Show>
         </div>
 
         { /* Terminal Content */}
@@ -211,11 +165,15 @@ export function TerminalWidget({ chatId, cwd, onExpand }: TerminalWidgetProps) {
  "background-color": terminalBg(),
 		height: "200px"
 	}}>
-	        {activeTerminal() && canRenderTerminal() ? <div class="h-full">
-	            <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} initialCwd={cwd} />
-	          </div> : <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
-	            {!canRenderTerminal() ? "" : "No terminal open"}
-	          </div>}
+	        <Show when={activeTerminal() && canRenderTerminal()} fallback={
+	            <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+	              {!canRenderTerminal() ? "" : "No terminal open"}
+	            </div>
+	          }>
+	            <div class="h-full">
+	              <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} initialCwd={cwd} />
+	            </div>
+	          </Show>
 	      </div>
       </div>
     </div>;

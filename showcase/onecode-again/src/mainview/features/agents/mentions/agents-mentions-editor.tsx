@@ -1,4 +1,3 @@
-"use client";
 import { cn } from "../../../lib/utils";
 import { createEffect, createSignal, onCleanup } from "solid-js";
 import { createFileIconElement } from "./agents-file-mention";
@@ -56,7 +55,7 @@ type AgentsMentionsEditorProps = {
 	onCloseSlashTrigger?: () => void;
 	onContentChange?: (hasContent: boolean) => void;
 	placeholder?: string;
-	className?: string;
+	class?: string;
 	onSubmit?: () => void;
 	onForceSubmit?: () => void;
 	disabled?: boolean;
@@ -676,17 +675,17 @@ interface UndoState {
 	};
 	// Initialize editor with initialValue on mount
 	createEffect(() => {
-		if (editorRef.current && initialValue) {
-			buildContentFromSerialized(editorRef.current, initialValue, resolveMention);
-			setHasContent(!!initialValue);
+		if (editorRef && props.initialValue) {
+			buildContentFromSerialized(editorRef, props.initialValue, resolveMention);
+			setHasContent(!!props.initialValue);
 		}
 		// Save initial state for undo (allows undo to empty)
-		if (editorRef.current) {
-			lastSavedHtml.current = editorRef.current.innerHTML;
-			undoStack.current = [{
-				html: editorRef.current.innerHTML,
+		if (editorRef) {
+			setLastSavedHtml(editorRef.innerHTML);
+			setUndoStack([{
+				html: editorRef.innerHTML,
 				cursorOffset: 0
-			}];
+			}]);
 		}
 	});
 	// Handle selection changes to highlight mention chips
@@ -711,12 +710,12 @@ interface UndoState {
 			updateMentionHighlights();
 		};
 		const updateMentionHighlights = () => {
-			if (!editorRef.current) return;
+			if (!editorRef) return;
 			const selection = window.getSelection();
 			if (!selection || selection.rangeCount === 0) {
 				// Clear all highlights when no selection
-				const mentions = editorRef.current.querySelectorAll("[data-mention-id]");
-				mentions.forEach((mention) => {
+				const mentions = editorRef.querySelectorAll("[data-mention-id]");
+				mentions.forEach((mention: Element) => {
 					const mentionEl = mention as HTMLElement;
 					mentionEl.classList.remove("mention-selected");
 				});
@@ -725,11 +724,11 @@ interface UndoState {
 			const range = selection.getRangeAt(0);
 			// Check if selection is within our editor
 			const commonAncestor = range.commonAncestorContainer;
-			const isInEditor = editorRef.current.contains(commonAncestor.nodeType === Node.ELEMENT_NODE ? commonAncestor : commonAncestor.parentElement);
+			const isInEditor = editorRef.contains(commonAncestor.nodeType === Node.ELEMENT_NODE ? commonAncestor : commonAncestor.parentElement);
 			if (!isInEditor) return;
 			// Get all mention chips
-			const mentions = editorRef.current.querySelectorAll("[data-mention-id]");
-			mentions.forEach((mention) => {
+			const mentions = editorRef.querySelectorAll("[data-mention-id]");
+			mentions.forEach((mention: Element) => {
 				const mentionEl = mention as HTMLElement;
 				// Check if mention is within selection range
 				if (range.intersectsNode(mentionEl)) {
@@ -749,80 +748,81 @@ interface UndoState {
 	const [triggerDetectionTimeout, setTriggerDetectionTimeout] = createSignal<number | null>(null);
 	// Handle input - UNCONTROLLED: no onChange, just @ and / trigger detection
 	const handleInput = () => {
-		if (!editorRef.current) return;
+		if (!editorRef) return;
 		// Save undo state with debounce (for typing)
 		// This captures state periodically during typing for proper undo
 		debouncedSaveUndoState();
 		// Update placeholder visibility and notify parent IMMEDIATELY (cheap operation)
 		// Use textContent without trim() so placeholder hides even with just spaces
-		const content = editorRef.current.textContent || "";
+		const content = editorRef.textContent || "";
 		const newHasContent = !!content;
 		setHasContent(newHasContent);
-		onContentChange?.(newHasContent);
+		props.onContentChange?.(newHasContent);
 		// Skip expensive trigger detection for very large text
 		// This prevents UI freeze when pasting large content
 		if (content.length > LARGE_TEXT_THRESHOLD) {
 			// Close any open triggers since we can't detect them
-			if (triggerActive.current) {
-				triggerActive.current = false;
-				triggerStartIndex.current = null;
-				onCloseTrigger();
+			if (triggerActive) {
+				triggerActive = false;
+				triggerStartIndex = null;
+				props.onCloseTrigger();
 			}
-			if (slashTriggerActive.current) {
-				slashTriggerActive.current = false;
-				slashTriggerStartIndex.current = null;
-				onCloseSlashTrigger?.();
+			if (slashTriggerActive) {
+				slashTriggerActive = false;
+				slashTriggerStartIndex = null;
+				props.onCloseSlashTrigger?.();
 			}
 			return;
 		}
 		// Clear previous timeout
-		if (triggerDetectionTimeout.current) {
-			clearTimeout(triggerDetectionTimeout.current);
+		const currentTimeout = triggerDetectionTimeout();
+		if (currentTimeout) {
+			clearTimeout(currentTimeout);
 		}
 		// For short content, run trigger detection immediately
 		// For longer content, debounce to avoid performance issues
 		const runTriggerDetection = () => {
-			if (!editorRef.current) return;
+			if (!editorRef) return;
 			// Get selection for cursor position
 			const sel = window.getSelection();
 			const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
 			// Handle non-collapsed selection (close triggers)
 			if (range && !range.collapsed) {
-				if (triggerActive.current) {
-					triggerActive.current = false;
-					triggerStartIndex.current = null;
-					onCloseTrigger();
+				if (triggerActive) {
+					triggerActive = false;
+					triggerStartIndex = null;
+					props.onCloseTrigger();
 				}
-				if (slashTriggerActive.current) {
-					slashTriggerActive.current = false;
-					slashTriggerStartIndex.current = null;
-					onCloseSlashTrigger?.();
+				if (slashTriggerActive) {
+					slashTriggerActive = false;
+					slashTriggerStartIndex = null;
+					props.onCloseSlashTrigger?.();
 				}
 				return;
 			}
 			// Single tree walk for @ and / trigger detection
-			const { textBeforeCursor, atPosition, atIndex, slashPosition, slashIndex } = walkTreeOnce(editorRef.current, range);
+			const { textBeforeCursor, atPosition, atIndex, slashPosition, slashIndex } = walkTreeOnce(editorRef, range);
 			// Handle @ trigger (takes priority over /)
 			if (atIndex !== -1 && atPosition) {
-				triggerActive.current = true;
-				triggerStartIndex.current = atIndex;
+				triggerActive = true;
+				triggerStartIndex = atIndex;
 				// Close slash trigger if active
-				if (slashTriggerActive.current) {
-					slashTriggerActive.current = false;
-					slashTriggerStartIndex.current = null;
-					onCloseSlashTrigger?.();
+				if (slashTriggerActive) {
+					slashTriggerActive = false;
+					slashTriggerStartIndex = null;
+					props.onCloseSlashTrigger?.();
 				}
 				const afterAt = textBeforeCursor.slice(atIndex + 1);
 				// Get position for dropdown
 				// Use cursor position for vertical, parent container left edge for horizontal alignment
-				if (range && editorRef.current) {
+				if (range && editorRef) {
 					const tempRange = document.createRange();
 					tempRange.setStart(range.endContainer, range.endOffset);
 					tempRange.setEnd(range.endContainer, range.endOffset);
 					const cursorRect = tempRange.getBoundingClientRect();
 					// Use CURSOR position - menu should appear under cursor, not at text start
 					const rect = new DOMRect(cursorRect.left, cursorRect.top, 0, cursorRect.height);
-					onTrigger({
+					props.onTrigger({
 						searchText: afterAt,
 						rect
 					});
@@ -830,26 +830,26 @@ interface UndoState {
 				}
 			}
 			// Close @ trigger if no @ found
-			if (triggerActive.current) {
-				triggerActive.current = false;
-				triggerStartIndex.current = null;
-				onCloseTrigger();
+			if (triggerActive) {
+				triggerActive = false;
+				triggerStartIndex = null;
+				props.onCloseTrigger();
 			}
 			// Handle / trigger (only if @ trigger is not active)
-			if (slashIndex !== -1 && slashPosition && onSlashTrigger) {
-				slashTriggerActive.current = true;
-				slashTriggerStartIndex.current = slashIndex;
+			if (slashIndex !== -1 && slashPosition && props.onSlashTrigger) {
+				slashTriggerActive = true;
+				slashTriggerStartIndex = slashIndex;
 				const afterSlash = textBeforeCursor.slice(slashIndex + 1);
 				// Get position for dropdown
 				// Use cursor position for vertical, parent container left edge for horizontal alignment
-				if (range && editorRef.current) {
+				if (range && editorRef) {
 					const tempRange = document.createRange();
 					tempRange.setStart(range.endContainer, range.endOffset);
 					tempRange.setEnd(range.endContainer, range.endOffset);
 					const cursorRect = tempRange.getBoundingClientRect();
 					// Use CURSOR position - menu should appear under cursor, not at text start
 					const rect = new DOMRect(cursorRect.left, cursorRect.top, 0, cursorRect.height);
-					onSlashTrigger({
+					props.onSlashTrigger({
 						searchText: afterSlash,
 						rect
 					});
@@ -857,25 +857,27 @@ interface UndoState {
 				}
 			}
 			// Close / trigger if no / found
-			if (slashTriggerActive.current) {
-				slashTriggerActive.current = false;
-				slashTriggerStartIndex.current = null;
-				onCloseSlashTrigger?.();
+			if (slashTriggerActive) {
+				slashTriggerActive = false;
+				slashTriggerStartIndex = null;
+				props.onCloseSlashTrigger?.();
 			}
 		};
 		// Always use requestAnimationFrame to avoid blocking input rendering
 		// This allows the browser to render the typed character first,
 		// then detect @ and / triggers in the next frame
-		if (triggerDetectionTimeout.current) {
-			cancelAnimationFrame(triggerDetectionTimeout.current);
+		const currentTimeoutValue = triggerDetectionTimeout();
+		if (currentTimeoutValue) {
+			cancelAnimationFrame(currentTimeoutValue);
 		}
-		triggerDetectionTimeout.current = requestAnimationFrame(runTriggerDetection);
+		setTriggerDetectionTimeout(requestAnimationFrame(runTriggerDetection));
 	};
 	// Cleanup on unmount
 	createEffect(() => {
 		onCleanup(() => {
-			if (triggerDetectionTimeout.current) {
-				cancelAnimationFrame(triggerDetectionTimeout.current);
+			const timeout = triggerDetectionTimeout();
+			if (timeout) {
+				cancelAnimationFrame(timeout);
 			}
 		});
 	});
@@ -883,90 +885,94 @@ interface UndoState {
 	const handleKeyDown = (e: KeyboardEvent) => {
 		// Custom undo (Cmd+Z / Ctrl+Z)
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
-			if (undoStack.current.length > 0) {
+			const stack = undoStack();
+			if (stack.length > 0) {
 				e.preventDefault();
-				isUndoRedo.current = true;
+				setIsUndoRedo(true);
 				// Save current state to redo stack
 				const currentState = getCurrentState();
 				if (currentState) {
-					redoStack.current.push(currentState);
+					setRedoStack(prev => [...prev, currentState]);
 				}
 				// Restore previous state
-				const state = undoStack.current.pop()!;
-				if (editorRef.current) {
-					editorRef.current.innerHTML = state.html;
-					lastSavedHtml.current = state.html;
+				const state = stack[stack.length - 1];
+				setUndoStack(prev => prev.slice(0, -1));
+				if (editorRef) {
+					editorRef.innerHTML = state.html;
+					setLastSavedHtml(state.html);
 					restoreCursor(state.cursorOffset);
-					const newHasContent = !!editorRef.current.textContent;
+					const newHasContent = !!editorRef.textContent;
 					setHasContent(newHasContent);
-					onContentChange?.(newHasContent);
+					props.onContentChange?.(newHasContent);
 				}
-				isUndoRedo.current = false;
+				setIsUndoRedo(false);
 				return;
 			}
 		}
 		// Custom redo (Cmd+Shift+Z / Ctrl+Shift+Z or Cmd+Y / Ctrl+Y)
 		if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === "z" && e.shiftKey || e.key.toLowerCase() === "y")) {
-			if (redoStack.current.length > 0) {
+			const stack = redoStack();
+			if (stack.length > 0) {
 				e.preventDefault();
-				isUndoRedo.current = true;
+				setIsUndoRedo(true);
 				// Save current state to undo stack
 				const currentState = getCurrentState();
 				if (currentState) {
-					undoStack.current.push(currentState);
+					setUndoStack(prev => [...prev, currentState]);
 				}
 				// Restore redo state
-				const state = redoStack.current.pop()!;
-				if (editorRef.current) {
-					editorRef.current.innerHTML = state.html;
-					lastSavedHtml.current = state.html;
+				const state = stack[stack.length - 1];
+				setRedoStack(prev => prev.slice(0, -1));
+				if (editorRef) {
+					editorRef.innerHTML = state.html;
+					setLastSavedHtml(state.html);
 					restoreCursor(state.cursorOffset);
-					const newHasContent = !!editorRef.current.textContent;
+					const newHasContent = !!editorRef.textContent;
 					setHasContent(newHasContent);
-					onContentChange?.(newHasContent);
+					props.onContentChange?.(newHasContent);
 				}
-				isUndoRedo.current = false;
+				setIsUndoRedo(false);
 				return;
 			}
 		}
 		// Prevent submission during IME composition (e.g., Chinese/Japanese/Korean input)
-		if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-			if (triggerActive.current || slashTriggerActive.current) {
+		if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+			if (triggerActive || slashTriggerActive) {
 				// Let dropdown handle Enter
 				return;
 			}
 			e.preventDefault();
 			// Opt+Enter = force submit (bypass queue, stop stream and send immediately)
-			if (e.altKey && onForceSubmit) {
-				onForceSubmit();
+			if (e.altKey && props.onForceSubmit) {
+				props.onForceSubmit();
 			} else {
-				onSubmit?.();
+				props.onSubmit?.();
 			}
 		}
 		if (e.key === "Escape") {
 			// Close mention dropdown
-			if (triggerActive.current) {
+			if (triggerActive) {
 				e.preventDefault();
-				triggerActive.current = false;
-				triggerStartIndex.current = null;
-				onCloseTrigger();
+				triggerActive = false;
+				triggerStartIndex = null;
+				props.onCloseTrigger();
 				return;
 			}
 			// Close command dropdown
-			if (slashTriggerActive.current) {
+			if (slashTriggerActive) {
 				e.preventDefault();
-				slashTriggerActive.current = false;
-				slashTriggerStartIndex.current = null;
-				onCloseSlashTrigger?.();
+				slashTriggerActive = false;
+				slashTriggerStartIndex = null;
+				props.onCloseSlashTrigger?.();
 				return;
 			}
 			// If no dropdown is open, blur the editor (but don't prevent default
 			// to allow other handlers like multi-select clear to run)
-			editorRef.current?.blur();
+			editorRef?.blur();
 		}
 		if (e.key === "Tab" && e.shiftKey) {
 			e.preventDefault();
-			onShiftTab?.();
+			props.onShiftTab?.();
 		}
 	};
 	// Expose methods via ref callback (UNCONTROLLED pattern)
@@ -1171,10 +1177,10 @@ interface UndoState {
           {!hasContent() && props.placeholder && <div class="pointer-events-none absolute left-1 top-1 text-sm text-muted-foreground/60 whitespace-pre-wrap">
               {props.placeholder}
             </div>}
-          <div ref={el => editorRef = el} contentEditable={!props.disabled} spellCheck={false} onInput={handleInput} onKeyDown={handleKeyDown} onPaste={(e) => {
+          <div ref={el => editorRef = el} contentEditable={!props.disabled} spellcheck={false} onInput={handleInput} onKeyDown={(e: KeyboardEvent) => handleKeyDown(e)} onPaste={(e: ClipboardEvent) => {
 		// Save state for undo before paste (immediate, not debounced)
 		immediateSaveUndoState();
 		props.onPaste?.(e);
-	}} onFocus={props.onFocus} onBlur={props.onBlur} class={cn("min-h-[24px] outline-none whitespace-pre-wrap break-words text-sm relative", props.disabled && "opacity-50 cursor-not-allowed", props.className)} />
+	}} onFocus={props.onFocus} onBlur={props.onBlur} class={cn("min-h-[24px] outline-none whitespace-pre-wrap break-words text-sm relative", props.disabled && "opacity-50 cursor-not-allowed", props.class)} />
         </div>;
 }

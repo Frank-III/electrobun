@@ -1,4 +1,3 @@
-"use client";
 import { Show } from "solid-js";
 import { Eye } from "lucide-solid";
 import { Checkbox } from "@/components/ui/checkbox";

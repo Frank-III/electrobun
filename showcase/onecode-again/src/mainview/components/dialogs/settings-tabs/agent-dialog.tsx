@@ -1,7 +1,8 @@
 import { createSignal, createEffect, Show, For, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
 import { X } from "lucide-solid";
-import { trpc } from "../../../lib/trpc";
+import { useMutation, useQueryClient } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { cn } from "../../../lib/utils";
 import { ToolSelector } from "./tool-selector";
 
@@ -26,6 +27,7 @@ interface AgentDialogProps {
 type ToolMode = "all" | "allowlist" | "denylist";
 
 export function AgentDialog(props: AgentDialogProps) {
+	const queryClient = useQueryClient();
 	const [mounted, setMounted] = createSignal(false);
 	// Form state
 	const [name, setName] = createSignal("");
@@ -36,18 +38,24 @@ export function AgentDialog(props: AgentDialogProps) {
 	const [toolMode, setToolMode] = createSignal<ToolMode>("all");
 	const [selectedTools, setSelectedTools] = createSignal<string[]>([]);
 
-	const createMutation = trpc.agents.create.useMutation({
+	const createMutation = useMutation(() => ({
+		mutationFn: (input: Parameters<typeof desktopRpc.agents.create.mutate>[0]) =>
+			desktopRpc.agents.create.mutate(input),
 		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["agents", "list"] });
 			props.onSuccess();
 			resetForm();
-		}
-	});
-	const updateMutation = trpc.agents.update.useMutation({
+		},
+	}));
+	const updateMutation = useMutation(() => ({
+		mutationFn: (input: Parameters<typeof desktopRpc.agents.update.mutate>[0]) =>
+			desktopRpc.agents.update.mutate(input),
 		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["agents", "list"] });
 			props.onSuccess();
 			resetForm();
-		}
-	});
+		},
+	}));
 
 	const isEditing = () => props.agent !== null;
 	const isLoading = () => createMutation.isPending || updateMutation.isPending;

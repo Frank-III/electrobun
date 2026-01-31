@@ -1,7 +1,7 @@
 // SolidJS Entry Point
 import { render } from "solid-js/web";
 import { App } from "./App";
-import "./styles/globals.css";
+// CSS is loaded via <link> in index.html (built separately by Tailwind CLI)
 import { preloadDiffHighlighter } from "./lib/themes/diff-view-highlighter";
 // Preload shiki highlighter for diff view (prevents delay when opening diff sidebar)
 preloadDiffHighlighter();

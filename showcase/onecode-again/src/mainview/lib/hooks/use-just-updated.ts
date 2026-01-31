@@ -1,5 +1,4 @@
 import { createEffect, onCleanup } from "solid-js"
-import { useAtom } from "../state/jotai"
 import { justUpdatedAtom, justUpdatedVersionAtom } from "../atoms"
 
 const LAST_VERSION_KEY = "app:last-version"
@@ -9,10 +8,8 @@ const LAST_VERSION_KEY = "app:last-version"
  * Compares current version with stored version and shows "What's New" banner
  */
 export function useJustUpdated() {
-  const [justUpdated, setJustUpdated] = useAtom(justUpdatedAtom)
-  const [justUpdatedVersion, setJustUpdatedVersion] = useAtom(
-    justUpdatedVersionAtom,
-  )
+  const [justUpdated, setJustUpdated] = justUpdatedAtom
+  const [justUpdatedVersion, setJustUpdatedVersion] = justUpdatedVersionAtom
 
   // Check for update on mount
   createEffect(() => {

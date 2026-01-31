@@ -1,6 +1,6 @@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../../components/ui/collapsible";
 import { cn } from "../../../../lib/utils";
-import type { JSX } from "solid-js";
+import { Show, type JSX } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 interface CategorySectionProps {
 	title: string;
@@ -24,7 +24,7 @@ export function CategorySection({ title, count, isExpanded, onToggle, children, 
 						{count}
 					</span>
 				</CollapsibleTrigger>
-				{actions && <div class="pr-1.5 shrink-0">{actions}</div>}
+				<Show when={actions}><div class="pr-1.5 shrink-0">{actions}</div></Show>
 			</div>
 
 			{ /* Section content */}

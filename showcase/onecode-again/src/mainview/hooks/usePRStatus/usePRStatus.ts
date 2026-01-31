@@ -1,5 +1,6 @@
 import type { GitHubStatus } from "../../../main/lib/git/github/types";
-import { trpc } from "../../lib/trpc";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "../../lib/desktop-rpc";
 
 interface UsePRStatusOptions {
 	worktreePath: string | undefined;
@@ -8,10 +9,10 @@ interface UsePRStatusOptions {
 }
 
 interface UsePRStatusResult {
-	pr: GitHubStatus["pr"] | null;
-	repoUrl: string | null;
-	branchExistsOnRemote: boolean;
-	isLoading: boolean;
+	pr: () => GitHubStatus["pr"] | null;
+	repoUrl: () => string | null;
+	branchExistsOnRemote: () => boolean;
+	isLoading: () => boolean;
 	refetch: () => void;
 }
 
@@ -24,23 +25,20 @@ export function usePRStatus({
 	enabled = true,
 	refetchInterval = 10000,
 }: UsePRStatusOptions): UsePRStatusResult {
-	const {
-		data: githubStatus,
-		isLoading,
-		refetch,
-	} = trpc.changes.getGitHubStatus.useQuery(
-		{ worktreePath: worktreePath! },
-		{
-			enabled: enabled && !!worktreePath,
-			refetchInterval,
-		},
-	);
+	const query = useQuery(() => ({
+		queryKey: ["changes", "getGitHubStatus", worktreePath],
+		queryFn: () => desktopRpc.changes.getGitHubStatus({ worktreePath: worktreePath! }),
+		enabled: enabled && !!worktreePath,
+		refetchInterval,
+	}));
+
+	const githubStatus = () => query.data;
 
 	return {
-		pr: githubStatus?.pr ?? null,
-		repoUrl: githubStatus?.repoUrl ?? null,
-		branchExistsOnRemote: githubStatus?.branchExistsOnRemote ?? false,
-		isLoading,
-		refetch,
+		pr: () => githubStatus()?.pr ?? null,
+		repoUrl: () => githubStatus()?.repoUrl ?? null,
+		branchExistsOnRemote: () => githubStatus()?.branchExistsOnRemote ?? false,
+		isLoading: () => query.isLoading,
+		refetch: () => query.refetch(),
 	};
 }

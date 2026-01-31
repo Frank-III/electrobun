@@ -1,11 +1,11 @@
 /**
  * Agents Mention Provider
  *
- * Wraps the existing tRPC agents.listEnabled endpoint as a mention provider.
+ * Uses desktop (Electrobun) RPC agents.listEnabled as a mention provider.
  * Provides agent search with descriptions, tools, and model info.
  */
 
-import { trpcClient } from "../../../lib/trpc"
+import { desktopRpc } from "../../../lib/desktop-rpc"
 import {
   createMentionProvider,
   type MentionItem,
@@ -60,10 +60,7 @@ export const agentsProvider = createMentionProvider<AgentData>({
     }
 
     try {
-      // Use tRPC to list agents
-      const agents = await trpcClient.agents.listEnabled.query({
-        cwd: context.projectPath,
-      })
+      const agents = await desktopRpc.agents.listEnabled({ cwd: context.projectPath })
 
       // Map to MentionItem format
       let items: MentionItem<AgentData>[] = agents.map((agent) => ({

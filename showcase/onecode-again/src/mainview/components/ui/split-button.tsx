@@ -1,4 +1,6 @@
-import * as React from "solid-js";
+import type { JSX } from "solid-js";
+import { Show } from "solid-js";
+import { Show } from "solid-js";
 import { ChevronDown } from "lucide-solid";
 import { Button, type ButtonProps } from "./button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "./dropdown-menu";
@@ -17,21 +19,25 @@ export interface SplitButtonProps extends Omit<ButtonProps, "children"> {
 	/** Whether to show the dropdown trigger */
 	showDropdown?: boolean;
 }
-export function SplitButton({ label, icon, badge, onClick, dropdownContent, showDropdown = true, disabled, variant = "default", size = "sm", className, ...props }: SplitButtonProps) {
+export function SplitButton({ label, icon, badge, onClick, dropdownContent, showDropdown = true, disabled, variant = "default", size = "sm", class: cls, ...props }: SplitButtonProps) {
 	// If no dropdown content, render just the button
 	if (!showDropdown || !dropdownContent) {
-		return <Button variant={variant} size={size} onClick={onClick} disabled={disabled} class={cn("gap-1.5", className)} {...props}>
+		return <Button variant={variant} size={size} onClick={onClick} disabled={disabled} class={cn("gap-1.5",cls)} {...props}>
 				{icon}
 				<span>{label}</span>
-				{badge && <span class="text-[10px] opacity-80">{badge}</span>}
+				<Show when={badge}>
+					<span class="text-[10px] opacity-80">{badge}</span>
+				</Show>
 			</Button>;
 	}
 	return <div class="inline-flex -space-x-px divide-x divide-primary-foreground/30 rounded-lg shadow-sm shadow-black/5">
 			{	/* Main action button */}
-			<Button variant={variant} size={size} onClick={onClick} disabled={disabled} class={cn("gap-1.5 rounded-r-none focus:z-10", className)} {...props}>
+			<Button variant={variant} size={size} onClick={onClick} disabled={disabled} class={cn("gap-1.5 rounded-r-none focus:z-10",cls)} {...props}>
 				{icon}
 				<span>{label}</span>
-				{badge && <span class="text-[10px] opacity-80">{badge}</span>}
+				<Show when={badge}>
+					<span class="text-[10px] opacity-80">{badge}</span>
+				</Show>
 			</Button>
 
 			{ /* Dropdown trigger */}

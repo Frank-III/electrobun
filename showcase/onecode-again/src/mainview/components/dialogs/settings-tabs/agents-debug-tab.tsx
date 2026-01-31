@@ -1,7 +1,9 @@
-import { createSignal, createEffect, onCleanup, type Accessor } from "solid-js";
+import { createSignal, createEffect, onCleanup, Show, type Accessor } from "solid-js";
+import { useQuery, useMutation } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
+import { getQueryClient } from "../../../contexts/QueryProvider";
 import { Button } from "../../ui/button";
 import { Switch } from "../../ui/switch";
-import { trpc } from "../../../lib/trpc";
 import { toast } from "solid-sonner";
 import { Copy, FolderOpen, RefreshCw, Terminal, Check, Scan, WifiOff } from "lucide-solid";
 
@@ -54,53 +56,79 @@ export function AgentsDebugTab() {
 	const isNarrowScreen = useIsNarrowScreen();
 	// Check if we're in dev mode (only show React Scan in dev)
 	const isDev = import.meta.env.DEV;
+	const queryClient = getQueryClient();
 	// Fetch system info
-	const { data: systemInfo, isLoading: isLoadingSystem } = trpc.debug.getSystemInfo.useQuery();
+	const systemInfoQuery = useQuery(() => ({
+		queryKey: ["debug", "getSystemInfo"],
+		queryFn: () => desktopRpc.debug.getSystemInfo(),
+	}));
+	const systemInfo = () => systemInfoQuery.data;
+	const isLoadingSystem = () => systemInfoQuery.isLoading;
 	// Offline simulation state
-	const { data: offlineSimulation, refetch: refetchOfflineSimulation } = trpc.debug.getOfflineSimulation.useQuery();
-	const setOfflineSimulationMutation = trpc.debug.setOfflineSimulation.useMutation({
+	const offlineSimulationQuery = useQuery(() => ({
+		queryKey: ["debug", "getOfflineSimulation"],
+		queryFn: () => desktopRpc.debug.getOfflineSimulation(),
+	}));
+	const offlineSimulation = () => offlineSimulationQuery.data;
+	const refetchOfflineSimulation = () => offlineSimulationQuery.refetch();
+	const setOfflineSimulationMutation = useMutation(() => ({
+		mutationFn: (input: { enabled: boolean }) =>
+			desktopRpc.debug.setOfflineSimulation.mutate(input),
 		onSuccess: (data) => {
-			refetchOfflineSimulation();
+			queryClient?.invalidateQueries({ queryKey: ["debug", "getOfflineSimulation"] });
 			toast.success(data.enabled ? "Offline simulation enabled" : "Offline simulation disabled", { description: data.enabled ? "App will behave as if offline" : "Network detection restored to normal" });
 		},
-		onError: (error) => toast.error(error.message)
-	});
+		onError: (error: Error) => toast.error(error.message),
+	}));
 	// Fetch DB stats
-	const { data: dbStats, isLoading: isLoadingDb, refetch: refetchDb } = trpc.debug.getDbStats.useQuery();
+	const dbStatsQuery = useQuery(() => ({
+		queryKey: ["debug", "getDbStats"],
+		queryFn: () => desktopRpc.debug.getDbStats(),
+	}));
+	const dbStats = () => dbStatsQuery.data;
+	const isLoadingDb = () => dbStatsQuery.isLoading;
+	const refetchDb = () => dbStatsQuery.refetch();
 	// Mutations
-	const clearChatsMutation = trpc.debug.clearChats.useMutation({
+	const clearChatsMutation = useMutation(() => ({
+		mutationFn: () => desktopRpc.debug.clearChats.mutate(undefined as never),
 		onSuccess: () => {
+			queryClient?.invalidateQueries({ queryKey: ["debug", "getDbStats"] });
 			toast.success("All chats cleared");
 			refetchDb();
 		},
-		onError: (error) => toast.error(error.message)
-	});
-	const clearAllDataMutation = trpc.debug.clearAllData.useMutation({
+		onError: (error: Error) => toast.error(error.message),
+	}));
+	const clearAllDataMutation = useMutation(() => ({
+		mutationFn: () => desktopRpc.debug.clearAllData.mutate(undefined as never),
 		onSuccess: () => {
 			toast.success("All data cleared. Reloading...");
 			setTimeout(() => window.location.reload(), 500);
 		},
-		onError: (error) => toast.error(error.message)
-	});
-	const logoutMutation = trpc.debug.logout.useMutation({
+		onError: (error: Error) => toast.error(error.message),
+	}));
+	const logoutMutation = useMutation(() => ({
+		mutationFn: () => desktopRpc.debug.logout.mutate(undefined as never),
 		onSuccess: () => {
 			toast.success("Logged out. Reloading...");
 			setTimeout(() => window.location.reload(), 500);
 		},
-		onError: (error) => toast.error(error.message)
-	});
-	const openFolderMutation = trpc.debug.openUserDataFolder.useMutation({ onError: (error) => toast.error(error.message) });
+		onError: (error: Error) => toast.error(error.message),
+	}));
+	const openFolderMutation = useMutation(() => ({
+		mutationFn: () => desktopRpc.debug.openUserDataFolder.mutate(undefined as never),
+		onError: (error: Error) => toast.error(error.message),
+	}));
 	const handleCopyPath = async () => {
-		if (systemInfo?.userDataPath) {
-			await navigator.clipboard.writeText(systemInfo.userDataPath);
+		if (systemInfo()?.userDataPath) {
+			await navigator.clipboard.writeText(systemInfo()!.userDataPath);
 			setCopiedPath(true);
 			setTimeout(() => setCopiedPath(false), 2e3);
 		}
 	};
 	const handleCopyDebugInfo = async () => {
 		const info = {
-			...systemInfo,
-			dbStats,
+			...systemInfo(),
+			dbStats: dbStats(),
 			timestamp: new Date().toISOString()
 		};
 		await navigator.clipboard.writeText(JSON.stringify(info, null, 2));
@@ -109,7 +137,7 @@ export function AgentsDebugTab() {
 		setTimeout(() => setCopiedInfo(false), 2e3);
 	};
 	const handleOpenDevTools = () => {
-		window.desktopApi?.toggleDevTools();
+		// TODO: Not available in Electrobun yet;
 	};
 	const handleReactScanToggle = async (enabled: boolean) => {
 		if (!isDev) return;
@@ -139,15 +167,17 @@ export function AgentsDebugTab() {
 			loadReactScan().then(() => setReactScanEnabled(true)).catch(console.error);
 		}
 	});
-	const isLoading = isLoadingSystem || isLoadingDb;
-	return <div class="p-6 space-y-6">
+	const isLoading = () => isLoadingSystem() || isLoadingDb();
+    return <div class="p-6 space-y-6">
       {	/* Header - hidden on narrow screens since it's in the navigation bar */}
-      {!isNarrowScreen() && <div>
+      <Show when={!isNarrowScreen()}>
+        <div>
           <h3 class="text-lg font-semibold mb-1">Debug</h3>
           <p class="text-sm text-muted-foreground">
             System information and developer tools
           </p>
-        </div>}
+        </div>
+      </Show>
 
       { /* System Info */}
       <div class="space-y-3">
@@ -155,18 +185,20 @@ export function AgentsDebugTab() {
           System Info
         </h4>
         <div class="rounded-lg border bg-muted/30 divide-y">
-          <InfoRow label="Version" value={systemInfo?.version} isLoading={isLoading} />
-          <InfoRow label="Platform" value={systemInfo ? `${systemInfo.platform} (${systemInfo.arch})` : undefined} isLoading={isLoading} />
-          <InfoRow label="Dev Mode" value={systemInfo?.isDev ? "Yes" : "No"} isLoading={isLoading} />
-          <InfoRow label="Protocol" value={systemInfo?.protocolRegistered ? "Registered" : "Not registered"} isLoading={isLoading} status={systemInfo?.protocolRegistered ? "success" : "warning"} />
+          <InfoRow label="Version" value={systemInfo()?.version} isLoading={isLoading()} />
+          <InfoRow label="Platform" value={systemInfo() ? `${systemInfo()!.platform} (${systemInfo()!.arch})` : undefined} isLoading={isLoading()} />
+          <InfoRow label="Dev Mode" value={systemInfo()?.isDev ? "Yes" : "No"} isLoading={isLoading()} />
+          <InfoRow label="Protocol" value={systemInfo()?.protocolRegistered ? "Registered" : "Not registered"} isLoading={isLoading()} status={systemInfo()?.protocolRegistered ? "success" : "warning"} />
           <div class="flex items-center justify-between p-3">
             <span class="text-sm text-muted-foreground">userData</span>
             <div class="flex items-center gap-2">
               <span class="text-sm font-mono truncate max-w-[200px]">
-                {isLoading ? "..." : systemInfo?.userDataPath}
+                {isLoading() ? "..." : systemInfo()?.userDataPath}
               </span>
-              <Button variant="ghost" size="icon" class="h-6 w-6" onClick={handleCopyPath} disabled={!systemInfo?.userDataPath}>
-                {copiedPath() ? <Check class="h-3 w-3 text-green-500" /> : <Copy class="h-3 w-3" />}
+              <Button variant="ghost" size="icon" class="h-6 w-6" onClick={handleCopyPath} disabled={!systemInfo()?.userDataPath}>
+                <Show when={copiedPath()} fallback={<Copy class="h-3 w-3" />}>
+                  <Check class="h-3 w-3 text-green-500" />
+                </Show>
               </Button>
             </div>
           </div>
@@ -179,14 +211,15 @@ export function AgentsDebugTab() {
           Database
         </h4>
         <div class="rounded-lg border bg-muted/30 divide-y">
-          <InfoRow label="Projects" value={dbStats?.projects?.toString()} isLoading={isLoading} />
-          <InfoRow label="Chats" value={dbStats?.chats?.toString()} isLoading={isLoading} />
-          <InfoRow label="Sub-chats" value={dbStats?.subChats?.toString()} isLoading={isLoading} />
+          <InfoRow label="Projects" value={dbStats()?.projects?.toString()} isLoading={isLoading()} />
+          <InfoRow label="Chats" value={dbStats()?.chats?.toString()} isLoading={isLoading()} />
+          <InfoRow label="Sub-chats" value={dbStats()?.subChats?.toString()} isLoading={isLoading()} />
         </div>
       </div>
 
       { /* Developer Tools (dev mode only) */}
-      {isDev && <div class="space-y-3">
+      <Show when={isDev}>
+        <div class="space-y-3">
           <h4 class="text-sm font-medium text-muted-foreground uppercase tracking-wide">
             Developer Tools
           </h4>
@@ -213,10 +246,11 @@ export function AgentsDebugTab() {
                   </p>
                 </div>
               </div>
-              <Switch checked={offlineSimulation?.enabled ?? false} onCheckedChange={(enabled) => setOfflineSimulationMutation.mutate({ enabled })} disabled={setOfflineSimulationMutation.isPending} />
+              <Switch checked={offlineSimulation()?.enabled ?? false} onCheckedChange={(enabled) => setOfflineSimulationMutation.mutate({ enabled })} disabled={setOfflineSimulationMutation.isPending} />
             </div>
           </div>
-        </div>}
+        </div>
+      </Show>
 
       { /* Quick Actions */}
       <div class="space-y-3">
@@ -224,7 +258,7 @@ export function AgentsDebugTab() {
           Quick Actions
         </h4>
         <div class="grid grid-cols-2 gap-2">
-          <Button variant="outline" size="sm" onClick={() => openFolderMutation.mutate()} disabled={openFolderMutation.isPending}>
+          <Button variant="outline" size="sm" onClick={() => openFolderMutation.mutate(undefined as never)} disabled={openFolderMutation.isPending}>
             <FolderOpen class="h-4 w-4 mr-2" />
             Open userData
           </Button>
@@ -236,8 +270,10 @@ export function AgentsDebugTab() {
             <RefreshCw class="h-4 w-4 mr-2" />
             Reload
           </Button>
-          <Button variant="outline" size="sm" onClick={handleCopyDebugInfo} disabled={isLoading}>
-            {copiedInfo() ? <Check class="h-4 w-4 mr-2 text-green-500" /> : <Copy class="h-4 w-4 mr-2" />}
+          <Button variant="outline" size="sm" onClick={handleCopyDebugInfo} disabled={isLoading()}>
+            <Show when={copiedInfo()} fallback={<Copy class="h-4 w-4 mr-2" />}>
+              <Check class="h-4 w-4 mr-2 text-green-500" />
+            </Show>
             Copy Info
           </Button>
         </div>

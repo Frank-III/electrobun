@@ -2,54 +2,43 @@ import { createEffect, createSignal, createMemo, onCleanup } from "solid-js";
 import type { Terminal as XTerm } from "xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
-import type { SerializeAddon } from "@xterm/addon-serialize";
 import { useTheme } from "../../lib/hooks/use-theme";
-import { useSetAtom, useAtomValue } from "../../lib/state/jotai";
 import { toast } from "solid-sonner";
-import { trpc } from "@/lib/trpc";
-import { terminalCwdAtom } from "./atoms";
+import { getRpcRequest, onTerminalMessage } from "@/lib/electrobun-rpc";
+import { desktopRpc } from "@/lib/desktop-rpc";
+import { useTerminalStore } from "./terminal-store-context";
 import { fullThemeDataAtom } from "@/lib/atoms";
 import { createTerminalInstance, getDefaultTerminalBg, setupClickToMoveCursor, setupContextMenuHandler, setupFocusListener, setupKeyboardHandler, setupPasteHandler, setupResizeHandlers } from "./helpers";
-import { getTerminalTheme, getTerminalThemeFromVSCode } from "./config";
+import { getTerminalThemeFromVSCode } from "./config";
 import { parseCwd } from "./parseCwd";
 import { sanitizeForTitle } from "./commandBuffer";
 import { shellEscapePaths } from "./utils";
 import { TerminalSearch } from "./TerminalSearch";
 import type { TerminalProps, TerminalStreamEvent } from "./types";
 import "xterm/css/xterm.css";
-export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, initialCwd }: TerminalProps) {
+export function Terminal({ paneId, cwd, initialCwd }: TerminalProps) {
 	let containerRef: HTMLDivElement | undefined;
 	let xtermRef: XTerm | undefined;
 	let fitAddonRef: FitAddon | undefined;
 	let searchAddonRef: SearchAddon | undefined;
-	let serializeAddonRef: SerializeAddon | undefined;
 	let isExitedRef = false;
 	let commandBufferRef = "";
+	const [store, setStore] = useTerminalStore();
 	const [isSearchOpen, setIsSearchOpen] = createSignal(false);
 	const [terminalCwd, setTerminalCwd] = createSignal(initialCwd || cwd);
-	const setGlobalCwds = useSetAtom(terminalCwdAtom);
 	// Theme detection
 	const { resolvedTheme } = useTheme();
 	const isDark = resolvedTheme() === "dark";
 	// VS Code theme data (if a full theme is selected)
-	const fullThemeData = useAtomValue(fullThemeDataAtom);
-	// Mutations
-	const createOrAttachMutation = trpc.terminal.createOrAttach.useMutation();
-	const writeMutation = trpc.terminal.write.useMutation();
-	const resizeMutation = trpc.terminal.resize.useMutation();
-	const detachMutation = trpc.terminal.detach.useMutation();
-	const clearScrollbackMutation = trpc.terminal.clearScrollback.useMutation();
+	const [fullThemeData] = fullThemeDataAtom;
+	const rpc = getRpcRequest();
 	// Parse terminal data for cwd (OSC 7 sequences)
 	const updateCwdFromData = (data: string) => {
 		const parsedCwd = parseCwd(data);
 		if (parsedCwd !== null) {
 			console.log("[Terminal] Parsed cwd from OSC-7:", parsedCwd);
 			setTerminalCwd(parsedCwd);
-			// Also update global atom for the tabs to show
-			setGlobalCwds((prev) => ({
-				...prev,
-				[paneId]: parsedCwd
-			}));
+			setStore("cwdByPaneId", paneId, parsedCwd);
 		}
 	};
 	// Handle stream data
@@ -64,14 +53,34 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 			xtermRef.writeln("[Press any key to restart]");
 		}
 	};
-	// Subscribe to terminal output
-	trpc.terminal.stream.useSubscription(paneId, {
-		onData: handleStreamData,
-		onError: (err) => {
-			console.error("[Terminal] Stream error:", err);
-			xtermRef?.write(`\r\n\x1b[31m[Connection error: ${err.message}]\x1b[0m\r\n`);
-		},
-		enabled: true
+	// Subscribe to terminal output (Electrobun RPC messages)
+	createEffect(() => {
+		const unsubs = [
+			onTerminalMessage("data", (payload) => {
+				if (payload.id === paneId) {
+					handleStreamData({ type: "data", data: payload.data });
+				}
+			}),
+			onTerminalMessage("exit", (payload) => {
+				if (payload.id === paneId) {
+					handleStreamData({ type: "exit", exitCode: payload.exitCode, signal: payload.signal });
+				}
+			}),
+			onTerminalMessage("titleChanged", (payload) => {
+				if (payload.id === paneId) {
+					console.log("[Terminal] Title changed:", payload.title);
+				}
+			}),
+			onTerminalMessage("bell", (payload) => {
+				if (payload.id === paneId) {
+					// no-op for now
+				}
+			}),
+		];
+
+		onCleanup(() => {
+			unsubs.forEach((unsub) => unsub());
+		});
 	});
 	// Initialize terminal
 	createEffect(() => {
@@ -82,7 +91,7 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 		let isUnmounted = false;
 		// Create xterm instance
 		console.log("[Terminal:useEffect] Creating terminal instance...", { isDark });
-		const { xterm, fitAddon, serializeAddon, cleanup } = createTerminalInstance(container, {
+		const { xterm, fitAddon, cleanup } = createTerminalInstance(container, {
 			cwd: terminalCwd() || cwd,
 			isDark,
 			onFileLinkClick: (path, line, column) => {
@@ -91,12 +100,11 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 			},
 			onUrlClick: (url) => {
 				console.log("[Terminal] URL clicked:", url);
-				window.desktopApi.openExternal(url);
+				desktopRpc.external.openExternal.mutate({ url });
 			}
 		});
 		xtermRef = xterm;
 		fitAddonRef = fitAddon;
-		serializeAddonRef = serializeAddon;
 		isExitedRef = false;
 		// Lazy load search addon
 		import("@xterm/addon-search").then(({ SearchAddon }) => {
@@ -106,25 +114,18 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 			searchAddonRef = searchAddon;
 		});
 		// Apply serialized state from server
-		const applySerializedState = (serializedState: string) => {
-			if (serializedState) {
-				xterm.write(serializedState);
-			}
-		};
 		// Restart terminal after exit
 		const restartTerminal = () => {
 			isExitedRef = false;
 			xterm.clear();
-			createOrAttachMutation.mutate({
-				paneId,
-				tabId,
-				workspaceId,
+			void rpc.create({
+				id: paneId,
 				cols: xterm.cols,
 				rows: xterm.rows,
-				cwd: terminalCwd() || cwd
-			}, { onSuccess: (result) => {
-				applySerializedState(result.serializedState);
-			} });
+				cwd: terminalCwd() || cwd,
+			}).catch((err) => {
+				xterm.write(`\x1b[31m[Failed to restart terminal: ${err.message}]\x1b[0m\r\n`);
+			});
 		};
 		// Input handler
 		const handleTerminalInput = (data: string) => {
@@ -132,9 +133,9 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 				restartTerminal();
 				return;
 			}
-			writeMutation.mutate({
-				paneId,
-				data
+			void rpc.write({
+				id: paneId,
+				data,
 			});
 		};
 		// Key handler for command buffer (tab title)
@@ -156,35 +157,28 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 			}
 		};
 		// Create or attach to session
-		createOrAttachMutation.mutate({
-			paneId,
-			tabId,
-			workspaceId,
+		void rpc.create({
+			id: paneId,
 			cols: xterm.cols,
 			rows: xterm.rows,
 			cwd: initialCwd || cwd,
-			initialCommands
-		}, {
-			onSuccess: (result) => {
-				applySerializedState(result.serializedState);
-				xterm.focus();
-			},
-			onError: (err) => {
-				xterm.write(`\x1b[31m[Failed to start terminal: ${err.message}]\x1b[0m\r\n`);
-			}
+		}).then(() => {
+			xterm.focus();
+		}).catch((err) => {
+			xterm.write(`\x1b[31m[Failed to start terminal: ${err.message}]\x1b[0m\r\n`);
 		});
 		// Set up handlers
 		const inputDisposable = xterm.onData(handleTerminalInput);
 		const keyDisposable = xterm.onKey(handleKeyPress);
 		const handleClear = () => {
 			xterm.clear();
-			clearScrollbackMutation.mutate({ paneId });
+			xterm.reset();
 		};
 		const handleWrite = (data: string) => {
 			if (!isExitedRef) {
-				writeMutation.mutate({
-					paneId,
-					data
+				void rpc.write({
+					id: paneId,
+					data,
 				});
 			}
 		};
@@ -197,10 +191,10 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 			// TODO: Set focused pane
 		});
 		const cleanupResize = setupResizeHandlers(container, xterm, fitAddon, (cols, rows) => {
-			resizeMutation.mutate({
-				paneId,
+			void rpc.resize({
+				id: paneId,
 				cols,
-				rows
+				rows,
 			});
 		});
 		const cleanupPaste = setupPasteHandler(xterm, { onPaste: (text) => {
@@ -233,20 +227,13 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 			cleanupPaste();
 			cleanupContextMenu();
 			cleanup();
-			// Serialize terminal state before detaching
-			console.log("[Terminal:useEffect] Serializing state before detach...");
-			const serializedState = serializeAddon.serialize();
-			// Detach instead of kill - keeps session alive for reattach
-			detachMutation.mutate({
-				paneId,
-				serializedState
-			});
+			// Destroy terminal session on unmount
+			void rpc.destroy({ id: paneId });
 			console.log("[Terminal:useEffect] Disposing xterm...");
 			xterm.dispose();
 			xtermRef = undefined;
 			fitAddonRef = undefined;
 			searchAddonRef = undefined;
-			serializeAddonRef = undefined;
 			console.log("[Terminal:useEffect] UNMOUNT complete");
 		});
 	});
@@ -287,9 +274,9 @@ export function Terminal({ paneId, cwd, workspaceId, tabId, initialCommands, ini
 		});
 		const text = shellEscapePaths(paths);
 		if (!isExitedRef) {
-			writeMutation.mutate({
-				paneId,
-				data: text
+			void rpc.write({
+				id: paneId,
+				data: text,
 			});
 		}
 	};

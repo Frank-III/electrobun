@@ -1,4 +1,3 @@
-"use client";
 import { createSignal } from "solid-js";
 import { GitBranch } from "lucide-solid";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";

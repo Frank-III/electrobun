@@ -1,11 +1,10 @@
-"use client";
 import { createEffect, Show, For } from "solid-js";
 import { cn } from "../../../lib/utils";
 
 interface VoiceWaveIndicatorProps {
 	isRecording: boolean;
 	audioLevel: number;
-	className?: string;
+	class?: string;
 }
 
 export function VoiceWaveIndicator(props: VoiceWaveIndicatorProps) {
@@ -32,7 +31,7 @@ export function VoiceWaveIndicator(props: VoiceWaveIndicatorProps) {
 	
 	return (
 		<Show when={props.isRecording}>
-			<div class={cn("flex items-center justify-center gap-[3px] h-5 px-2", props.className)}>
+			<div class={cn("flex items-center justify-center gap-[3px] h-5 px-2", props.class)}>
 				<For each={[0, 1, 2, 3, 4]}>
 					{(i) => (
 						<div

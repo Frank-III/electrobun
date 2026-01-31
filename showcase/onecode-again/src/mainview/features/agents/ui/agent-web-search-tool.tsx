@@ -1,4 +1,3 @@
-"use client";
 import { createSignal, createMemo } from "solid-js";
 import { SearchIcon, IconSpinner, ExpandIcon, CollapseIcon, ExternalLinkIcon } from "../../../components/ui/icons";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
@@ -74,14 +73,14 @@ export function AgentWebSearchTool({ part, chatStatus }: AgentWebSearchToolProps
 
           { /* Expand/Collapse icon */}
           {hasResults && !isPending && <div class="relative w-4 h-4">
-              <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
-              <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
+              <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
+              <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
             </div>}
         </div>
       </div>
 
       { /* Results list - expandable */}
-      {hasResults && isExpanded && <div class="border-t border-border max-h-[200px] overflow-y-auto">
+      {hasResults && isExpanded() && <div class="border-t border-border max-h-[200px] overflow-y-auto">
           {results.map((result, idx) => <a key={idx} href={result.url} target="_blank" rel="noopener noreferrer" class="flex items-start gap-2 px-2.5 py-1.5 hover:bg-muted/50 transition-colors group">
               <ExternalLinkIcon class="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground group-hover:text-foreground" />
               <div class="min-w-0 flex-1">

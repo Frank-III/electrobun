@@ -1,11 +1,9 @@
-"use client";
-import { createMemo, createEffect, createSignal, onCleanup } from "solid-js";
-import { useAtomValue } from "../../../lib/state/jotai";
+import { createMemo, createEffect, createSignal, onCleanup, For } from "solid-js";
 import { cn } from "../../../lib/utils";
 import { MemoizedMarkdown } from "../../../components/chat-markdown-renderer";
 import { messageAtomFamily, isMessageStreamingAtomFamily } from "../stores/message-store";
 import { useSearchHighlight, useSearchQuery } from "../search";
-import { appStore } from "../../../lib/jotai-store";
+import { appStore } from "../../../lib/app-store";
 // ============================================================================
 // TEXT PART STORE - External store for text parts to avoid re-renders
 // ============================================================================
@@ -13,8 +11,8 @@ import { appStore } from "../../../lib/jotai-store";
 // even if the result is the same. This causes IsolatedTextPart to re-render
 // even when its specific text part hasn't changed.
 //
-// Solution: Use useSyncExternalStore with a custom store that only triggers
-// re-renders when the specific text part actually changes.
+// Solution: Subscribe to Jotai per-part and expose a Solid signal so only
+// this part's text changes trigger re-renders.
 // Cache for text content per part
 const textPartStore = new Map<string, string>();
 // Subscribers per part key
@@ -56,16 +54,19 @@ function subscribeToTextPart(messageId: string, partIndex: number, callback: () 
 			}
 		}
 	});
-	onCleanup(() => {
+	return () => {
 		textPartSubscribers.get(key)?.delete(callback);
 		unsubscribe();
-	});
+	};
 }
-// Hook to get text part with minimal re-renders
-function useTextPart(messageId: string, partIndex: number): string {
-	const subscribe = (callback: () => void) => subscribeToTextPart(messageId, partIndex, callback);
-	const getSnapshot = () => getTextPart(messageId, partIndex);
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+// Hook to get text part with minimal re-renders (Solid: signal + effect subscription)
+function useTextPart(messageId: string, partIndex: number) {
+	const [text, setText] = createSignal(getTextPart(messageId, partIndex));
+	createEffect(() => {
+		const unsub = subscribeToTextPart(messageId, partIndex, () => setText(getTextPart(messageId, partIndex)));
+		return unsub;
+	});
+	return text;
 }
 // ============================================================================
 // ISOLATED TEXT PART - Subscribes to atom directly, parent doesn't get text
@@ -136,7 +137,7 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentM
 			}
 			// Create highlight mark
 			const mark = document.createElement("mark");
-			mark.className = "search-highlight";
+			mark.class = "search-highlight";
 			mark.textContent = text.slice(searchIndex, searchIndex + searchText.length);
 			// Mark match as current if it's the one we're looking for
 			if (currentMatchIndex !== null && matchCounter === currentMatchIndex) {
@@ -168,12 +169,11 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentM
 }
 export function IsolatedTextPart({ messageId, partIndex, isFinalText, visibleStepsCount }: IsolatedTextPartProps) {
 	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
-	// Use external store to subscribe to ONLY this text part
-	// This prevents re-renders when other parts of the same message change
+	// Subscribe to ONLY this text part (Solid accessor)
 	const text = useTextPart(messageId, partIndex);
 	// Use per-message streaming atom instead of global isStreamingAtom
 	// This prevents re-renders of old messages when streaming status changes
-	const isTextStreaming = useAtomValue(isMessageStreamingAtomFamily(messageId));
+	const isTextStreaming = isMessageStreamingAtomFamily(messageId)[0];
 	// Get search highlights for this text part
 	const highlights = useSearchHighlight(messageId, partIndex, "text");
 	// Get search query from context
@@ -185,13 +185,15 @@ export function IsolatedTextPart({ messageId, partIndex, isFinalText, visibleSte
 	// Apply DOM-based highlighting after render
 	// If currentHighlight exists, use its indexInPart to mark the correct match as current
 	createEffect(() => {
-		if (!contentRef.current || isTextStreaming()) return;
+		const el = contentRef();
+		if (!el || isTextStreaming()) return;
 		// Apply highlighting
-		highlightTextInDom(contentRef.current, searchQuery, currentMatchIndexInPart);
+		highlightTextInDom(el, searchQuery, currentMatchIndexInPart);
 		// Cleanup on unmount or when highlights change
 		onCleanup(() => {
-			if (contentRef.current) {
-				const existingHighlights = contentRef.current.querySelectorAll(".search-highlight");
+			const currentEl = contentRef();
+			if (currentEl) {
+				const existingHighlights = currentEl.querySelectorAll(".search-highlight");
 				existingHighlights.forEach((el) => {
 					const parent = el.parentNode;
 					if (parent) {
@@ -202,13 +204,13 @@ export function IsolatedTextPart({ messageId, partIndex, isFinalText, visibleSte
 			}
 		});
 	});
-	if (!text?.trim()) return null;
+	if (!text()?.trim()) return null;
 	return <div class={cn("text-foreground px-2", isFinalText && visibleStepsCount > 0 && "pt-3 border-t border-border/50")} data-message-id={messageId} data-part-index={partIndex} data-part-type="text">
       {isFinalText && visibleStepsCount > 0 && <div class="text-[12px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-1">
           Response
         </div>}
-      <div ref={contentRef}>
-        <MemoizedMarkdown content={text} id={`${messageId}-${partIndex}`} size="sm" />
+      <div ref={setContentRef}>
+        <MemoizedMarkdown content={text()} id={`${messageId}-${partIndex}`} size="sm" />
       </div>
     </div>;
 }
@@ -230,7 +232,7 @@ function areListPropsEqual(prev: IsolatedTextPartsProps, next: IsolatedTextParts
 }
 export function IsolatedTextPartsList({ messageId, finalTextIndex, visibleStepsCount, showOnlyFinalText = false }: IsolatedTextPartsProps) {
 	// Subscribe to message just to get parts structure (not content)
-	const message = useAtomValue(messageAtomFamily(messageId));
+	const message = messageAtomFamily(messageId)[0];
 	// Find indices of text parts that should be rendered
 	// This is a stable calculation - only changes when parts array structure changes
 	const textPartIndices = createMemo(() => {
@@ -253,8 +255,9 @@ export function IsolatedTextPartsList({ messageId, finalTextIndex, visibleStepsC
 		}
 		return indices;
 	});
-	if (textPartIndices.length === 0) return null;
 	return <>
-      {textPartIndices.map((partIndex) => <IsolatedTextPart key={`${messageId}-text-${partIndex}`} messageId={messageId} partIndex={partIndex} isFinalText={showOnlyFinalText && finalTextIndex !== -1 && partIndex === finalTextIndex} visibleStepsCount={visibleStepsCount} />)}
+      <For each={textPartIndices()}>
+        {(partIndex) => <IsolatedTextPart messageId={messageId} partIndex={partIndex} isFinalText={showOnlyFinalText && finalTextIndex !== -1 && partIndex === finalTextIndex} visibleStepsCount={visibleStepsCount} />}
+      </For>
     </>;
 }

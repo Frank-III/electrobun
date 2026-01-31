@@ -1,4 +1,3 @@
-import { useAtomValue } from "../state/jotai"
 import { useTheme } from "./use-theme"
 import {
   vscodeCodeThemeLightAtom,
@@ -16,9 +15,9 @@ import {
  */
 export function useCodeTheme(): string {
   const { resolvedTheme } = useTheme()
-  const lightTheme = useAtomValue(vscodeCodeThemeLightAtom)
-  const darkTheme = useAtomValue(vscodeCodeThemeDarkAtom)
-  const fullTheme = useAtomValue(fullThemeDataAtom)
+  const lightTheme = vscodeCodeThemeLightAtom[0]
+  const darkTheme = vscodeCodeThemeDarkAtom[0]
+  const fullTheme = fullThemeDataAtom[0]
 
   // If a full VS Code theme is selected, use its ID for syntax highlighting
   if (fullTheme) {

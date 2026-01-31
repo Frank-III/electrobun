@@ -1,4 +1,3 @@
-"use client";
 interface AgentToolInterruptedProps {
 	toolName: string;
 	subtitle?: string;

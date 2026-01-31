@@ -17,7 +17,7 @@ interface ChangesFileFilterProps {
 	value: string;
 	onChange: (value: string) => void;
 	placeholder?: string;
-	className?: string;
+	class?: string;
 	/** Available subchats for filtering */
 	subChats?: SubChatFilterItem[];
 	/** Currently selected subchat ID for filtering */
@@ -25,7 +25,7 @@ interface ChangesFileFilterProps {
 	/** Callback when subchat filter changes */
 	onSubChatFilterChange?: (subChatId: string | null) => void;
 }
-export function ChangesFileFilter({ value, onChange, placeholder = "Filter files...", className, subChats = [], selectedSubChatId, onSubChatFilterChange }: ChangesFileFilterProps) {
+export function ChangesFileFilter({ value, onChange, placeholder = "Filter files...", class: cls, subChats = [], selectedSubChatId, onSubChatFilterChange }: ChangesFileFilterProps) {
 	const [isSubChatFilterOpen, setIsSubChatFilterOpen] = createSignal(false);
 	const selectedSubChat = createMemo(() => {
 		if (!selectedSubChatId) return null;
@@ -55,7 +55,7 @@ export function ChangesFileFilter({ value, onChange, placeholder = "Filter files
 			</div>;
 	};
 	const hasSubChats = subChats.length > 0;
-	return <div class={cn("flex flex-col gap-1.5 px-2 py-1.5", className)}>
+	return <div class={cn("flex flex-col gap-1.5 px-2 py-1.5",cls)}>
 			{	/* Search row */}
 			<div class="flex items-center gap-1">
 				{ /* Search input */}

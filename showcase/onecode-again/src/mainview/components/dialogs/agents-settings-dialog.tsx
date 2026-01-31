@@ -1,10 +1,10 @@
-import { useAtom } from "../../lib/state/jotai";
 import { ChevronLeft, ChevronRight, FolderOpen, X } from "lucide-solid";
 import { createEffect, createMemo, createSignal, Show, For, onCleanup, type Component, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { EyeOpenFilledIcon, ProfileIconFilled, SlidersFilledIcon } from "../../icons";
 import { agentsSettingsDialogActiveTabAtom, devToolsUnlockedAtom, type SettingsTab } from "../../lib/atoms";
-import { trpc } from "../../lib/trpc";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "../../lib/desktop-rpc";
 import { cn } from "../../lib/utils";
 import { BrainFilledIcon, BugFilledIcon, CustomAgentIconFilled, FlaskFilledIcon, KeyboardFilledIcon, OriginalMCPIcon, SkillIconFilled } from "../ui/icons";
 import { AgentsAppearanceTab } from "./settings-tabs/agents-appearance-tab";
@@ -140,8 +140,8 @@ function TabButton(props: TabButtonProps) {
 }
 
 export function AgentsSettingsDialog(props: AgentsSettingsDialogProps) {
-	const [activeTab, setActiveTab] = useAtom(agentsSettingsDialogActiveTabAtom);
-	const [devToolsUnlocked, setDevToolsUnlocked] = useAtom(devToolsUnlockedAtom);
+	const [activeTab, setActiveTab] = agentsSettingsDialogActiveTabAtom;
+	const [devToolsUnlocked, setDevToolsUnlocked] = devToolsUnlockedAtom;
 	const [mounted, setMounted] = createSignal(false);
 	const isNarrowScreen = useIsNarrowScreen();
 
@@ -150,12 +150,17 @@ export function AgentsSettingsDialog(props: AgentsSettingsDialogProps) {
 	let betaClickTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Get projects list for dynamic tabs
-	const { data: projects } = trpc.projects.list.useQuery();
+	const projectsQuery = useQuery(() => ({
+		queryKey: ["projects", "list"],
+		queryFn: () => desktopRpc.projects.list.query(),
+	}));
+	const projects = () => projectsQuery.data;
 
 	// Generate dynamic project tabs
 	const projectTabs = createMemo(() => {
-		if (!projects || projects.length === 0) return [];
-		return projects.map((project: any) => ({
+		const proj = projects();
+		if (!proj || proj.length === 0) return [];
+		return proj.map((project: any) => ({
 			id: `project-${project.id}` as SettingsTab,
 			label: project.name,
 			icon: project.gitOwner && project.gitProvider === "github"
@@ -229,7 +234,7 @@ export function AgentsSettingsDialog(props: AgentsSettingsDialogProps) {
 			if (betaClickCount >= DEVTOOLS_UNLOCK_CLICKS) {
 				setDevToolsUnlocked(true);
 				betaClickCount = 0;
-				window.desktopApi?.unlockDevTools();
+				// TODO: Not available in Electrobun yet;
 				console.log("[Settings] DevTools unlocked!");
 			}
 		}

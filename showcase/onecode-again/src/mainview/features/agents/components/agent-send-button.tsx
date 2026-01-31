@@ -1,4 +1,3 @@
-"use client";
 import { Button } from "../../../components/ui/button";
 import { ArrowUp, Loader2 } from "lucide-solid";
 import { EnterIcon, IconSpinner, MicrophoneIcon } from "../../../components/ui/icons";
@@ -19,7 +18,7 @@ interface AgentSendButtonProps {
 	/** Optional stop handler for streaming state */
 	onStop?: () => void;
 	/** Additional CSS classes */
-	className?: string;
+	class?: string;
 	/** Button size */
 	size?: "sm" | "default" | "lg";
 	/** Custom aria-label */
@@ -41,7 +40,9 @@ interface AgentSendButtonProps {
 	/** Mouse leave handler for voice recording */
 	onVoiceMouseLeave?: () => void;
 }
-export function AgentSendButton({ isStreaming = false, isSubmitting = false, disabled = false, onClick, onStop, className = "", size = "sm", ariaLabel, mode = "agent", hasContent = false, showVoiceInput = false, isRecording = false, isTranscribing = false, onVoiceMouseDown, onVoiceMouseUp, onVoiceMouseLeave }: AgentSendButtonProps) {
+export function AgentSendButton(props: AgentSendButtonProps) {
+	const { isStreaming = false, isSubmitting = false, disabled = false, onClick, onStop, size = "sm", ariaLabel, mode = "agent", hasContent = false, showVoiceInput = false, isRecording = false, isTranscribing = false, onVoiceMouseDown, onVoiceMouseUp, onVoiceMouseLeave } = props;
+	const cls = props.class ?? "";
 	// Resolved hotkeys for stop-generation tooltip
 	const stopHotkey = useResolvedHotkeyDisplayWithAlt("stop-generation");
 	// Resolved hotkey for voice input
@@ -190,7 +191,7 @@ export function AgentSendButton({ isStreaming = false, isSubmitting = false, dis
 	const tooltipOpen = isRecording ? false : undefined;
 	return <Tooltip delayDuration={1e3} open={tooltipOpen}>
       <TooltipTrigger asChild>
-        <Button size={size} class={`h-7 w-7 rounded-full transition-[background-color,transform,opacity] duration-150 ease-out active:scale-[0.97] flex items-center justify-center ${glowClass || ""} ${modeClass} ${className}`} disabled={isDisabled || isTranscribing} type="button" onClick={handleButtonClick} onMouseDown={handleMouseDown} onMouseUp={handleMouseUp} onMouseLeave={handleMouseLeave} aria-label={getAriaLabel()}>
+        <Button size={size} class={`h-7 w-7 rounded-full transition-[background-color,transform,opacity] duration-150 ease-out active:scale-[0.97] flex items-center justify-center ${glowClass || ""} ${modeClass} ${cls}`} disabled={isDisabled || isTranscribing} type="button" onClick={handleButtonClick} onMouseDown={handleMouseDown} onMouseUp={handleMouseUp} onMouseLeave={handleMouseLeave} aria-label={getAriaLabel()}>
           {getIcon()}
         </Button>
       </TooltipTrigger>

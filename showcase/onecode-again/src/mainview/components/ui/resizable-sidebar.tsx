@@ -1,5 +1,4 @@
-"use client";
-import { useAtom, type WritableAtom } from "../../lib/state/jotai";
+import type { SignalPair } from "../../lib/state/signal-map";
 import { Motion, Presence } from "solid-motionone";
 import { Show } from "solid-js";
 import { createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js";
@@ -9,14 +8,14 @@ import { Kbd } from "./kbd";
 interface ResizableSidebarProps {
 	isOpen: boolean;
 	onClose: () => void;
-	widthAtom: WritableAtom<number, [number], void>;
+	widthAtom: SignalPair<number>;
 	minWidth?: number;
 	maxWidth?: number;
 	side: "left" | "right";
 	closeHotkey?: string;
 	animationDuration?: number;
 	children: JSX.Element;
-	className?: string;
+	class?: string;
 	initialWidth?: number | string;
 	exitWidth?: number | string;
 	dataAttributes?: Record<string, string | boolean>;
@@ -30,8 +29,11 @@ const DEFAULT_MAX_WIDTH = 9999;
 const DEFAULT_ANIMATION_DURATION = 0;
 const EXTENDED_HOVER_AREA_WIDTH = 8;
 
-export function ResizableSidebar({ isOpen, onClose, widthAtom, minWidth = DEFAULT_MIN_WIDTH, maxWidth = DEFAULT_MAX_WIDTH, side, closeHotkey, animationDuration = DEFAULT_ANIMATION_DURATION, children, className = "", initialWidth = 0, exitWidth = 0, dataAttributes, disableClickToClose = false, showResizeTooltip = false, style }: ResizableSidebarProps) {
-	const [sidebarWidth, setSidebarWidth] = useAtom(widthAtom);
+export function ResizableSidebar(props: ResizableSidebarProps) {
+	const { isOpen, onClose, minWidth = DEFAULT_MIN_WIDTH, maxWidth = DEFAULT_MAX_WIDTH, side, closeHotkey, animationDuration = DEFAULT_ANIMATION_DURATION, children, initialWidth = 0, exitWidth = 0, dataAttributes, disableClickToClose = false, showResizeTooltip = false, style } = props;
+	const widthAtom = props.widthAtom;
+	const cls = props.class ?? "";
+	const [sidebarWidth, setSidebarWidth] = widthAtom;
 	const [hasOpenedOnce, setHasOpenedOnce] = createSignal(false);
 	const [wasOpen, setWasOpen] = createSignal(false);
 	const [shouldAnimate, setShouldAnimate] = createSignal(!isOpen);
@@ -256,7 +258,7 @@ export function ResizableSidebar({ isOpen, onClose, widthAtom, minWidth = DEFAUL
 			0.2,
 			1
 		]
-	}} class={`bg-transparent flex flex-col text-xs h-full relative ${className}`} style={{
+	}} class={`bg-transparent flex flex-col text-xs h-full relative ${cls}`} style={{
 		"min-width": `${minWidth}px`,
 		overflow: "hidden",
 		...style

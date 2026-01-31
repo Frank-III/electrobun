@@ -1,4 +1,3 @@
-"use client";
 import { createSignal, createEffect, Show, For } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 import { AgentToolRegistry, getToolStatus } from "./agent-tool-registry";

@@ -1,6 +1,5 @@
-"use client";
-import { createMemo, createContext, useContext, createEffect, createSignal, For } from "solid-js";
-import { useAtomValue } from "../../../lib/state/jotai";
+import type { JSX, Component } from "solid-js";
+import { createMemo, createContext, useContext, createEffect, createSignal, For, Show } from "solid-js";
 import { AssistantMessageItem } from "./assistant-message-item";
 import { messageAtomFamily, isLastMessageAtomFamily, isStreamingAtom, chatStatusAtom } from "../stores/message-store";
 import { extractTextMentions, TextMentionBlocks } from "../mentions/render-file-mentions";
@@ -30,7 +29,7 @@ function createMessageStore(): MessageStore {
 	// Compare with message-store.ts hasMessageChanged() which only checks the
 	// LAST part for performance during high-frequency streaming updates.
 	// Both approaches are correct for their use cases:
-	// - This (messages-list): useSyncExternalStore needs accurate change detection
+	// - This (messages-list): Solid signals need accurate change detection
 	// - message-store.ts: Jotai atoms optimized for streaming (last part only)
 	const messageSnapshotsMap = new Map<string, {
 		partsCount: number;
@@ -122,112 +121,78 @@ function createMessageStore(): MessageStore {
 		}
 	};
 }
-// Context for the store
-const MessageStoreContext = createContext<MessageStore | null>(null);
-// Hook to sync messages to global store - NOT USED, keeping for reference
-export function useMessageStoreSync(_messages: Message[], _status: string) {
-	// Not used
+// Reactive slice: Solid signals kept in sync with the store so hooks use createMemo only
+interface MessageStoreReactive {
+	messages: () => Message[];
+	status: () => string;
 }
-// Provider component
+const MessageStoreContext = createContext<MessageStoreReactive | null>(null);
+
+// Provider: holds the store (for stabilization) and exposes signals for Solid reactivity
 export function MessageStoreProvider({ children, messages, status }: {
 	children: JSX.Element;
 	messages: Message[];
 	status: string;
 }) {
-	// Create store once per provider instance, initialized with current messages
 	const [storeRef, setStoreRef] = createSignal<MessageStore | null>(null);
-	if (!storeRef.current) {
-		storeRef.current = createMessageStore();
-		// Initialize with current messages SILENTLY - no subscribers yet anyway
-		storeRef.current.initMessages(messages, status);
+	const [messagesSignal, setMessagesSignal] = createSignal<Message[]>([]);
+	const [statusSignal, setStatusSignal] = createSignal<string>("ready");
+
+	// One-time init store and initial signal values
+	let store = storeRef();
+	if (!store) {
+		store = createMessageStore();
+		store.initMessages(messages, status);
+		setStoreRef(store);
+		setMessagesSignal(store.messages);
+		setStatusSignal(store.status);
 	}
-	// CRITICAL: Use useLayoutEffect to sync messages AFTER render, not during
-	// This avoids "Cannot update a component while rendering a different component" error
+
+	// Sync props → store (with stabilization)
 	createEffect(() => {
-		storeRef.current?.setMessages(messages, status);
+		storeRef()?.setMessages(messages, status);
 	});
-	return <MessageStoreContext.Provider value={storeRef.current}>
-      {children}
-    </MessageStoreContext.Provider>;
-}
-// Hook to get a specific message by ID - only triggers re-render when THIS message changes
-export function useMessage(messageId: string) {
-	const store = useContext(MessageStoreContext);
-	if (!store) throw new Error("useMessage must be used within MessageStoreProvider");
-	const [prevMessageRef, setPrevMessageRef] = createSignal<any>(null);
-	const subscribe = (onStoreChange: () => void) => {
-		return store.subscribe(() => {
-			// Only notify if THIS message changed
-			const currentMsg = store.messages.find((m) => m.id === messageId);
-			if (currentMsg !== prevMessageRef.current) {
-				prevMessageRef.current = currentMsg;
-				onStoreChange();
-			}
+
+	// When store notifies, push to signals so createMemo dependencies update
+	createEffect(() => {
+		const s = storeRef();
+		if (!s) return;
+		const unsub = s.subscribe(() => {
+			setMessagesSignal(s.messages);
+			setStatusSignal(s.status);
 		});
-	};
-	const getSnapshot = () => {
-		const msg = store.messages.find((m) => m.id === messageId);
-		prevMessageRef.current = msg;
-		return msg;
-	};
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+		return unsub;
+	});
+
+	const value = { messages: messagesSignal, status: statusSignal };
+	return <MessageStoreContext.Provider value={value}>{children}</MessageStoreContext.Provider>;
+}
+// Hook to get a specific message by ID - only re-runs when messages() changes (Solid fine-grained)
+export function useMessage(messageId: string) {
+	const ctx = useContext(MessageStoreContext);
+	if (!ctx) throw new Error("useMessage must be used within MessageStoreProvider");
+	return createMemo(() => ctx.messages().find((m) => m.id === messageId));
 }
 // Hook to get message IDs only (for list rendering)
 export function useMessageIds() {
-	const store = useContext(MessageStoreContext);
-	if (!store) throw new Error("useMessageIds must be used within MessageStoreProvider");
-	const subscribe = (onStoreChange: () => void) => {
-		return store.subscribe(onStoreChange);
-	};
-	const [idsRef, setIdsRef] = createSignal<string[]>([]);
-	const getSnapshot = () => {
-		const newIds = store.messages.filter((m) => m.role === "assistant").map((m) => m.id);
-		// Only return new array if IDs actually changed
-		if (newIds.length === idsRef.current.length && newIds.every((id, i) => id === idsRef.current[i])) {
-			return idsRef.current;
-		}
-		idsRef.current = newIds;
-		return newIds;
-	};
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+	const ctx = useContext(MessageStoreContext);
+	if (!ctx) throw new Error("useMessageIds must be used within MessageStoreProvider");
+	return createMemo(() => ctx.messages().filter((m) => m.role === "assistant").map((m) => m.id));
 }
-// Hook to get streaming status - only triggers re-render when status actually changes
+// Hook to get streaming status - only re-runs when status or last message changes
 export function useStreamingStatus() {
-	const store = useContext(MessageStoreContext);
-	if (!store) throw new Error("useStreamingStatus must be used within MessageStoreProvider");
-	const [cacheRef, setCacheRef] = createSignal<{
-		isStreaming: boolean;
-		status: string;
-		lastMessageId: string | null;
-	} | null>(null);
-	const subscribe = (onStoreChange: () => void) => {
-		return store.subscribe(() => {
-			const isStreaming = store.status === "streaming" || store.status === "submitted";
-			const lastMsgId = store.messages.length > 0 ? store.messages[store.messages.length - 1]?.id : null;
-			if (!cacheRef.current || cacheRef.current.isStreaming !== isStreaming || cacheRef.current.status !== store.status || cacheRef.current.lastMessageId !== lastMsgId) {
-				cacheRef.current = {
-					isStreaming,
-					status: store.status,
-					lastMessageId: lastMsgId
-				};
-				onStoreChange();
-			}
-		});
-	};
-	const getSnapshot = () => {
-		const isStreaming = store.status === "streaming" || store.status === "submitted";
-		const lastMsgId = store.messages.length > 0 ? store.messages[store.messages.length - 1]?.id : null;
-		if (cacheRef.current && cacheRef.current.isStreaming === isStreaming && cacheRef.current.status === store.status && cacheRef.current.lastMessageId === lastMsgId) {
-			return cacheRef.current;
-		}
-		cacheRef.current = {
-			isStreaming,
-			status: store.status,
-			lastMessageId: lastMsgId
+	const ctx = useContext(MessageStoreContext);
+	if (!ctx) throw new Error("useStreamingStatus must be used within MessageStoreProvider");
+	return createMemo(() => {
+		const msgs = ctx.messages();
+		const s = ctx.status();
+		const lastId = msgs.length > 0 ? msgs[msgs.length - 1]?.id : null;
+		return {
+			isStreaming: s === "streaming" || s === "submitted",
+			status: s,
+			lastMessageId: lastId
 		};
-		return cacheRef.current;
-	};
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+	});
 }
 // ============================================================================
 // MESSAGE ITEM - Subscribes to its own message only
@@ -239,65 +204,24 @@ interface MessageItemWrapperProps {
 	isMobile: boolean;
 	sandboxSetupStatus: "cloning" | "ready" | "error";
 }
-// Hook that only re-renders THIS component when it becomes/stops being the last message
+// Hook that only re-runs when last message id changes (Solid memo)
 function useIsLastMessage(messageId: string) {
-	const store = useContext(MessageStoreContext);
-	if (!store) throw new Error("useIsLastMessage must be used within MessageStoreProvider");
-	const [prevIsLastRef, setPrevIsLastRef] = createSignal<boolean>(false);
-	const subscribe = (onStoreChange: () => void) => {
-		return store.subscribe(() => {
-			const lastMsgId = store.messages.length > 0 ? store.messages[store.messages.length - 1]?.id : null;
-			const isLast = messageId === lastMsgId;
-			// Only notify if THIS message's "isLast" status changed
-			if (prevIsLastRef.current !== isLast) {
-				prevIsLastRef.current = isLast;
-				onStoreChange();
-			}
-		});
-	};
-	const getSnapshot = () => {
-		const lastMsgId = store.messages.length > 0 ? store.messages[store.messages.length - 1]?.id : null;
-		const isLast = messageId === lastMsgId;
-		prevIsLastRef.current = isLast;
-		return isLast;
-	};
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+	const ctx = useContext(MessageStoreContext);
+	if (!ctx) throw new Error("useIsLastMessage must be used within MessageStoreProvider");
+	return createMemo(() => {
+		const msgs = ctx.messages();
+		const lastId = msgs.length > 0 ? msgs[msgs.length - 1]?.id : null;
+		return messageId === lastId;
+	});
 }
-// Hook that only re-renders when streaming status changes
+// Hook that only re-runs when streaming status changes
 function useIsStreaming() {
-	const store = useContext(MessageStoreContext);
-	if (!store) throw new Error("useIsStreaming must be used within MessageStoreProvider");
-	// Cache must be stable and only updated when values actually change
-	const [cacheRef, setCacheRef] = createSignal<{
-		isStreaming: boolean;
-		status: string;
-	} | null>(null);
-	const subscribe = (onStoreChange: () => void) => {
-		return store.subscribe(() => {
-			const isStreaming = store.status === "streaming" || store.status === "submitted";
-			if (!cacheRef.current || cacheRef.current.isStreaming !== isStreaming || cacheRef.current.status !== store.status) {
-				cacheRef.current = {
-					isStreaming,
-					status: store.status
-				};
-				onStoreChange();
-			}
-		});
-	};
-	const getSnapshot = () => {
-		const isStreaming = store.status === "streaming" || store.status === "submitted";
-		// Return cached value if it matches current state
-		if (cacheRef.current && cacheRef.current.isStreaming === isStreaming && cacheRef.current.status === store.status) {
-			return cacheRef.current;
-		}
-		// Create and cache new value
-		cacheRef.current = {
-			isStreaming,
-			status: store.status
-		};
-		return cacheRef.current;
-	};
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+	const ctx = useContext(MessageStoreContext);
+	if (!ctx) throw new Error("useIsStreaming must be used within MessageStoreProvider");
+	return createMemo(() => {
+		const s = ctx.status();
+		return { isStreaming: s === "streaming" || s === "submitted", status: s };
+	});
 }
 // For non-last messages - no streaming subscription needed
 // Subscribes to message via Jotai messageAtomFamily, passes message as prop to AssistantMessageItem
@@ -309,7 +233,7 @@ function NonStreamingMessageItem({ messageId, subChatId, chatId, isMobile, sandb
 	sandboxSetupStatus: "cloning" | "ready" | "error";
 }) {
 	// Subscribe to this specific message via Jotai - only re-renders when THIS message changes
-	const message = useAtomValue(messageAtomFamily(messageId));
+	const message = messageAtomFamily(messageId)[0];
 	if (!message) return null;
 	return <AssistantMessageItem message={message} isLastMessage={false} isStreaming={false} status="ready" subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} />;
 }
@@ -323,57 +247,28 @@ function StreamingMessageItem({ messageId, subChatId, chatId, isMobile, sandboxS
 	sandboxSetupStatus: "cloning" | "ready" | "error";
 }) {
 	// Subscribe to this specific message via Jotai - only re-renders when THIS message changes
-	const message = useAtomValue(messageAtomFamily(messageId));
+	const message = messageAtomFamily(messageId)[0];
 	// Subscribe to streaming status
-	const isStreaming = useAtomValue(isStreamingAtom);
-	const status = useAtomValue(chatStatusAtom);
+	const isStreaming = isStreamingAtom[0];
+	const status = chatStatusAtom[0];
 	if (!message) return null;
 	return <AssistantMessageItem message={message} isLastMessage={true} isStreaming={isStreaming} status={status} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} />;
 }
-// Combined hook - get message AND isLast in one subscription to avoid double re-renders
+// Combined hook - get message AND isLast in one memo (Solid)
 function useMessageWithLastStatus(messageId: string) {
-	const store = useContext(MessageStoreContext);
-	if (!store) throw new Error("useMessageWithLastStatus must be used within MessageStoreProvider");
-	// Track what we last returned to detect changes
-	const [lastReturnedRef, setLastReturnedRef] = createSignal<{
-		message: any;
-		isLast: boolean;
-	} | null>(null);
-	const subscribe = (onStoreChange: () => void) => {
-		return store.subscribe(() => {
-			const currentMsg = store.messages.find((m) => m.id === messageId);
-			const lastMsgId = store.messages.length > 0 ? store.messages[store.messages.length - 1]?.id : null;
-			const isLast = messageId === lastMsgId;
-			const msgChanged = lastReturnedRef.current?.message !== currentMsg;
-			const isLastChanged = lastReturnedRef.current?.isLast !== isLast;
-			// Only notify if message changed OR isLast changed
-			// DO NOT update lastReturnedRef here - only in getSnapshot!
-			if (!lastReturnedRef.current || msgChanged || isLastChanged) {
-				onStoreChange();
-			}
-		});
-	};
-	const getSnapshot = () => {
-		const currentMsg = store.messages.find((m) => m.id === messageId);
-		const lastMsgId = store.messages.length > 0 ? store.messages[store.messages.length - 1]?.id : null;
-		const isLast = messageId === lastMsgId;
-		// Return cached object if nothing changed
-		if (lastReturnedRef.current && lastReturnedRef.current.message === currentMsg && lastReturnedRef.current.isLast === isLast) {
-			return lastReturnedRef.current;
-		}
-		// Create new object and cache it
-		lastReturnedRef.current = {
-			message: currentMsg,
-			isLast
-		};
-		return lastReturnedRef.current;
-	};
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+	const ctx = useContext(MessageStoreContext);
+	if (!ctx) throw new Error("useMessageWithLastStatus must be used within MessageStoreProvider");
+	return createMemo(() => {
+		const msgs = ctx.messages();
+		const message = msgs.find((m) => m.id === messageId);
+		const lastId = msgs.length > 0 ? msgs[msgs.length - 1]?.id : null;
+		return { message, isLast: messageId === lastId };
+	});
 }
 export function MessageItemWrapper({ messageId, subChatId, chatId, isMobile, sandboxSetupStatus }: MessageItemWrapperProps) {
 	// Only subscribe to isLast - NOT to message content!
 	// StreamingMessageItem and NonStreamingMessageItem will subscribe to message themselves
-	const isLast = useAtomValue(isLastMessageAtomFamily(messageId));
+	const isLast = isLastMessageAtomFamily(messageId)[0];
 	// Only the last message subscribes to streaming status
 	if (isLast()) {
 		// StreamingMessageItem subscribes to messageAtomFamily internally
@@ -428,23 +323,11 @@ export function MemoizedAssistantMessages({ assistantMsgIds, subChatId, chatId, 
 // ============================================================================
 // HOOKS FOR ISOLATED RENDERING
 // ============================================================================
-// Hook to get ALL messages (user + assistant) with stable references
+// Hook to get ALL messages (user + assistant) - Solid memo
 export function useAllMessages() {
-	const store = useContext(MessageStoreContext);
-	if (!store) throw new Error("useAllMessages must be used within MessageStoreProvider");
-	const [cacheRef, setCacheRef] = createSignal<Message[]>([]);
-	const subscribe = (onStoreChange: () => void) => {
-		return store.subscribe(onStoreChange);
-	};
-	const getSnapshot = () => {
-		// Return cached array if messages haven't changed
-		if (cacheRef.current === store.messages) {
-			return cacheRef.current;
-		}
-		cacheRef.current = store.messages;
-		return cacheRef.current;
-	};
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+	const ctx = useContext(MessageStoreContext);
+	if (!ctx) throw new Error("useAllMessages must be used within MessageStoreProvider");
+	return createMemo(() => ctx.messages());
 }
 // Hook to get message groups - computed from store, only updates when messages change
 // Returns stable references for groups that haven't changed
@@ -454,87 +337,24 @@ interface MessageGroup {
 	assistantMsgsCount: number;
 }
 export function useMessageGroups() {
-	const store = useContext(MessageStoreContext);
-	if (!store) throw new Error("useMessageGroups must be used within MessageStoreProvider");
-	// Cache for stable group references
-	const [groupsCacheRef, setGroupsCacheRef] = createSignal<MessageGroup[]>([]);
-	const [assistantIdsCacheRef, setAssistantIdsCacheRef] = createSignal<Map<string, string[]>>(new Map());
-	const subscribe = (onStoreChange: () => void) => {
-		return store.subscribe(onStoreChange);
-	};
-	const getSnapshot = () => {
-		const messages = store.messages;
-		// Compute groups
+	const ctx = useContext(MessageStoreContext);
+	if (!ctx) throw new Error("useMessageGroups must be used within MessageStoreProvider");
+	return createMemo(() => {
+		const messages = ctx.messages();
 		const groups: MessageGroup[] = [];
 		let currentGroup: MessageGroup | null = null;
 		for (const msg of messages) {
 			if (msg.role === "user") {
-				if (currentGroup) {
-					groups.push(currentGroup);
-				}
-				currentGroup = {
-					userMsg: msg,
-					assistantMsgIds: [],
-					assistantMsgsCount: 0
-				};
+				if (currentGroup) groups.push(currentGroup);
+				currentGroup = { userMsg: msg, assistantMsgIds: [], assistantMsgsCount: 0 };
 			} else if (currentGroup && msg.role === "assistant") {
 				currentGroup.assistantMsgIds.push(msg.id);
 				currentGroup.assistantMsgsCount++;
 			}
 		}
-		if (currentGroup) {
-			groups.push(currentGroup);
-		}
-		// Stabilize group references - only create new objects if content changed
-		// Check if groups count changed
-		if (groups.length !== groupsCacheRef.current.length) {
-			// Stabilize individual groups
-			for (let i = 0; i < groups.length; i++) {
-				const newGroup = groups[i];
-				const cachedGroup = groupsCacheRef.current[i];
-				const cachedIds = assistantIdsCacheRef.current.get(newGroup.userMsg.id);
-				// Stabilize assistantMsgIds array
-				if (cachedIds && cachedIds.length === newGroup.assistantMsgIds.length && cachedIds.every((id, j) => id === newGroup.assistantMsgIds[j])) {
-					newGroup.assistantMsgIds = cachedIds;
-				} else {
-					assistantIdsCacheRef.current.set(newGroup.userMsg.id, newGroup.assistantMsgIds);
-				}
-				// Reuse cached group object if nothing changed
-				if (cachedGroup && cachedGroup.userMsg === newGroup.userMsg && cachedGroup.assistantMsgIds === newGroup.assistantMsgIds && cachedGroup.assistantMsgsCount === newGroup.assistantMsgsCount) {
-					groups[i] = cachedGroup;
-				}
-			}
-			groupsCacheRef.current = groups;
-			return groups;
-		}
-		// Same length - check each group for changes
-		let anyChanged = false;
-		for (let i = 0; i < groups.length; i++) {
-			const newGroup = groups[i];
-			const cachedGroup = groupsCacheRef.current[i];
-			const cachedIds = assistantIdsCacheRef.current.get(newGroup.userMsg.id);
-			// Stabilize assistantMsgIds array
-			if (cachedIds && cachedIds.length === newGroup.assistantMsgIds.length && cachedIds.every((id, j) => id === newGroup.assistantMsgIds[j])) {
-				newGroup.assistantMsgIds = cachedIds;
-			} else {
-				assistantIdsCacheRef.current.set(newGroup.userMsg.id, newGroup.assistantMsgIds);
-				anyChanged = true;
-			}
-			// Check if group itself changed
-			if (!cachedGroup || cachedGroup.userMsg !== newGroup.userMsg || cachedGroup.assistantMsgIds !== newGroup.assistantMsgIds || cachedGroup.assistantMsgsCount !== newGroup.assistantMsgsCount) {
-				anyChanged = true;
-			} else {
-				// Reuse cached group
-				groups[i] = cachedGroup;
-			}
-		}
-		if (anyChanged) {
-			groupsCacheRef.current = groups;
-			return groups;
-		}
-		return groupsCacheRef.current;
-	};
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+		if (currentGroup) groups.push(currentGroup);
+		return groups;
+	});
 }
 // ============================================================================
 // MESSAGES LIST - Only re-renders when message IDs change (add/remove)
@@ -548,7 +368,7 @@ interface MessagesListProps {
 export function MessagesList({ subChatId, chatId, isMobile, sandboxSetupStatus }: MessagesListProps) {
 	const messageIds = useMessageIds();
 	return <>
-      <For each={messageIds}>
+      <For each={messageIds()}>
         {(id) => <MessageItemWrapper messageId={id} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} />}
       </For>
     </>;
@@ -557,119 +377,33 @@ export function MessagesList({ subChatId, chatId, isMobile, sandboxSetupStatus }
 // HOOK: useUserMessageIds - Only returns user message IDs (for groups)
 // ============================================================================
 export function useUserMessageIds() {
-	const store = useContext(MessageStoreContext);
-	if (!store) throw new Error("useUserMessageIds must be used within MessageStoreProvider");
-	const [idsRef, setIdsRef] = createSignal<string[]>([]);
-	const subscribe = (onStoreChange: () => void) => {
-		return store.subscribe(onStoreChange);
-	};
-	const getSnapshot = () => {
-		const newIds = store.messages.filter((m) => m.role === "user").map((m) => m.id);
-		// Only return new array if IDs actually changed
-		if (newIds.length === idsRef.current.length && newIds.every((id, i) => id === idsRef.current[i])) {
-			return idsRef.current;
-		}
-		idsRef.current = newIds;
-		return newIds;
-	};
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+	const ctx = useContext(MessageStoreContext);
+	if (!ctx) throw new Error("useUserMessageIds must be used within MessageStoreProvider");
+	return createMemo(() => ctx.messages().filter((m) => m.role === "user").map((m) => m.id));
 }
 // ============================================================================
 // HOOK: useUserMessageWithAssistants - Get user message and its assistant IDs
 // ============================================================================
 export function useUserMessageWithAssistants(userMsgId: string) {
-	const store = useContext(MessageStoreContext);
-	if (!store) throw new Error("useUserMessageWithAssistants must be used within MessageStoreProvider");
-	// Cache for stable return value
-	const [cacheRef, setCacheRef] = createSignal<{
-		userMsg: Message | undefined;
-		assistantMsgIds: string[];
-		isLastGroup: boolean;
-	} | null>(null);
-	const subscribe = (onStoreChange: () => void) => {
-		return store.subscribe(() => {
-			// Get user message
-			const userMsg = store.messages.find((m) => m.id === userMsgId);
-			if (!userMsg) {
-				if (cacheRef.current?.userMsg !== undefined) {
-					onStoreChange();
-				}
-				return;
-			}
-			// Find assistant messages that follow this user message
-			const userIndex = store.messages.findIndex((m) => m.id === userMsgId);
-			const assistantMsgIds: string[] = [];
-			for (let i = userIndex + 1; i < store.messages.length; i++) {
-				const msg = store.messages[i];
-				if (msg.role === "user") break;
-				if (msg.role === "assistant") {
-					assistantMsgIds.push(msg.id);
-				}
-			}
-			// Check if this is the last group
-			const userMsgIds = store.messages.filter((m) => m.role === "user").map((m) => m.id);
-			const isLastGroup = userMsgIds[userMsgIds.length - 1] === userMsgId;
-			// Check if anything changed
-			if (cacheRef.current) {
-				const idsChanged = assistantMsgIds.length !== cacheRef.current.assistantMsgIds.length || !assistantMsgIds.every((id, i) => id === cacheRef.current!.assistantMsgIds[i]);
-				const isLastChanged = isLastGroup !== cacheRef.current.isLastGroup;
-				const userMsgChanged = userMsg !== cacheRef.current.userMsg;
-				if (!idsChanged && !isLastChanged && !userMsgChanged) {
-					return;
-				}
-			}
-			onStoreChange();
-		});
-	};
-	const getSnapshot = () => {
-		const userMsg = store.messages.find((m) => m.id === userMsgId);
+	const ctx = useContext(MessageStoreContext);
+	if (!ctx) throw new Error("useUserMessageWithAssistants must be used within MessageStoreProvider");
+	return createMemo(() => {
+		const messages = ctx.messages();
+		const userMsg = messages.find((m) => m.id === userMsgId);
 		if (!userMsg) {
-			if (!cacheRef.current || cacheRef.current.userMsg !== undefined) {
-				cacheRef.current = {
-					userMsg: undefined,
-					assistantMsgIds: [],
-					isLastGroup: false
-				};
-			}
-			return cacheRef.current;
+			return { userMsg: undefined as Message | undefined, assistantMsgIds: [] as string[], isLastGroup: false };
 		}
-		// Find assistant messages
-		const userIndex = store.messages.findIndex((m) => m.id === userMsgId);
+		const userIndex = messages.findIndex((m) => m.id === userMsgId);
 		const assistantMsgIds: string[] = [];
-		for (let i = userIndex + 1; i < store.messages.length; i++) {
-			const msg = store.messages[i];
+		for (let i = userIndex + 1; i < messages.length; i++) {
+			const msg = messages[i];
 			if (msg.role === "user") break;
-			if (msg.role === "assistant") {
-				assistantMsgIds.push(msg.id);
-			}
+			if (msg.role === "assistant") assistantMsgIds.push(msg.id);
 		}
-		// Check if this is the last group
-		const userMsgIds = store.messages.filter((m) => m.role === "user").map((m) => m.id);
+		const userMsgIds = messages.filter((m) => m.role === "user").map((m) => m.id);
 		const isLastGroup = userMsgIds[userMsgIds.length - 1] === userMsgId;
-		// Return cached value if nothing changed
-		if (cacheRef.current) {
-			const idsMatch = assistantMsgIds.length === cacheRef.current.assistantMsgIds.length && assistantMsgIds.every((id, i) => id === cacheRef.current!.assistantMsgIds[i]);
-			if (userMsg === cacheRef.current.userMsg && idsMatch && isLastGroup === cacheRef.current.isLastGroup) {
-				return cacheRef.current;
-			}
-			// Stabilize assistantMsgIds if they match
-			if (idsMatch) {
-				cacheRef.current = {
-					userMsg,
-					assistantMsgIds: cacheRef.current.assistantMsgIds,
-					isLastGroup
-				};
-				return cacheRef.current;
-			}
-		}
-		cacheRef.current = {
-			userMsg,
-			assistantMsgIds,
-			isLastGroup
-		};
-		return cacheRef.current;
-	};
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+		return { userMsg, assistantMsgIds, isLastGroup };
+	});
 }
 // ============================================================================
 // ISOLATED MESSAGE GROUP - Renders a single user message + its assistants
@@ -713,81 +447,68 @@ function areSimpleGroupPropsEqual(prev: SimpleIsolatedGroupProps, next: SimpleIs
 	return prev.userMsgId === next.userMsgId && prev.subChatId === next.subChatId && prev.isMobile === next.isMobile && prev.sandboxSetupStatus === next.sandboxSetupStatus && prev.isSubChatsSidebarOpen === next.isSubChatsSidebarOpen && prev.stickyTopClass === next.stickyTopClass && prev.sandboxSetupError === next.sandboxSetupError && prev.onRetrySetup === next.onRetrySetup && prev.UserBubbleComponent === next.UserBubbleComponent && prev.ToolCallComponent === next.ToolCallComponent && prev.MessageGroupComponent === next.MessageGroupComponent && prev.toolRegistry === next.toolRegistry;
 }
 export function SimpleIsolatedGroup({ userMsgId, subChatId, isMobile, sandboxSetupStatus, stickyTopClass, sandboxSetupError, onRetrySetup, UserBubbleComponent, ToolCallComponent, MessageGroupComponent, toolRegistry }: SimpleIsolatedGroupProps) {
-	// Subscribe to this specific user message and its assistant IDs
-	const { userMsg, assistantMsgIds, isLastGroup } = useUserMessageWithAssistants(userMsgId);
-	const { isStreaming } = useStreamingStatus();
-	if (!userMsg) return null;
-	// User message data
-	const rawTextContent = userMsg.parts?.filter((p: any) => p.type === "text").map((p: any) => p.text).join("\n") || "";
-	const imageParts = userMsg.parts?.filter((p: any) => p.type === "data-image") || [];
-	// Extract text mentions (quote/diff) to render separately above sticky block
-	const { textMentions, cleanedText: textContent } = createMemo(() => extractTextMentions(rawTextContent));
-	// Show cloning when sandbox is being set up
-	const shouldShowCloning = sandboxSetupStatus === "cloning" && isLastGroup && assistantMsgIds.length === 0;
-	// Show setup error if sandbox setup failed
-	const shouldShowSetupError = sandboxSetupStatus === "error" && isLastGroup && assistantMsgIds.length === 0;
+	const groupData = useUserMessageWithAssistants(userMsgId);
+	const streamingStatus = useStreamingStatus();
+	const userMsg = () => groupData().userMsg;
+	const assistantMsgIds = () => groupData().assistantMsgIds;
+	const isLastGroup = () => groupData().isLastGroup;
+	const isStreaming = () => streamingStatus().isStreaming;
+	const rawTextContent = createMemo(() => {
+		const msg = userMsg();
+		return msg ? (msg.parts?.filter((p: any) => p.type === "text").map((p: any) => p.text).join("\n") || "") : "";
+	});
+	const imageParts = createMemo(() => userMsg()?.parts?.filter((p: any) => p.type === "data-image") || []);
 	return <MessageGroupComponent>
-      {	/* Attachments - NOT sticky */}
-      {imageParts.length > 0 && <div class="mb-2 pointer-events-auto">
-          <UserBubbleComponent messageId={userMsg.id} textContent="" imageParts={imageParts} skipTextMentionBlocks />
+      <Show when={userMsg()}>
+        {(msg) => {
+          const raw = rawTextContent();
+          const images = imageParts();
+          const ids = assistantMsgIds();
+          const isLast = isLastGroup();
+          const streaming = isStreaming();
+          const shouldShowCloning = sandboxSetupStatus === "cloning" && isLast && ids.length === 0;
+          const shouldShowSetupError = sandboxSetupStatus === "error" && isLast && ids.length === 0;
+          const { textMentions: mentions, cleanedText: content } = extractTextMentions(raw);
+          return <>
+      {images.length > 0 && <div class="mb-2 pointer-events-auto">
+          <UserBubbleComponent messageId={msg.id} textContent="" imageParts={images} skipTextMentionBlocks />
         </div>}
-
-      { /* Text mentions (quote/diff/pasted) - NOT sticky */}
-      {textMentions.length > 0 && <div class="mb-2 pointer-events-auto">
-          <TextMentionBlocks mentions={textMentions} />
+      {mentions.length > 0 && <div class="mb-2 pointer-events-auto">
+          <TextMentionBlocks mentions={mentions} />
         </div>}
-
-      { /* User message text - sticky */}
-      <div data-user-message-id={userMsg.id} class={`[&>div]:!mb-4 pointer-events-auto sticky z-10 ${stickyTopClass}`}>
-        { /* Show "Using X" summary when no text but have attachments */}
-        {!textContent.trim() && (imageParts.length > 0 || textMentions.length > 0) ? <div class="flex justify-start drop-shadow-[0_10px_20px_hsl(var(--background))]" data-user-bubble>
+      <div data-user-message-id={msg.id} class={`[&>div]:!mb-4 pointer-events-auto sticky z-10 ${stickyTopClass}`}>
+        {!content.trim() && (images.length > 0 || mentions.length > 0) ? <div class="flex justify-start drop-shadow-[0_10px_20px_hsl(var(--background))]" data-user-bubble>
             <div class="space-y-2 w-full">
               <div class="bg-input-background border px-3 py-2 rounded-xl text-sm text-muted-foreground italic">
                 {(() => {
- const parts: string[] = [];
-		if (imageParts.length > 0) {
-			parts.push(imageParts.length === 1 ? "image" : `${imageParts.length} images`);
-		}
-		const quoteCount = textMentions.filter((m) => m.type === "quote" || m.type === "pasted").length;
-		const codeCount = textMentions.filter((m) => m.type === "diff").length;
-		if (quoteCount > 0) {
-			parts.push(quoteCount === 1 ? "selected text" : `${quoteCount} text selections`);
-		}
-		if (codeCount > 0) {
-			parts.push(codeCount === 1 ? "code selection" : `${codeCount} code selections`);
-		}
-		return `Using ${parts.join(", ")}`;
-	})()}
+                  const parts: string[] = [];
+                  if (images.length > 0) parts.push(images.length === 1 ? "image" : `${images.length} images`);
+                  const quoteCount = mentions.filter((m) => m.type === "quote" || m.type === "pasted").length;
+                  const codeCount = mentions.filter((m) => m.type === "diff").length;
+                  if (quoteCount > 0) parts.push(quoteCount === 1 ? "selected text" : `${quoteCount} text selections`);
+                  if (codeCount > 0) parts.push(codeCount === 1 ? "code selection" : `${codeCount} code selections`);
+                  return `Using ${parts.join(", ")}`;
+                })()}
               </div>
             </div>
-          </div> : <UserBubbleComponent messageId={userMsg.id} textContent={textContent} imageParts={[]} skipTextMentionBlocks />}
-
-        {	/* Cloning indicator */}
+          </div> : <UserBubbleComponent messageId={msg.id} textContent={content} imageParts={[]} skipTextMentionBlocks />}
         {shouldShowCloning && <div class="mt-4">
             <ToolCallComponent icon={toolRegistry["tool-cloning"]?.icon} title={toolRegistry["tool-cloning"]?.title({}) || "Cloning..."} isPending={true} isError={false} />
           </div>}
-
-        { /* Setup error with retry */}
         {shouldShowSetupError && <div class="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
             <div class="flex items-center gap-2 text-destructive text-sm">
-              <span>
-                Failed to set up sandbox
-                {sandboxSetupError ? `: ${sandboxSetupError}` : ""}
-              </span>
-              {onRetrySetup && <button class="px-2 py-1 text-sm hover:bg-destructive/20 rounded" onClick={onRetrySetup}>
-                  Retry
-                </button>}
+              <span>Failed to set up sandbox{sandboxSetupError ? `: ${sandboxSetupError}` : ""}</span>
+              {onRetrySetup && <button class="px-2 py-1 text-sm hover:bg-destructive/20 rounded" onClick={onRetrySetup}>Retry</button>}
             </div>
           </div>}
       </div>
-
-      { /* Assistant messages */}
-      {assistantMsgIds.length > 0 && <MemoizedAssistantMessages assistantMsgIds={assistantMsgIds} subChatId={subChatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} />}
-
-      { /* Planning indicator */}
-      {isStreaming && isLastGroup && assistantMsgIds.length === 0 && sandboxSetupStatus === "ready" && <div class="mt-4">
+      {ids.length > 0 && <MemoizedAssistantMessages assistantMsgIds={ids} subChatId={subChatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} />}
+      {streaming && isLast && ids.length === 0 && sandboxSetupStatus === "ready" && <div class="mt-4">
           <ToolCallComponent icon={toolRegistry["tool-planning"]?.icon} title={toolRegistry["tool-planning"]?.title({}) || "Planning..."} isPending={true} isError={false} />
         </div>}
+    </>;
+        }}
+      </Show>
     </MessageGroupComponent>;
 }
 // ============================================================================

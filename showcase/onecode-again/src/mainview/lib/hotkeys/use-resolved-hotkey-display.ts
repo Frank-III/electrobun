@@ -1,4 +1,3 @@
-import { useAtomValue } from "../state/jotai"
 import { customHotkeysAtom } from "../atoms"
 import { getResolvedHotkey, hotkeyToDisplay, getShortcutAction, keysToDisplay, keysToHotkeyString } from "./shortcut-registry"
 import type { ShortcutActionId } from "./types"
@@ -15,7 +14,7 @@ import type { ShortcutActionId } from "./types"
  * // Returns "⌘\" by default, or custom binding if set
  */
 export function useResolvedHotkeyDisplay(actionId: ShortcutActionId): string | null {
-  const config = useAtomValue(customHotkeysAtom)
+  const config = customHotkeysAtom[0]
   const hotkey = getResolvedHotkey(actionId, config)
   if (!hotkey) return null
   return hotkeyToDisplay(hotkey)
@@ -32,7 +31,7 @@ export function useResolvedHotkeyDisplayWithAlt(actionId: ShortcutActionId): {
   primary: string | null
   alt: string | null
 } {
-  const config = useAtomValue(customHotkeysAtom)
+  const config = customHotkeysAtom[0]
   const hotkey = getResolvedHotkey(actionId, config)
   const action = getShortcutAction(actionId)
 

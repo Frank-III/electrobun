@@ -1,4 +1,3 @@
-"use client";
 /**
 * VS Code Theme Provider
 * 
@@ -8,7 +7,6 @@
 * - Integrates with Shiki for syntax highlighting
 */
 import { createContext, useContext, createEffect, createMemo, onCleanup, type ParentProps } from "solid-js";
-import { useAtom, useAtomValue, useSetAtom } from "../state/jotai";
 import { useColorMode } from "@kobalte/core";
 import type { ITheme } from "xterm";
 import { selectedFullThemeIdAtom, fullThemeDataAtom, systemLightThemeIdAtom, systemDarkThemeIdAtom, importedThemesAtom, type VSCodeFullTheme } from "../atoms";
@@ -99,11 +97,11 @@ const DEFAULT_TERMINAL_THEME_LIGHT: ITheme = {
 export function VSCodeThemeProvider(props: ParentProps) {
 	const { colorMode, setColorMode } = useColorMode();
 	// Atoms
-	const [selectedThemeId, setSelectedThemeId] = useAtom(selectedFullThemeIdAtom);
-	const [fullThemeData, setFullThemeData] = useAtom(fullThemeDataAtom);
-	const systemLightThemeId = useAtomValue(systemLightThemeIdAtom);
-	const systemDarkThemeId = useAtomValue(systemDarkThemeIdAtom);
-	const importedThemes = useAtomValue(importedThemesAtom);
+	const [selectedThemeId, setSelectedThemeId] = selectedFullThemeIdAtom;
+	const [fullThemeData, setFullThemeData] = fullThemeDataAtom;
+	const systemLightThemeId = systemLightThemeIdAtom[0];
+	const systemDarkThemeId = systemDarkThemeIdAtom[0];
+	const importedThemes = importedThemesAtom[0];
 	// Combine builtin and imported themes
 	const allThemes = createMemo(() => [...BUILTIN_THEMES, ...importedThemes()]);
 	// Determine if we're in dark mode (from color mode or theme type)

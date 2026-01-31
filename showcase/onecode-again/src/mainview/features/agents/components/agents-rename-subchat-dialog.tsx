@@ -1,4 +1,3 @@
-"use client";
 import { Motion, Presence } from "solid-motionone";
 import { Show } from "solid-js";
 import { createEffect, createSignal, onCleanup } from "solid-js";

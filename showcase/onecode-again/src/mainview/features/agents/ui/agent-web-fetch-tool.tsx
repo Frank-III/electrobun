@@ -1,4 +1,3 @@
-"use client";
 import { createSignal } from "solid-js";
 import { GlobeIcon, IconSpinner, ExpandIcon, CollapseIcon } from "../../../components/ui/icons";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
@@ -60,14 +59,14 @@ export function AgentWebFetchTool({ part, chatStatus }: AgentWebFetchToolProps) 
 
           { /* Expand/Collapse icon */}
           {hasContent && !isPending && <div class="relative w-4 h-4">
-              <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
-              <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
+              <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
+              <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
             </div>}
         </div>
       </div>
 
       { /* Content - expandable */}
-      {hasContent && isExpanded && <div class="border-t border-border max-h-[300px] overflow-y-auto">
+      {hasContent && isExpanded() && <div class="border-t border-border max-h-[300px] overflow-y-auto">
           <pre class="px-2.5 py-2 text-xs text-foreground whitespace-pre-wrap break-words font-mono">
             {result}
           </pre>

@@ -1,5 +1,4 @@
-"use client";
-import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
 // import { useSearchParams, useRouter } from "next/navigation" // Desktop doesn't use next/navigation
 // Desktop: mock Next.js navigation hooks
 const useSearchParams = () => ({ get: () => null });
@@ -23,7 +22,8 @@ import { AgentsSidebar } from "../../sidebar/agents-sidebar";
 import { AgentsSubChatsSidebar } from "../../sidebar/agents-subchats-sidebar";
 import { AgentPreview } from "./agent-preview";
 import { AgentDiffView } from "./agent-diff-view";
-import { TerminalSidebar, terminalSidebarOpenAtomFamily } from "../../terminal";
+import { TerminalSidebar } from "../../terminal/terminal-sidebar";
+import { useTerminalStore } from "../../terminal/terminal-store-context";
 import { useAgentSubChatStore, type SubChatMeta } from "../stores/sub-chat-store";
 import { Motion, Presence } from "solid-motionone";
 // import { ResizableSidebar } from "@/app/(alpha)/canvas/[id]/{components}/resizable-sidebar"
@@ -52,9 +52,9 @@ export function AgentsContent() {
 	const [previewSidebarOpen, setPreviewSidebarOpen] = agentsPreviewSidebarOpenAtom;
 	const [mobileViewMode, setMobileViewMode] = agentsMobileViewModeAtom;
 	const [subChatsSidebarMode, setSubChatsSidebarMode] = agentsSubChatsSidebarModeAtom;
-	// Per-chat terminal sidebar state
-	const terminalSidebarAtom = createMemo(() => terminalSidebarOpenAtomFamily(selectedChatId() || ""));
-	const [, setTerminalSidebarOpen] = terminalSidebarAtom();
+	const [store, setStore] = useTerminalStore();
+	const terminalSidebarOpen = () => store.sidebarOpenByChatId[selectedChatId() || ""] ?? false;
+	const setTerminalSidebarOpen = (open: boolean) => setStore("sidebarOpenByChatId", selectedChatId() || "", open);
 	const [hasOpenedSubChatsSidebar, setHasOpenedSubChatsSidebar] = createSignal(false);
 	const [wasSubChatsSidebarOpen, setWasSubChatsSidebarOpen] = createSignal(false);
 	const [shouldAnimateSubChatsSidebar, setShouldAnimateSubChatsSidebar] = createSignal(subChatsSidebarMode() !== "sidebar");
@@ -107,16 +107,14 @@ export function AgentsContent() {
 		return subChat?.name ?? null;
 	});
 	createEffect(() => {
-		if (typeof window !== "undefined" && window.desktopApi?.setWindowTitle) {
-			window.desktopApi.setWindowTitle(activeSubChatName || "");
-		}
+		desktopRpc.window.setTitle.mutate({ title: activeSubChatName() || "1Code" });
 	});
 	// Fetch teams for header (desktop: no teams, stub)
-	const teamsQuery = useQuery({
+	const teamsQuery = useQuery(() => ({
 		queryKey: ["teams", "user"] as const,
 		queryFn: () => Promise.resolve([] as any[]),
 		enabled: !!selectedTeamId(),
-	});
+	}));
 	const teams = () => teamsQuery.data ?? [];
 	const selectedTeam = () => teams()?.find((t: any) => t.id === selectedTeamId()) as any;
 	// Fetch agent chats for keyboard navigation and mobile view
@@ -206,22 +204,16 @@ export function AgentsContent() {
 		}
 	});
 	// On mobile: when in terminal mode, sync with terminal sidebar close
-	const [terminalSidebarOpen] = terminalSidebarAtom();
 	createEffect(() => {
-		// If terminal sidebar closed while in terminal mode, go back to chat
 		if (isMobile() && mobileViewMode() === "terminal" && !terminalSidebarOpen()) {
 			setMobileViewMode("chat");
 		}
 	});
 	// On mobile: hide native traffic lights when not in "chats" mode
-	// Traffic lights should only show in the agents list view
+	// Note: Electrobun doesn't support setTrafficLightVisibility (macOS-specific)
+	// Traffic lights are always visible in Electrobun windows
 	createEffect(() => {
-		if (!isMobile()) return;
-		if (typeof window === "undefined" || !window.desktopApi?.setTrafficLightVisibility) return;
-		// Hide traffic lights when not in chats list mode
-		if (mobileViewMode() !== "chats") {
-			window.desktopApi.setTrafficLightVisibility(false);
-		}
+		// No-op: Electrobun doesn't support traffic light visibility control
 	});
 	// Get recent chats for quick-switch dialog
 	// Order: current chat first (left), then previous chats by last updated
@@ -250,7 +242,7 @@ export function AgentsContent() {
 			const isCtrlTabOnly = e.ctrlKey && e.key === "Tab" && !e.altKey && !e.metaKey;
 			const isOptCtrlTab = e.altKey && e.ctrlKey && e.key === "Tab" && !e.metaKey;
 			// Workspace switch: Ctrl+Tab by default, or Opt+Ctrl+Tab when ctrlTabTarget is "agents"
-			const isWorkspaceSwitchShortcut = ctrlTabTarget === "workspaces" ? isCtrlTabOnly : isOptCtrlTab;
+			const isWorkspaceSwitchShortcut = ctrlTabTarget() === "workspaces" ? isCtrlTabOnly : isOptCtrlTab;
 			if (isWorkspaceSwitchShortcut) {
 				e.preventDefault();
 					setWasShiftPressedRef(e.shiftKey);
@@ -315,7 +307,7 @@ export function AgentsContent() {
 			// When modifier key is released
 			// For workspaces mode (Ctrl+Tab only): react to Control release
 			// For agents mode (Opt+Ctrl+Tab): react to Alt or Control release
-			const isRelevantKeyRelease = ctrlTabTarget === "workspaces" ? e.key === "Control" : e.key === "Alt" || e.key === "Control";
+			const isRelevantKeyRelease = ctrlTabTarget() === "workspaces" ? e.key === "Control" : e.key === "Alt" || e.key === "Control";
 			if (isRelevantKeyRelease) {
 				setModifierKeysHeldRef(false);
 				// If timer is still running (quick press - dialog not shown yet)
@@ -418,7 +410,7 @@ export function AgentsContent() {
 			const isCtrlTabOnly = e.ctrlKey && e.key === "Tab" && !e.altKey && !e.metaKey;
 			const isOptCtrlTab = e.altKey && e.ctrlKey && e.key === "Tab" && !e.metaKey;
 			// Agent switch: Opt+Ctrl+Tab by default, or Ctrl+Tab when ctrlTabTarget is "agents"
-			const isAgentSwitchShortcut = ctrlTabTarget === "agents" ? isCtrlTabOnly : isOptCtrlTab;
+			const isAgentSwitchShortcut = ctrlTabTarget() === "agents" ? isCtrlTabOnly : isOptCtrlTab;
 			if (isAgentSwitchShortcut) {
 				e.preventDefault();
 				setSubChatWasShiftPressedRef(e.shiftKey);
@@ -491,7 +483,7 @@ export function AgentsContent() {
 			// When modifier key is released
 			// For agents mode (Ctrl+Tab): react to Control release
 			// For workspaces mode (Opt+Ctrl+Tab): react to Alt or Control release
-			const isRelevantKeyRelease = ctrlTabTarget === "agents" ? e.key === "Control" : e.key === "Alt" || e.key === "Control";
+			const isRelevantKeyRelease = ctrlTabTarget() === "agents" ? e.key === "Control" : e.key === "Alt" || e.key === "Control";
 			if (isRelevantKeyRelease) {
 				setSubChatModifierKeysHeldRef(false);
 				// If timer is still running (quick press - dialog not shown yet)
@@ -548,20 +540,16 @@ export function AgentsContent() {
 	});
 	// Note: Cmd+E archive hotkey is handled in AgentsSidebar to share undo stack
 	const handleSignOut = async () => {
-		// Check if running in Electron desktop app
-		if (typeof window !== "undefined" && window.desktopApi) {
-			// Use desktop logout which clears the token and shows login page
-			await window.desktopApi.logout();
-		} else {
-			// Web: use Clerk sign out
-			await signOut({ redirectUrl: window.location.pathname });
-		}
+		// Electrobun mode: auth removed, just clear local state
+		console.log("[SignOut] Auth removed in Electrobun mode");
+		// Navigate to home or reload
+		window.location.href = "/";
 	};
-	// Check if sub-chats data is loaded (use separate selectors to avoid object creation)
-	const subChatsStoreChatId = useAgentSubChatStore((state) => state.chatId);
-	const subChatsCount = useAgentSubChatStore((state) => state.allSubChats.length);
+	// Check if sub-chats data is loaded (reactive store access; subChatStore from above)
+	const subChatsStoreChatId = createMemo(() => subChatStore.chatId);
+	const subChatsCount = createMemo(() => subChatStore.allSubChats.length);
 	// Check if sub-chats are still loading (store not yet initialized for this chat)
-	const isLoadingSubChats = selectedChatId() !== null && (subChatsStoreChatId !== selectedChatId() || subChatsCount === 0);
+	const isLoadingSubChats = createMemo(() => selectedChatId() !== null && (subChatsStoreChatId() !== selectedChatId() || subChatsCount() === 0));
 	// Track sub-chats sidebar open state for animation control
 	// Now renders even while loading to show spinner (mobile always uses tabs)
 	const isSubChatsSidebarOpen = selectedChatId() && subChatsSidebarMode() === "sidebar" && !isMobile();
@@ -598,25 +586,9 @@ export function AgentsContent() {
 	// Check if terminal can be shown (worktree exists - desktop only)
 	const worktreePath = (chatData() as any)?.worktreePath as string | undefined;
 	const canShowTerminal = !!worktreePath;
-	// Mobile layout - completely different structure
-	if (isMobile()) {
-		return <div class="flex h-full bg-background" data-agents-page data-mobile-view>
-        {		/* Mobile View Modes */}
-		{mobileViewMode() === "chats" ? <AgentsSidebar userId={userId} clerkUser={user} onSignOut={handleSignOut} onToggleSidebar={() => {}} isMobileFullscreen={true} onChatSelect={() => setMobileViewMode("chat")} /> : mobileViewMode() === "preview" && selectedChatId() && canShowPreview ? <AgentPreview chatId={selectedChatId()!} sandboxId={chatData()!.sandbox_id!} port={chatMeta?.sandboxConfig?.port!} isMobile={true} onClose={() => setMobileViewMode("chat")} /> : mobileViewMode() === "diff" && selectedChatId() && canShowDiff ? <AgentDiffView chatId={selectedChatId()!} sandboxId={chatData()!.sandbox_id!} worktreePath={worktreePath} repository={chatMeta?.repository} showFooter={true} isMobile={true} onClose={() => setMobileViewMode("chat")} /> : mobileViewMode() === "terminal" && selectedChatId() && canShowTerminal ? <TerminalSidebar chatId={selectedChatId()!} cwd={worktreePath!} isMobileFullscreen={true} onClose={() => setMobileViewMode("chat")} /> : <div class="h-full w-full flex flex-col overflow-hidden select-text" data-mobile-chat-mode>
-            {selectedChatId() ? <ChatView key={`${chatSourceMode()}-${selectedChatId()}`} chatId={selectedChatId()!} isSidebarOpen={false} onToggleSidebar={() => {}} selectedTeamName={selectedTeam()?.name} selectedTeamImageUrl={selectedTeam()?.image_url} isMobileFullscreen={true} onBackToChats={() => {
- setMobileViewMode("chats");
-			setSelectedChatId(null);
-		}} onOpenPreview={canShowPreview ? () => setMobileViewMode("preview") : undefined} onOpenDiff={canShowDiff ? () => setMobileViewMode("diff") : undefined} onOpenTerminal={canShowTerminal ? () => {
-			setTerminalSidebarOpen(true);
-			setMobileViewMode("terminal");
-		} : undefined} /> : <div class="h-full flex flex-col relative overflow-hidden">
-                <NewChatForm isMobileFullscreen={true} onBackToChats={() => setMobileViewMode("chats")} />
-              </div>}
-          </div>}
-      </div>;
-	}
-	// Desktop layout
-	return <>
+	// Use Show for proper SolidJS reactivity (if/return doesn't re-run on signal changes)
+	return (
+		<Show when={isMobile()} fallback={<>
       <div class="flex h-full">
         {	/* Sub-chats sidebar - only show in sidebar mode when viewing a chat */}
         <ResizableSidebar isOpen={!!isSubChatsSidebarOpen} onClose={() => {
@@ -626,18 +598,39 @@ export function AgentsContent() {
           <AgentsSubChatsSidebar onClose={() => {
 		setShouldAnimateSubChatsSidebar(true);
 		setSubChatsSidebarMode("tabs");
-	}} isMobile={isMobile()} isSidebarOpen={sidebarOpen} onBackToChats={() => setSidebarOpen((prev) => !prev)} isLoading={isLoadingSubChats} agentName={chatData()?.name} />
+	}} isMobile={isMobile()} isSidebarOpen={sidebarOpen} onBackToChats={() => setSidebarOpen((prev) => !prev)} isLoading={isLoadingSubChats()} agentName={chatData()?.name} />
         </ResizableSidebar>
 
         {	/* Main content */}
         <div class="flex-1 min-w-0 overflow-hidden" style={{ "min-width": "350px" }}>
-          {selectedChatId() ? <div class="h-full flex flex-col relative overflow-hidden">
-              <ChatView key={`${chatSourceMode()}-${selectedChatId()}`} chatId={selectedChatId()!} isSidebarOpen={sidebarOpen()} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} selectedTeamName={selectedTeam()?.name} selectedTeamImageUrl={selectedTeam()?.image_url} />
-            </div> : selectedDraftId() || showNewChatForm() ? <div class="h-full flex flex-col relative overflow-hidden">
-              <NewChatForm key={`new-chat-${newChatFormKeyRef()}`} />
-            </div> : betaKanbanEnabled() ? <KanbanView /> : <div class="h-full flex flex-col relative overflow-hidden">
-              <NewChatForm key={`new-chat-${newChatFormKeyRef()}`} />
-            </div>}
+	      <Show
+	        when={selectedChatId()}
+	        fallback={(
+	          <Show
+	            when={selectedDraftId() || showNewChatForm()}
+	            fallback={(
+	              <Show
+	                when={betaKanbanEnabled()}
+	                fallback={(
+	                  <div class="h-full flex flex-col relative overflow-hidden">
+	                    <NewChatForm key={`new-chat-${newChatFormKeyRef()}`} />
+	                  </div>
+	                )}
+	              >
+	                <KanbanView />
+	              </Show>
+	            )}
+	          >
+	            <div class="h-full flex flex-col relative overflow-hidden">
+	              <NewChatForm key={`new-chat-${newChatFormKeyRef()}`} />
+	            </div>
+	          </Show>
+	        )}
+	      >
+	        <div class="h-full flex flex-col relative overflow-hidden">
+	          <ChatView key={`${chatSourceMode()}-${selectedChatId()}`} chatId={selectedChatId()!} isSidebarOpen={sidebarOpen()} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} selectedTeamName={selectedTeam()?.name} selectedTeamImageUrl={selectedTeam()?.image_url} />
+	        </div>
+	      </Show>
         </div>
       </div>
 
@@ -647,9 +640,74 @@ export function AgentsContent() {
       { /* Quick-switch dialog - Sub-chats (Ctrl+Tab) */}
       <SubChatsQuickSwitchDialog isOpen={subChatQuickSwitchOpen()} subChats={subChatQuickSwitchOpen() ? frozenSubChatsRef() ?? [] : recentSubChats} selectedIndex={subChatQuickSwitchSelectedIndex()} onHover={setSubChatQuickSwitchSelectedIndex} />
 
-      { /* Dev mode / Admin sandbox debugger */}
-      {(process.env.NODE_ENV === "development" || isAdmin) && chatData()?.sandbox_id && <a href={`https://codesandbox.io/p/devbox/${chatData()!.sandbox_id}`} target="_blank" rel="noopener noreferrer" class="fixed bottom-4 right-4 z-50 bg-zinc-900 text-zinc-300 px-3 py-1.5 rounded-md text-xs font-mono opacity-70 hover:opacity-100 hover:bg-zinc-800 transition-all cursor-pointer">
-            sandbox: {chatData()!.sandbox_id}
-          </a>}
-    </>;
- }
+	      { /* Dev mode / Admin sandbox debugger */}
+	      <Show when={(process.env.NODE_ENV === "development" || isAdmin) && chatData()?.sandbox_id}>
+	        <a href={`https://codesandbox.io/p/devbox/${chatData()!.sandbox_id}`} target="_blank" rel="noopener noreferrer" class="fixed bottom-4 right-4 z-50 bg-zinc-900 text-zinc-300 px-3 py-1.5 rounded-md text-xs font-mono opacity-70 hover:opacity-100 hover:bg-zinc-800 transition-all cursor-pointer">
+	          sandbox: {chatData()!.sandbox_id}
+	        </a>
+	      </Show>
+    </>}>
+			{/* Mobile layout */}
+			<div class="flex h-full bg-background" data-agents-page data-mobile-view>
+				<Show
+					when={mobileViewMode() === "chats"}
+					fallback={(
+						<Show
+							when={mobileViewMode() === "preview" && selectedChatId() && canShowPreview}
+							fallback={(
+								<Show
+									when={mobileViewMode() === "diff" && selectedChatId() && canShowDiff}
+									fallback={(
+										<Show
+											when={mobileViewMode() === "terminal" && selectedChatId() && canShowTerminal}
+											fallback={(
+												<div class="h-full w-full flex flex-col overflow-hidden select-text" data-mobile-chat-mode>
+													<Show
+														when={selectedChatId()}
+														fallback={(
+															<div class="h-full flex flex-col relative overflow-hidden">
+																<NewChatForm isMobileFullscreen={true} onBackToChats={() => setMobileViewMode("chats")} />
+															</div>
+														)}
+													>
+														<ChatView
+															key={`${chatSourceMode()}-${selectedChatId()}`}
+															chatId={selectedChatId()!}
+															isSidebarOpen={false}
+															onToggleSidebar={() => {}}
+															selectedTeamName={selectedTeam()?.name}
+															selectedTeamImageUrl={selectedTeam()?.image_url}
+															isMobileFullscreen={true}
+															onBackToChats={() => {
+																setMobileViewMode("chats");
+																setSelectedChatId(null);
+															}}
+															onOpenPreview={canShowPreview ? () => setMobileViewMode("preview") : undefined}
+															onOpenDiff={canShowDiff ? () => setMobileViewMode("diff") : undefined}
+															onOpenTerminal={canShowTerminal ? () => {
+																setTerminalSidebarOpen(true);
+																setMobileViewMode("terminal");
+															} : undefined}
+														/>
+													</Show>
+												</div>
+											)}
+										>
+											<TerminalSidebar chatId={selectedChatId()!} cwd={worktreePath!} isMobileFullscreen={true} onClose={() => setMobileViewMode("chat")} />
+										</Show>
+									)}
+								>
+									<AgentDiffView chatId={selectedChatId()!} sandboxId={chatData()!.sandbox_id!} worktreePath={worktreePath} repository={chatMeta?.repository} showFooter={true} isMobile={true} onClose={() => setMobileViewMode("chat")} />
+							</Show>
+						)}
+					>
+						<AgentPreview chatId={selectedChatId()!} sandboxId={chatData()!.sandbox_id!} port={chatMeta?.sandboxConfig?.port!} isMobile={true} onClose={() => setMobileViewMode("chat")} />
+					</Show>
+					)}
+				>
+					<AgentsSidebar userId={userId} clerkUser={user} onSignOut={handleSignOut} onToggleSidebar={() => {}} isMobileFullscreen={true} onChatSelect={() => setMobileViewMode("chat")} />
+				</Show>
+			</div>
+		</Show>
+	);
+}

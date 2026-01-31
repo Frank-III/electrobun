@@ -1,3 +1,4 @@
+import { Show } from "solid-js";
 import type { ChangedFile, CommitInfo } from "../../../../../shared/changes-types";
 import type { ChangesViewMode } from "../../types";
 import { formatRelativeDate } from "../../utils";
@@ -42,6 +43,6 @@ export function CommitItem({ commit, isExpanded, onToggle, selectedFile, selecte
 	};
 	const isCommitSelected = selectedCommitHash === commit.hash;
 	return <CollapsibleRow isExpanded={isExpanded} onToggle={() => onToggle()} triggerClassName="mx-0.5" contentClassName="ml-4 pl-1.5 border-l border-border mt-0.5 mb-0.5" header={<CommitHeader shortHash={commit.shortHash} message={commit.message} date={commit.date} />}>
-			{hasFiles && <FileList files={commit.files} viewMode={viewMode} selectedFile={isCommitSelected ? selectedFile : null} selectedCommitHash={selectedCommitHash} onFileSelect={handleFileSelect} onFileDoubleClick={handleFileDoubleClick} worktreePath={worktreePath} />}
+			<Show when={hasFiles}><FileList files={commit.files} viewMode={viewMode} selectedFile={isCommitSelected ? selectedFile : null} selectedCommitHash={selectedCommitHash} onFileSelect={handleFileSelect} onFileDoubleClick={handleFileDoubleClick} worktreePath={worktreePath} /></Show>
 		</CollapsibleRow>;
 }

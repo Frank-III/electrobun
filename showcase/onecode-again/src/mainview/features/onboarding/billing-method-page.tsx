@@ -1,5 +1,3 @@
-"use client";
-import { useSetAtom } from "../../lib/state/jotai";
 import { createSignal, For, Show } from "solid-js";
 import { Check } from "lucide-solid";
 import { ClaudeCodeIcon, KeyFilledIcon, SettingsFilledIcon } from "../../components/ui/icons";
@@ -34,10 +32,10 @@ const billingOptions: BillingOption[] = [
 	}
 ];
 export function BillingMethodPage() {
-	const setBillingMethod = useSetAtom(billingMethodAtom);
-	const [selectedOption, setSelectedOption] = createSignal("claude-subscription");
+	const setBillingMethod = billingMethodAtom[1];
+	const [selectedOption, setSelectedOption] = createSignal<Exclude<BillingMethod, null>>("claude-subscription");
 	const handleContinue = () => {
-		setBillingMethod(selectedOption);
+		setBillingMethod(selectedOption());
 	};
 	return <div class="h-screen w-screen flex flex-col items-center justify-center bg-background select-none">
       {	/* Draggable title bar area */}

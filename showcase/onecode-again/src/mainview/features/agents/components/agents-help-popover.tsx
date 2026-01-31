@@ -1,9 +1,8 @@
-"use client";
+import type { JSX } from "solid-js";
 import { createSignal } from "solid-js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { KeyboardIcon } from "../../../components/ui/icons";
 import { DiscordIcon } from "../../../icons";
-import { useSetAtom } from "../../../lib/state/jotai";
 import { agentsSettingsDialogOpenAtom, agentsSettingsDialogActiveTabAtom } from "../../../lib/atoms";
 interface AgentsHelpPopoverProps {
 	children: JSX.Element;
@@ -13,8 +12,8 @@ interface AgentsHelpPopoverProps {
 }
 export function AgentsHelpPopover({ children, open: controlledOpen, onOpenChange: controlledOnOpenChange, isMobile = false }: AgentsHelpPopoverProps) {
 	const [internalOpen, setInternalOpen] = createSignal(false);
-	const setSettingsDialogOpen = useSetAtom(agentsSettingsDialogOpenAtom);
-	const setSettingsActiveTab = useSetAtom(agentsSettingsDialogActiveTabAtom);
+	const setSettingsDialogOpen = agentsSettingsDialogOpenAtom[1];
+	const setSettingsActiveTab = agentsSettingsDialogActiveTabAtom[1];
 	// Use controlled state if provided, otherwise use internal state
 	const open = controlledOpen ?? internalOpen;
 	const setOpen = controlledOnOpenChange ?? setInternalOpen;

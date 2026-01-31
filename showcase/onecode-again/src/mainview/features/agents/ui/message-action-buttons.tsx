@@ -1,6 +1,4 @@
-"use client";
 import { createSignal, createEffect, onCleanup, Show, For } from "solid-js";
-import { useAtom, useSetAtom } from "../../../lib/state/jotai";
 import { CheckIcon, CopyIcon, IconSpinner, PauseIcon, VolumeIcon } from "../../../components/ui/icons";
 import { cn } from "../../../lib/utils";
 import { apiFetch } from "../../../lib/api-fetch";
@@ -41,8 +39,8 @@ interface PlayButtonProps {
 
 export function PlayButton(props: PlayButtonProps) {
 	const [state, setState] = createSignal<PlayButtonState>("idle");
-	const [playbackRate] = useAtom(ttsPlaybackRateAtom);
-	const setPlaybackRate = useSetAtom(setTtsPlaybackRateAtom);
+	const [playbackRate] = ttsPlaybackRateAtom;
+	const setPlaybackRate = setTtsPlaybackRateAtom[1];
 	
 	let audioRef: HTMLAudioElement | null = null;
 	let mediaSourceRef: MediaSource | null = null;

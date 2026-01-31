@@ -52,7 +52,7 @@ type PromptInputProps = {
 	maxHeight?: number | string;
 	onSubmit?: () => void;
 	children: JSX.Element;
-	className?: string;
+	class?: string;
 	selectedVariant?: {
 		id: string;
 		name: string;
@@ -80,7 +80,7 @@ function PromptInput(props: PromptInputProps) {
 				contextItems: props.contextItems,
 			}}
 		>
-			<div class={cn("flex flex-col gap-2", props.className)}>{props.children}</div>
+			<div class={cn("flex flex-col gap-2", props.class)}>{props.children}</div>
 		</PromptInputContext.Provider>
 	);
 }
@@ -151,7 +151,7 @@ function PromptInputActions(props: PromptInputActionsProps) {
 }
 
 type PromptInputActionProps = {
-	className?: string;
+	class?: string;
 	tooltip: JSX.Element;
 	children: JSX.Element;
 	side?: "top" | "bottom" | "left" | "right";
@@ -163,7 +163,7 @@ function PromptInputAction(props: PromptInputActionProps) {
 			<TooltipTrigger>
 				{props.children}
 			</TooltipTrigger>
-			<TooltipContent class={props.className}>
+			<TooltipContent class={props.class}>
 				{props.tooltip}
 			</TooltipContent>
 		</Tooltip>

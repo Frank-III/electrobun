@@ -1,4 +1,3 @@
-"use client";
 import { createContext, useContext, createSignal, createEffect, createMemo, onCleanup, type JSX } from "solid-js";
 // Discriminated union for selection source
 export type TextSelectionSource = {

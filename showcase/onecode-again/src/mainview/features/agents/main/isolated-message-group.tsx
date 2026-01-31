@@ -1,6 +1,5 @@
-"use client";
-import { createMemo } from "solid-js";
-import { useAtomValue } from "../../../lib/state/jotai";
+import type { JSX, Component } from "solid-js";
+import { createMemo, Show } from "solid-js";
 import { messageAtomFamily, assistantIdsForUserMsgAtomFamily, isLastUserMessageAtomFamily, isStreamingAtom } from "../stores/message-store";
 import { MemoizedAssistantMessages } from "./messages-list";
 import { extractTextMentions, TextMentionBlocks } from "../mentions/render-file-mentions";
@@ -56,10 +55,10 @@ function areGroupPropsEqual(prev: IsolatedMessageGroupProps, next: IsolatedMessa
 }
 export function IsolatedMessageGroup({ userMsgId, subChatId, chatId, isMobile, sandboxSetupStatus, stickyTopClass, sandboxSetupError, onRetrySetup, UserBubbleComponent, ToolCallComponent, MessageGroupWrapper, toolRegistry }: IsolatedMessageGroupProps) {
 	// Subscribe to specific atoms - NOT the whole messages array
-	const userMsg = useAtomValue(messageAtomFamily(userMsgId));
-	const assistantIds = useAtomValue(assistantIdsForUserMsgAtomFamily(userMsgId));
-	const isLastGroup = useAtomValue(isLastUserMessageAtomFamily(userMsgId));
-	const isStreaming = useAtomValue(isStreamingAtom);
+	const userMsg = messageAtomFamily(userMsgId)[0];
+	const assistantIds = assistantIdsForUserMsgAtomFamily(userMsgId)[0];
+	const isLastGroup = isLastUserMessageAtomFamily(userMsgId)[0];
+	const isStreaming = isStreamingAtom[0];
 	// Extract user message content
 	// Note: file-content parts are hidden from UI but sent to agent
 	const rawTextContent = userMsg?.parts?.filter((p: any) => p.type === "text").map((p: any) => p.text).join("\n") || "";
@@ -78,14 +77,14 @@ export function IsolatedMessageGroup({ userMsgId, subChatId, chatId, isMobile, s
 	const isAttachmentOnlyMessage = !textContent.trim() && (imageParts.length > 0 || textMentions.length > 0);
 	return <MessageGroupWrapper isLastGroup={isLastGroup}>
       {	/* Attachments - NOT sticky (only when there's also text) */}
-      {imageParts.length > 0 && !isImageOnlyMessage && <div class="mb-2 pointer-events-auto">
+      <Show when={imageParts.length > 0 && !isImageOnlyMessage}><div class="mb-2 pointer-events-auto">
           <UserBubbleComponent messageId={userMsgId} textContent="" imageParts={imageParts} skipTextMentionBlocks />
-        </div>}
+        </div></Show>
 
       { /* Text mentions (quote/diff/pasted) - NOT sticky */}
-      {textMentions.length > 0 && <div class="mb-2 pointer-events-auto">
+      <Show when={textMentions.length > 0}><div class="mb-2 pointer-events-auto">
           <TextMentionBlocks mentions={textMentions} />
-        </div>}
+        </div></Show>
 
       { /* User message text - sticky (or attachment-only summary bubble) */}
       <div data-user-message-id={userMsgId} class={`[&>div]:!mb-4 pointer-events-auto sticky z-10 ${stickyTopClass}`}>
@@ -113,30 +112,30 @@ export function IsolatedMessageGroup({ userMsgId, subChatId, chatId, isMobile, s
           </div> : <UserBubbleComponent messageId={userMsgId} textContent={textContent} imageParts={isImageOnlyMessage ? imageParts : []} skipTextMentionBlocks={!isImageOnlyMessage} />}
 
         {	/* Cloning indicator */}
-        {shouldShowCloning && <div class="mt-4">
+        <Show when={shouldShowCloning}><div class="mt-4">
             <ToolCallComponent icon={toolRegistry["tool-cloning"]?.icon} title={toolRegistry["tool-cloning"]?.title({}) || "Cloning..."} isPending={true} isError={false} />
-          </div>}
+          </div></Show>
 
         { /* Setup error with retry */}
-        {shouldShowSetupError && <div class="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+        <Show when={shouldShowSetupError}><div class="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
             <div class="flex items-center gap-2 text-destructive text-sm">
               <span>
                 Failed to set up sandbox
                 {sandboxSetupError ? `: ${sandboxSetupError}` : ""}
               </span>
-              {onRetrySetup && <button class="px-2 py-1 text-sm hover:bg-destructive/20 rounded" onClick={onRetrySetup}>
+              <Show when={onRetrySetup}><button class="px-2 py-1 text-sm hover:bg-destructive/20 rounded" onClick={onRetrySetup}>
                   Retry
-                </button>}
+                </button></Show>
             </div>
-          </div>}
+          </div></Show>
       </div>
 
       { /* Assistant messages - memoized, only re-renders when IDs change */}
-      {assistantIds.length > 0 && <MemoizedAssistantMessages assistantMsgIds={assistantIds} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} />}
+      <Show when={assistantIds.length > 0}><MemoizedAssistantMessages assistantMsgIds={assistantIds} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} /></Show>
 
       { /* Planning indicator */}
-      {isStreaming && isLastGroup() && assistantIds.length === 0 && sandboxSetupStatus === "ready" && <div class="mt-4">
+      <Show when={isStreaming() && isLastGroup() && assistantIds.length === 0 && sandboxSetupStatus === "ready"}><div class="mt-4">
             <ToolCallComponent icon={toolRegistry["tool-planning"]?.icon} title={toolRegistry["tool-planning"]?.title({}) || "Planning..."} isPending={true} isError={false} />
-          </div>}
+          </div></Show>
     </MessageGroupWrapper>;
 }

@@ -1,6 +1,7 @@
 import { createSignal, createEffect, Show, For, onCleanup } from "solid-js";
 import { ChevronRight } from "lucide-solid";
-import { trpc } from "../../../lib/trpc";
+import { useQuery, useMutation } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { cn } from "../../../lib/utils";
 import { AgentIcon } from "../../ui/icons";
 // Hook to detect narrow screen
@@ -29,15 +30,23 @@ interface FileAgent {
 export function AgentsCustomAgentsTab() {
 	const isNarrowScreen = useIsNarrowScreen();
 	const [expandedAgentName, setExpandedAgentName] = createSignal<string | null>(null);
-	const { data: agents = [], isLoading } = trpc.agents.list.useQuery(undefined);
-	const openInFinderMutation = trpc.external.openInFinder.useMutation();
-	const userAgents = () => agents.filter((a: FileAgent) => a.source === "user");
-	const projectAgents = () => agents.filter((a: FileAgent) => a.source === "project");
+	const agentsQuery = useQuery(() => ({
+		queryKey: ["agents", "list"],
+		queryFn: () => desktopRpc.agents.list({}),
+	}));
+	const agents = () => agentsQuery.data ?? [];
+	const isLoading = () => agentsQuery.isLoading;
+	const openInFinderMutation = useMutation(() => ({
+		mutationFn: (input: { path: string }) =>
+			desktopRpc.external.openInFinder.mutate(input),
+	}));
+	const userAgents = () => (agents() ?? []).filter((a: FileAgent) => a.source === "user");
+	const projectAgents = () => (agents() ?? []).filter((a: FileAgent) => a.source === "project");
 	const handleExpandAgent = (agentName: string) => {
 		setExpandedAgentName(expandedAgentName() === agentName ? null : agentName);
 	};
 	const handleOpenInFinder = (path: string) => {
-		openInFinderMutation.mutate(path);
+		openInFinderMutation.mutate({ path });
 	};
 	return <div class="p-6 space-y-6 overflow-y-auto max-h-[70vh]">
       {/* Header - hidden on narrow screens */}
@@ -57,12 +66,12 @@ export function AgentsCustomAgentsTab() {
 
       {/* Agents List */}
       <div class="space-y-4">
-        <Show when={!isLoading} fallback={
+        <Show when={!isLoading()} fallback={
           <div class="bg-background rounded-lg border border-border p-4 text-sm text-muted-foreground text-center">
             Loading agents...
           </div>
         }>
-          <Show when={agents.length > 0} fallback={
+          <Show when={(agents() ?? []).length > 0} fallback={
             <div class="bg-background rounded-lg border border-border p-6 text-center">
               <AgentIcon class="h-8 w-8 text-muted-foreground/50 mx-auto mb-3" />
               <p class="text-sm text-muted-foreground mb-2">

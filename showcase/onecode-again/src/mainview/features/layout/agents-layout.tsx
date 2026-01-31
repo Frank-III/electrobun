@@ -1,10 +1,10 @@
 import { createEffect, createSignal, createMemo, onCleanup } from "solid-js";
-import { useAtom, useAtomValue, useSetAtom } from "../../lib/state/jotai";
 import { isDesktopApp } from "../../lib/utils/platform";
 import { useIsMobile } from "../../lib/hooks/use-mobile";
-import { agentsSidebarOpenAtom, agentsSidebarWidthAtom, agentsSettingsDialogOpenAtom, agentsSettingsDialogActiveTabAtom, isDesktopAtom, isFullscreenAtom, anthropicOnboardingCompletedAtom, customHotkeysAtom, betaKanbanEnabledAtom } from "../../lib/atoms";
+import { agentsSidebarOpenAtom, agentsSidebarWidthAtom, agentsSettingsDialogOpenAtom, agentsSettingsDialogActiveTabAtom, isDesktopAtom, isFullscreenAtom, customHotkeysAtom, betaKanbanEnabledAtom } from "../../lib/atoms";
 import { selectedAgentChatIdAtom, selectedProjectAtom, selectedDraftIdAtom, showNewChatFormAtom } from "../agents/atoms";
-import { trpc } from "../../lib/trpc";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "../../lib/desktop-rpc";
 import { useAgentsHotkeys } from "../agents/lib/agents-hotkeys-manager";
 import { toggleSearchAtom } from "../agents/search";
 import { AgentsSettingsDialog } from "../../components/dialogs/agents-settings-dialog";
@@ -32,72 +32,69 @@ export function AgentsLayout() {
 	// No useHydrateAtoms - desktop doesn't need SSR, atomWithStorage handles persistence
 	const isMobile = useIsMobile();
 	// Global desktop/fullscreen state - initialized here at root level
-	const [isDesktop, setIsDesktop] = useAtom(isDesktopAtom);
-	const [, setIsFullscreen] = useAtom(isFullscreenAtom);
+	const [isDesktop, setIsDesktop] = isDesktopAtom;
+	const [, setIsFullscreen] = isFullscreenAtom;
 	// Initialize isDesktop on mount
 	createEffect(() => {
 		setIsDesktop(isDesktopApp());
 	});
-	// Subscribe to fullscreen changes from Electron
+	// Subscribe to fullscreen changes from Electrobun
 	createEffect(() => {
-		if (!isDesktop || typeof window === "undefined" || !window.desktopApi?.windowIsFullscreen) return;
+		if (!isDesktop()) return;
 		// Get initial fullscreen state
-		window.desktopApi.windowIsFullscreen().then(setIsFullscreen);
-		// In dev mode, HMR breaks IPC event subscriptions, so we poll instead
-		const isDev = import.meta.env.DEV;
-		if (isDev) {
-			const interval = setInterval(() => {
-				window.desktopApi?.windowIsFullscreen?.().then(setIsFullscreen);
-			}, 300);
-			onCleanup(() => clearInterval(interval));
-			return;
-		}
-		// In production, use events (more efficient)
-		const unsubscribe = window.desktopApi.onFullscreenChange?.(setIsFullscreen);
-		onCleanup(() => unsubscribe?.());
+		desktopRpc.window.isFullscreen().then((result) => setIsFullscreen(result.isFullscreen));
+		// Poll for fullscreen changes (Electrobun doesn't have fullscreen change events yet)
+		const interval = setInterval(() => {
+			desktopRpc.window.isFullscreen().then((result) => setIsFullscreen(result.isFullscreen));
+		}, 500);
+		onCleanup(() => clearInterval(interval));
 	});
 	// Check for updates on mount and periodically
 	useUpdateChecker();
-	const [sidebarOpen, setSidebarOpen] = useAtom(agentsSidebarOpenAtom);
-	const [sidebarWidth, setSidebarWidth] = useAtom(agentsSidebarWidthAtom);
-	const [settingsOpen, setSettingsOpen] = useAtom(agentsSettingsDialogOpenAtom);
-	const setSettingsActiveTab = useSetAtom(agentsSettingsDialogActiveTabAtom);
-	const [selectedChatId, setSelectedChatId] = useAtom(selectedAgentChatIdAtom);
-	const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom);
-	const setSelectedDraftId = useSetAtom(selectedDraftIdAtom);
-	const setShowNewChatForm = useSetAtom(showNewChatFormAtom);
-	const betaKanbanEnabled = useAtomValue(betaKanbanEnabledAtom);
-	const setAnthropicOnboardingCompleted = useSetAtom(anthropicOnboardingCompletedAtom);
-	// Fetch projects to validate selectedProject exists
-	const { data: projects, isLoading: isLoadingProjects } = trpc.projects.list.useQuery();
+	const [sidebarOpen, setSidebarOpen] = agentsSidebarOpenAtom;
+	const [sidebarWidth, setSidebarWidth] = agentsSidebarWidthAtom;
+	const [settingsOpen, setSettingsOpen] = agentsSettingsDialogOpenAtom;
+	const setSettingsActiveTab = agentsSettingsDialogActiveTabAtom[1];
+	const [selectedChatId, setSelectedChatId] = selectedAgentChatIdAtom;
+	const [selectedProject, setSelectedProject] = selectedProjectAtom;
+	const setSelectedDraftId = selectedDraftIdAtom[1];
+	const setShowNewChatForm = showNewChatFormAtom[1];
+	const betaKanbanEnabled = betaKanbanEnabledAtom[0];
+	// Fetch projects to validate selectedProject exists (Electrobun RPC + Solid Query)
+	const projectsQuery = useQuery(() => ({
+		queryKey: ["projects", "list"] as const,
+		queryFn: () => desktopRpc.projects.list.query(),
+	}));
+	const projects = () => projectsQuery.data;
+	const isLoadingProjects = () => projectsQuery.isLoading;
 	// Validated project - only valid if exists in DB
 	// While loading, trust localStorage value to prevent clearing on app restart
 	const validatedProject = createMemo(() => {
-		if (!selectedProject) return null;
+		if (!selectedProject()) return null;
 		// While loading, trust localStorage value to prevent flicker and clearing
-		if (isLoadingProjects) return selectedProject;
+		if (isLoadingProjects()) return selectedProject();
 		// After loading, validate against DB
-		if (!projects) return null;
-		const exists = projects.some((p) => p.id === selectedProject.id);
-		return exists ? selectedProject : null;
+		const projs = projects();
+		if (!projs) return null;
+		const exists = projs.some((p) => p.id === selectedProject()!.id);
+		return exists ? selectedProject() : null;
 	});
 	// Clear invalid project from storage (only after loading completes)
 	createEffect(() => {
-		if (selectedProject && projects && !isLoadingProjects && !validatedProject) {
+		if (selectedProject() && projects() && !isLoadingProjects() && !validatedProject()) {
 			setSelectedProject(null);
 		}
 	});
-	// Hide native traffic lights when sidebar is closed (no traffic lights needed when sidebar is closed)
+	// Note: Traffic light visibility control is macOS-specific and not available in Electrobun
+	// The traffic lights are always visible on macOS in Electrobun windows
 	createEffect(() => {
-		if (!isDesktop) return;
-		if (typeof window === "undefined" || !window.desktopApi?.setTrafficLightVisibility) return;
-		// When sidebar is closed, hide native traffic lights
+		// No-op: Electrobun doesn't support setTrafficLightVisibility
 		// When sidebar is open, TrafficLights component handles visibility
 		if (!sidebarOpen) {
 			window.desktopApi.setTrafficLightVisibility(false);
 		}
 	});
-	const setChatId = useAgentSubChatStore((state) => state.setChatId);
+	const { setChatId } = useAgentSubChatStore();
 	// Desktop user state
 	const [desktopUser, setDesktopUser] = createSignal(null);
 	// Fetch desktop user on mount
@@ -111,18 +108,18 @@ export function AgentsLayout() {
 		fetchUser();
 	});
 	// Track if this is the initial load - skip auto-open on first load to respect saved state
-	const [isInitialLoadRef, setIsInitialLoadRef] = createSignal(true);
+	const [isInitialLoad, setIsInitialLoad] = createSignal(true);
 	// Auto-open sidebar when project is selected, close when no project
 	// Skip on initial load to preserve user's saved sidebar preference
 	createEffect(() => {
-		if (!projects) return;
+		if (!projects()) return;
 		// On initial load, just mark as loaded and don't change sidebar state
-		if (isInitialLoadRef.current) {
-			isInitialLoadRef.current = false;
+		if (isInitialLoad()) {
+			setIsInitialLoad(false);
 			return;
 		}
 		// After initial load, react to project changes
-		if (validatedProject) {
+		if (validatedProject()) {
 			setSidebarOpen(true);
 		} else {
 			setSidebarOpen(false);
@@ -147,9 +144,9 @@ export function AgentsLayout() {
 		}
 	});
 	// Chat search toggle
-	const toggleChatSearch = useSetAtom(toggleSearchAtom);
+	const toggleChatSearch = toggleSearchAtom[1];
 	// Custom hotkeys config
-	const customHotkeysConfig = useAtomValue(customHotkeysAtom);
+	const customHotkeysConfig = customHotkeysAtom[0];
 	// Initialize hotkeys manager
 	useAgentsHotkeys({
 		setSelectedChatId,

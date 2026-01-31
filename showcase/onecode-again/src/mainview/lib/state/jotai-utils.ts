@@ -1,4 +1,4 @@
-import type { Atom, SignalPair } from "./jotai"
+import type { Atom, SignalPair } from "./store"
 
 export type StorageLike<T> = {
   getItem: (key: string) => T | null

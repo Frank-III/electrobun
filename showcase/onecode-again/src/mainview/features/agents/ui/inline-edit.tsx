@@ -1,4 +1,3 @@
-"use client";
 import { Input } from "../../../components/ui/input";
 import { createEffect, onCleanup, Show } from "solid-js";
 interface InlineEditProps {
@@ -8,7 +7,7 @@ interface InlineEditProps {
 	onCancel: () => void;
 	isEditing: boolean;
 	disabled?: boolean;
-	className?: string;
+	class?: string;
 	placeholder?: string;
 }
 export function InlineEdit(props: InlineEditProps) {
@@ -57,6 +56,6 @@ export function InlineEdit(props: InlineEditProps) {
 		}
 	};
 	return <Show when={props.isEditing}>
-		<Input ref={(el) => inputRef = el} value={props.value} onInput={(e) => props.onChange(e.currentTarget.value)} class={`ring-1 ring-[#3182ED] focus-visible:ring-1 focus-visible:ring-[#3182ED] focus-visible:ring-offset-0 rounded-[2px] shadow-none min-w-0 text-foreground border-0 h-auto px-1 py-0 leading-4 inline-flex ${props.className || ""}`} onKeyDown={handleKeyDown} disabled={props.disabled} placeholder={props.placeholder} />
+		<Input ref={(el) => inputRef = el} value={props.value} onInput={(e) => props.onChange(e.currentTarget.value)} class={`ring-1 ring-[#3182ED] focus-visible:ring-1 focus-visible:ring-[#3182ED] focus-visible:ring-offset-0 rounded-[2px] shadow-none min-w-0 text-foreground border-0 h-auto px-1 py-0 leading-4 inline-flex ${props.class || ""}`} onKeyDown={handleKeyDown} disabled={props.disabled} placeholder={props.placeholder} />
 	</Show>;
 }

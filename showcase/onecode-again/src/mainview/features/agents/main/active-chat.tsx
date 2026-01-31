@@ -456,12 +456,12 @@ function PlayButton({ text, isMobile = false, playbackRate = 1, onPlaybackRateCh
 	return <div class="relative flex items-center">
       <button onClick={handlePlay} tabIndex={-1} class={cn("p-1.5 rounded-md transition-[background-color,transform] duration-150 ease-out hover:bg-accent active:scale-[0.97]", state() === "loading" && "cursor-wait")}>
         <div class="relative w-3.5 h-3.5">
-          {state() === "loading" ? <IconSpinner class="w-3.5 h-3.5 text-muted-foreground animate-spin" /> : state() === "playing" ? <PauseIcon class="w-3.5 h-3.5 text-muted-foreground" /> : <VolumeIcon class="w-3.5 h-3.5 text-muted-foreground" />}
+          <Show when={state() === "loading"} fallback={<Show when={state() === "playing"} fallback={<VolumeIcon class="w-3.5 h-3.5 text-muted-foreground" />}><PauseIcon class="w-3.5 h-3.5 text-muted-foreground" /></Show>}><IconSpinner class="w-3.5 h-3.5 text-muted-foreground animate-spin" /></Show>
         </div>
       </button>
 
       {	/* Speed selector - cyclic button with animation, only visible when playing */}
-      {state() === "playing" && <button onClick={() => {
+      <Show when={state() === "playing"}><button onClick={() => {
  const currentIndex = PLAYBACK_SPEEDS.indexOf(playbackRate);
 		const nextIndex = (currentIndex + 1) % PLAYBACK_SPEEDS.length;
 		onPlaybackRateChange?.(PLAYBACK_SPEEDS[nextIndex]);
@@ -475,7 +475,7 @@ function PlayButton({ text, isMobile = false, playbackRate = 1, onPlaybackRateCh
               )}
             </For>
           </div>
-        </button>}
+        </button></Show>
     </div>;
 }
 // Rollback button component for reverting to a previous message state
@@ -651,7 +651,7 @@ function CollapsibleSteps({ stepsCount, children, defaultExpanded = false }: Col
           </div>
         </button>
       </div>
-      {isExpanded() && <div class="mt-1 space-y-1.5">{children}</div>}
+      <Show when={isExpanded()}><div class="mt-1 space-y-1.5">{children}</div></Show>
     </div>;
 }
 // Diff sidebar content component with responsive layout
@@ -732,9 +732,9 @@ function CommitFileItem({ file, onClick }: {
 	const dirPath = file.path.includes("/") ? file.path.substring(0, file.path.lastIndexOf("/")) : "";
 	return <div class={cn("flex items-center gap-2 px-2 py-1 cursor-pointer transition-colors", "hover:bg-muted/80")} onClick={onClick}>
       <div class="flex-1 min-w-0 flex items-center overflow-hidden">
-        {dirPath && <span class="text-xs text-muted-foreground truncate flex-shrink min-w-0">
+        <Show when={dirPath}><span class="text-xs text-muted-foreground truncate flex-shrink min-w-0">
             {dirPath}/
-          </span>}
+          </span></Show>
         <span class="text-xs font-medium flex-shrink-0 whitespace-nowrap">
           {fileName}
         </span>
@@ -855,9 +855,9 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
 		// Vertical layout: ChangesPanel on top, diff/file list below
 		return <div class="flex flex-col flex-1 min-h-0 overflow-hidden">
         {		/* Top: ChangesPanel (file list + commit) */}
-        {worktreePath && <div class={cn("flex-shrink-0 overflow-hidden flex flex-col", "h-[45%] min-h-[200px] border-b border-border/50")}>
-            <ChangesPanel worktreePath={worktreePath} selectedFilePath={selectedFilePath} onFileSelect={handleDiffFileSelect} onFileOpenPinned={() => {}} onCreatePr={onCreatePr} onCommitSuccess={handleCommitSuccess} subChats={subChats} initialSubChatFilter={filteredSubChatId} chatId={chatId} selectedCommitHash={selectedCommit()?.hash ?? undefined} onCommitSelect={handleCommitSelect} onCommitFileSelect={handleCommitFileSelect} onActiveTabChange={setActiveTab} pushCount={(diffStatus as { pushCount?: number } | undefined)?.pushCount} />
-          </div>}
+        <Show when={worktreePath}><div class={cn("flex-shrink-0 overflow-hidden flex flex-col", "h-[45%] min-h-[200px] border-b border-border/50")}>
+            <ChangesPanel worktreePath={worktreePath!} selectedFilePath={selectedFilePath} onFileSelect={handleDiffFileSelect} onFileOpenPinned={() => {}} onCreatePr={onCreatePr} onCommitSuccess={handleCommitSuccess} subChats={subChats} initialSubChatFilter={filteredSubChatId} chatId={chatId} selectedCommitHash={selectedCommit()?.hash ?? undefined} onCommitSelect={handleCommitSelect} onCommitFileSelect={handleCommitFileSelect} onActiveTabChange={setActiveTab} pushCount={(diffStatus as { pushCount?: number } | undefined)?.pushCount} />
+          </div></Show>
         { /* Bottom: File list (when History tab + commit selected) or AgentDiffView (diff) */}
         { /* Both views are always mounted but hidden via CSS to prevent expensive re-mounts */}
         <div class="flex-1 overflow-hidden flex flex-col relative">
@@ -881,9 +881,9 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
                         {commit().shortHash}
                       </button>
                     </div>
-                    {commit().description && <div class="text-xs text-foreground/80 mb-2 whitespace-pre-wrap">
+                    <Show when={commit().description}><div class="text-xs text-foreground/80 mb-2 whitespace-pre-wrap">
                         {commit().description}
-                      </div>}
+                      </div></Show>
                     <div class="text-xs text-muted-foreground">
                       {commit().author} • {commit().date ? new Date(commit().date as string | number | Date).toLocaleString() : "Unknown date"}
                     </div>
@@ -905,15 +905,15 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
 	// Horizontal layout: files on left, diff on right
 	return <div class="flex flex-1 min-h-0 overflow-hidden">
       {	/* Left: ChangesPanel (file list + commit) with resize handle */}
-      {worktreePath && <div class="h-full flex-shrink-0 relative" style={{ width: `${changesPanelWidth()}px` }}>
-          <ChangesPanel worktreePath={worktreePath} selectedFilePath={selectedFilePath} onFileSelect={handleDiffFileSelect} onFileOpenPinned={() => {}} onCreatePr={onCreatePr} onCommitSuccess={handleCommitSuccess} subChats={subChats} initialSubChatFilter={filteredSubChatId} chatId={chatId} selectedCommitHash={selectedCommit()?.hash ?? undefined} onCommitSelect={handleCommitSelect} onCommitFileSelect={handleCommitFileSelect} onActiveTabChange={setActiveTab} pushCount={(diffStatus as { pushCount?: number } | undefined)?.pushCount} />
+      <Show when={worktreePath}><div class="h-full flex-shrink-0 relative" style={{ width: `${changesPanelWidth()}px` }}>
+          <ChangesPanel worktreePath={worktreePath!} selectedFilePath={selectedFilePath} onFileSelect={handleDiffFileSelect} onFileOpenPinned={() => {}} onCreatePr={onCreatePr} onCommitSuccess={handleCommitSuccess} subChats={subChats} initialSubChatFilter={filteredSubChatId} chatId={chatId} selectedCommitHash={selectedCommit()?.hash ?? undefined} onCommitSelect={handleCommitSelect} onCommitFileSelect={handleCommitFileSelect} onActiveTabChange={setActiveTab} pushCount={(diffStatus as { pushCount?: number } | undefined)?.pushCount} />
           { /* Resize handle - styled like ResizableSidebar */}
           <div onPointerDown={handleResizePointerDown} class="absolute top-0 bottom-0 cursor-col-resize z-10" style={{
  right: 0,
 		width: "4px",
 		"margin-right": "-2px"
 	}} />
-        </div>}
+        </div></Show>
       {	/* Right: File list (when History tab) or AgentDiffView (when Changes tab) */}
       { /* Both views are always mounted but hidden via CSS to prevent expensive re-mounts */}
       <div class={cn("flex-1 h-full min-w-0 overflow-hidden relative", "border-l border-border/50")}>
@@ -937,9 +937,9 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
                       {commit().shortHash}
                     </button>
                   </div>
-                  {commit().description && <div class="text-xs text-foreground/80 mb-2 whitespace-pre-wrap">
+                  <Show when={commit().description}><div class="text-xs text-foreground/80 mb-2 whitespace-pre-wrap">
                       {commit().description}
-                    </div>}
+                    </div></Show>
                   <div class="text-xs text-muted-foreground">
                     {commit().author} • {commit().date ? new Date(commit().date as string | number | Date).toLocaleString() : "Unknown date"}
                   </div>
@@ -2675,15 +2675,15 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
         <TextSelectionPopover onAddToContext={addTextContext} onQuickComment={handleQuickComment} onFocusInput={handleFocusInput} />
 
         { /* Quick comment input */}
-        {quickCommentState() && <QuickCommentInput selectedText={quickCommentState()!.selectedText} source={quickCommentState()!.source} rect={quickCommentState()!.rect} onSubmit={handleQuickCommentSubmit} onCancel={handleQuickCommentCancel} />}
+        <Show when={quickCommentState()}>{(state) => <QuickCommentInput selectedText={state().selectedText} source={state().source} rect={state().rect} onSubmit={handleQuickCommentSubmit} onCancel={handleQuickCommentCancel} />}</Show>
 
         { /* Chat search bar */}
         <ChatSearchBar messages={messages()} topOffset={searchBarTopOffset} />
 
         { /* Chat title - flex above scroll area (desktop only) */}
-        {!isMobile && <div class={cn("flex-shrink-0 pb-2", isSubChatsSidebarOpen ? "pt-[52px]" : "pt-2")}>
+        <Show when={!isMobile}><div class={cn("flex-shrink-0 pb-2", isSubChatsSidebarOpen ? "pt-[52px]" : "pt-2")}>
           <ChatTitleEditor name={subChatName()} placeholder="New Chat" onSave={handleRenameSubChat} isMobile={false} chatId={subChatId} hasMessages={messages().length > 0} />
-        </div>}
+        </div></Show>
 
       { /* Messages */}
       <div ref={(el) => {
@@ -2716,21 +2716,21 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 
       { /* User questions panel - shows when AskUserQuestion tool is called */}
       { /* Only show if the pending question belongs to THIS sub-chat */}
-      {pendingQuestions() && <div class="px-4 relative z-20">
+      <Show when={pendingQuestions()}>{(questions) => <div class="px-4 relative z-20">
           <div class="w-full px-2 max-w-2xl mx-auto">
-            <AgentUserQuestion ref={questionRef} pendingQuestions={pendingQuestions()!} onAnswer={handleQuestionsAnswer} onSkip={handleQuestionsSkip} hasCustomText={inputHasContent()} />
+            <AgentUserQuestion ref={questionRef} pendingQuestions={questions()} onAnswer={handleQuestionsAnswer} onSkip={handleQuestionsSkip} hasCustomText={inputHasContent()} />
           </div>
-        </div>}
+        </div>}</Show>
 
       { /* Stacked cards container - queue + status */}
-      {!pendingQuestions() && (queue().length > 0 || changedFilesForSubChat().length > 0) && <div class="px-2 -mb-6 relative z-10">
+      <Show when={!pendingQuestions() && (queue().length > 0 || changedFilesForSubChat().length > 0)}><div class="px-2 -mb-6 relative z-10">
             <div class="w-full max-w-2xl mx-auto px-2">
               { /* Queue indicator card - top card */}
-              {queue().length > 0 && <AgentQueueIndicator queue={queue()} onRemoveItem={handleRemoveFromQueue} onSendNow={handleSendFromQueue} isStreaming={isStreaming()} hasStatusCardBelow={changedFilesForSubChat().length > 0} />}
+              <Show when={queue().length > 0}><AgentQueueIndicator queue={queue()} onRemoveItem={handleRemoveFromQueue} onSendNow={handleSendFromQueue} isStreaming={isStreaming()} hasStatusCardBelow={changedFilesForSubChat().length > 0} /></Show>
               { /* Status card - bottom card, only when there are changed files */}
-              {changedFilesForSubChat().length > 0 && <SubChatStatusCard chatId={parentChatId} subChatId={subChatId} isStreaming={isStreaming()} isCompacting={isCompacting()} changedFiles={changedFilesForSubChat()} worktreePath={projectPath} onStop={handleStop} hasQueueCardAbove={queue().length > 0} />}
+              <Show when={changedFilesForSubChat().length > 0}><SubChatStatusCard chatId={parentChatId} subChatId={subChatId} isStreaming={isStreaming()} isCompacting={isCompacting()} changedFiles={changedFilesForSubChat()} worktreePath={projectPath} onStop={handleStop} hasQueueCardAbove={queue().length > 0} /></Show>
             </div>
-          </div>}
+          </div></Show>
 
       { /* Input - isolated component to prevent re-renders */}
       <ChatInputArea editorRef={editorRef} setEditorRef={setEditorRef} fileInputRef={fileInputRef} setFileInputRef={setFileInputRef} onSend={handleSend} onForceSend={handleForceSend} onStop={handleStop} onCompact={handleCompact} onCreateNewSubChat={onCreateNewSubChat} isStreaming={isStreaming()} isCompacting={isCompacting()} images={images()} files={files()} onAddAttachments={handleAddAttachments} onRemoveImage={removeImage} onRemoveFile={removeFile} isUploading={isUploading()} textContexts={textContexts()} onRemoveTextContext={removeTextContext} diffTextContexts={diffTextContexts()} onRemoveDiffTextContext={removeDiffTextContext} pastedTexts={pastedTexts()} onAddPastedText={addPastedText} onRemovePastedText={removePastedText} onCacheFileContent={cacheFileContent} messageTokenData={messageTokenData()} subChatId={subChatId} parentChatId={parentChatId} teamId={teamId} repository={repository} sandboxId={sandboxId} projectPath={projectPath} changedFiles={changedFilesForSubChat()} isMobile={isMobile} queueLength={queue().length} onSendFromQueue={handleSendFromQueue} firstQueueItemId={queue()[0]?.id} onInputContentChange={setInputHasContent} onSubmitWithQuestionAnswer={submitWithQuestionAnswerCallback()} />
@@ -4388,61 +4388,57 @@ Make sure to preserve all functionality from both branches when resolving confli
         { /* Chat Panel */}
         <div class="flex-1 flex flex-col overflow-hidden relative" style={{ "min-width": "350px" }}>
           { /* SubChatSelector header - absolute when sidebar open (desktop only), regular div otherwise */}
-          {!shouldHideChatHeader && <div class={cn(
+          <Show when={!shouldHideChatHeader}><div class={cn(
  "relative z-20 pointer-events-none",
 		// Mobile: always flex; Desktop: absolute when sidebar open, flex when closed
 		!isMobileFullscreen && subChatsSidebarMode() === "sidebar" ? `absolute top-0 left-0 right-0 ${CHAT_LAYOUT.headerPaddingSidebarOpen}` : `flex-shrink-0 ${CHAT_LAYOUT.headerPaddingSidebarClosed}`
 	)}>
               {	/* Gradient background - only when not absolute */}
-              {(isMobileFullscreen || subChatsSidebarMode() !== "sidebar") && <div class="absolute inset-0 bg-gradient-to-b from-background via-background to-transparent" />}
+              <Show when={isMobileFullscreen || subChatsSidebarMode() !== "sidebar"}><div class="absolute inset-0 bg-gradient-to-b from-background via-background to-transparent" /></Show>
               <div class="pointer-events-auto flex items-center justify-between relative">
                 <div class="flex-1 min-w-0 flex items-center gap-2">
                   { /* Mobile header - simplified with chat name as trigger */}
-                  {isMobileFullscreen ? <MobileChatHeader onCreateNew={handleCreateNewSubChat} onBackToChats={onBackToChats} onOpenPreview={onOpenPreview} canOpenPreview={canOpenPreview} onOpenDiff={onOpenDiff} canOpenDiff={canShowDiffButton} diffStats={diffStats()} onOpenTerminal={onOpenTerminal} canOpenTerminal={!!worktreePath} isArchived={isArchived} onRestore={handleRestoreWorkspace} onOpenLocally={handleOpenLocally} showOpenLocally={showOpenLocally} /> : <>
+                  <Show when={isMobileFullscreen} fallback={<>
                       { /* Header controls - desktop only */}
                       <AgentsHeaderControls isSidebarOpen={isSidebarOpen} onToggleSidebar={onToggleSidebar} hasUnseenChanges={hasAnyUnseenChanges} isSubChatsSidebarOpen={subChatsSidebarMode() === "sidebar"} />
                       <SubChatSelector onCreateNew={handleCreateNewSubChat} isMobile={false} onBackToChats={onBackToChats} onOpenPreview={onOpenPreview} canOpenPreview={canOpenPreview} onOpenDiff={canOpenDiff ? () => setIsDiffSidebarOpen(true) : undefined} canOpenDiff={canShowDiffButton} isDiffSidebarOpen={isDiffSidebarOpen()} diffStats={diffStats()} onOpenTerminal={() => setIsTerminalSidebarOpen(true)} canOpenTerminal={!!worktreePath} chatId={chatId} />
                       { /* Open Locally button - desktop only, sandbox mode */}
-                      {showOpenLocally && <Tooltip delayDuration={500}>
+                      <Show when={showOpenLocally}><Tooltip delayDuration={500}>
                           <TooltipTrigger asChild>
                             <Button variant="default" size="sm" onClick={handleOpenLocally} disabled={isImporting} class="h-6 px-2 gap-1.5 text-xs font-medium ml-2">
-                              {isImporting ? <IconSpinner class="h-3 w-3 animate-spin" /> : <GitFork class="h-3 w-3" />}
+                              <Show when={isImporting} fallback={<GitFork class="h-3 w-3" />}><IconSpinner class="h-3 w-3 animate-spin" /></Show>
                               Fork Locally
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent side="bottom">
                             Continue this session on your local machine
                           </TooltipContent>
-                        </Tooltip>}
-                    </>}
+                        </Tooltip></Show>
+                    </>}><MobileChatHeader onCreateNew={handleCreateNewSubChat} onBackToChats={onBackToChats} onOpenPreview={onOpenPreview} canOpenPreview={canOpenPreview} onOpenDiff={onOpenDiff} canOpenDiff={canShowDiffButton} diffStats={diffStats()} onOpenTerminal={onOpenTerminal} canOpenTerminal={!!worktreePath} isArchived={isArchived} onRestore={handleRestoreWorkspace} onOpenLocally={handleOpenLocally} showOpenLocally={showOpenLocally} /></Show>
                 </div>
                 { /* Open Preview Button - shows when preview is closed (desktop only, local mode only) */}
-                {!isMobileFullscreen && !isPreviewSidebarOpen && sandboxId && chatSourceMode() === "local" && (canOpenPreview ? <Tooltip delayDuration={500}>
+                <Show when={!isMobileFullscreen && !isPreviewSidebarOpen && sandboxId && chatSourceMode() === "local"}>
+                  <Show when={canOpenPreview} fallback={<PreviewSetupHoverCard>
+                      <span class="inline-flex ml-2">
+                        <Button variant="ghost" size="icon" disabled class="h-6 w-6 p-0 text-muted-foreground flex-shrink-0 rounded-md cursor-not-allowed pointer-events-none" aria-label="Preview not available">
+                          <IconOpenSidebarRight class="h-4 w-4" />
+                        </Button>
+                      </span>
+                    </PreviewSetupHoverCard>}>
+                    <Tooltip delayDuration={500}>
                       <TooltipTrigger asChild>
                         <Button variant="ghost" size="icon" onClick={() => setIsPreviewSidebarOpen(true)} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2" aria-label="Open preview">
                           <IconOpenSidebarRight class="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Open preview</TooltipContent>
-                    </Tooltip> : <PreviewSetupHoverCard>
-                      <span class="inline-flex ml-2">
-                        <Button variant="ghost" size="icon" disabled class="h-6 w-6 p-0 text-muted-foreground flex-shrink-0 rounded-md cursor-not-allowed pointer-events-none" aria-label="Preview not available">
-                          <IconOpenSidebarRight class="h-4 w-4" />
-                        </Button>
-                      </span>
-                    </PreviewSetupHoverCard>)}
+                    </Tooltip>
+                  </Show>
+                </Show>
                 { /* Overview/Terminal Button - shows when sidebar is closed and worktree/sandbox exists (desktop only) */}
-                {!isMobileFullscreen && (worktreePath || sandboxId) && (isUnifiedSidebarEnabled() ? !isDetailsSidebarOpen() && <Tooltip delayDuration={500}>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" onClick={() => setIsDetailsSidebarOpen(true)} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2" aria-label="View details">
-                              <IconOpenSidebarRight class="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            View details
-                            {toggleDetailsHotkey && <Kbd>{toggleDetailsHotkey}</Kbd>}
-                          </TooltipContent>
-                        </Tooltip> : !isTerminalSidebarOpen() && <Tooltip delayDuration={500}>
+                <Show when={!isMobileFullscreen && (worktreePath || sandboxId)}>
+                  <Show when={isUnifiedSidebarEnabled()} fallback={
+                    <Show when={!isTerminalSidebarOpen()}><Tooltip delayDuration={500}>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="icon" onClick={() => setIsTerminalSidebarOpen(true)} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2" aria-label="Open terminal">
                               <TerminalSquare class="h-4 w-4" />
@@ -4450,11 +4446,25 @@ Make sure to preserve all functionality from both branches when resolving confli
                           </TooltipTrigger>
                           <TooltipContent side="bottom">
                             Open terminal
-                            {toggleTerminalHotkey && <Kbd>{toggleTerminalHotkey}</Kbd>}
+                            <Show when={toggleTerminalHotkey}><Kbd>{toggleTerminalHotkey}</Kbd></Show>
                           </TooltipContent>
-                        </Tooltip>)}
+                        </Tooltip></Show>
+                  }>
+                    <Show when={!isDetailsSidebarOpen()}><Tooltip delayDuration={500}>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon" onClick={() => setIsDetailsSidebarOpen(true)} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2" aria-label="View details">
+                              <IconOpenSidebarRight class="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            View details
+                            <Show when={toggleDetailsHotkey}><Kbd>{toggleDetailsHotkey}</Kbd></Show>
+                          </TooltipContent>
+                        </Tooltip></Show>
+                  </Show>
+                </Show>
                 { /* Restore Button - shows when viewing archived workspace (desktop only) */}
-                {!isMobileFullscreen && isArchived && <Tooltip delayDuration={500}>
+                <Show when={!isMobileFullscreen && isArchived}><Tooltip delayDuration={500}>
                     <TooltipTrigger asChild>
                       <Button variant="ghost" onClick={handleRestoreWorkspace} disabled={restoreWorkspaceMutation.isPending} class="h-6 px-2 gap-1.5 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2 flex items-center" aria-label="Restore workspace">
                         <IconTextUndo class="h-4 w-4" />
@@ -4465,35 +4475,12 @@ Make sure to preserve all functionality from both branches when resolving confli
                       Restore workspace
                       <Kbd>⇧⌘E</Kbd>
                     </TooltipContent>
-                  </Tooltip>}
+                  </Tooltip></Show>
               </div>
-            </div>}
+            </div></Show>
 
           { /* Chat Content - Keep-alive: render all open tabs, hide inactive with CSS */}
-          {tabsToRender().length > 0 && agentChat() ? <div class="relative flex-1 min-h-0">
-              { /* Loading gate: prevent getOrCreateChat() from caching empty messages before data is ready */}
-              {isLocalChatLoading() ? <div class="flex items-center justify-center h-full">
-                  <IconSpinner class="h-6 w-6 animate-spin" />
-                </div> : tabsToRender().map((subChatId: string) => {
- const chat = getOrCreateChat(subChatId);
-		const isActive = subChatId === activeSubChatId;
-		const isFirstSubChat = getFirstSubChatId(agentSubChats) === subChatId;
-		// Defense in depth: double-check workspace ownership
-		// Use agentSubChats (server data) as primary source, fall back to allSubChats for optimistic updates
-		// This fixes the race condition where allSubChats is empty after setChatId but before setAllSubChats
-		const belongsToWorkspace = agentSubChats.some((sc) => sc.id === subChatId) || allSubChats.some((sc) => sc.id === subChatId);
-		if (!chat || !belongsToWorkspace) return null;
-		return <div key={subChatId} class="absolute inset-0 flex flex-col" style={{
-			transform: isActive ? "translateZ(0)" : "translateZ(0) scale(0.98)",
-			opacity: isActive ? 1 : 0,
-			"pointer-events": isActive ? "auto" : "none",
-			"will-change": "transform, opacity",
-			contain: "layout style paint"
-		}} aria-hidden={!isActive}>
-                    <ChatViewInner chat={chat} subChatId={subChatId} parentChatId={chatId} isFirstSubChat={isFirstSubChat} onAutoRename={handleAutoRename} onCreateNewSubChat={handleCreateNewSubChat} teamId={selectedTeamId || undefined} repository={repository} streamId={agentChatStore.getStreamId(subChatId)} isMobile={isMobileFullscreen} isSubChatsSidebarOpen={subChatsSidebarMode() === "sidebar"} sandboxId={sandboxId || undefined} projectPath={worktreePath || undefined} isArchived={isArchived} onRestoreWorkspace={handleRestoreWorkspace} existingPrUrl={agentChat()?.prUrl} isActive={isActive} />
-                  </div>;
-	})}
-            </div> : <>
+          <Show when={tabsToRender().length > 0 && agentChat()} fallback={<>
               {	/* Empty chat area - no loading indicator */}
               <div class="flex-1" />
 
@@ -4518,12 +4505,12 @@ Make sure to preserve all functionality from both branches when resolving confli
                           <button disabled class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground rounded-md cursor-not-allowed">
                             <ClaudeCodeIcon class="h-3.5 w-3.5" />
                             <span>
-                              {hasCustomClaudeConfig ? "Custom Model" : <>
+                              <Show when={hasCustomClaudeConfig} fallback={<>
                                   Sonnet{" "}
                                   <span class="text-muted-foreground">
                                     4.5
                                   </span>
-                                </>}
+                                </>}>Custom Model</Show>
                             </span>
                             <ChevronDown class="h-3 w-3 shrink-0 opacity-50" />
                           </button>
@@ -4544,27 +4531,52 @@ Make sure to preserve all functionality from both branches when resolving confli
                   </div>
                 </div>
               </div>
-            </>}
+            </>}><div class="relative flex-1 min-h-0">
+              { /* Loading gate: prevent getOrCreateChat() from caching empty messages before data is ready */}
+              <Show when={!isLocalChatLoading()} fallback={<div class="flex items-center justify-center h-full">
+                  <IconSpinner class="h-6 w-6 animate-spin" />
+                </div>}>
+                <For each={tabsToRender()}>{(subChatId: string) => {
+ const chat = getOrCreateChat(subChatId);
+		const isActive = subChatId === activeSubChatId;
+		const isFirstSubChat = getFirstSubChatId(agentSubChats) === subChatId;
+		// Defense in depth: double-check workspace ownership
+		// Use agentSubChats (server data) as primary source, fall back to allSubChats for optimistic updates
+		// This fixes the race condition where allSubChats is empty after setChatId but before setAllSubChats
+		const belongsToWorkspace = agentSubChats.some((sc) => sc.id === subChatId) || allSubChats.some((sc) => sc.id === subChatId);
+		if (!chat || !belongsToWorkspace) return null;
+		return <div key={subChatId} class="absolute inset-0 flex flex-col" style={{
+			transform: isActive ? "translateZ(0)" : "translateZ(0) scale(0.98)",
+			opacity: isActive ? 1 : 0,
+			"pointer-events": isActive ? "auto" : "none",
+			"will-change": "transform, opacity",
+			contain: "layout style paint"
+		}} aria-hidden={!isActive}>
+                    <ChatViewInner chat={chat} subChatId={subChatId} parentChatId={chatId} isFirstSubChat={isFirstSubChat} onAutoRename={handleAutoRename} onCreateNewSubChat={handleCreateNewSubChat} teamId={selectedTeamId || undefined} repository={repository} streamId={agentChatStore.getStreamId(subChatId)} isMobile={isMobileFullscreen} isSubChatsSidebarOpen={subChatsSidebarMode() === "sidebar"} sandboxId={sandboxId || undefined} projectPath={worktreePath || undefined} isArchived={isArchived} onRestoreWorkspace={handleRestoreWorkspace} existingPrUrl={agentChat()?.prUrl} isActive={isActive} />
+                  </div>;
+	}}</For>
+              </Show>
+            </div></Show>
         </div>
 
         { /* Plan Sidebar - shows plan files on the right (leftmost right sidebar) */}
         { /* Only show when we have an active sub-chat with a plan */}
-        {!isMobileFullscreen && activeSubChatIdForPlan() && <ResizableSidebar isOpen={isPlanSidebarOpen() && !!currentPlanPath} onClose={() => setIsPlanSidebarOpen(false)} widthAtom={agentsPlanSidebarWidthAtom} minWidth={400} maxWidth={800} side="right" animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{ "border-left-width": "0.5px" }}>
+        <Show when={!isMobileFullscreen && activeSubChatIdForPlan()}><ResizableSidebar isOpen={isPlanSidebarOpen() && !!currentPlanPath} onClose={() => setIsPlanSidebarOpen(false)} widthAtom={agentsPlanSidebarWidthAtom} minWidth={400} maxWidth={800} side="right" animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{ "border-left-width": "0.5px" }}>
             <AgentPlanSidebar chatId={activeSubChatIdForPlan()!} planPath={currentPlanPath} onClose={() => setIsPlanSidebarOpen(false)} onBuildPlan={handleApprovePlanFromSidebar} refetchTrigger={planEditRefetchTrigger} mode={currentMode} />
-          </ResizableSidebar>}
+          </ResizableSidebar></Show>
 
         { /* Diff View - hidden on mobile fullscreen and when diff is not available */}
         { /* Supports three display modes: side-peek (sidebar), center-peek (dialog), full-page */}
         { /* Wrapped in DiffStateProvider to isolate diff state and prevent ChatView re-renders */}
-        {canOpenDiff && !isMobileFullscreen && <DiffStateProvider isDiffSidebarOpen={isDiffSidebarOpen} parsedFileDiffs={parsedFileDiffs} isDiffSidebarNarrow={isDiffSidebarNarrow} setIsDiffSidebarOpen={setIsDiffSidebarOpen} setDiffStats={setDiffStats} setDiffContent={setDiffContent} setParsedFileDiffs={setParsedFileDiffs} setPrefetchedFileContents={setPrefetchedFileContents} fetchDiffStats={fetchDiffStats}>
+        <Show when={canOpenDiff && !isMobileFullscreen}><DiffStateProvider isDiffSidebarOpen={isDiffSidebarOpen} parsedFileDiffs={parsedFileDiffs} isDiffSidebarNarrow={isDiffSidebarNarrow} setIsDiffSidebarOpen={setIsDiffSidebarOpen} setDiffStats={setDiffStats} setDiffContent={setDiffContent} setParsedFileDiffs={setParsedFileDiffs} setPrefetchedFileContents={setPrefetchedFileContents} fetchDiffStats={fetchDiffStats}>
             <DiffSidebarRenderer worktreePath={worktreePath} chatId={chatId} sandboxId={sandboxId} repository={repository} diffStats={diffStats} branchData={branchData()} gitStatus={gitStatus()} isGitStatusLoading={isGitStatusLoading()} isDiffSidebarOpen={isDiffSidebarOpen} diffDisplayMode={diffDisplayMode} diffSidebarWidth={diffSidebarWidth()} diffViewRef={diffViewRef} diffSidebarRef={diffSidebarRef} handleReview={handleReview} isReviewing={isReviewing} handleCreatePr={handleCreatePr} isCreatingPr={isCreatingPr} handleMergePr={handleMergePr} mergePrMutation={mergePrMutation} handleRefreshGitStatus={handleRefreshGitStatus} hasPrNumber={hasPrNumber} isPrOpen={isPrOpen} hasMergeConflicts={hasMergeConflicts} handleFixConflicts={handleFixConflicts} handleExpandAll={handleExpandAll} handleCollapseAll={handleCollapseAll} diffMode={diffMode} setDiffMode={setDiffMode} handleMarkAllViewed={handleMarkAllViewed} handleMarkAllUnviewed={handleMarkAllUnviewed} isDesktop={isDesktop} isFullscreen={isFullscreen} setDiffDisplayMode={setDiffDisplayMode} handleCommitToPr={handleCommitToPr} isCommittingToPr={isCommittingToPr}>
               <DiffSidebarContent worktreePath={worktreePath} chatId={chatId} sandboxId={sandboxId} repository={repository} diffStats={diffStats} setDiffStats={setDiffStats} diffContent={diffContent} parsedFileDiffs={parsedFileDiffs} prefetchedFileContents={prefetchedFileContents} setDiffCollapseState={setDiffCollapseState} diffViewRef={diffViewRef} agentChat={agentChat} sidebarWidth={diffDisplayMode() === "side-peek" ? diffSidebarWidth() : diffDisplayMode() === "center-peek" ? 1200 : typeof window !== "undefined" ? window.innerWidth : 1200} onCommitWithAI={handleCommitToPr} isCommittingWithAI={isCommittingToPr} diffMode={diffMode} setDiffMode={setDiffMode} onCreatePr={handleCreatePr} subChats={subChatsWithFiles} />
             </DiffSidebarRenderer>
-          </DiffStateProvider>}
+          </DiffStateProvider></Show>
 
         { /* Preview Sidebar - hidden on mobile fullscreen and when preview is not available */}
-        {canOpenPreview && !isMobileFullscreen && <ResizableSidebar isOpen={isPreviewSidebarOpen} onClose={() => setIsPreviewSidebarOpen(false)} widthAtom={agentsPreviewSidebarWidthAtom} minWidth={350} side="right" animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{ "border-left-width": "0.5px" }}>
-            {isQuickSetup ? <div class="flex flex-col h-full">
+        <Show when={canOpenPreview && !isMobileFullscreen}><ResizableSidebar isOpen={isPreviewSidebarOpen} onClose={() => setIsPreviewSidebarOpen(false)} widthAtom={agentsPreviewSidebarWidthAtom} minWidth={350} side="right" animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{ "border-left-width": "0.5px" }}>
+            <Show when={!isQuickSetup} fallback={<div class="flex flex-col h-full">
                 { /* Header with close button */}
                 <div class="flex items-center justify-end px-3 h-10 bg-tl-background flex-shrink-0 border-b border-border/50">
                   <Button variant="ghost" class="h-7 w-7 p-0 hover:bg-muted transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md" onClick={() => setIsPreviewSidebarOpen(false)}>
@@ -4587,25 +4599,25 @@ Make sure to preserve all functionality from both branches when resolving confli
                     Set up this repository to enable live preview
                   </p>
                 </div>
-              </div> : <AgentPreview chatId={chatId} sandboxId={sandboxId} port={previewPort} repository={repository} hideHeader={false} onClose={() => setIsPreviewSidebarOpen(false)} />}
-          </ResizableSidebar>}
+              </div>}><AgentPreview chatId={chatId} sandboxId={sandboxId} port={previewPort} repository={repository} hideHeader={false} onClose={() => setIsPreviewSidebarOpen(false)} /></Show>
+          </ResizableSidebar></Show>
 
 		{ /* Terminal Sidebar - shows when worktree exists (desktop only) */}
-		{worktreePath && <TerminalSidebar chatId={chatId} cwd={worktreePath} />}
+		<Show when={worktreePath}><TerminalSidebar chatId={chatId} cwd={worktreePath} /></Show>
 
         { /* Open Locally Dialog - for importing sandbox chats to local */}
         <OpenLocallyDialog isOpen={openLocallyDialogOpen} onClose={() => setOpenLocallyDialogOpen(false)} remoteChat={remoteAgentChat ?? null} matchingProjects={openLocallyMatchingProjects} allProjects={projects() ?? []} remoteSubChatId={activeSubChatId} />
 
         { /* Unified Details Sidebar - combines all right sidebars into one (rightmost) */}
         { /* Show for both local (worktreePath) and remote (sandboxId) chats */}
-        {isUnifiedSidebarEnabled() && !isMobileFullscreen && (worktreePath || sandboxId) && <DetailsSidebar chatId={chatId} worktreePath={worktreePath} planPath={currentPlanPath} mode={currentMode()} onBuildPlan={handleApprovePlanFromSidebar} planRefetchTrigger={planEditRefetchTrigger} activeSubChatId={activeSubChatIdForPlan()} isPlanSidebarOpen={isPlanSidebarOpen() && !!currentPlanPath} isTerminalSidebarOpen={isTerminalSidebarOpen()} isDiffSidebarOpen={isDiffSidebarOpen()} diffDisplayMode={diffDisplayMode} canOpenDiff={canOpenDiff} setIsDiffSidebarOpen={setIsDiffSidebarOpen} diffStats={diffStats} parsedFileDiffs={parsedFileDiffs} onCommit={handleCommitToPr} isCommitting={isCommittingToPr} onExpandTerminal={() => setIsTerminalSidebarOpen(true)} onExpandPlan={() => setIsPlanSidebarOpen(true)} onExpandDiff={() => setIsDiffSidebarOpen(true)} onFileSelect={(filePath) => {
+        <Show when={isUnifiedSidebarEnabled() && !isMobileFullscreen && (worktreePath || sandboxId)}><DetailsSidebar chatId={chatId} worktreePath={worktreePath} planPath={currentPlanPath} mode={currentMode()} onBuildPlan={handleApprovePlanFromSidebar} planRefetchTrigger={planEditRefetchTrigger} activeSubChatId={activeSubChatIdForPlan()} isPlanSidebarOpen={isPlanSidebarOpen() && !!currentPlanPath} isTerminalSidebarOpen={isTerminalSidebarOpen()} isDiffSidebarOpen={isDiffSidebarOpen()} diffDisplayMode={diffDisplayMode} canOpenDiff={canOpenDiff} setIsDiffSidebarOpen={setIsDiffSidebarOpen} diffStats={diffStats} parsedFileDiffs={parsedFileDiffs} onCommit={handleCommitToPr} isCommitting={isCommittingToPr} onExpandTerminal={() => setIsTerminalSidebarOpen(true)} onExpandPlan={() => setIsPlanSidebarOpen(true)} onExpandDiff={() => setIsDiffSidebarOpen(true)} onFileSelect={(filePath) => {
  // Set the selected file path
 		setSelectedFilePath(filePath);
 		// Set filtered files to just this file
 		setFilteredDiffFiles([filePath]);
 		// Open the diff sidebar
 		setIsDiffSidebarOpen(true);
-	}} remoteInfo={remoteInfo} isRemoteChat={!!remoteInfo} />}
+	}} remoteInfo={remoteInfo} isRemoteChat={!!remoteInfo} /></Show>
       </div>
     </div>
     </TextSelectionProvider>;

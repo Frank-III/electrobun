@@ -1,11 +1,10 @@
-"use client";
 import { createEffect, createMemo } from "solid-js";
-import { useAtomValue } from "../../../lib/state/jotai";
 import { Button } from "../../../components/ui/button";
 import { IconDoubleChevronRight, IconSpinner, PlanIcon } from "../../../components/ui/icons";
 import { Kbd } from "../../../components/ui/kbd";
 import { ChatMarkdownRenderer } from "../../../components/chat-markdown-renderer";
-import { trpc } from "../../../lib/trpc";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import type { AgentMode } from "../atoms";
 interface AgentPlanSidebarProps {
 	chatId: string;
@@ -18,8 +17,16 @@ interface AgentPlanSidebarProps {
 	mode?: AgentMode;
 }
 export function AgentPlanSidebar({ chatId, planPath, onClose, onBuildPlan, refetchTrigger, mode = "agent" }: AgentPlanSidebarProps) {
-	// Fetch plan file content using tRPC
-	const { data: planContent, isLoading, error, refetch } = trpc.files.readFile.useQuery({ filePath: planPath! }, { enabled: !!planPath });
+	// Fetch plan file content
+	const planFileQuery = useQuery(() => ({
+		queryKey: ["files", "readFile", planPath, refetchTrigger],
+		queryFn: () => desktopRpc.files.readFile({ filePath: planPath! }),
+		enabled: !!planPath,
+	}));
+	const planContent = () => planFileQuery.data;
+	const isLoading = () => planFileQuery.isLoading;
+	const error = () => planFileQuery.error;
+	const refetch = () => planFileQuery.refetch();
 	// Refetch when trigger changes
 	createEffect(() => {
 		if (refetchTrigger && planPath) {
@@ -28,8 +35,9 @@ export function AgentPlanSidebar({ chatId, planPath, onClose, onBuildPlan, refet
 	});
 	// Extract plan title from markdown (first H1)
 	const planTitle = createMemo(() => {
-		if (!planContent) return "Plan";
-		const match = planContent.match(/^#\s+(.+)$/m);
+		const content = planContent();
+		if (!content) return "Plan";
+		const match = content.match(/^#\s+(.+)$/m);
 		return match ? match[1] : "Plan";
 	});
 	return <div class="flex flex-col h-full bg-tl-background">
@@ -39,7 +47,7 @@ export function AgentPlanSidebar({ chatId, planPath, onClose, onBuildPlan, refet
           <Button variant="ghost" size="icon" onClick={onClose} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground flex-shrink-0 rounded-md" aria-label="Close plan">
             <IconDoubleChevronRight class="h-4 w-4" />
           </Button>
-          <span class="text-sm font-medium truncate">{planTitle}</span>
+          <span class="text-sm font-medium truncate">{planTitle()}</span>
         </div>
         <div class="flex items-center gap-1 flex-shrink-0">
           { /* Approve Plan button - only show in plan mode */}
@@ -52,12 +60,12 @@ export function AgentPlanSidebar({ chatId, planPath, onClose, onBuildPlan, refet
 
       { /* Content */}
       <div class="flex-1 overflow-y-auto">
-        {isLoading ? <div class="flex flex-col items-center justify-center h-full p-6 text-center">
+        {isLoading() ? <div class="flex flex-col items-center justify-center h-full p-6 text-center">
             <IconSpinner class="h-8 w-8 text-muted-foreground mb-3" />
             <p class="text-sm text-muted-foreground">Loading plan...</p>
-          </div> : error ? <div class="flex flex-col items-center justify-center h-full p-6 text-center">
+          </div> : error() ? <div class="flex flex-col items-center justify-center h-full p-6 text-center">
             <div class="text-muted-foreground mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" class="opacity-50">
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="opacity-50">
                 <circle cx="12" cy="12" r="10" />
                 <line x1="12" y1="8" x2="12" y2="12" />
                 <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -67,7 +75,7 @@ export function AgentPlanSidebar({ chatId, planPath, onClose, onBuildPlan, refet
               Failed to load plan
             </p>
             <p class="text-xs text-muted-foreground/70 max-w-[300px]">
-              {error.message || "The plan file could not be read"}
+              {error()?.message || "The plan file could not be read"}
             </p>
           </div> : !planPath ? <div class="flex flex-col items-center justify-center h-full p-6 text-center">
             <div class="text-muted-foreground mb-4">
@@ -80,7 +88,7 @@ export function AgentPlanSidebar({ chatId, planPath, onClose, onBuildPlan, refet
               Click "View plan" on a plan file to preview it here
             </p>
           </div> : <div class="px-4 py-3 allow-text-selection" data-plan-path={planPath}>
-            <ChatMarkdownRenderer content={planContent || ""} size="sm" />
+            <ChatMarkdownRenderer content={planContent() || ""} size="sm" />
           </div>}
       </div>
     </div>;

@@ -1,4 +1,3 @@
-"use client";
 import { createSignal } from "solid-js";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { IconSpinner, ExpandIcon, CollapseIcon, CheckIcon } from "../../../components/ui/icons";
@@ -130,14 +129,14 @@ export function AgentPlanTool({ part, chatStatus }: AgentPlanToolProps) {
 
           { /* Expand/Collapse icon */}
           <div class="relative w-4 h-4">
-            <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
-            <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
+            <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
+            <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
           </div>
         </div>
       </div>
 
       { /* Expanded content */}
-      {isExpanded && <div class="border-t border-border">
+      {isExpanded() && <div class="border-t border-border">
           { /* Summary */}
           {plan.summary && <div class="px-2.5 py-2 text-xs text-muted-foreground border-b border-border/50">
               {plan.summary}

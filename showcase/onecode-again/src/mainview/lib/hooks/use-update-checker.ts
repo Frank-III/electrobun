@@ -1,5 +1,4 @@
 import { createEffect, onCleanup } from "solid-js"
-import { useAtom } from "../state/jotai"
 import { updateStateAtom, type UpdateState } from "../atoms"
 
 // Note: Update checks are now triggered by window focus in main process (auto-updater.ts)
@@ -12,7 +11,7 @@ const DISMISS_DURATION = 12 * 60 * 60 * 1000 // 12 hours
  * Listens to update events from main process and provides actions
  */
 export function useUpdateChecker() {
-  const [state, setState] = useAtom(updateStateAtom)
+  const [state, setState] = updateStateAtom
   let versionRef: string | undefined = state().version
 
   // Keep ref in sync with state

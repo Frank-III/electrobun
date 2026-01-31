@@ -29,7 +29,7 @@ function CodeBlock({ language, children, themeId, size = "md" }: {
 	size?: "sm" | "md" | "lg";
 }) {
 	const [copied, setCopied] = createSignal(false);
-	const [highlightedHtml, setHighlightedHtml] = createSignal(null);
+	const [highlightedHtml, setHighlightedHtml] = createSignal<string | null>(null);
 	const handleCopy = () => {
 		navigator.clipboard.writeText(children);
 		setCopied(true);
@@ -90,8 +90,8 @@ interface ChatMarkdownRendererProps {
 	content: string;
 	/** Size variant: sm for compact views, md for normal, lg for fullscreen */
 	size?: MarkdownSize;
-	/** Additional className for the wrapper */
-	className?: string;
+	/** Additional class for the wrapper */
+	class?: string;
 	/** Whether to enable syntax highlighting (default: true) */
 	syntaxHighlight?: boolean;
 	/** Whether content is being streamed */
@@ -185,8 +185,8 @@ const sizeStyles: Record<MarkdownSize, {
 };
 // Custom code component that uses our theme system
 function createCodeComponent(codeTheme: string, size: MarkdownSize, styles: typeof sizeStyles.md, isStreaming: boolean = false) {
-	return function CodeComponent({ className, children, node, ...props }: any) {
-		const match = /language-(\w+)/.exec(className || "");
+	return function CodeComponent({ class: cls, children, node, ...props }: any) {
+		const match = /language-(\w+)/.exec(cls || "");
 		const language = match ? match[1] : undefined;
 		const codeContent = String(children);
 		// Check if this is a code block (has language) or inline code
@@ -308,7 +308,7 @@ export function ChatMarkdownRenderer(props: ChatMarkdownRendererProps) {
 		"[&_div+p]:mt-2 [&_div+ul]:mt-2 [&_div+ol]:mt-2",
 		// Global spacing: elements after tables get extra top margin
 		"[&_table+p]:mt-4 [&_table+ul]:mt-4 [&_table+ol]:mt-4",
-		props.className
+		props.class
 	)}>
       <Streamdown mode="streaming" components={components()} remarkPlugins={[remarkGfm, remarkBreaks]} isAnimating={isStreaming} parseIncompleteMarkdown={isStreaming} controls={false}>
         {processedContent()}
@@ -316,12 +316,12 @@ export function ChatMarkdownRenderer(props: ChatMarkdownRendererProps) {
     </div>;
 }
 // Convenience exports for specific use cases
-export function CompactMarkdownRenderer(props: { content: string; className?: string }) {
-	return <ChatMarkdownRenderer content={props.content} size="sm" className={props.className} />;
+export function CompactMarkdownRenderer(props: { content: string; class?: string }) {
+	return <ChatMarkdownRenderer content={props.content} size="sm" class={props.class} />;
 }
 
-export function FullscreenMarkdownRenderer(props: { content: string; className?: string }) {
-	return <ChatMarkdownRenderer content={props.content} size="lg" className={props.className} />;
+export function FullscreenMarkdownRenderer(props: { content: string; class?: string }) {
+	return <ChatMarkdownRenderer content={props.content} size="lg" class={props.class} />;
 }
 // ============================================================================
 // MEMOIZED MARKDOWN - Block-level memoization for streaming performance
@@ -378,7 +378,7 @@ function parseIntoBlocks(markdown: string): ParsedBlock[] {
 function MemoizedMarkdownBlock(blockProps: {
 	content: string;
 	size: MarkdownSize;
-	className?: string;
+	class?: string;
 	codeTheme: string;
 }) {
 	// Don't render empty blocks
@@ -439,7 +439,7 @@ export function MemoizedMarkdown(memoProps: {
 	content: string;
 	id: string;
 	size?: MarkdownSize;
-	className?: string;
+	class?: string;
 }) {
 	const size = memoProps.size ?? "sm";
 	const codeTheme = useCodeTheme();
@@ -462,14 +462,14 @@ export function MemoizedMarkdown(memoProps: {
 			"[&_hr+p]:mt-4 [&_hr+ul]:mt-4 [&_hr+ol]:mt-4",
 			"[&_div+p]:mt-2 [&_div+ul]:mt-2 [&_div+ol]:mt-2",
 			"[&_table+p]:mt-4 [&_table+ul]:mt-4 [&_table+ol]:mt-4",
-			memoProps.className
+			memoProps.class
 		)}>
 			<For each={blocks()}>
 				{(block) => (
 					<MemoizedMarkdownBlock
 						content={block.content}
 						size={size}
-						className={memoProps.className}
+						class={memoProps.class}
 						codeTheme={codeTheme}
 					/>
 				)}

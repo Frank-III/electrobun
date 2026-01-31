@@ -1,4 +1,4 @@
-"use client";
+import { Show } from "solid-js";
 import { Check } from "lucide-solid";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -38,7 +38,7 @@ export function DiffViewModeSwitcher({ mode, onModeChange }: DiffViewModeSwitche
         {MODES.map(({ value, label, Icon }) => <DropdownMenuItem key={value} onClick={() => onModeChange(value)} class="flex items-center gap-2">
             <Icon class="size-4 text-muted-foreground" />
             <span class="flex-1">{label}</span>
-            {mode === value && <Check class="size-4 text-muted-foreground ml-auto" />}
+            <Show when={mode === value}><Check class="size-4 text-muted-foreground ml-auto" /></Show>
           </DropdownMenuItem>)}
       </DropdownMenuContent>
     </DropdownMenu>;

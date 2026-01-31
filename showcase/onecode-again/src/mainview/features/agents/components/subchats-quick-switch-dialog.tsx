@@ -1,8 +1,6 @@
-"use client";
 import { createMemo, Show } from "solid-js";
 import { Presence } from "solid-motionone";
 import { Portal } from "solid-js/web";
-import { useAtomValue } from "../../../lib/state/jotai";
 import { cn } from "../../../lib/utils";
 import { loadingSubChatsAtom, agentsSubChatUnseenChangesAtom, subChatFilesAtom, type SubChatFileChange } from "../atoms";
 import { IconSpinner, PlanIcon, AgentIcon } from "../../../components/ui/icons";
@@ -84,12 +82,12 @@ function SubChatCard({ subChat, isSelected, isLoading, hasUnseenChanges, fileCha
 export function SubChatsQuickSwitchDialog({ isOpen, subChats, selectedIndex, onHover }: SubChatsQuickSwitchDialogProps) {
 	if (typeof window === "undefined") return null;
 	// Derive loading sub-chat IDs
-	const loadingSubChats = useAtomValue(loadingSubChatsAtom);
+	const loadingSubChats = loadingSubChatsAtom[0];
 	const loadingSubChatIds = createMemo(() => new Set([...loadingSubChats.keys()]));
 	// Unseen changes
-	const unseenChanges = useAtomValue(agentsSubChatUnseenChangesAtom);
+	const unseenChanges = agentsSubChatUnseenChangesAtom[0];
 	// File changes per sub-chat
-	const subChatFiles = useAtomValue(subChatFilesAtom);
+	const subChatFiles = subChatFilesAtom[0];
 	return (
 		<Portal>
 			<Presence>

@@ -1,4 +1,3 @@
-"use client";
 import { createSignal, createEffect, Show, For, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
 import { X, ImageOff, ChevronLeft, ChevronRight } from "lucide-solid";
@@ -78,7 +77,7 @@ export function AgentImageItem({ id, filename, url, isLoading = false, onRemove,
       <div class="relative" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
         {isLoading ? <div class="size-8 flex items-center justify-center bg-muted rounded">
             <IconSpinner class="size-4 text-muted-foreground" />
-          </div> : hasError ? <div class="size-8 flex items-center justify-center bg-muted/50 rounded border border-destructive/20" title="Failed to load image">
+          </div> : hasError() ? <div class="size-8 flex items-center justify-center bg-muted/50 rounded border border-destructive/20" title="Failed to load image">
             <ImageOff class="size-4 text-destructive/50" />
           </div> : url ? <HoverCard openDelay={200}>
             <HoverCardTrigger asChild>
@@ -91,15 +90,17 @@ export function AgentImageItem({ id, filename, url, isLoading = false, onRemove,
             <IconSpinner class="size-4 text-muted-foreground" />
           </div>}
 
-        {onRemove && <button onClick={(e) => {
-		e.stopPropagation();
-		onRemove();
-	}} class={`absolute -top-1.5 -right-1.5 size-4 rounded-full bg-background border border-border
+<Show when={onRemove}>
+          <button onClick={(e) => {
+	e.stopPropagation();
+	onRemove!();
+}} class={`absolute -top-1.5 -right-1.5 size-4 rounded-full bg-background border border-border
                        flex items-center justify-center transition-[opacity,transform] duration-150 ease-out active:scale-[0.97] z-10
                        text-muted-foreground hover:text-foreground
-                       ${isHovered ? "opacity-100" : "opacity-0"}`} type="button">
+                       ${isHovered() ? "opacity-100" : "opacity-0"}`} type="button">
             <X class="size-3" />
-          </button>}
+          </button>
+        </Show>
       </div>
 
       {/* Fullscreen overlay with gallery navigation - rendered via portal to escape stacking context */}

@@ -1,12 +1,11 @@
 /**
  * Files & Folders Mention Provider
  *
- * Wraps the existing tRPC files.search endpoint as a mention provider.
+ * Uses desktop (Electrobun) RPC files.search as a mention provider.
  * Provides file and folder search with icons and relevance sorting.
  */
 
-import { FolderOpen as FolderOpenIcon, Files as FilesIcon } from "lucide-react"
-import { trpcClient } from "../../../lib/trpc"
+import { desktopRpc } from "../../../lib/desktop-rpc"
 import {
   createMentionProvider,
   type MentionItem,
@@ -72,8 +71,7 @@ export const filesProvider = createMentionProvider<FileData>({
     }
 
     try {
-      // Use tRPC to search files
-      const results = await trpcClient.files.search.query({
+      const results = await desktopRpc.files.search({
         projectPath: context.projectPath,
         query: context.query,
         limit: context.limit,

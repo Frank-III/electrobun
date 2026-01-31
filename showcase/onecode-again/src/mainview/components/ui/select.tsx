@@ -16,8 +16,11 @@ import {
 	overlaySeparator,
 } from "../../lib/overlay-styles";
 
-const Select = SelectPrimitive;
-const SelectValue = SelectPrimitive.Value;
+// Use 'any' for permissive typing during migration
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Select: any = SelectPrimitive;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any  
+const SelectValue: any = SelectPrimitive.Value;
 const SelectDescription = SelectPrimitive.Description;
 const SelectErrorMessage = SelectPrimitive.ErrorMessage;
 const SelectHiddenSelect = SelectPrimitive.HiddenSelect;
@@ -86,8 +89,13 @@ const SelectLabel: Component<ComponentProps<typeof SelectPrimitive.Label>> = (pr
 	return <SelectPrimitive.Label class={cn(overlayLabel, local.class)} {...rest} />;
 };
 
-type SelectItemProps = ComponentProps<typeof SelectPrimitive.Item> & {
+type SelectItemProps = {
+	class?: string;
+	children?: JSX.Element;
 	hasDescription?: boolean;
+	value?: string;
+	item?: any;
+	disabled?: boolean;
 };
 
 const SelectItem: Component<SelectItemProps> = (props) => {

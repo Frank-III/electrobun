@@ -1,12 +1,11 @@
-"use client";
 import { createSignal, createMemo, createEffect, onCleanup } from "solid-js";
-import { useSetAtom, useAtom } from "../../../lib/state/jotai";
 import { ChevronDown } from "lucide-solid";
 import { Motion, Presence } from "solid-motionone";
 import { Show } from "solid-js";
 import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/utils";
-import { trpc } from "../../../lib/trpc";
+import { useQuery } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { useFileChangeListener } from "../../../lib/hooks/use-file-change-listener";
 import { getFileIconByExtension } from "../mentions/agents-file-mention";
 import { diffSidebarOpenAtomFamily, agentsFocusedDiffFileAtom, filteredDiffFilesAtom, filteredSubChatIdAtom, type SubChatFileChange } from "../atoms";
@@ -32,60 +31,61 @@ interface SubChatStatusCardProps {
 	/** Whether there's a queue card above this one - affects border radius */
 	hasQueueCardAbove?: boolean;
 }
-export function SubChatStatusCard({ chatId, subChatId, isStreaming, isCompacting, changedFiles, worktreePath, onStop, hasQueueCardAbove = false }: SubChatStatusCardProps) {
+export function SubChatStatusCard(props: SubChatStatusCardProps) {
 	const [isExpanded, setIsExpanded] = createSignal(false);
+	const hasQueueCardAbove = () => props.hasQueueCardAbove ?? false;
 	// Use per-chat atom family instead of legacy global atom
-	const diffSidebarAtom = createMemo(() => diffSidebarOpenAtomFamily(chatId));
-	const [, setDiffSidebarOpen] = useAtom(diffSidebarAtom);
-	const setFilteredDiffFiles = useSetAtom(filteredDiffFilesAtom);
-	const setFilteredSubChatId = useSetAtom(filteredSubChatIdAtom);
-	const setFocusedDiffFile = useSetAtom(agentsFocusedDiffFileAtom);
+	const diffSidebarAtom = createMemo(() => diffSidebarOpenAtomFamily(props.chatId));
+	const [, setDiffSidebarOpen] = diffSidebarAtom;
+	const setFilteredDiffFiles = filteredDiffFilesAtom[1];
+	const setFilteredSubChatId = filteredSubChatIdAtom[1];
+	const setFocusedDiffFile = agentsFocusedDiffFileAtom[1];
 	// Listen for file changes from Claude Write/Edit tools
-	useFileChangeListener(worktreePath);
+	useFileChangeListener(props.worktreePath);
 	// Fetch git status to filter out committed files
-	const { data: gitStatus } = trpc.changes.getStatus.useQuery({
-		worktreePath: worktreePath || "",
-		defaultBranch: "main"
-	}, {
-		enabled: !!worktreePath && changedFiles.length > 0 && !isStreaming,
+	const gitStatusQuery = useQuery(() => ({
+		queryKey: ["changes", "getStatus", props.worktreePath] as const,
+		queryFn: () => desktopRpc.changes.getStatus({ worktreePath: props.worktreePath || "", defaultBranch: "main" }),
+		enabled: !!props.worktreePath && props.changedFiles.length > 0 && !props.isStreaming,
 		staleTime: 3e4,
-		placeholderData: (prev) => prev
-	});
+		placeholderData: (prev) => prev,
+	}));
+	const gitStatus = () => gitStatusQuery.data;
 	// Filter changedFiles to only include files that are still uncommitted
 	const uncommittedFiles = createMemo(() => {
+		const status = gitStatus();
 		console.log(`[StatusCard] Computing uncommittedFiles:`, {
-			changedFilesCount: changedFiles.length,
-			changedFiles: changedFiles.map((f) => f.displayPath),
-			hasGitStatus: !!gitStatus,
-			worktreePath,
-			isStreaming
+			changedFilesCount: props.changedFiles.length,
+			changedFiles: props.changedFiles.map((f) => f.displayPath),
+			hasGitStatus: !!status,
+			worktreePath: props.worktreePath,
+			isStreaming: props.isStreaming,
 		});
 		// If no git status yet, no worktreePath, or still streaming - show all files
-		if (!gitStatus || !worktreePath || isStreaming) {
+		if (!status || !props.worktreePath || props.isStreaming) {
 			console.log(`[StatusCard] Returning all changedFiles (no filter)`);
-			return changedFiles;
+			return props.changedFiles;
 		}
 		// Build set of all uncommitted file paths from git status
 		const uncommittedPaths = new Set<string>();
-		// Safely iterate - arrays might be undefined in edge cases
-		if (gitStatus.staged) {
-			for (const file of gitStatus.staged) {
+		if (status.staged) {
+			for (const file of status.staged) {
 				uncommittedPaths.add(file.path);
 			}
 		}
-		if (gitStatus.unstaged) {
-			for (const file of gitStatus.unstaged) {
+		if (status.unstaged) {
+			for (const file of status.unstaged) {
 				uncommittedPaths.add(file.path);
 			}
 		}
-		if (gitStatus.untracked) {
-			for (const file of gitStatus.untracked) {
+		if (status.untracked) {
+			for (const file of status.untracked) {
 				uncommittedPaths.add(file.path);
 			}
 		}
 		console.log(`[StatusCard] Git uncommitted paths:`, Array.from(uncommittedPaths));
 		// Filter changedFiles to only include files that are still uncommitted
-		const filtered = changedFiles.filter((file) => {
+		const filtered = props.changedFiles.filter((file) => {
 			const hasMatch = uncommittedPaths.has(file.displayPath);
 			console.log(`[StatusCard] Checking file "${file.displayPath}" -> hasMatch: ${hasMatch}`);
 			return hasMatch;
@@ -95,16 +95,17 @@ export function SubChatStatusCard({ chatId, subChatId, isStreaming, isCompacting
 	});
 	// Calculate totals from uncommitted files only
 	const totals = createMemo(() => {
+		const files = uncommittedFiles();
 		let additions = 0;
 		let deletions = 0;
-		for (const file of uncommittedFiles) {
+		for (const file of files) {
 			additions += file.additions;
 			deletions += file.deletions;
 		}
 		return {
 			additions,
 			deletions,
-			fileCount: uncommittedFiles.length
+			fileCount: files.length,
 		};
 	});
 	// Check if there's expandable content (only files now)
@@ -119,18 +120,18 @@ export function SubChatStatusCard({ chatId, subChatId, isStreaming, isCompacting
 		// Use displayPath (relative path) to match git diff paths
 		const filePaths = uncommittedFiles.map((f) => f.displayPath);
 		console.log("[SubChatStatusCard] handleReview:", {
-			subChatId,
+			subChatId: props.subChatId,
 			filePaths
 		});
 		setFilteredDiffFiles(filePaths.length > 0 ? filePaths : null);
 		// Also set subchat ID filter for ChangesPanel - use the prop, not activeSubChatId from store
-		setFilteredSubChatId(subChatId);
+		setFilteredSubChatId(props.subChatId);
 		setDiffSidebarOpen(true);
 	};
 	return <div class={cn(
 		"border border-border bg-muted/30 overflow-hidden flex flex-col border-b-0 pb-6",
 		// If queue card above - no top radius
-		hasQueueCardAbove ? "rounded-none" : "rounded-t-xl"
+		hasQueueCardAbove() ? "rounded-none" : "rounded-t-xl"
 	)}>
       {	/* Header - at top */}
       <div role="button" tabIndex={0} onClick={() => setIsExpanded(!isExpanded)} onKeyDown={(e) => {
@@ -138,18 +139,18 @@ export function SubChatStatusCard({ chatId, subChatId, isStreaming, isCompacting
 			e.preventDefault();
 			setIsExpanded(!isExpanded);
 		}
-	}} aria-expanded={isExpanded} aria-label={`${isExpanded ? "Collapse" : "Expand"} status details`} class="flex items-center justify-between pr-1 pl-3 h-8 cursor-pointer hover:bg-muted/50 transition-colors duration-150 focus:outline-none rounded-sm">
+	}} aria-expanded={isExpanded()} aria-label={`${isExpanded() ? "Collapse" : "Expand"} status details`} class="flex items-center justify-between pr-1 pl-3 h-8 cursor-pointer hover:bg-muted/50 transition-colors duration-150 focus:outline-none rounded-sm">
         <div class="flex items-center gap-2 text-xs flex-1 min-w-0">
           {	/* Expand/Collapse chevron - always show */}
           <ChevronDown class={cn("w-4 h-4 text-muted-foreground transition-transform duration-200", !isExpanded && "-rotate-90")} />
 
           { /* Streaming indicator */}
-          {isStreaming && <span class="text-xs text-muted-foreground">
-              {isCompacting ? "Compacting" : "Generating"}<AnimatedDots />
+          {props.isStreaming && <span class="text-xs text-muted-foreground">
+              {props.isCompacting ? "Compacting" : "Generating"}<AnimatedDots />
             </span>}
 
           { /* File count and stats - only show when not streaming */}
-          {!isStreaming && <span class="text-xs text-muted-foreground">
+          {!props.isStreaming && <span class="text-xs text-muted-foreground">
               {totals.fileCount} {totals.fileCount === 1 ? "file" : "files"}
               {(totals.additions > 0 || totals.deletions > 0) && <>
                   {" "}
@@ -166,9 +167,9 @@ export function SubChatStatusCard({ chatId, subChatId, isStreaming, isCompacting
         { /* Right side: buttons */}
         <div class="flex items-center gap-2 flex-shrink-0">
           { /* Stop button */}
-          {isStreaming && onStop && <Button variant="ghost" size="sm" onClick={(e) => {
+          {props.isStreaming && props.onStop && <Button variant="ghost" size="sm" onClick={(e) => {
  e.stopPropagation();
-		onStop();
+		props.onStop!();
 	}} class="h-6 px-2 text-xs font-normal rounded-md transition-transform duration-150 active:scale-[0.97]">
               Stop
               <span class="text-muted-foreground/60 ml-1">⌃C</span>

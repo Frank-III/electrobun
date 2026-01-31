@@ -5,11 +5,10 @@ const Allocator = std.mem.Allocator;
 
 const TerminalState = struct {
     terminal: ghostty.Terminal,
-    stream: ghostty.Stream(*ghostty.Terminal),
     alloc: Allocator,
 };
 
-export fn vt_create(cols: u16, rows: u16, max_scrollback: u32) callconv(.C) ?*anyopaque {
+export fn vt_create(cols: u16, rows: u16, max_scrollback: u32) callconv(.c) ?*anyopaque {
     const alloc = std.heap.c_allocator;
     const state = alloc.create(TerminalState) catch return null;
 
@@ -22,35 +21,35 @@ export fn vt_create(cols: u16, rows: u16, max_scrollback: u32) callconv(.C) ?*an
         return null;
     };
 
-    state.stream = ghostty.Stream(*ghostty.Terminal).init(&state.terminal);
     state.alloc = alloc;
     return @ptrCast(state);
 }
 
-export fn vt_destroy(handle: ?*anyopaque) callconv(.C) void {
+export fn vt_destroy(handle: ?*anyopaque) callconv(.c) void {
     const state = unwrap(handle) orelse return;
     state.terminal.deinit(state.alloc);
     state.alloc.destroy(state);
 }
 
-export fn vt_feed(handle: ?*anyopaque, data: [*]const u8, len: u32) callconv(.C) void {
+export fn vt_feed(handle: ?*anyopaque, data: [*]const u8, len: u32) callconv(.c) void {
     const state = unwrap(handle) orelse return;
-    state.stream.nextSlice(data[0..len]) catch {};
+    var stream = state.terminal.vtStream();
+    stream.nextSlice(data[0..len]) catch {};
 }
 
-export fn vt_resize(handle: ?*anyopaque, cols: u16, rows: u16) callconv(.C) void {
+export fn vt_resize(handle: ?*anyopaque, cols: u16, rows: u16) callconv(.c) void {
     const state = unwrap(handle) orelse return;
     state.terminal.resize(state.alloc, cols, rows) catch {};
 }
 
-export fn vt_cursor_x(handle: ?*anyopaque) callconv(.C) u16 {
+export fn vt_cursor_x(handle: ?*anyopaque) callconv(.c) u16 {
     const state = unwrap(handle) orelse return 0;
-    return state.terminal.screen.cursor.x;
+    return state.terminal.screens.active.cursor.x;
 }
 
-export fn vt_cursor_y(handle: ?*anyopaque) callconv(.C) u16 {
+export fn vt_cursor_y(handle: ?*anyopaque) callconv(.c) u16 {
     const state = unwrap(handle) orelse return 0;
-    return state.terminal.screen.cursor.y;
+    return state.terminal.screens.active.cursor.y;
 }
 
 export fn vt_get_row_text(
@@ -58,7 +57,7 @@ export fn vt_get_row_text(
     row: u16,
     buf: [*]u8,
     buf_len: u32,
-) callconv(.C) u32 {
+) callconv(.c) u32 {
     const state = unwrap(handle) orelse return 0;
     const t = &state.terminal;
 
@@ -90,7 +89,7 @@ export fn vt_get_row_text(
     return 0;
 }
 
-export fn vt_get_screen_text(handle: ?*anyopaque) callconv(.C) ?[*:0]u8 {
+export fn vt_get_screen_text(handle: ?*anyopaque) callconv(.c) ?[*:0]u8 {
     const state = unwrap(handle) orelse return null;
     const text = state.terminal.plainString(state.alloc) catch return null;
     defer state.alloc.free(text);
@@ -100,7 +99,7 @@ export fn vt_get_screen_text(handle: ?*anyopaque) callconv(.C) ?[*:0]u8 {
     return c_str;
 }
 
-export fn vt_free_string(ptr: ?[*:0]u8) callconv(.C) void {
+export fn vt_free_string(ptr: ?[*:0]u8) callconv(.c) void {
     if (ptr) |p| {
         var len: usize = 0;
         while (p[len] != 0) : (len += 1) {}
@@ -108,27 +107,27 @@ export fn vt_free_string(ptr: ?[*:0]u8) callconv(.C) void {
     }
 }
 
-export fn vt_get_cell_codepoint(handle: ?*anyopaque, row: u16, col: u16) callconv(.C) u21 {
+export fn vt_get_cell_codepoint(handle: ?*anyopaque, row: u16, col: u16) callconv(.c) u32 {
     const state = unwrap(handle) orelse return 0;
-    const result = state.terminal.screen.pages.getCell(.{
+    const result = state.terminal.screens.active.pages.getCell(.{
         .active = .{ .x = col, .y = row },
     }) orelse return 0;
-    return result.cell.codepoint();
+    return @intCast(result.cell.codepoint());
 }
 
-export fn vt_scroll(handle: ?*anyopaque, delta: i32) callconv(.C) void {
+export fn vt_scroll(handle: ?*anyopaque, delta: i32) callconv(.c) void {
     const state = unwrap(handle) orelse return;
-    state.terminal.screen.scroll(.{ .delta_row = delta });
+    state.terminal.screens.active.scroll(.{ .delta_row = delta });
 }
 
-export fn vt_scroll_to_bottom(handle: ?*anyopaque) callconv(.C) void {
+export fn vt_scroll_to_bottom(handle: ?*anyopaque) callconv(.c) void {
     const state = unwrap(handle) orelse return;
-    state.terminal.screen.scroll(.active);
+    state.terminal.screens.active.scroll(.active);
 }
 
-export fn vt_is_at_bottom(handle: ?*anyopaque) callconv(.C) bool {
+export fn vt_is_at_bottom(handle: ?*anyopaque) callconv(.c) bool {
     const state = unwrap(handle) orelse return true;
-    return state.terminal.screen.viewportIsBottom();
+    return state.terminal.screens.active.viewportIsBottom();
 }
 
 fn unwrap(handle: ?*anyopaque) ?*TerminalState {

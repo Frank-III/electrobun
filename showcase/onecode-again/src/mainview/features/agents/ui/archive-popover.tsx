@@ -1,7 +1,6 @@
-"use client";
-import { createEffect, createMemo, createSignal } from "solid-js";
-import { useAtom, useAtomValue, useSetAtom } from "../../../lib/state/jotai";
-import { trpc } from "../../../lib/trpc";
+import { createEffect, createMemo, createSignal, Show, For } from "solid-js";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/solid-query";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 import { archivePopoverOpenAtom, archiveSearchQueryAtom, selectedAgentChatIdAtom, selectedChatIsRemoteAtom } from "../atoms";
 import { showWorkspaceIconAtom, chatSourceModeAtom } from "../../../lib/atoms";
 import { useRemoteArchivedChats, useRestoreRemoteChat } from "../../../lib/hooks/use-remote-chats";
@@ -10,21 +9,25 @@ import { SearchIcon, ArchiveIcon, IconTextUndo, GitHubLogo, CloudIcon } from "..
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { cn } from "../../../lib/utils";
 // GitHub avatar with loading placeholder
-function GitHubAvatar({ gitOwner, className = "h-4 w-4" }: {
+function GitHubAvatar(props: {
 	gitOwner: string;
-	className?: string;
+	class?: string;
 }) {
+	const { gitOwner } = props;
+	const cls = props.class ?? "h-4 w-4";
 	const [isLoaded, setIsLoaded] = createSignal(false);
 	const [hasError, setHasError] = createSignal(false);
 	const handleLoad = () => setIsLoaded(true);
 	const handleError = () => setHasError(true);
-	if (hasError) {
-		return <GitHubLogo class={cn(className, "text-muted-foreground flex-shrink-0")} />;
+	if (hasError()) {
+		return <GitHubLogo class={cn(cls, "text-muted-foreground flex-shrink-0")} />;
 	}
-	return <div class={cn(className, "relative flex-shrink-0")}>
-      {	/* Placeholder background while loading */}
-      {!isLoaded && <div class="absolute inset-0 rounded-sm bg-muted" />}
-      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={cn(className, "rounded-sm flex-shrink-0", isLoaded ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
+return <div class={cn(cls, "relative flex-shrink-0")}>
+      { /* Placeholder background while loading */}
+      <Show when={!isLoaded()}>
+        <div class="absolute inset-0 rounded-sm bg-muted" />
+      </Show>
+      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={cn(cls, "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
     </div>;
  }
 // Format relative time - moved outside component to avoid recreation
@@ -99,9 +102,13 @@ function ArchiveChatItem({ chat, index, isSelected, isCurrentChat, showIcon, pro
 	};
 	return <div ref={handleRef} onClick={handleClick} class={cn("w-[calc(100%-8px)] mx-1 text-left min-h-[32px] py-[5px] px-1.5 rounded-md transition-colors duration-75 cursor-pointer group relative", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", isSelected || isCurrentChat ? "dark:bg-neutral-800 bg-accent text-foreground" : "text-muted-foreground dark:hover:bg-neutral-800 hover:bg-accent hover:text-foreground")}>
       <div class="flex items-start gap-2.5">
-        {showIcon && <div class="pt-0.5">
-            {isGitHubRepo && gitOwner ? <GitHubAvatar gitOwner={gitOwner} /> : <GitHubLogo class={cn("h-4 w-4 flex-shrink-0 transition-colors duration-75", isSelected ? "text-foreground" : "text-muted-foreground")} />}
-          </div>}
+        <Show when={showIcon}>
+            <div class="pt-0.5">
+              <Show when={isGitHubRepo && gitOwner} fallback={<GitHubLogo class={cn("h-4 w-4 flex-shrink-0 transition-colors duration-75", isSelected ? "text-foreground" : "text-muted-foreground")} />}>
+                <GitHubAvatar gitOwner={gitOwner!} />
+              </Show>
+            </div>
+          </Show>
         <div class="flex-1 min-w-0 flex flex-col gap-0.5">
           <div class="flex items-center gap-1">
             <span class="truncate block text-sm leading-tight flex-1">
@@ -115,15 +122,17 @@ function ArchiveChatItem({ chat, index, isSelected, isCurrentChat, showIcon, pro
           </div>
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-1 text-[11px] text-muted-foreground/60 truncate min-w-0">
-              {	/* Cloud icon for remote chats */}
-              {chat.isRemote && <CloudIcon class="h-2.5 w-2.5 flex-shrink-0" />}
+              { /* Cloud icon for remote chats */}
+              <Show when={chat.isRemote}>
+                <CloudIcon class="h-2.5 w-2.5 flex-shrink-0" />
+              </Show>
               <span class="truncate">{displayText}</span>
             </div>
             <div class="flex items-center gap-1.5 flex-shrink-0 text-[11px]">
-              {stats && (stats.additions > 0 || stats.deletions > 0) && <>
-                  <span class="text-green-600 dark:text-green-400">+{stats.additions}</span>
-                  <span class="text-red-600 dark:text-red-400">-{stats.deletions}</span>
-                </>}
+              <Show when={stats && (stats.additions > 0 || stats.deletions > 0)}>
+                  <span class="text-green-600 dark:text-green-400">+{stats!.additions}</span>
+                  <span class="text-red-600 dark:text-red-400">-{stats!.deletions}</span>
+                </Show>
               <span class="text-muted-foreground/60">
                 {formatTime(chat.updatedAt ?? new Date())}
               </span>
@@ -138,72 +147,80 @@ interface ArchivePopoverProps {
 	trigger: JSX.Element;
 }
 export function ArchivePopover({ trigger }: ArchivePopoverProps) {
-	const [open, setOpen] = useAtom(archivePopoverOpenAtom);
-	const [searchQuery, setSearchQuery] = useAtom(archiveSearchQueryAtom);
+	const [open, setOpen] = archivePopoverOpenAtom;
+	const [searchQuery, setSearchQuery] = archiveSearchQueryAtom;
 	const [selectedIndex, setSelectedIndex] = createSignal(0);
 	const [searchInputRef, setSearchInputRef] = createSignal<HTMLInputElement>(null);
 	const [popoverContentRef, setPopoverContentRef] = createSignal<HTMLDivElement>(null);
 	const [chatItemRefs, setChatItemRefs] = createSignal<(HTMLDivElement | null)[]>([]);
-	const [selectedChatId, setSelectedChatId] = useAtom(selectedAgentChatIdAtom);
-	const [selectedChatIsRemote, setSelectedChatIsRemote] = useAtom(selectedChatIsRemoteAtom);
-	const setChatSourceMode = useSetAtom(chatSourceModeAtom);
-	const showWorkspaceIcon = useAtomValue(showWorkspaceIconAtom);
-	// Get utils outside of callbacks - hooks must be called at top level
-	const utils = trpc.useUtils();
+	const [selectedChatId, setSelectedChatId] = selectedAgentChatIdAtom;
+	const [selectedChatIsRemote, setSelectedChatIsRemote] = selectedChatIsRemoteAtom;
+	const setChatSourceMode = chatSourceModeAtom[1];
+	const showWorkspaceIcon = showWorkspaceIconAtom[0];
+	const queryClient = useQueryClient();
 	// Local archived chats (always fetch)
-	const { data: localArchivedChats, isLoading: isLocalLoading } = trpc.chats.listArchived.useQuery({}, { enabled: open });
+	const { data: localArchivedChats, isLoading: isLocalLoading } = useQuery(() => ({
+		queryKey: ["chats", "listArchived"] as const,
+		queryFn: () => desktopRpc.chats.listArchived.query({}),
+		enabled: open(),
+	}));
 	// Remote archived chats (always fetch)
 	const { data: remoteArchivedChats, isLoading: isRemoteLoading } = useRemoteArchivedChats();
 	// Loading if either is loading
-	const isLoading = isLocalLoading || isRemoteLoading;
+	const isLoading = isLocalLoading() || isRemoteLoading();
 	// Fetch all projects for git info (for local chats)
-	const { data: projects } = trpc.projects.list.useQuery(undefined);
+	const { data: projects } = useQuery(() => ({
+		queryKey: ["projects", "list"] as const,
+		queryFn: () => desktopRpc.projects.list.query({}),
+	}));
 	// Collect chat IDs for file stats query (only local chats)
 	const archivedChatIds = createMemo(() => {
-		if (!localArchivedChats) return [];
-		return localArchivedChats.map((chat) => chat.id);
+		const list = localArchivedChats?.();
+		if (!list) return [];
+		return list.map((chat) => chat.id);
 	});
 	// Fetch file stats for archived local chats
-	const { data: fileStatsData } = trpc.chats.getFileStats.useQuery({ chatIds: archivedChatIds }, { enabled: open && archivedChatIds.length > 0 });
+	const { data: fileStatsData } = useQuery(() => ({
+		queryKey: ["chats", "getFileStats", archivedChatIds()] as const,
+		queryFn: () => desktopRpc.chats.getFileStats({ chatIds: archivedChatIds() }),
+		enabled: open() && archivedChatIds().length > 0,
+	}));
 	// Create map for quick project lookup by id
 	const projectsMap = createMemo(() => {
-		if (!projects) return new Map();
-		return new Map(projects.map((p) => [p.id, p]));
+		const proj = projects?.();
+		if (!proj) return new Map();
+		return new Map(proj.map((p) => [p.id, p]));
 	});
 	// Create map for quick file stats lookup by chat id
 	const fileStatsMap = createMemo(() => {
-		if (!fileStatsData) return new Map<string, {
-			additions: number;
-			deletions: number;
-		}>();
-		return new Map(fileStatsData.map((s) => [s.chatId, {
-			additions: s.additions,
-			deletions: s.deletions
-		}]));
+		const data = fileStatsData?.();
+		if (!data) return new Map<string, { additions: number; deletions: number }>();
+		return new Map(data.map((s) => [s.chatId, { additions: s.additions, deletions: s.deletions }]));
 	});
 	// Local restore mutation
-	const localRestoreMutation = trpc.chats.restore.useMutation({ onSuccess: (restoredChat) => {
-		// Optimistically add restored chat to the main list cache
-		if (restoredChat) {
-			utils.chats.list.setData({}, (oldData) => {
-				if (!oldData) return [restoredChat];
-				// Add to beginning if not already present
-				if (oldData.some((c) => c.id === restoredChat.id)) return oldData;
-				return [restoredChat, ...oldData];
-			});
-		}
-		// Invalidate both lists to refresh
-		utils.chats.list.invalidate();
-		utils.chats.listArchived.invalidate();
-	} });
+	const localRestoreMutation = useMutation(() => ({
+		mutationFn: (input: { id: string }) => desktopRpc.chats.restore.mutate(input),
+		onSuccess: (restoredChat) => {
+			if (restoredChat && queryClient) {
+				queryClient.setQueryData(["chats", "list"], (oldData: unknown[] | undefined) => {
+					if (!oldData) return [restoredChat];
+					if (oldData.some((c: { id: string }) => c.id === restoredChat.id)) return oldData;
+					return [restoredChat, ...oldData];
+				});
+			}
+			void queryClient?.invalidateQueries({ queryKey: ["chats", "list"] });
+			void queryClient?.invalidateQueries({ queryKey: ["chats", "listArchived"] });
+		},
+	}));
 	// Remote restore mutation
 	const remoteRestoreMutation = useRestoreRemoteChat();
 	// Normalize and merge archived chats from both sources
 	const normalizedChats = createMemo((): NormalizedArchivedChat[] => {
 		const merged: NormalizedArchivedChat[] = [];
+		const local = localArchivedChats?.();
 		// Add local chats
-		if (localArchivedChats) {
-			for (const chat of localArchivedChats) {
+		if (local) {
+			for (const chat of local) {
 				merged.push({
 					id: chat.id,
 					name: chat.name,
@@ -258,16 +275,16 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	});
 	// Clear search query and sync selected index when popover opens
 	createEffect(() => {
-		if (open) {
+		if (open()) {
 			setSearchQuery("");
 			setTimeout(() => {
-				searchInputRef.current?.focus();
+				searchInputRef()?.focus();
 			}, 0);
 		}
 	});
 	// Sync selected index with filtered chats
 	createEffect(() => {
-		if (open && filteredChats.length > 0) {
+		if (open() && filteredChats().length > 0) {
 			// Find index of currently selected chat, default to 0 if not found
 			const currentIndex = filteredChats.findIndex((chat) => chat.id === selectedChatId);
 			setSelectedIndex(currentIndex >= 0 ? currentIndex : 0);
@@ -307,11 +324,11 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	// Reset selected index and clear refs when search changes
 	createEffect(() => {
 		setSelectedIndex(0);
-		chatItemRefs.current = [];
+		setChatItemRefs([]);
 	});
 	// Scroll selected item into view
 	createEffect(() => {
-		const selectedElement = chatItemRefs.current[selectedIndex];
+		const selectedElement = chatItemRefs()[selectedIndex()];
 		if (selectedElement) {
 			selectedElement.scrollIntoView({
 				block: "nearest",
@@ -321,7 +338,7 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	});
 	// Auto-close popover when archive becomes empty
 	createEffect(() => {
-		if (open && normalizedChats && normalizedChats.length === 0) {
+		if (open() && normalizedChats() && normalizedChats()!.length === 0) {
 			setOpen(false);
 		}
 	});
@@ -353,7 +370,11 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 		}
 	};
 	const handleSetRef = (index: number, el: HTMLDivElement | null) => {
-		chatItemRefs.current[index] = el;
+		setChatItemRefs((prev) => {
+			const next = [...prev];
+			next[index] = el;
+			return next;
+		});
 	};
 	// Memoized search input handler
 	const handleSearchChange = (e: InputEvent & { currentTarget: HTMLInputElement }) => {

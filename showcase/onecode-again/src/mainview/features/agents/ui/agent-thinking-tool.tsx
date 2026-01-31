@@ -1,4 +1,3 @@
-"use client";
 import { createSignal, createEffect, createMemo, Show } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 import { cn } from "../../../lib/utils";

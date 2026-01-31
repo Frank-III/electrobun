@@ -1,4 +1,3 @@
-"use client";
 import { cn } from "../../../lib/utils";
 import { Motion, Presence } from "solid-motionone";
 import { Show, createEffect, createSignal, onCleanup } from "solid-js";
@@ -13,12 +12,12 @@ interface PreviewUrlInputProps {
 	/** Is the iframe currently loading? */
 	isLoading?: boolean;
 	/** Optional class name for the container */
-	className?: string;
+	class?: string;
 	/** Variant for different contexts */
 	variant?: "default" | "mobile";
 }
 
-export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading = false, className, variant = "default" }: PreviewUrlInputProps) {
+export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading = false, class: cls, variant = "default" }: PreviewUrlInputProps) {
 	const [isEditing, setIsEditing] = createSignal(false);
 	const [inputValue, setInputValue] = createSignal("");
 	let inputRef: HTMLInputElement | undefined;
@@ -141,7 +140,7 @@ export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading
 		return 1 - (p - 95) / 5;
 	};
 	
-	return <div class={cn("min-w-0 flex-1 text-center flex items-center justify-center relative", className)}>
+	return <div class={cn("min-w-0 flex-1 text-center flex items-center justify-center relative",cls)}>
       {/* URL input/button container */}
       <div class="relative max-w-[350px] w-full">
         <Show when={isEditing()} fallback={

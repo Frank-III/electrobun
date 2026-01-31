@@ -1,9 +1,10 @@
-import { trpc } from "../../../lib/trpc"
+import { useMutation, useQueryClient } from "@tanstack/solid-query"
+import { desktopRpc } from "../../../lib/desktop-rpc"
 import { toast } from "solid-sonner"
-import { useSetAtom } from "../../../lib/state/jotai"
 import { selectedAgentChatIdAtom } from "../atoms"
 import { chatSourceModeAtom } from "../../../lib/atoms"
 import type { RemoteChat } from "../../../lib/remote-api"
+
 
 interface Project {
   id: string
@@ -14,21 +15,23 @@ interface Project {
 }
 
 export function useAutoImport() {
-  const setSelectedChatId = useSetAtom(selectedAgentChatIdAtom)
-  const setChatSourceMode = useSetAtom(chatSourceModeAtom)
-  const utils = trpc.useUtils()
+  const setSelectedChatId = selectedAgentChatIdAtom[1]
+  const setChatSourceMode = chatSourceModeAtom[1]
+  const queryClient = useQueryClient()
 
-  const importMutation = trpc.sandboxImport.importSandboxChat.useMutation({
+  const importMutation = useMutation(() => ({
+    mutationFn: (input: Parameters<typeof desktopRpc.sandboxImport.importSandboxChat.mutate>[0]) =>
+      desktopRpc.sandboxImport.importSandboxChat.mutate(input),
     onSuccess: (result) => {
       toast.success("Opened locally")
       setChatSourceMode("local")
       setSelectedChatId(result.chatId)
-      utils.chats.list.invalidate()
+      queryClient.invalidateQueries({ queryKey: ["chats", "list"] })
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast.error(`Import failed: ${error.message}`)
     },
-  })
+  }))
 
   const getMatchingProjects = (projects: Project[], remoteChat: RemoteChat): Project[] => {
     console.log(`[OPEN-LOCALLY-MATCH] ========== MATCHING DEBUG ==========`)

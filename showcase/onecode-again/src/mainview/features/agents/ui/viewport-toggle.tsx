@@ -1,4 +1,3 @@
-"use client";
 import { cn } from "../../../lib/utils";
 import { Monitor, Smartphone } from "lucide-solid";
 import { Motion } from "solid-motionone";
@@ -6,12 +5,12 @@ import { Motion } from "solid-motionone";
 interface ViewportToggleProps {
 	value: "desktop" | "mobile";
 	onChange: (mode: "desktop" | "mobile") => void;
-	className?: string;
+	class?: string;
 }
 
 export function ViewportToggle(props: ViewportToggleProps) {
 	return (
-		<div class={cn("flex items-center", props.className)}>
+		<div class={cn("flex items-center", props.class)}>
 			<div class="relative bg-muted rounded-lg h-7 p-0.5 flex">
 				{/* Animated selector */}
 				<Motion.div
