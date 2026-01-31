@@ -128,7 +128,7 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
 		}
 	};
 	// Widget Card Component - always expanded, no collapse functionality
-	const WidgetCard = ({ widgetId, title, badge, children, customHeader, headerBg, hideExpand }: {
+	const WidgetCard = (cardProps: {
 		widgetId: WidgetId;
 		title: string;
 		badge?: JSX.Element;
@@ -140,27 +140,28 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
 		/** Hide the expand button (when custom actions are in badge) */
 		hideExpand?: boolean;
 	}) => {
-		const Icon = getWidgetIcon(widgetId);
-		const canExpand = canWidgetExpand(widgetId) && !hideExpand;
+		const [cardLocal] = splitProps(cardProps, ["widgetId", "title", "badge", "children", "customHeader", "headerBg", "hideExpand"]);
+		const Icon = getWidgetIcon(cardLocal.widgetId);
+		const canExpand = canWidgetExpand(cardLocal.widgetId) && !cardLocal.hideExpand;
 		return <div class="mx-2 mb-2">
           <div class={cn("rounded-lg border border-border/50 overflow-hidden")}>
             {		/* Widget Header - fixed height h-8 for consistency */}
-            <div class={cn("flex items-center gap-2 px-2 h-8 select-none group", !headerBg && "bg-muted/30")} style={headerBg ? { "background-color": headerBg } : undefined}>
-              {customHeader ? <div class="flex-1 min-w-0 flex items-center gap-1">
-                  {customHeader}
+            <div class={cn("flex items-center gap-2 px-2 h-8 select-none group", !cardLocal.headerBg && "bg-muted/30")} style={cardLocal.headerBg ? { "background-color": cardLocal.headerBg } : undefined}>
+              {cardLocal.customHeader ? <div class="flex-1 min-w-0 flex items-center gap-1">
+                  {cardLocal.customHeader}
                 </div> : <>
                   <Icon class="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                   <span class="text-xs font-medium text-foreground flex-1">
-                    {title}
+                    {cardLocal.title}
                   </span>
-                  {badge}
+                  {cardLocal.badge}
                 </>}
 
               { /* Expand to sidebar button */}
               <Show when={canExpand}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" onClick={() => handleExpandWidget(widgetId)} class="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md opacity-0 group-hover:opacity-100 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0" aria-label={`Expand ${widgetId}`}>
+                      <Button variant="ghost" size="icon" onClick={() => handleExpandWidget(cardLocal.widgetId)} class="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md opacity-0 group-hover:opacity-100 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0" aria-label={`Expand ${cardLocal.widgetId}`}>
                         <ArrowUpRight class="h-3 w-3" />
                       </Button>
                     </TooltipTrigger>
@@ -170,7 +171,7 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
             </div>
 
             { /* Widget Content - always visible */}
-            <div>{children}</div>
+            <div>{cardLocal.children}</div>
           </div>
         </div>;
  };
