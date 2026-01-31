@@ -196,9 +196,7 @@ export function AgentsModelsTab() {
 	const setAnthropicOnboardingCompleted = anthropicOnboardingCompletedAtom[1];
 	const setSettingsOpen = agentsSettingsDialogOpenAtom[1];
 	const isNarrowScreen = useIsNarrowScreen();
-	const disconnectClaudeCode = useMutation(() => ({
-		mutationFn: () => desktopRpc.claudeCode.disconnect.mutate(undefined as never),
-	}));
+
 	const claudeCodeIntegrationQuery2 = useQuery(() => ({
 		queryKey: ["claudeCode", "getIntegration"],
 		queryFn: () => desktopRpc.claudeCode.getIntegration(),
@@ -248,7 +246,9 @@ export function AgentsModelsTab() {
 		toast.success("Model settings reset");
 	};
 	const handleClaudeCodeSetup = () => {
-		disconnectClaudeCode.mutate(undefined as never);
+		// Don't disconnect - just open onboarding to add a new account
+		// The previous code was calling disconnectClaudeCode.mutate() which
+		// deleted the active account when users tried to add a new one
 		setSettingsOpen(false);
 		setAnthropicOnboardingCompleted(false);
 	};
@@ -304,7 +304,7 @@ export function AgentsModelsTab() {
               Manage your Claude API accounts
             </p>
           </div>
-          <Button size="sm" variant="outline" onClick={handleClaudeCodeSetup} disabled={disconnectClaudeCode.isPending || isClaudeCodeLoading()}>
+          <Button size="sm" variant="outline" onClick={handleClaudeCodeSetup} disabled={isClaudeCodeLoading()}>
             <Plus class="h-3 w-3 mr-1" />
             {isClaudeCodeConnected() ? "Add" : "Connect"}
           </Button>

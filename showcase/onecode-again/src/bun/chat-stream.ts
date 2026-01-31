@@ -447,11 +447,32 @@ async function runChatStream(options: {
 
     const resumeSessionId = existingSessionId || undefined;
 
-    // System prompt config
-    const systemPromptConfig = {
-      type: "preset" as const,
-      preset: "claude_code" as const,
-    };
+    // Read AGENTS.md from project root if it exists
+    let agentsMdContent: string | undefined;
+    try {
+      const lookupPath = projectPath || cwd;
+      const agentsMdPath = path.join(lookupPath, "AGENTS.md");
+      agentsMdContent = await fs.readFile(agentsMdPath, "utf-8");
+      if (agentsMdContent.trim()) {
+        console.log(`[chat-stream] Found AGENTS.md at ${agentsMdPath} (${agentsMdContent.length} chars)`);
+      } else {
+        agentsMdContent = undefined;
+      }
+    } catch {
+      // AGENTS.md doesn't exist or can't be read - that's fine
+    }
+
+    // System prompt config - if AGENTS.md exists, append its content
+    const systemPromptConfig = agentsMdContent
+      ? {
+          type: "preset" as const,
+          preset: "claude_code" as const,
+          append: `\n\n# AGENTS.md\nThe following are the project's AGENTS.md instructions:\n\n${agentsMdContent}`,
+        }
+      : {
+          type: "preset" as const,
+          preset: "claude_code" as const,
+        };
 
     // Accumulation state - parts and metadata are typed for SDK message processing
     type ResponsePart = { type: string; text?: string; toolCallId?: string; toolName?: string };

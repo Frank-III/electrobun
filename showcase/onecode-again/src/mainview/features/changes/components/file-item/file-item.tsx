@@ -4,7 +4,7 @@ import { Checkbox } from "../../../../components/ui/checkbox";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../../../components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
 import { cn } from "../../../../lib/utils";
-import { createSignal, Index, Show } from "solid-js";
+import { createSignal, Index, Show, mergeProps, splitProps } from "solid-js";
 import { Minus as HiMiniMinus, Plus as HiMiniPlus } from "lucide-solid";
 import { useMutation } from "@tanstack/solid-query";
 import { desktopRpc } from "../../../../lib/desktop-rpc";
@@ -37,12 +37,11 @@ interface FileItemProps {
 	/** Whether the file is staged (for checkbox state) */
 	isStaged?: boolean;
 }
-function LevelIndicators({ level }: {
-	level: number;
-}) {
-	if (level === 0) return null;
+function LevelIndicators(props: { level: number }) {
+	const [local] = splitProps(props, ["level"]);
+	if (local.level === 0) return null;
 	return <div class="flex self-stretch shrink-0">
-			<Index each={Array.from({ length: level })}>
+			<Index each={Array.from({ length: local.level })}>
 				{() => <div class="w-3 self-stretch border-r border-border" />}
 			</Index>
 		</div>;
@@ -50,19 +49,41 @@ function LevelIndicators({ level }: {
 function getFileName(path: string): string {
 	return path.split("/").pop() || path;
 }
-export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats = true, level = 0, onStage, onUnstage, isActioning = false, worktreePath, onDiscard, showCheckbox = false, isStaged = false }: FileItemProps) {
+export function FileItem(props: FileItemProps) {
+	const merged = mergeProps({
+		showStats: true,
+		level: 0,
+		isActioning: false,
+		showCheckbox: false,
+		isStaged: false,
+	}, props);
+	const [local] = splitProps(merged, [
+		"file",
+		"isSelected",
+		"onClick",
+		"onDoubleClick",
+		"showStats",
+		"level",
+		"onStage",
+		"onUnstage",
+		"isActioning",
+		"worktreePath",
+		"onDiscard",
+		"showCheckbox",
+		"isStaged",
+	]);
 	const [showDiscardDialog, setShowDiscardDialog] = createSignal(false);
-	const fileName = getFileName(file.path);
-	const statusBadgeColor = getStatusColor(file.status);
-	const statusIndicator = getStatusIndicator(file.status);
-	const showStatsDisplay = showStats && (file.additions > 0 || file.deletions > 0);
-	const hasIndent = level > 0;
-	const hasAction = onStage || onUnstage;
+	const fileName = getFileName(local.file.path);
+	const statusBadgeColor = getStatusColor(local.file.status);
+	const statusIndicator = getStatusIndicator(local.file.status);
+	const showStatsDisplay = local.showStats && (local.file.additions > 0 || local.file.deletions > 0);
+	const hasIndent = local.level > 0;
+	const hasAction = local.onStage || local.onUnstage;
 	const handleCheckboxChange = (checked: boolean) => {
-		if (checked && onStage) {
-			onStage();
-		} else if (!checked && onUnstage) {
-			onUnstage();
+		if (checked && local.onStage) {
+			local.onStage();
+		} else if (!checked && local.onUnstage) {
+			local.onUnstage();
 		}
 	};
 	const openInFinderMutation = useMutation(() => ({
@@ -72,14 +93,14 @@ export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats =
 		mutationFn: (input: { path: string; cwd?: string }) =>
 			desktopRpc.external.openFileInEditor(input),
 	}));
-	const absolutePath = worktreePath ? `${worktreePath}/${file.path}` : null;
+	const absolutePath = local.worktreePath ? `${local.worktreePath}/${local.file.path}` : null;
 	const handleCopyPath = async () => {
 		if (absolutePath) {
 			await navigator.clipboard.writeText(absolutePath);
 		}
 	};
 	const handleCopyRelativePath = async () => {
-		await navigator.clipboard.writeText(file.path);
+		await navigator.clipboard.writeText(local.file.path);
 	};
 	const handleRevealInFinder = () => {
 		if (absolutePath) {
@@ -87,10 +108,10 @@ export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats =
 		}
 	};
 	const handleOpenInEditor = () => {
-		if (absolutePath && worktreePath) {
+		if (absolutePath && local.worktreePath) {
 			openInEditorMutation.mutate({
 				path: absolutePath,
-				cwd: worktreePath
+				cwd: local.worktreePath
 			});
 		}
 	};
@@ -99,25 +120,25 @@ export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats =
 	};
 	const handleConfirmDiscard = () => {
 		setShowDiscardDialog(false);
-		onDiscard?.();
+		local.onDiscard?.();
 	};
-	const isDeleteAction = file.status === "untracked" || file.status === "added";
+	const isDeleteAction = local.file.status === "untracked" || local.file.status === "added";
 	const discardLabel = isDeleteAction ? "Delete" : "Discard Changes";
 	const discardDialogTitle = isDeleteAction ? `Delete "${fileName}"?` : `Discard changes to "${fileName}"?`;
 	const discardDialogDescription = isDeleteAction ? "This will permanently delete this file. This action cannot be undone." : "This will revert all changes to this file. This action cannot be undone.";
-	const fileContent = <div class={cn("group w-full flex items-stretch gap-1 px-1.5 text-left rounded-sm", "cursor-pointer transition-colors overflow-hidden", isSelected ? "bg-muted" : "hover:bg-muted/80")}>
+	const fileContent = <div class={cn("group w-full flex items-stretch gap-1 px-1.5 text-left rounded-sm", "cursor-pointer transition-colors overflow-hidden", local.isSelected ? "bg-muted" : "hover:bg-muted/80")}>
 			<Show when={hasIndent}>
-				<LevelIndicators level={level} />
+				<LevelIndicators level={local.level} />
 			</Show>
 
 			{	/* Checkbox for staging (GitHub Desktop style) */}
-			<Show when={showCheckbox && (onStage || onUnstage)}>
+			<Show when={local.showCheckbox && (local.onStage || local.onUnstage)}>
 				<div class="flex items-center px-0.5" onClick={(e) => e.stopPropagation()}>
-					<Checkbox checked={isStaged} onCheckedChange={handleCheckboxChange} disabled={isActioning} class="size-3.5" />
+					<Checkbox checked={local.isStaged} onCheckedChange={handleCheckboxChange} disabled={local.isActioning} class="size-3.5" />
 				</div>
 			</Show>
 
-			<button type="button" onClick={onClick} onDoubleClick={onDoubleClick} class={cn("flex items-center gap-1.5 flex-1 min-w-0", hasIndent ? "py-0.5" : "py-1")}>
+			<button type="button" onClick={local.onClick} onDoubleClick={local.onDoubleClick} class={cn("flex items-center gap-1.5 flex-1 min-w-0", hasIndent ? "py-0.5" : "py-1")}>
 				<span class={cn("shrink-0 flex items-center text-xs", statusBadgeColor)}>
 					{statusIndicator}
 				</span>
@@ -128,34 +149,34 @@ export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats =
 								{fileName}
 							</span>
 						</TooltipTrigger>
-						<TooltipContent side="right">{file.path}</TooltipContent>
-					</Tooltip>
-					<Show when={showStatsDisplay}>
-						<span class="flex items-center gap-0.5 text-[10px] font-mono shrink-0 whitespace-nowrap opacity-60">
-							<Show when={file.additions > 0}>
-								<span class="text-green-600 dark:text-green-500">
-									+{file.additions}
-								</span>
-							</Show>
-							<Show when={file.deletions > 0}>
-								<span class="text-red-600 dark:text-red-400">
-									-{file.deletions}
-								</span>
-							</Show>
-						</span>
-					</Show>
+							<TooltipContent side="right">{local.file.path}</TooltipContent>
+						</Tooltip>
+						<Show when={showStatsDisplay}>
+							<span class="flex items-center gap-0.5 text-[10px] font-mono shrink-0 whitespace-nowrap opacity-60">
+								<Show when={local.file.additions > 0}>
+									<span class="text-green-600 dark:text-green-500">
+										+{local.file.additions}
+									</span>
+								</Show>
+								<Show when={local.file.deletions > 0}>
+									<span class="text-red-600 dark:text-red-400">
+										-{local.file.deletions}
+									</span>
+								</Show>
+							</span>
+						</Show>
 				</span>
 			</button>
 
 			{ /* Hover actions (only when checkbox is not shown) */}
-			<Show when={!showCheckbox && hasAction}>
+			<Show when={!local.showCheckbox && hasAction}>
 				<div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-					<Show when={onStage}>
+					<Show when={local.onStage}>
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<Button variant="ghost" size="icon" class="size-5 hover:bg-accent" onClick={(e) => {
 		e.stopPropagation();
-		onStage?.();
+		local.onStage?.();
 	}} disabled={isActioning}>
 									<HiMiniPlus class="size-3" />
 								</Button>
@@ -163,12 +184,12 @@ export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats =
 							<TooltipContent side="right">Stage</TooltipContent>
 						</Tooltip>
 					</Show>
-					<Show when={onUnstage}>
+					<Show when={local.onUnstage}>
 						<Tooltip>
 							<TooltipTrigger asChild>
 								<Button variant="ghost" size="icon" class="size-5 hover:bg-accent" onClick={(e) => {
 		e.stopPropagation();
-		onUnstage?.();
+		local.onUnstage?.();
 	}} disabled={isActioning}>
 									<HiMiniMinus class="size-3" />
 								</Button>
@@ -179,7 +200,7 @@ export function FileItem({ file, isSelected, onClick, onDoubleClick, showStats =
 				</div>
 			</Show>
 		</div>;
-	if (!worktreePath) {
+	if (!local.worktreePath) {
 		return fileContent;
 	}
 	return <>

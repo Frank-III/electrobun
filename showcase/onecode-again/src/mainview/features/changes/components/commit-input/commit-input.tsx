@@ -1,7 +1,7 @@
 import { Button } from "../../../../components/ui/button";
 import { toast } from "solid-sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, splitProps } from "solid-js";
 import { cn } from "../../../../lib/utils";
 import { IconSpinner } from "../../../../components/ui/icons";
 import { useMutation } from "@tanstack/solid-query";
@@ -21,7 +21,17 @@ interface CommitInputProps {
 	/** Chat ID for AI-generated commit messages */
 	chatId?: string;
 }
-export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommitSuccess, stagedCount, currentBranch, selectedFilePaths, chatId }: CommitInputProps) {
+export function CommitInput(props: CommitInputProps) {
+	const [local] = splitProps(props, [
+		"worktreePath",
+		"hasStagedChanges",
+		"onRefresh",
+		"onCommitSuccess",
+		"stagedCount",
+		"currentBranch",
+		"selectedFilePaths",
+		"chatId",
+	]);
 	const [summary, setSummary] = createSignal("");
 	const [description, setDescription] = createSignal("");
 	const [isGenerating, setIsGenerating] = createSignal(false);
@@ -39,8 +49,8 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 			setSummary("");
 			setDescription("");
 			queryClient?.invalidateQueries({ queryKey: ["changes", "getStatus"] });
-			onRefresh();
-			onCommitSuccess?.();
+			local.onRefresh();
+			local.onCommitSuccess?.();
 		},
 		onError: (error) => toast.error(`Commit failed: ${error.message}`),
 	}));
@@ -51,8 +61,8 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 			setSummary("");
 			setDescription("");
 			queryClient?.invalidateQueries({ queryKey: ["changes", "getStatus"] });
-			onRefresh();
-			onCommitSuccess?.();
+			local.onRefresh();
+			local.onCommitSuccess?.();
 		},
 		onError: (error) => toast.error(`Commit failed: ${error.message}`),
 	}));
@@ -74,14 +84,14 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 		try {
 			// Get commit message - generate if empty
 			let commitMessage = getCommitMessage();
-			console.log("[CommitInput] handleCommit called, commitMessage:", commitMessage, "chatId:", chatId);
-			if (!commitMessage && chatId) {
-				console.log("[CommitInput] No message, generating with AI for files:", selectedFilePaths);
+			console.log("[CommitInput] handleCommit called, commitMessage:", commitMessage, "chatId:", local.chatId);
+			if (!commitMessage && local.chatId) {
+				console.log("[CommitInput] No message, generating with AI for files:", local.selectedFilePaths);
 				setIsGenerating(true);
 				try {
 					const result = await generateCommitMutation.mutateAsync({
-						chatId,
-						filePaths: selectedFilePaths,
+						chatId: local.chatId,
+						filePaths: local.selectedFilePaths,
 						ollamaModel: selectedOllamaModel(),
 					});
 					console.log("[CommitInput] AI generated message:", result?.message);
@@ -100,15 +110,15 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 				return;
 			}
 			// Use atomic commit when we have selected files (single operation, safer)
-			if (selectedFilePaths && selectedFilePaths.length > 0) {
+			if (local.selectedFilePaths && local.selectedFilePaths.length > 0) {
 				atomicCommitMutation.mutate({
-					worktreePath,
-					filePaths: selectedFilePaths,
+					worktreePath: local.worktreePath,
+					filePaths: local.selectedFilePaths,
 					message: commitMessage,
 				});
 			} else {
 				commitMutation.mutate({
-					worktreePath,
+					worktreePath: local.worktreePath,
 					message: commitMessage,
 				});
 			}
@@ -118,16 +128,16 @@ export function CommitInput({ worktreePath, hasStagedChanges, onRefresh, onCommi
 	};
 	// Build dynamic commit label
 	const getCommitLabel = () => {
-		if (stagedCount && stagedCount > 0 && currentBranch) {
-			return `Commit ${stagedCount} to ${currentBranch}`;
+		if (local.stagedCount && local.stagedCount > 0 && local.currentBranch) {
+			return `Commit ${local.stagedCount} to ${local.currentBranch}`;
 		}
-		if (currentBranch) {
-			return `Commit to ${currentBranch}`;
+		if (local.currentBranch) {
+			return `Commit to ${local.currentBranch}`;
 		}
 		return "Commit";
 	};
 	const getTooltip = () => {
-		if (!hasStagedChanges) return "No staged changes";
+		if (!local.hasStagedChanges) return "No staged changes";
 		if (!summary().trim()) return "AI will generate commit message";
 		return "Commit staged changes";
 	};
