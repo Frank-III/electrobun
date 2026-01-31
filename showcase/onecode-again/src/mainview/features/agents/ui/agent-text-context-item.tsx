@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { X } from "lucide-solid";
 // Text selection icon - "A" with text cursor
 function TextSelectIcon({ class: cls }: {
@@ -36,7 +36,7 @@ export function AgentTextContextItem({ text, preview, onRemove }: AgentTextConte
       </div>
 
       { /* Remove button */}
-      {onRemove && <button onClick={(e) => {
+      <Show when={onRemove}><button onClick={(e) => {
  e.stopPropagation();
 		onRemove();
 	}} class={`absolute -top-1.5 -right-1.5 size-4 rounded-full bg-background border border-border
@@ -44,6 +44,6 @@ export function AgentTextContextItem({ text, preview, onRemove }: AgentTextConte
                      text-muted-foreground hover:text-foreground
                      ${isHovered() ? "opacity-100" : "opacity-0"}`} type="button">
           <X class="size-3" />
-        </button>}
+        </button></Show>
     </div>;
 }

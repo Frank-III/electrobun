@@ -53,8 +53,8 @@ const GitHubAvatar = function GitHubAvatar(props: {
 	gitOwner: string;
 	class?: string;
 }) {
-	const { gitOwner } = props;
-	const cls = props.class ?? "h-4 w-4";
+	const [local] = splitProps(props, ["gitOwner", "class"]);
+	const cls = local.class ?? "h-4 w-4";
 	const [isLoaded, setIsLoaded] = createSignal(false);
 	const [hasError, setHasError] = createSignal(false);
 	const handleLoad = () => setIsLoaded(true);
@@ -65,47 +65,68 @@ const GitHubAvatar = function GitHubAvatar(props: {
 	return <div class={cn(cls, "relative flex-shrink-0")}>
       {	/* Placeholder background while loading */}
       <Show when={!isLoaded()}><div class="absolute inset-0 rounded-sm bg-muted" /></Show>
-      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={cn(cls, "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
+		<img src={`https://github.com/${local.gitOwner}.png?size=64`} alt={local.gitOwner} class={cn(cls, "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
     </div>;
 }
 // Component to render chat icon with loading status
-const ChatIcon = function ChatIcon({ isSelected, isLoading, hasUnseenChanges = false, hasPendingPlan = false, hasPendingQuestion = false, isMultiSelectMode = false, isChecked = false, onCheckboxClick, gitOwner, gitProvider, showIcon = true }: {
-	isSelected: boolean;
-	isLoading: boolean;
-	hasUnseenChanges?: boolean;
-	hasPendingPlan?: boolean;
-	hasPendingQuestion?: boolean;
-	isMultiSelectMode?: boolean;
-	isChecked?: boolean;
-	onCheckboxClick?: (e: MouseEvent) => void;
-	gitOwner?: string | null;
-	gitProvider?: string | null;
-	showIcon?: boolean;
+const ChatIcon = function ChatIcon(props: {
+    isSelected: boolean;
+    isLoading: boolean;
+    hasUnseenChanges?: boolean;
+    hasPendingPlan?: boolean;
+    hasPendingQuestion?: boolean;
+    isMultiSelectMode?: boolean;
+    isChecked?: boolean;
+    onCheckboxClick?: (e: MouseEvent) => void;
+    gitOwner?: string | null;
+    gitProvider?: string | null;
+    showIcon?: boolean;
 }) {
+    const merged = mergeProps({
+        hasUnseenChanges: false,
+        hasPendingPlan: false,
+        hasPendingQuestion: false,
+        isMultiSelectMode: false,
+        isChecked: false,
+        showIcon: true,
+    }, props);
+    const [local] = splitProps(merged, [
+        "isSelected",
+        "isLoading",
+        "hasUnseenChanges",
+        "hasPendingPlan",
+        "hasPendingQuestion",
+        "isMultiSelectMode",
+        "isChecked",
+        "onCheckboxClick",
+        "gitOwner",
+        "gitProvider",
+        "showIcon",
+    ]);
 	// Show GitHub avatar if available, otherwise blank project icon
-	const renderMainIcon = () => {
-		if (gitOwner && gitProvider === "github") {
-			return <GitHubAvatar gitOwner={gitOwner} />;
-		}
-		return <GitHubLogo class={cn("h-4 w-4 flex-shrink-0 transition-colors", isSelected ? "text-foreground" : "text-muted-foreground")} />;
-	};
+    const renderMainIcon = () => {
+        if (local.gitOwner && local.gitProvider === "github") {
+            return <GitHubAvatar gitOwner={local.gitOwner} />;
+        }
+        return <GitHubLogo class={cn("h-4 w-4 flex-shrink-0 transition-colors", local.isSelected ? "text-foreground" : "text-muted-foreground")} />;
+    };
 	// When icon is hidden and not in multi-select mode, render nothing
 	// The loader/status will be rendered inline by the parent component
-	if (!showIcon && !isMultiSelectMode) {
-		return null;
-	}
+    if (!local.showIcon && !local.isMultiSelectMode) {
+        return null;
+    }
 	return <div class="relative flex-shrink-0 w-4 h-4">
       {	/* Checkbox slides in from left, icon slides out */}
-      <div class={cn("absolute inset-0 flex items-center justify-center transition-[opacity,transform] duration-150 ease-out", isMultiSelectMode ? "opacity-100 scale-100" : "opacity-0 scale-95 pointer-events-none")} onClick={onCheckboxClick}>
-        <Checkbox checked={isChecked} class="cursor-pointer h-4 w-4" tabIndex={isMultiSelectMode ? 0 : -1} />
+      <div class={cn("absolute inset-0 flex items-center justify-center transition-[opacity,transform] duration-150 ease-out", local.isMultiSelectMode ? "opacity-100 scale-100" : "opacity-0 scale-95 pointer-events-none")} onClick={local.onCheckboxClick}>
+        <Checkbox checked={local.isChecked} class="cursor-pointer h-4 w-4" tabIndex={local.isMultiSelectMode ? 0 : -1} />
       </div>
       { /* Main icon fades out when multi-select is active or when showIcon is false */}
-      <div class={cn("transition-[opacity,transform] duration-150 ease-out", isMultiSelectMode || !showIcon ? "opacity-0 scale-95 pointer-events-none" : "opacity-100 scale-100")}>
+      <div class={cn("transition-[opacity,transform] duration-150 ease-out", local.isMultiSelectMode || !local.showIcon ? "opacity-0 scale-95 pointer-events-none" : "opacity-100 scale-100")}>
         {renderMainIcon()}
       </div>
       { /* Badge in bottom-right corner: question > loader > amber dot > blue dot - hidden during multi-select or when icon is hidden */}
       <Presence exitBeforeEnter>
-        <Show when={(hasPendingQuestion || isLoading || hasUnseenChanges || hasPendingPlan) && !isMultiSelectMode && showIcon}>
+        <Show when={(local.hasPendingQuestion || local.isLoading || local.hasUnseenChanges || local.hasPendingPlan) && !local.isMultiSelectMode && local.showIcon}>
           <Motion.div initial={{
  opacity: 0,
 		scale: 0.5
@@ -115,7 +136,7 @@ const ChatIcon = function ChatIcon({ isSelected, isLoading, hasUnseenChanges = f
 	}} exit={{
 		opacity: 0,
 		scale: 0.5
-	}} transition={{ duration: 0.15 }} class={cn("absolute -bottom-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center", isSelected ? "bg-[#E8E8E8] dark:bg-[#1B1B1B]" : "bg-[#F4F4F4] group-hover:bg-[#E8E8E8] dark:bg-[#101010] dark:group-hover:bg-[#1B1B1B]")}>
+	}} transition={{ duration: 0.15 }} class={cn("absolute -bottom-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center", local.isSelected ? "bg-[#E8E8E8] dark:bg-[#1B1B1B]" : "bg-[#F4F4F4] group-hover:bg-[#E8E8E8] dark:bg-[#101010] dark:group-hover:bg-[#1B1B1B]")}>
             {	/* Priority: question > loader > amber dot (pending plan) > blue dot (unseen) */}
             <Presence exitBeforeEnter>
               <Show when={hasPendingQuestion} fallback={
@@ -144,7 +165,7 @@ const ChatIcon = function ChatIcon({ isSelected, isLoading, hasUnseenChanges = f
     </div>;
 }
 // Memoized Draft Item component to prevent re-renders on hover
-const DraftItem = function DraftItem({ draftId, draftText, draftUpdatedAt, projectGitOwner, projectGitProvider, projectGitRepo, projectName, isSelected, isMultiSelectMode, isMobileFullscreen, showIcon, onSelect, onDelete, formatTime }: {
+const DraftItem = function DraftItem(props: {
 	draftId: string;
 	draftText: string;
 	draftUpdatedAt: number;
@@ -160,23 +181,39 @@ const DraftItem = function DraftItem({ draftId, draftText, draftUpdatedAt, proje
 	onDelete: (draftId: string) => void;
 	formatTime: (dateStr: string) => string;
 }) {
-	return <div onClick={() => onSelect(draftId)} class={cn("w-full text-left py-1.5 cursor-pointer group relative", "transition-colors duration-75", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", isMultiSelectMode ? "px-3" : "pl-2 pr-2", !isMultiSelectMode && "rounded-md", isSelected ? "bg-foreground/5 text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}>
+	const [local] = splitProps(props, [
+		"draftId",
+		"draftText",
+		"draftUpdatedAt",
+		"projectGitOwner",
+		"projectGitProvider",
+		"projectGitRepo",
+		"projectName",
+		"isSelected",
+		"isMultiSelectMode",
+		"isMobileFullscreen",
+		"showIcon",
+		"onSelect",
+		"onDelete",
+		"formatTime",
+	]);
+	return <div onClick={() => local.onSelect(local.draftId)} class={cn("w-full text-left py-1.5 cursor-pointer group relative", "transition-colors duration-75", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", local.isMultiSelectMode ? "px-3" : "pl-2 pr-2", !local.isMultiSelectMode && "rounded-md", local.isSelected ? "bg-foreground/5 text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}>
       <div class="flex items-start gap-2.5">
-        <Show when={showIcon}><div class="pt-0.5">
+		<Show when={local.showIcon}><div class="pt-0.5">
             <div class="relative flex-shrink-0 w-4 h-4">
-              <Show when={projectGitOwner && projectGitProvider === "github"} fallback={<GitHubLogo class="h-4 w-4 flex-shrink-0 text-muted-foreground" />}><GitHubAvatar gitOwner={projectGitOwner!} /></Show>
+				<Show when={local.projectGitOwner && local.projectGitProvider === "github"} fallback={<GitHubLogo class="h-4 w-4 flex-shrink-0 text-muted-foreground" />}><GitHubAvatar gitOwner={local.projectGitOwner!} /></Show>
             </div>
           </div></Show>
         <div class="flex-1 min-w-0 flex flex-col gap-0.5">
           <div class="flex items-center gap-1">
             <span class="truncate block text-sm leading-tight flex-1">
-              {draftText.slice(0, 50)}
-              {draftText.length > 50 ? "..." : ""}
+				{local.draftText.slice(0, 50)}
+				{local.draftText.length > 50 ? "..." : ""}
             </span>
             {	/* Delete button - shown on hover */}
-            <Show when={!isMultiSelectMode && !isMobileFullscreen}><button onClick={(e) => {
- e.stopPropagation();
-		onDelete(draftId);
+			<Show when={!local.isMultiSelectMode && !local.isMobileFullscreen}><button onClick={(e) => {
+		e.stopPropagation();
+		local.onDelete(local.draftId);
 	}} tabIndex={-1} class="flex-shrink-0 text-muted-foreground hover:text-foreground active:text-foreground transition-[opacity,transform,color] duration-150 ease-out opacity-0 scale-95 pointer-events-none group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto active:scale-[0.97]" aria-label="Delete draft">
                 <TrashIcon class="h-3.5 w-3.5" />
               </button></Show>
@@ -184,11 +221,11 @@ const DraftItem = function DraftItem({ draftId, draftText, draftUpdatedAt, proje
           <div class="flex items-center justify-between gap-2">
             <span class="text-[11px] text-muted-foreground/60 truncate">
               <span class="text-blue-500">Draft</span>
-              {projectGitRepo ? ` • ${projectGitRepo}` : projectName ? ` • ${projectName}` : ""}
-            </span>
-            <span class="text-[11px] text-muted-foreground/60 flex-shrink-0">
-              {formatTime(new Date(draftUpdatedAt).toISOString())}
-            </span>
+				{local.projectGitRepo ? ` • ${local.projectGitRepo}` : local.projectName ? ` • ${local.projectName}` : ""}
+			</span>
+			<span class="text-[11px] text-muted-foreground/60 flex-shrink-0">
+				{local.formatTime(new Date(local.draftUpdatedAt).toISOString())}
+			</span>
           </div>
         </div>
       </div>
@@ -891,11 +928,26 @@ function HelpSection(props: HelpSectionProps) {
       <TooltipContent>Help</TooltipContent>
     </Tooltip>;
 }
-export function AgentsSidebar({ userId = "demo-user-id", clerkUser = null, desktopUser = {
-	id: "demo-user-id",
-	email: "demo@example.com",
-	name: "Demo User"
-}, onSignOut = () => {}, onToggleSidebar, isMobileFullscreen = false, onChatSelect }: AgentsSidebarProps) {
+export function AgentsSidebar(props: AgentsSidebarProps) {
+	const merged = mergeProps({
+		userId: "demo-user-id",
+		clerkUser: null,
+		desktopUser: {
+			id: "demo-user-id",
+			email: "demo@example.com",
+			name: "Demo User"
+		},
+		onSignOut: () => {},
+		isMobileFullscreen: false
+	}, props);
+	const [local] = splitProps(merged, ["userId", "clerkUser", "desktopUser", "onSignOut", "onToggleSidebar", "isMobileFullscreen", "onChatSelect"]);
+	const userId = () => local.userId;
+	const clerkUser = () => local.clerkUser;
+	const desktopUser = () => local.desktopUser;
+	const onSignOut = () => local.onSignOut?.();
+	const onToggleSidebar = () => local.onToggleSidebar?.();
+	const isMobileFullscreen = () => local.isMobileFullscreen;
+	const onChatSelect = () => local.onChatSelect?.();
 	const [selectedChatId, setSelectedChatId] = selectedAgentChatIdAtom;
 	const [selectedChatIsRemote, setSelectedChatIsRemote] = selectedChatIsRemoteAtom;
 	const previousChatId = previousAgentChatIdAtom[0];

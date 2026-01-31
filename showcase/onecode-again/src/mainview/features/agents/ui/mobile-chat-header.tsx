@@ -1,4 +1,4 @@
-import { createMemo, createSignal } from "solid-js";
+import { createMemo, createSignal, Show } from "solid-js";
 import { loadingSubChatsAtom } from "../atoms";
 import { Plus, ChevronDown, Play, AlignJustify, FolderDown } from "lucide-solid";
 import { IconSpinner, PlanIcon, AgentIcon, DiffIcon, CustomTerminalIcon, IconTextUndo } from "../../../components/ui/icons";
@@ -62,9 +62,9 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
 	};
 	return <div class="flex items-center gap-1.5 h-7 w-full min-w-0" style={{ WebkitAppRegion: "drag" }}>
       {	/* Burger button - opens all projects */}
-      {onBackToChats && <Button variant="ghost" size="icon" onClick={onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="All projects" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={onBackToChats}><Button variant="ghost" size="icon" onClick={onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="All projects" style={{ WebkitAppRegion: "no-drag" }}>
           <AlignJustify class="h-4 w-4" />
-        </Button>}
+        </Button></Show>
 
       { /* Active chat trigger - opens history (shrinks to content, max-width limited) */}
       <SearchCombobox isOpen={isHistoryOpen} onOpenChange={setIsHistoryOpen} items={sortedSubChats} onSelect={handleSelectFromHistory} placeholder="Search chats..." emptyMessage="No results" align="start" side="bottom" sideOffset={8} getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={(subChat) => {
@@ -101,10 +101,10 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
       { /* Action buttons - always on the right */}
       <div class="flex items-center gap-1 flex-shrink-0" style={{ WebkitAppRegion: "no-drag" }}>
         { /* Open Locally - only for sandbox chats */}
-        {showOpenLocally && onOpenLocally && <Button variant="default" size="sm" onClick={onOpenLocally} class="h-7 px-2.5 gap-1.5 text-xs font-medium">
+        <Show when={showOpenLocally && onOpenLocally}><Button variant="default" size="sm" onClick={onOpenLocally} class="h-7 px-2.5 gap-1.5 text-xs font-medium">
             <FolderDown class="h-3.5 w-3.5" />
             Open Locally
-          </Button>}
+          </Button></Show>
 
         { /* Create new */}
         <Button variant="ghost" size="icon" onClick={onCreateNew} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md">
@@ -112,25 +112,25 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
         </Button>
 
         { /* Terminal button */}
-        {onOpenTerminal && canOpenTerminal && <Button variant="ghost" size="icon" onClick={onOpenTerminal} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md">
+        <Show when={onOpenTerminal && canOpenTerminal}><Button variant="ghost" size="icon" onClick={onOpenTerminal} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md">
             <CustomTerminalIcon class="h-4 w-4" />
-          </Button>}
+          </Button></Show>
 
         { /* Diff button */}
-        {onOpenDiff && canOpenDiff && <Button variant="ghost" size="icon" onClick={onOpenDiff} disabled={!diffStats?.hasChanges || diffStats?.isLoading} class={cn("h-7 w-7 p-0 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md", diffStats?.hasChanges && !diffStats?.isLoading ? "hover:bg-foreground/10" : "text-muted-foreground")}>
+        <Show when={onOpenDiff && canOpenDiff}><Button variant="ghost" size="icon" onClick={onOpenDiff} disabled={!diffStats?.hasChanges || diffStats?.isLoading} class={cn("h-7 w-7 p-0 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md", diffStats?.hasChanges && !diffStats?.isLoading ? "hover:bg-foreground/10" : "text-muted-foreground")}>
             {diffStats?.isLoading ? <IconSpinner class="h-4 w-4" /> : <DiffIcon class="h-4 w-4" />}
-          </Button>}
+          </Button></Show>
 
         { /* Preview button */}
-        {onOpenPreview && canOpenPreview && <Button variant="ghost" size="icon" onClick={onOpenPreview} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md">
+        <Show when={onOpenPreview && canOpenPreview}><Button variant="ghost" size="icon" onClick={onOpenPreview} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md">
             <Play class="h-4 w-4" />
-          </Button>}
+          </Button></Show>
 
         { /* Restore button - only when viewing archived workspace */}
-        {isArchived && onRestore && <Button variant="ghost" onClick={onRestore} class="h-7 px-2 gap-1.5 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md flex items-center">
+        <Show when={isArchived && onRestore}><Button variant="ghost" onClick={onRestore} class="h-7 px-2 gap-1.5 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md flex items-center">
             <IconTextUndo class="h-4 w-4" />
             <span class="text-xs">Restore</span>
-          </Button>}
+          </Button></Show>
       </div>
     </div>;
  }

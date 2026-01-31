@@ -116,6 +116,13 @@ export type WorktreeConfigAvailablePaths = {
   onecode: { exists: boolean; path: string };
 };
 
+export type GhosttyTabFrame = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type WorktreeConfigResponse = {
   config: WorktreeConfig | null;
   path: string | null;

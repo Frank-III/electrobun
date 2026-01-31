@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { X } from "lucide-solid";
 import { isPlanFile } from "./agent-tool-utils";
 // Code selection icon - cursor arrow with text cursor
@@ -48,17 +48,17 @@ export function AgentDiffTextContextItem({ text, preview, filePath, lineNumber, 
         </span>
         <span class="text-xs text-muted-foreground flex items-center gap-1">
           {isPlan ? "Text selection" : <>
-              {lineNumber && <span>Line {lineNumber}</span>}
-              {lineType && <span class={lineType === "new" ? "text-green-500" : "text-red-500"}>
+              <Show when={lineNumber}><span>Line {lineNumber}</span></Show>
+              <Show when={lineType}><span class={lineType === "new" ? "text-green-500" : "text-red-500"}>
                   {lineNumber ? "· " : ""}{lineType === "new" ? "Added" : "Removed"}
-                </span>}
+                </span></Show>
               {!lineNumber && !lineType && "Code selection"}
             </>}
         </span>
       </div>
 
       { /* Remove button */}
-      {onRemove && <button onClick={(e) => {
+      <Show when={onRemove}><button onClick={(e) => {
  e.stopPropagation();
 		onRemove();
 	}} class={`absolute -top-1.5 -right-1.5 size-4 rounded-full bg-background border border-border
@@ -66,6 +66,6 @@ export function AgentDiffTextContextItem({ text, preview, filePath, lineNumber, 
                      text-muted-foreground hover:text-foreground
                      ${isHovered() ? "opacity-100" : "opacity-0"}`} type="button">
           <X class="size-3" />
-        </button>}
+        </button></Show>
     </div>;
 }

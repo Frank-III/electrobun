@@ -1,3 +1,4 @@
+import { Show } from "solid-js";
 import { Button } from "../../../components/ui/button";
 import { ArrowUp, Loader2 } from "lucide-solid";
 import { EnterIcon, IconSpinner, MicrophoneIcon } from "../../../components/ui/icons";
@@ -96,16 +97,16 @@ export function AgentSendButton(props: AgentSendButtonProps) {
 			if (isRecording) return "Click to stop";
 			return <div class="flex flex-col items-start gap-0.5">
           <span>Voice input</span>
-          {voiceHotkey && <span class="text-muted-foreground">{voiceHotkey}</span>}
+          <Show when={voiceHotkey}><span class="text-muted-foreground">{voiceHotkey}</span></Show>
         </div>;
 		}
 		if (isStreaming && !hasContent) return <span class="flex items-center gap-1">
           Stop
-          {stopHotkey.primary && <Kbd class="ms-0.5">{stopHotkey.primary}</Kbd>}
-          {stopHotkey.alt && <>
+          <Show when={stopHotkey.primary}><Kbd class="ms-0.5">{stopHotkey.primary}</Kbd></Show>
+          <Show when={stopHotkey.alt}><>
               <span class="text-muted-foreground/60">or</span>
               <Kbd class="-me-1">{stopHotkey.alt}</Kbd>
-            </>}
+            </></Show>
         </span>;
 		if (isStreaming && hasContent) return <span class="flex items-center gap-1">
           Add to queue

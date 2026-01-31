@@ -1,4 +1,4 @@
-import { createSignal, createMemo } from "solid-js";
+import { createSignal, createMemo, Show, For } from "solid-js";
 import { FolderOpen } from "lucide-solid";
 import { showOfflineModeFeaturesAtom } from "../../../lib/atoms";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
@@ -31,7 +31,7 @@ function ProjectIcon(props: {
 	}
 	return <div class={`${cls} relative flex-shrink-0`}>
       {	/* Placeholder background while loading */}
-      {!isLoaded() && <div class="absolute inset-0 rounded-sm bg-muted" />}
+      <Show when={!isLoaded()}><div class="absolute inset-0 rounded-sm bg-muted" /></Show>
       <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={`${cls} rounded-sm flex-shrink-0 ${isLoaded() ? "opacity-100" : "opacity-0"}`} onLoad={handleLoad} onError={handleError} />
     </div>;
  }
@@ -188,7 +188,7 @@ export function ProjectSelector() {
 		return <CommandItem key={project.id} value={`${project.name} ${project.path}`} onSelect={() => handleSelectProject(project.id)} class="gap-2">
                       <ProjectIcon gitOwner={project.gitOwner} gitProvider={project.gitProvider} isOffline={isOffline()} />
                       <span class="truncate flex-1">{project.name}</span>
-                      {isSelected && <CheckIcon class="h-4 w-4 shrink-0" />}
+                      <Show when={isSelected}><CheckIcon class="h-4 w-4 shrink-0" /></Show>
                     </CommandItem>;
 	})}
               </CommandGroup> : <CommandEmpty>No projects found.</CommandEmpty>}

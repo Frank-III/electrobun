@@ -47,5 +47,6 @@ export function TooltipContent<T extends ValidComponent = "div">(props: TooltipC
 
 // For backward compatibility - Kobalte doesn't need a provider wrapper
 export function TooltipProvider(props: { children: any }) {
-	return props.children;
+	const [local] = splitProps(props, ["children"]);
+	return local.children;
 }

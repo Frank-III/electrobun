@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, Show, For } from "solid-js";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { IconSpinner, ExpandIcon, CollapseIcon, CheckIcon } from "../../../components/ui/icons";
 import { getToolStatus } from "./agent-tool-registry";
@@ -112,20 +112,26 @@ export function AgentPlanTool({ part, chatStatus }: AgentPlanToolProps) {
               </TextShimmer> : <span class="text-xs font-medium text-foreground truncate">
                 {getHeaderTitle()}
               </span>}
-            {plan.summary && !isExpanded && <span class="text-[11px] text-muted-foreground/60 truncate">
+            <Show when={plan.summary && !isExpanded()}>
+              <span class="text-[11px] text-muted-foreground/60 truncate">
                 {plan.summary}
-              </span>}
+              </span>
+            </Show>
           </div>
         </div>
 
         { /* Right side */}
         <div class="flex items-center gap-2 flex-shrink-0 ml-2">
-          {isPending && <IconSpinner class="w-3 h-3" />}
+          <Show when={isPending}>
+            <IconSpinner class="w-3 h-3" />
+          </Show>
           
           { /* Progress indicator */}
-          {totalSteps > 0 && !isPending && <span class="text-xs text-muted-foreground">
+          <Show when={totalSteps > 0 && !isPending}>
+            <span class="text-xs text-muted-foreground">
               {completedCount}/{totalSteps}
-            </span>}
+            </span>
+          </Show>
 
           { /* Expand/Collapse icon */}
           <div class="relative w-4 h-4">
@@ -136,14 +142,18 @@ export function AgentPlanTool({ part, chatStatus }: AgentPlanToolProps) {
       </div>
 
       { /* Expanded content */}
-      {isExpanded() && <div class="border-t border-border">
+      <Show when={isExpanded()}>
+        <div class="border-t border-border">
           { /* Summary */}
-          {plan.summary && <div class="px-2.5 py-2 text-xs text-muted-foreground border-b border-border/50">
+          <Show when={plan.summary}>
+            <div class="px-2.5 py-2 text-xs text-muted-foreground border-b border-border/50">
               {plan.summary}
-            </div>}
+            </div>
+          </Show>
 
           { /* Progress bar */}
-          {totalSteps > 0 && <div class="px-2.5 py-2 border-b border-border/50">
+          <Show when={totalSteps > 0}>
+            <div class="px-2.5 py-2 border-b border-border/50">
               <div class="flex items-center justify-between mb-1.5">
                 <span class="text-xs text-muted-foreground">
                   {getProgressText()}
@@ -152,49 +162,67 @@ export function AgentPlanTool({ part, chatStatus }: AgentPlanToolProps) {
               <div class="h-1.5 bg-muted rounded-full overflow-hidden">
                 <div class="h-full bg-muted-foreground/50 transition-all duration-300 ease-out" style={{ width: `${completedCount / totalSteps * 100}%` }} />
               </div>
-            </div>}
+            </div>
+          </Show>
 
           { /* Steps list */}
           <div class="max-h-[300px] overflow-y-auto">
-            {steps.map((step, idx) => <div key={step.id} class={cn("px-2.5 py-2 hover:bg-muted/30 transition-colors duration-150", idx !== steps.length - 1 && "border-b border-border/30")}>
-                <div class="flex items-start gap-2">
-                  <StepStatusIcon status={step.status} isPending={isPending} />
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2">
-                      <span class={cn("text-xs font-medium", step.status === "completed" && "line-through text-muted-foreground", step.status === "skipped" && "line-through text-muted-foreground/60")}>
-                        {step.title}
-                      </span>
-                      <ComplexityBadge complexity={step.estimatedComplexity} />
+            <For each={steps as PlanStep[]}>
+              {(step, idx) => (
+                <div class={cn("px-2.5 py-2 hover:bg-muted/30 transition-colors duration-150", idx() !== steps.length - 1 && "border-b border-border/30")}>
+                  <div class="flex items-start gap-2">
+                    <StepStatusIcon status={step.status} isPending={isPending} />
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2">
+                        <span class={cn("text-xs font-medium", step.status === "completed" && "line-through text-muted-foreground", step.status === "skipped" && "line-through text-muted-foreground/60")}>
+                          {step.title}
+                        </span>
+                        <ComplexityBadge complexity={step.estimatedComplexity} />
+                      </div>
+                      
+                      <Show when={step.description}>
+                        <p class="text-[11px] text-muted-foreground/70 mt-0.5 leading-relaxed">
+                          {step.description}
+                        </p>
+                      </Show>
+                      
+                      { /* Files */}
+                      <Show when={step.files && step.files.length > 0}>
+                        <div class="flex flex-wrap gap-1 mt-1.5">
+                          <For each={step.files as string[]}>
+                            {(file) => (
+                              <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                                <FileCode2 class="w-2.5 h-2.5" />
+                                {file.split("/").pop()}
+                              </span>
+                            )}
+                          </For>
+                        </div>
+                      </Show>
                     </div>
-                    
-                    {step.description && <p class="text-[11px] text-muted-foreground/70 mt-0.5 leading-relaxed">
-                        {step.description}
-                      </p>}
-                    
-                    { /* Files */}
-                    {step.files && step.files.length > 0 && <div class="flex flex-wrap gap-1 mt-1.5">
-                        {step.files.map((file, fileIdx) => <span key={fileIdx} class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                            <FileCode2 class="w-2.5 h-2.5" />
-                            {file.split("/").pop()}
-                          </span>)}
-                      </div>}
                   </div>
                 </div>
-              </div>)}
+              )}
+            </For>
           </div>
 
           { /* Plan status footer */}
-          {plan.status === "awaiting_approval" && <div class="px-2.5 py-2 border-t border-border bg-muted/50">
+          <Show when={plan.status === "awaiting_approval"}>
+            <div class="px-2.5 py-2 border-t border-border bg-muted/50">
               <span class="text-xs text-muted-foreground">
                 Awaiting your approval to proceed
               </span>
-            </div>}
+            </div>
+          </Show>
           
-          {plan.status === "completed" && <div class="px-2.5 py-2 border-t border-border bg-muted/50">
+          <Show when={plan.status === "completed"}>
+            <div class="px-2.5 py-2 border-t border-border bg-muted/50">
               <span class="text-xs text-muted-foreground">
                 Plan completed successfully
               </span>
-            </div>}
-        </div>}
+            </div>
+          </Show>
+        </div>
+      </Show>
     </div>;
 }

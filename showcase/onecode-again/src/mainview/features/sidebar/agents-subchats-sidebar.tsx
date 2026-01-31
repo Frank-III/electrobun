@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show, onCleanup } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, mergeProps, onCleanup, splitProps } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -41,14 +41,21 @@ interface SidebarSearchHistoryPopoverProps {
 	onSelect: (subChat: SubChatMeta) => void;
 }
 function SidebarSearchHistoryPopover(props: SidebarSearchHistoryPopoverProps) {
-	const { sortedSubChats, loadingSubChats, subChatUnseenChanges, pendingQuestionsMap, allSubChatsLength, onSelect } = props;
+	const [local] = splitProps(props, [
+		"sortedSubChats",
+		"loadingSubChats",
+		"subChatUnseenChanges",
+		"pendingQuestionsMap",
+		"allSubChatsLength",
+		"onSelect",
+	]);
 	const [isHistoryOpen, setIsHistoryOpen] = createSignal(false);
 	const renderItem = (subChat: SubChatMeta) => {
 		const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
-		const isLoading = loadingSubChats.has(subChat.id);
-		const hasUnseen = subChatUnseenChanges().has(subChat.id);
+		const isLoading = local.loadingSubChats.has(subChat.id);
+		const hasUnseen = local.subChatUnseenChanges().has(subChat.id);
 		const mode = subChat.mode || "agent";
-		const hasPendingQuestion = pendingQuestionsMap.has(subChat.id);
+		const hasPendingQuestion = local.pendingQuestionsMap.has(subChat.id);
 		return <div class="flex items-center gap-2 flex-1 min-w-0">
         <div class="flex-shrink-0 w-4 h-4 flex items-center justify-center relative">
           {hasPendingQuestion ? <QuestionIcon class="w-4 h-4 text-blue-500" /> : isLoading ? <IconSpinner class="w-4 h-4 text-muted-foreground" /> : mode === "plan" ? <PlanIcon class="w-4 h-4 text-muted-foreground" /> : <AgentIcon class="w-4 h-4 text-muted-foreground" />}
@@ -64,12 +71,12 @@ function SidebarSearchHistoryPopover(props: SidebarSearchHistoryPopoverProps) {
         </span>
       </div>;
 	};
-	return <SearchCombobox isOpen={isHistoryOpen()} onOpenChange={setIsHistoryOpen} items={sortedSubChats} onSelect={onSelect} placeholder="Search chats..." emptyMessage="No results" getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={renderItem} side="bottom" align="end" sideOffset={4} collisionPadding={16} trigger={<Tooltip delayDuration={500}>
-          <TooltipTrigger asChild>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" disabled={allSubChatsLength === 0}>
-                <ClockIcon class="h-4 w-4" />
-              </Button>
+	return <SearchCombobox isOpen={isHistoryOpen()} onOpenChange={setIsHistoryOpen} items={local.sortedSubChats} onSelect={local.onSelect} placeholder="Search chats..." emptyMessage="No results" getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={renderItem} side="bottom" align="end" sideOffset={4} collisionPadding={16} trigger={<Tooltip delayDuration={500}>
+			<TooltipTrigger asChild>
+				<PopoverTrigger asChild>
+					<Button variant="ghost" size="icon" class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" disabled={local.allSubChatsLength === 0}>
+						<ClockIcon class="h-4 w-4" />
+					</Button>
             </PopoverTrigger>
           </TooltipTrigger>
           <TooltipContent side="bottom">Chat history</TooltipContent>
@@ -83,7 +90,13 @@ interface AgentsSubChatsSidebarProps {
 	isLoading?: boolean;
 	agentName?: string;
 }
-export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats, isSidebarOpen = false, isLoading = false, agentName }: AgentsSubChatsSidebarProps) {
+export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
+	const merged = mergeProps({
+		isMobile: false,
+		isSidebarOpen: false,
+		isLoading: false
+	}, props);
+	const [local] = splitProps(merged, ["onClose", "isMobile", "onBackToChats", "isSidebarOpen", "isLoading", "agentName"]);
 	// SolidJS fine-grained reactivity handles this - no useShallow needed
 	const subChatStore = useAgentSubChatStore();
 	const activeSubChatId = subChatStore.activeSubChatId;
@@ -668,11 +681,11 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
 		return draftsCache()[key] || null;
 	};
 	// History and Close buttons - reusable element
-	const headerButtons = onClose && <div class="flex items-center gap-1">
+	const headerButtons = local.onClose && <div class="flex items-center gap-1">
       <SidebarSearchHistoryPopover sortedSubChats={sortedSubChats()} loadingSubChats={loadingSubChats()} subChatUnseenChanges={subChatUnseenChanges} pendingQuestionsMap={pendingQuestionsMap()} allSubChatsLength={allSubChats.length} onSelect={handleSelectFromHistory} />
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" onClick={onClose} tabIndex={-1} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground flex-shrink-0 rounded-md" aria-label="Close sidebar">
+          <Button variant="ghost" size="icon" onClick={local.onClose} tabIndex={-1} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground flex-shrink-0 rounded-md" aria-label="Close sidebar">
             <IconDoubleChevronLeft class="h-4 w-4" />
           </Button>
         </TooltipTrigger>
@@ -684,10 +697,10 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
       <Show when={isDesktop() && !isFullscreen()}><div class="absolute inset-0 z-0" style={{ "-webkit-app-region": "drag" } as any} /></Show>
 
       { /* Spacer for macOS traffic lights - only when agents sidebar is open */}
-      <Show when={isSidebarOpen}><TrafficLightSpacer isDesktop={isDesktop} isFullscreen={isFullscreen} /></Show>
+      <Show when={local.isSidebarOpen}><TrafficLightSpacer isDesktop={isDesktop} isFullscreen={isFullscreen} /></Show>
 
       { /* Header buttons - absolutely positioned when agents sidebar is open */}
-      <Show when={isSidebarOpen}><div class="absolute right-2 top-2 z-20" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={local.isSidebarOpen}><div class="absolute right-2 top-2 z-20" style={{ WebkitAppRegion: "no-drag" }}>
           {headerButtons}
         </div></Show>
 
@@ -695,10 +708,10 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
       <div class="p-2 pb-3 flex-shrink-0 relative z-10">
         <div class="space-y-2">
           { /* Top row - different layout based on agents sidebar state */}
-          {isSidebarOpen ? <div class="h-6" /> : <div class="flex items-center justify-between gap-1 mb-1">
-              <Show when={onBackToChats}><Tooltip delayDuration={500}>
+          {local.isSidebarOpen ? <div class="h-6" /> : <div class="flex items-center justify-between gap-1 mb-1">
+              <Show when={local.onBackToChats}><Tooltip delayDuration={500}>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={onBackToChats} tabIndex={-1} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="Toggle agents sidebar" style={{ WebkitAppRegion: "no-drag" }}>
+                    <Button variant="ghost" size="icon" onClick={local.onBackToChats} tabIndex={-1} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="Toggle agents sidebar" style={{ WebkitAppRegion: "no-drag" }}>
                       <AlignJustify class="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
@@ -768,7 +781,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
       { /* Scrollable Sub-Chats List */}
       <div class="flex-1 min-h-0 relative z-10" style={{ WebkitAppRegion: "no-drag" }}>
         { /* Loading state - centered spinner */}
-        {isLoading ? <div class="flex items-center justify-center h-full">
+        {local.isLoading ? <div class="flex items-center justify-center h-full">
             <IconSpinner class="w-4 h-4 text-muted-foreground" />
           </div> : <>
             { /* Top gradient */}
@@ -1071,7 +1084,7 @@ export function AgentsSubChatsSidebar({ onClose, isMobile = false, onBackToChats
           <AlertDialogDescription class="px-5 pb-5">
             Do you want to archive agent{" "}
             <span class="font-medium text-foreground">
-              {agentName || subChatToArchive()?.name || "this agent"}
+              {local.agentName || subChatToArchive()?.name || "this agent"}
             </span>
             ? You can restore it from history later.
           </AlertDialogDescription>

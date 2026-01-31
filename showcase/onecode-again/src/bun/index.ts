@@ -17,6 +17,7 @@ import { createProjectsHandlers } from "./projects";
 import { createSandboxImportHandlers } from "./sandbox-import";
 import { createSkillsHandlers } from "./skills";
 import { createTerminalHandlers, destroyAll } from "./terminal-manager";
+import { createGhosttyTabHandlers } from "./ghostty-tabs";
 import { createVoiceHandlers } from "./voice";
 import { createWorktreeConfigHandlers } from "./worktree-config-handlers";
 import { createClaudeCodeHandlers } from "./claude-code";
@@ -33,6 +34,7 @@ const terminalHandlers = createTerminalHandlers(
   (id, title) => sendToWebview?.send?.titleChanged({ id, title }),
   (id) => sendToWebview?.send?.bell({ id }),
 );
+const ghosttyTabHandlers = createGhosttyTabHandlers(() => mainWindow);
 
 const fileHandlers = createFileHandlers();
 const externalHandlers = createExternalHandlers();
@@ -146,6 +148,11 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       getScreenContent: terminalHandlers.getScreenContent,
       searchScrollback: terminalHandlers.searchScrollback,
       getCurrentCommand: terminalHandlers.getCurrentCommand,
+      ghosttyTabsCreate: ghosttyTabHandlers.ghosttyTabsCreate,
+      ghosttyTabsFocus: ghosttyTabHandlers.ghosttyTabsFocus,
+      ghosttyTabsResize: ghosttyTabHandlers.ghosttyTabsResize,
+      ghosttyTabsClose: ghosttyTabHandlers.ghosttyTabsClose,
+      ghosttyTabsList: ghosttyTabHandlers.ghosttyTabsList,
       filesSearch: fileHandlers.filesSearch,
       filesClearCache: fileHandlers.filesClearCache,
       filesRead: fileHandlers.filesRead,

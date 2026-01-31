@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { X, FileText, FileCode, FileJson } from "lucide-solid";
 import { IconSpinner } from "../../../components/ui/icons";
 interface AgentFileItemProps {
@@ -59,12 +59,12 @@ export function AgentFileItem({ id, filename, url, size, isLoading = false, onRe
         <span class="text-xs text-foreground truncate" title={filename}>
           {filename}
         </span>
-        {size !== undefined && <span class="text-[10px] text-muted-foreground">
+        <Show when={size !== undefined}><span class="text-[10px] text-muted-foreground">
             {formatFileSize(size)}
-          </span>}
+          </span></Show>
       </div>
 
-      {onRemove && <button onClick={(e) => {
+      <Show when={onRemove}><button onClick={(e) => {
 		e.stopPropagation();
 		onRemove();
 	}} class={`absolute -top-1.5 -right-1.5 size-4 rounded-full bg-background border border-border
@@ -72,6 +72,6 @@ export function AgentFileItem({ id, filename, url, size, isLoading = false, onRe
                      text-muted-foreground hover:text-foreground
                      ${isHovered() ? "opacity-100" : "opacity-0"}`} type="button">
           <X class="size-3" />
-        </button>}
+        </button></Show>
     </div>;
 }

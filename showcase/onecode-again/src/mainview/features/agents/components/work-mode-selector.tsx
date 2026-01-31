@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, Show, For } from "solid-js";
 import { GitBranch } from "lucide-solid";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { IconChevronDown, CheckIcon, LaptopIcon, CloudIcon } from "../../../components/ui/icons";
@@ -53,10 +53,10 @@ export function WorkModeSelector({ value, onChange, disabled }: WorkModeSelector
 		}} disabled={isDisabled} class={cn("flex items-center gap-1.5 min-h-[32px] py-[5px] px-1.5 mx-1 w-[calc(100%-8px)] text-sm text-left rounded-md cursor-default select-none outline-none transition-colors", isDisabled ? "opacity-50 cursor-not-allowed" : isSelected ? "dark:bg-neutral-800 text-foreground" : "dark:hover:bg-neutral-800 hover:text-foreground")}>
               <OptionIcon class="h-4 w-4 text-muted-foreground shrink-0" />
               <span class="flex-1">{option.label}</span>
-              {isSoon && <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+              <Show when={isSoon}><span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
                   Soon
-                </span>}
-              {isSelected && !isDisabled && <CheckIcon class="h-4 w-4 shrink-0" />}
+                </span></Show>
+              <Show when={isSelected && !isDisabled}><CheckIcon class="h-4 w-4 shrink-0" /></Show>
             </button>;
 	})}
       </PopoverContent>

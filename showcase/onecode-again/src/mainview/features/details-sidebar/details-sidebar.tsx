@@ -1,4 +1,4 @@
-import { createEffect, createMemo, For, Show, Switch, Match, onCleanup } from "solid-js";
+import { createEffect, createMemo, For, Show, Switch, Match, onCleanup, mergeProps, splitProps } from "solid-js";
 import { ArrowUpRight, TerminalSquare, Box, ListTodo } from "lucide-solid";
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar";
 import { Button } from "@/components/ui/button";
@@ -66,14 +66,16 @@ interface DetailsSidebarProps {
 	/** Whether this is a remote sandbox chat (no local worktree) */
 	isRemoteChat?: boolean;
 }
-export function DetailsSidebar({ chatId, worktreePath, planPath, mode, onBuildPlan, planRefetchTrigger, activeSubChatId, isPlanSidebarOpen, isTerminalSidebarOpen, isDiffSidebarOpen, diffDisplayMode, canOpenDiff, setIsDiffSidebarOpen, diffStats, parsedFileDiffs, onCommit, isCommitting, onExpandTerminal, onExpandPlan, onExpandDiff, onFileSelect, remoteInfo, isRemoteChat = false }: DetailsSidebarProps) {
+export function DetailsSidebar(props: DetailsSidebarProps) {
+	const merged = mergeProps({ isRemoteChat: false }, props);
+	const [local] = splitProps(merged, ["chatId", "worktreePath", "planPath", "mode", "onBuildPlan", "planRefetchTrigger", "activeSubChatId", "isPlanSidebarOpen", "isTerminalSidebarOpen", "isDiffSidebarOpen", "diffDisplayMode", "canOpenDiff", "setIsDiffSidebarOpen", "diffStats", "parsedFileDiffs", "onCommit", "isCommitting", "onExpandTerminal", "onExpandPlan", "onExpandDiff", "onFileSelect", "remoteInfo", "isRemoteChat"]);
 	// Global sidebar open state
 	const [isOpen, setIsOpen] = detailsSidebarOpenAtom;
 	// Per-workspace widget visibility
-	const widgetVisibilityAtom = createMemo(() => widgetVisibilityAtomFamily(chatId));
+	const widgetVisibilityAtom = createMemo(() => widgetVisibilityAtomFamily(local.chatId));
 	const visibleWidgets = widgetVisibilityAtom[0];
 	// Per-workspace widget order
-	const widgetOrderAtom = createMemo(() => widgetOrderAtomFamily(chatId));
+	const widgetOrderAtom = createMemo(() => widgetOrderAtomFamily(local.chatId));
 	const widgetOrder = widgetOrderAtom[0];
 	// Close sidebar callback
 	const closeSidebar = () => {
@@ -85,13 +87,13 @@ export function DetailsSidebar({ chatId, worktreePath, planPath, mode, onBuildPl
 	const handleExpandWidget = (widgetId: WidgetId) => {
 		switch (widgetId) {
 			case "terminal":
-				onExpandTerminal?.();
+				local.onExpandTerminal?.();
 				break;
 			case "plan":
-				onExpandPlan?.();
+				local.onExpandPlan?.();
 				break;
 			case "diff":
-				onExpandDiff?.();
+				local.onExpandDiff?.();
 				break;
 		}
 	};

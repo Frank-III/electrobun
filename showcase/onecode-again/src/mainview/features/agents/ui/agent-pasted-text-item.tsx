@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { X } from "lucide-solid";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "../../../components/ui/hover-card";
 // Text selection icon - "A" with text cursor
@@ -47,7 +47,7 @@ export function AgentPastedTextItem({ filePath, filename, size, preview, onRemov
           </div>
 
           { /* Remove button */}
-          {onRemove && <button onClick={(e) => {
+          <Show when={onRemove}><button onClick={(e) => {
  e.stopPropagation();
 		onRemove();
 	}} class={`absolute -top-1.5 -right-1.5 size-4 rounded-full bg-background border border-border
@@ -55,7 +55,7 @@ export function AgentPastedTextItem({ filePath, filename, size, preview, onRemov
                          text-muted-foreground hover:text-foreground
                          ${isHovered() ? "opacity-100" : "opacity-0"}`} type="button">
               <X class="size-3" />
-            </button>}
+            </button></Show>
         </div>
       </HoverCardTrigger>
       <HoverCardContent side="top" align="start" class="w-80">

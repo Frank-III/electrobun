@@ -4,7 +4,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
 import { IconCloseSidebarRight, IconFetch, IconForcePush, IconSpinner, AgentIcon, CircleFilterIcon, IconReview, ExternalLinkIcon } from "../../../../components/ui/icons";
 import { DiffViewModeSwitcher } from "./diff-view-mode-switcher";
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, mergeProps, onCleanup, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { RefreshCw, ChevronDown, GitBranch, ArrowDown, ArrowUp, Check, ChevronsDownUp, ChevronsUpDown, Columns2, Eye, GitMerge, GitPullRequest, MoreHorizontal, Rows2, Square, Upload, X } from "lucide-solid";
 import { useQuery, useMutation } from "@tanstack/solid-query";
@@ -82,60 +82,80 @@ function formatTimeSince(date: Date): string {
 interface DiffSidebarHeaderComponentProps extends DiffSidebarHeaderProps {}
 
 export function DiffSidebarHeader(props: DiffSidebarHeaderComponentProps) {
-	const { worktreePath, currentBranch, diffStats, sidebarWidth = 800, pushCount = 0, pullCount = 0, hasUpstream = true, isSyncStatusLoading = false, aheadOfDefault = 0, behindDefault = 0, onReview, isReviewing = false, onCreatePr, isCreatingPr = false, onCreatePrWithAI, isCreatingPrWithAI = false, onMergePr, isMergingPr = false, onClose, onRefresh, hasPrNumber = false, isPrOpen = false, hasMergeConflicts = false, onFixConflicts, onExpandAll, onCollapseAll, viewMode = "unified" as DiffViewMode, onViewModeChange, viewedCount = 0, onMarkAllViewed, onMarkAllUnviewed, isDesktop = false, isFullscreen = false, displayMode = "side-peek", onDisplayModeChange } = props;
+	const merged = mergeProps({
+		sidebarWidth: 800,
+		pushCount: 0,
+		pullCount: 0,
+		hasUpstream: true,
+		isSyncStatusLoading: false,
+		aheadOfDefault: 0,
+		behindDefault: 0,
+		isReviewing: false,
+		isCreatingPr: false,
+		isCreatingPrWithAI: false,
+		isMergingPr: false,
+		hasPrNumber: false,
+		isPrOpen: false,
+		hasMergeConflicts: false,
+		viewMode: "unified" as DiffViewMode,
+		viewedCount: 0,
+		isDesktop: false,
+		isFullscreen: false,
+		displayMode: "side-peek" as const,
+	}, props);
 	// Responsive breakpoints - progressive disclosure
-	const isCompact = sidebarWidth < 350;
-	const showViewModeToggle = sidebarWidth >= 450;
-	const showReviewButton = sidebarWidth >= 550;
+	const isCompact = () => merged.sidebarWidth < 350;
+	const showViewModeToggle = () => merged.sidebarWidth >= 450;
+	const showReviewButton = () => merged.sidebarWidth >= 550;
 	const [lastFetchTime, setLastFetchTime] = createSignal<Date | null>(null);
 	const [isRefreshing, setIsRefreshing] = createSignal(false);
 	const [displayTime, setDisplayTime] = createSignal("");
 	let timeoutRef: ReturnType<typeof setTimeout> | undefined;
 	const branchDataQuery = useQuery(() => ({
-		queryKey: ["changes", "getBranches", worktreePath] as const,
-		queryFn: () => desktopRpc.changes.getBranches({ worktreePath }),
-		enabled: !!worktreePath,
+		queryKey: ["changes", "getBranches", merged.worktreePath] as const,
+		queryFn: () => desktopRpc.changes.getBranches({ worktreePath: merged.worktreePath }),
+		enabled: !!merged.worktreePath,
 	}));
 	const branchData = () => branchDataQuery.data;
 	const refetchBranches = () => branchDataQuery.refetch();
-	const isDefaultBranch = () => currentBranch === branchData()?.defaultBranch;
+	const isDefaultBranch = () => merged.currentBranch === branchData()?.defaultBranch;
 
 	const fetchMutation = useMutation(() => ({
 		mutationFn: (input: { worktreePath: string }) => desktopRpc.changes.fetch.mutate(input),
 		onSuccess: () => {
 			setLastFetchTime(new Date());
 			refetchBranches();
-			onRefresh?.();
+			merged.onRefresh?.();
 		},
 	}));
 	const pushMutation = useMutation(() => ({
 		mutationFn: (input: { worktreePath: string; setUpstream?: boolean }) =>
 			desktopRpc.changes.push.mutate(input),
-		onSuccess: () => onRefresh?.(),
+		onSuccess: () => merged.onRefresh?.(),
 		onError: (error) => toast.error(`Push failed: ${error.message}`),
 	}));
 	const pullMutation = useMutation(() => ({
 		mutationFn: (input: { worktreePath: string; autoStash?: boolean }) =>
 			desktopRpc.changes.pull.mutate(input),
-		onSuccess: () => onRefresh?.(),
+		onSuccess: () => merged.onRefresh?.(),
 		onError: (error) => toast.error(`Pull failed: ${error.message}`),
 	}));
 	const forcePushMutation = useMutation(() => ({
 		mutationFn: (input: { worktreePath: string }) =>
 			desktopRpc.changes.forcePush.mutate(input),
-		onSuccess: () => onRefresh?.(),
+		onSuccess: () => merged.onRefresh?.(),
 		onError: (error: { message: string }) =>
 			toast.error(`Force push failed: ${error.message}`),
 	}));
 	const mergeFromDefaultMutation = useMutation(() => ({
 		mutationFn: (input: { worktreePath: string; useRebase?: boolean }) =>
 			desktopRpc.changes.mergeFromDefault.mutate(input),
-		onSuccess: () => onRefresh?.(),
+		onSuccess: () => merged.onRefresh?.(),
 		onError: (error: { message: string }) =>
 			toast.error(`Merge failed: ${error.message}`),
 	}));
 	const { pr } = usePRStatus({
-		worktreePath,
+		worktreePath: merged.worktreePath,
 		refetchInterval: 3e4
 	});
 	// Update display time every minute
@@ -151,25 +171,25 @@ export function DiffSidebarHeader(props: DiffSidebarHeaderComponentProps) {
 	});
 	const handleFetch = () => {
 		setIsRefreshing(true);
-		fetchMutation.mutate({ worktreePath }, { onSettled: () => {
+		fetchMutation.mutate({ worktreePath: merged.worktreePath }, { onSettled: () => {
 			if (timeoutRef) clearTimeout(timeoutRef);
 			timeoutRef = setTimeout(() => setIsRefreshing(false), 600);
 		} });
 	};
 	const handlePush = () => {
-		pushMutation.mutate({ worktreePath, setUpstream: !hasUpstream });
+		pushMutation.mutate({ worktreePath: merged.worktreePath, setUpstream: !merged.hasUpstream });
 	};
 	const handlePull = () => {
-		pullMutation.mutate({ worktreePath, autoStash: true });
+		pullMutation.mutate({ worktreePath: merged.worktreePath, autoStash: true });
 	};
 	const handleForcePush = () => {
 		if (window.confirm("Are you sure you want to force push? This will overwrite the remote branch.")) {
-			forcePushMutation.mutate({ worktreePath });
+			forcePushMutation.mutate({ worktreePath: merged.worktreePath });
 		}
 	};
 	const handleMergeFromDefault = (useRebase = false) => {
 		mergeFromDefaultMutation.mutate({
-			worktreePath,
+			worktreePath: merged.worktreePath,
 			useRebase
 		});
 	};

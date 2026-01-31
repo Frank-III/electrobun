@@ -12,7 +12,7 @@ import { createRpcChat } from "../lib/rpc-chat";
 import type { RpcChat, RpcChatTransport } from "../lib/rpc-chat";
 import { useChatSolid } from "../hooks/use-chat-solid";
 import type { DiffViewMode } from "../ui/agent-diff-view";
-import { createContext, createMemo, createSignal, createEffect, For, Index, onCleanup, Show, useContext, type Accessor } from "solid-js";
+import { createContext, createMemo, createSignal, createEffect, For, Index, onCleanup, Show, useContext, mergeProps, splitProps, type Accessor } from "solid-js";
 import { ReactiveSet } from "@solid-primitives/set";
 import { ArrowDown, ChevronDown, GitFork, ListTree, TerminalSquare } from "lucide-solid";
 import { Motion, Presence } from "solid-motionone";
@@ -215,14 +215,16 @@ const getAgentIcon = (agentId: string, cls?: string) => {
 	}
 };
 // Copy button component with tooltip feedback (matches project style)
-function CopyButton({ onCopy, isMobile = false }: {
+interface CopyButtonProps {
 	onCopy: () => void;
 	isMobile?: boolean;
-}) {
+}
+function CopyButton(props: CopyButtonProps) {
+	const merged = mergeProps({ isMobile: false }, props);
 	const [copied, setCopied] = createSignal(false);
 	const { trigger: triggerHaptic } = useHaptic();
 	const handleCopy = () => {
-		onCopy();
+		merged.onCopy();
 		triggerHaptic("medium");
 		setCopied(true);
 		setTimeout(() => setCopied(false), 2e3);
