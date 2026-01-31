@@ -1,6 +1,7 @@
 import type { RPCSchema } from "electrobun/bun";
 import type { ChangedFile, GitChangesStatus } from "./changes-types";
 import type { TerminalMessages, TerminalRequests } from "./terminal-rpc";
+import type { ChatMessages, ChatRequests } from "./chat-rpc";
 
 export type FileEntryResult = {
   id: string;
@@ -54,10 +55,10 @@ export type Project = {
   id: string;
   name: string;
   path: string;
-  createdAt: Date | string | number;
-  updatedAt: Date | string | number;
+  createdAt: Date | string | number | null;
+  updatedAt: Date | string | number | null;
   gitRemoteUrl?: string | null;
-  gitProvider?: "github" | "gitlab" | "bitbucket" | null;
+  gitProvider?: "github" | "gitlab" | "bitbucket" | string | null;
   gitOwner?: string | null;
   gitRepo?: string | null;
 };
@@ -66,8 +67,8 @@ export type Chat = {
   id: string;
   name: string | null;
   projectId: string;
-  createdAt: Date | string | number;
-  updatedAt: Date | string | number;
+  createdAt: Date | string | number | null;
+  updatedAt: Date | string | number | null;
   archivedAt?: Date | string | number | null;
   worktreePath?: string | null;
   branch?: string | null;
@@ -82,23 +83,15 @@ export type SubChat = {
   chatId: string;
   sessionId?: string | null;
   streamId?: string | null;
-  mode: "plan" | "agent";
+  mode: "plan" | "agent" | string;
   messages: string;
-  createdAt: Date | string | number;
-  updatedAt: Date | string | number;
+  createdAt: Date | string | number | null;
+  updatedAt: Date | string | number | null;
 };
 
 export type ChatWithSubChats = Chat & {
   subChats: SubChat[];
-  project: Project | null;
-};
-
-export type AnthropicAccount = {
-  id: string;
-  email: string | null;
-  displayName: string;
-  connectedAt: string | null;
-  lastUsedAt?: string | null;
+  project: Project | null | undefined;
 };
 
 export type SystemInfo = {
@@ -161,10 +154,14 @@ export interface AppRPC {
     requests: TerminalRequests & {
       ping: { params: { label: string }; response: { ok: true; reply: string } };
       openExternal: { params: { url: string }; response: void };
-      openInFinder: { params: { path: string }; response: { success: true } };
+      openInFinder: { params: { path: string }; response: { success: boolean } };
       openFileInEditor: {
         params: { path: string; cwd?: string };
-        response: { success: true; editor: string };
+        response: { success: boolean; editor: string };
+      };
+      openInApp: {
+        params: { path: string; app: string };
+        response: { success: boolean; app: string };
       };
       openFileDialog: {
         params: {
@@ -179,11 +176,20 @@ export interface AppRPC {
       windowIsMaximized: { params: {}; response: { isMaximized: boolean } };
       windowToggleFullscreen: { params: {}; response: void };
       windowIsFullscreen: { params: {}; response: { isFullscreen: boolean } };
+      setWindowTitle: { params: { title: string }; response: void };
+      showNotification: { params: { title: string; body: string }; response: void };
+      setBadge: { params: { count: number | null }; response: void };
+      getVersion: { params: {}; response: { version: string } };
+      checkForUpdates: { params: {}; response: { updateAvailable: boolean; currentVersion: string; latestVersion?: string } };
+      downloadUpdate: { params: {}; response: { success: boolean } };
+      installUpdate: { params: {}; response: { success: boolean } };
+      clipboardWrite: { params: { text: string }; response: void };
+      clipboardRead: { params: {}; response: { text: string } };
       filesSearch: {
         params: { projectPath: string; query?: string; limit?: number };
         response: FileEntryResult[];
       };
-      filesClearCache: { params: { projectPath: string }; response: { success: true } };
+      filesClearCache: { params: { projectPath: string }; response: { success: boolean } };
       filesRead: { params: { filePath: string }; response: string };
       filesWritePastedText: {
         params: { subChatId: string; text: string; filename?: string };
@@ -245,97 +251,30 @@ export interface AppRPC {
       };
       agentsDelete: {
         params: { name: string; source: "user" | "project"; cwd?: string };
-        response: { deleted: true };
-      };
-      claudeCodeHasExistingCliConfig: {
-        params: {};
-        response: { hasConfig: boolean; hasApiKey: boolean; baseUrl: string | null };
-      };
-      claudeCodeGetIntegration: {
-        params: {};
-        response: {
-          isConnected: boolean;
-          connectedAt: string | null;
-          accountId: string | null;
-          displayName: string | null;
-        };
-      };
-      claudeCodeStartAuth: {
-        params: {};
-        response: { sandboxId: string; sandboxUrl: string; sessionId: string };
-      };
-      claudeCodePollStatus: {
-        params: { sandboxUrl: string; sessionId: string };
-        response: { state: string; oauthUrl: string | null; error: string | null };
-      };
-      claudeCodeSubmitCode: {
-        params: { sandboxUrl: string; sessionId: string; code: string };
-        response: { success: true };
-      };
-      claudeCodeGetSystemToken: { params: {}; response: { token: string | null } };
-      claudeCodeImportSystemToken: { params: {}; response: { success: true } };
-      claudeCodeGetToken: { params: {}; response: { token: string | null; error: string | null } };
-      claudeCodeDisconnect: { params: {}; response: { success: true } };
-      claudeCodeOpenOAuthUrl: { params: { url: string }; response: { success: true } };
-      claudeGetMcpConfig: {
-        params: { projectPath: string };
-        response: {
-          mcpServers: Array<{ name: string; status: string; config: Record<string, unknown> }>;
-          projectPath: string;
-          error?: string;
-        };
-      };
-      claudeGetAllMcpConfig: {
-        params: {};
-        response: {
-          groups: Array<{
-            groupName: string;
-            projectPath: string | null;
-            mcpServers: Array<{
-              name: string;
-              status: string;
-              tools: string[];
-              needsAuth: boolean;
-              config: Record<string, unknown>;
-            }>;
-          }>;
-          error?: string;
-        };
-      };
-      claudeStartMcpOAuth: {
-        params: { serverName: string; projectPath: string };
-        response: { success: boolean; error?: string };
-      };
-      claudeFetchMcpOAuthMetadata: {
-        params: { serverName: string; projectPath: string };
-        response: {
-          metadata:
-            | { authorization_endpoint: string; token_endpoint: string; registration_endpoint?: string }
-            | null;
-        };
+        response: { deleted: boolean };
       };
       claudeSettingsGetIncludeCoAuthoredBy: { params: {}; response: boolean };
-      claudeSettingsSetIncludeCoAuthoredBy: { params: { enabled: boolean }; response: { success: true } };
+      claudeSettingsSetIncludeCoAuthoredBy: { params: { enabled: boolean }; response: { success: boolean } };
       projectsGetLaunchDirectory: { params: {}; response: string | null };
       projectsList: { params: {}; response: Project[] };
-      projectsGet: { params: { id: string }; response: Project | null };
+      projectsGet: { params: { id: string }; response: Project | null | undefined };
       projectsOpenFolder: { params: {}; response: Project | null };
       projectsCreate: { params: { path: string; name?: string }; response: Project };
-      projectsRename: { params: { id: string; name: string }; response: Project };
-      projectsDelete: { params: { id: string }; response: Project };
-      projectsRefreshGitInfo: { params: { id: string }; response: Project | null };
+      projectsRename: { params: { id: string; name: string }; response: Project | undefined };
+      projectsDelete: { params: { id: string }; response: Project | undefined };
+      projectsRefreshGitInfo: { params: { id: string }; response: Project | null | undefined };
       projectsCloneFromGitHub: { params: { repoUrl: string }; response: Project };
       projectsLocateAndAdd: {
         params: { expectedOwner: string; expectedRepo: string };
         response:
-          | { success: true; project: Project }
+          | { success: boolean; project: Project }
           | { success: false; reason: "canceled" }
           | { success: false; reason: "wrong-repo"; found: string };
       };
       projectsPickCloneDestination: {
         params: { suggestedName: string };
         response:
-          | { success: true; targetPath: string }
+          | { success: boolean; targetPath: string }
           | { success: false; reason: "canceled" };
       };
       sandboxImportImportSandboxChat: {
@@ -347,7 +286,7 @@ export interface AppRPC {
           chatName?: string;
         };
         response: {
-          success: true;
+          success: boolean;
           chatId: string;
           worktreePath: string;
           gitImportSuccess: boolean;
@@ -363,7 +302,7 @@ export interface AppRPC {
           targetPath: string;
         };
         response: {
-          success: true;
+          success: boolean;
           projectId: string;
           chatId: string;
           gitImportSuccess: boolean;
@@ -372,12 +311,12 @@ export interface AppRPC {
       };
       debugGetSystemInfo: { params: {}; response: SystemInfo };
       debugGetDbStats: { params: {}; response: { projects: number; chats: number; subChats: number } };
-      debugClearChats: { params: {}; response: { success: true } };
-      debugClearAllData: { params: {}; response: { success: true } };
-      debugLogout: { params: {}; response: { success: true } };
-      debugOpenUserDataFolder: { params: {}; response: { success: true } };
+      debugClearChats: { params: {}; response: { success: boolean } };
+      debugClearAllData: { params: {}; response: { success: boolean } };
+
+      debugOpenUserDataFolder: { params: {}; response: { success: boolean } };
       debugGetOfflineSimulation: { params: {}; response: { enabled: boolean } };
-      debugSetOfflineSimulation: { params: { enabled: boolean }; response: { success: true; enabled: boolean } };
+      debugSetOfflineSimulation: { params: { enabled: boolean }; response: { success: boolean; enabled: boolean } };
       worktreeConfigGet: { params: { projectId: string }; response: WorktreeConfigResponse };
       worktreeConfigSave: {
         params: { projectId: string; config: WorktreeConfig; target?: string };
@@ -407,25 +346,25 @@ export interface AppRPC {
         };
         response: Chat & { subChats: SubChat[] };
       };
-      chatsRename: { params: { id: string; name: string }; response: Chat };
-      chatsArchive: { params: { id: string; deleteWorktree?: boolean }; response: Chat };
+      chatsRename: { params: { id: string; name: string }; response: Chat | undefined };
+      chatsArchive: { params: { id: string; deleteWorktree?: boolean }; response: Chat | undefined };
       chatsArchiveBatch: { params: { chatIds: string[] }; response: Chat[] };
-      chatsRestore: { params: { id: string }; response: Chat };
-      chatsDelete: { params: { id: string }; response: Chat };
+      chatsRestore: { params: { id: string }; response: Chat | undefined };
+      chatsDelete: { params: { id: string }; response: Chat | undefined };
       chatsGetSubChat: {
         params: { id: string };
-        response: (SubChat & { chat: (Chat & { project: Project | null }) | null }) | null;
+        response: (SubChat & { chat: (Chat & { project: Project | null | undefined }) | null | undefined }) | null | undefined;
       };
       chatsCreateSubChat: { params: { chatId: string; name?: string; mode?: "plan" | "agent" }; response: SubChat };
-      chatsUpdateSubChatMessages: { params: { id: string; messages: string }; response: SubChat };
+      chatsUpdateSubChatMessages: { params: { id: string; messages: string }; response: SubChat | undefined };
       chatsRollbackToMessage: {
         params: { subChatId: string; sdkMessageUuid: string };
         response: { success: boolean; error?: string; messages?: any[] };
       };
-      chatsUpdateSubChatSession: { params: { id: string; sessionId: string | null }; response: SubChat };
-      chatsUpdateSubChatMode: { params: { id: string; mode: "plan" | "agent" }; response: SubChat };
-      chatsRenameSubChat: { params: { id: string; name: string }; response: SubChat };
-      chatsDeleteSubChat: { params: { id: string }; response: SubChat };
+      chatsUpdateSubChatSession: { params: { id: string; sessionId: string | null }; response: SubChat | undefined };
+      chatsUpdateSubChatMode: { params: { id: string; mode: "plan" | "agent" }; response: SubChat | undefined };
+      chatsRenameSubChat: { params: { id: string; name: string }; response: SubChat | undefined };
+      chatsDeleteSubChat: { params: { id: string }; response: SubChat | undefined };
       chatsGenerateSubChatName: { params: { userMessage: string; ollamaModel?: string }; response: { name: string } };
       chatsGenerateCommitMessage: {
         params: { chatId: string; filePaths?: string[]; ollamaModel?: string | null };
@@ -480,9 +419,9 @@ export interface AppRPC {
           checkedOutBranches: Record<string, string>;
         };
       };
-      changesFetch: { params: { worktreePath: string }; response: { success: true } };
-      changesFetchRemote: { params: { worktreePath: string }; response: { success: true } };
-      changesCheckout: { params: { worktreePath: string; branch: string }; response: { success: true } };
+      changesFetch: { params: { worktreePath: string }; response: { success: boolean } };
+      changesFetchRemote: { params: { worktreePath: string }; response: { success: boolean } };
+      changesCheckout: { params: { worktreePath: string; branch: string }; response: { success: boolean } };
       changesGetHistory: {
         params: { worktreePath: string; limit?: number };
         response: Array<{
@@ -494,18 +433,18 @@ export interface AppRPC {
           date: Date | string | number;
         }>;
       };
-      changesCommit: { params: { worktreePath: string; message: string }; response: { success: true; hash: string } };
+      changesCommit: { params: { worktreePath: string; message: string }; response: { success: boolean; hash: string } };
       changesAtomicCommit: {
         params: { worktreePath: string; filePaths: string[]; message: string };
-        response: { success: true; hash: string };
+        response: { success: boolean; hash: string };
       };
-      changesPush: { params: { worktreePath: string; setUpstream?: boolean }; response: { success: true } };
-      changesForcePush: { params: { worktreePath: string }; response: { success: true } };
-      changesPull: { params: { worktreePath: string; autoStash?: boolean }; response: { success: true } };
-      changesMergeFromDefault: { params: { worktreePath: string; useRebase?: boolean }; response: { success: true } };
+      changesPush: { params: { worktreePath: string; setUpstream?: boolean }; response: { success: boolean } };
+      changesForcePush: { params: { worktreePath: string }; response: { success: boolean } };
+      changesPull: { params: { worktreePath: string; autoStash?: boolean }; response: { success: boolean } };
+      changesMergeFromDefault: { params: { worktreePath: string; useRebase?: boolean }; response: { success: boolean } };
       changesCreateBranch: {
         params: { projectPath: string; branchName: string; baseBranch: string };
-        response: { success: true; branchName: string };
+        response: { success: boolean; branchName: string };
       };
       changesGetCommitFiles: {
         params: { worktreePath: string; commitHash: string };
@@ -517,35 +456,18 @@ export interface AppRPC {
       };
       changesIsWorktreeRegistered: { params: { worktreePath: string }; response: boolean };
       changesGetGitHubStatus: { params: { worktreePath: string }; response: GitHubStatus | null };
-      changesStageFile: { params: { worktreePath: string; filePath: string }; response: { success: true } };
-      changesUnstageFile: { params: { worktreePath: string; filePath: string }; response: { success: true } };
-      changesDiscardChanges: { params: { worktreePath: string; filePath: string }; response: { success: true } };
-      changesStageAll: { params: { worktreePath: string }; response: { success: true } };
-      changesUnstageAll: { params: { worktreePath: string }; response: { success: true } };
-      changesStageFiles: { params: { worktreePath: string; filePaths: string[] }; response: { success: true } };
-      changesUnstageFiles: { params: { worktreePath: string; filePaths: string[] }; response: { success: true } };
-      changesDeleteUntracked: { params: { worktreePath: string; filePath: string }; response: { success: true } };
-      changesDiscardMultipleChanges: { params: { worktreePath: string; filePaths: string[] }; response: { success: true } };
-      changesDeleteMultipleUntracked: { params: { worktreePath: string; filePaths: string[] }; response: { success: true } };
-      gitWatcherSubscribe: { params: { worktreePath: string }; response: { success: true } };
-      gitWatcherUnsubscribe: { params: { worktreePath: string }; response: { success: true } };
-      anthropicAccountsList: { params: {}; response: AnthropicAccount[] };
-      anthropicAccountsGetActive: { params: {}; response: AnthropicAccount | null };
-      anthropicAccountsGetActiveToken: { params: {}; response: { token: string | null; error: string | null } };
-      anthropicAccountsSetActive: { params: { accountId: string }; response: { success: true } };
-      anthropicAccountsAdd: {
-        params: { oauthToken: string; email?: string; displayName?: string };
-        response: { id: string; success: true };
-      };
-      anthropicAccountsRename: { params: { accountId: string; displayName: string }; response: { success: true } };
-      anthropicAccountsRemove: { params: { accountId: string }; response: { success: true } };
-      anthropicAccountsHasAccounts: { params: {}; response: { hasAccounts: boolean } };
-      anthropicAccountsMigrateLegacy: {
-        params: {};
-        response:
-          | { migrated: true; accountId: string }
-          | { migrated: false; reason: "accounts_exist" | "no_legacy" };
-      };
+      changesStageFile: { params: { worktreePath: string; filePath: string }; response: { success: boolean } };
+      changesUnstageFile: { params: { worktreePath: string; filePath: string }; response: { success: boolean } };
+      changesDiscardChanges: { params: { worktreePath: string; filePath: string }; response: { success: boolean } };
+      changesStageAll: { params: { worktreePath: string }; response: { success: boolean } };
+      changesUnstageAll: { params: { worktreePath: string }; response: { success: boolean } };
+      changesStageFiles: { params: { worktreePath: string; filePaths: string[] }; response: { success: boolean } };
+      changesUnstageFiles: { params: { worktreePath: string; filePaths: string[] }; response: { success: boolean } };
+      changesDeleteUntracked: { params: { worktreePath: string; filePath: string }; response: { success: boolean } };
+      changesDiscardMultipleChanges: { params: { worktreePath: string; filePaths: string[] }; response: { success: boolean } };
+      changesDeleteMultipleUntracked: { params: { worktreePath: string; filePaths: string[] }; response: { success: boolean } };
+      gitWatcherSubscribe: { params: { worktreePath: string }; response: { success: boolean } };
+      gitWatcherUnsubscribe: { params: { worktreePath: string }; response: { success: boolean } };
       voiceTranscribe: {
         params: { audioBase64: string; format: string; language?: string };
         response: { text: string };
@@ -554,16 +476,89 @@ export interface AppRPC {
         params: {};
         response: { available: boolean; method: "local" | "backend" | null; reason?: string };
       };
-      voiceSetOpenAIKey: { params: { key: string }; response: { success: true } };
+      voiceSetOpenAIKey: { params: { key: string }; response: { success: boolean } };
       voiceHasOpenAIKey: { params: {}; response: { hasKey: boolean } };
-    };
+      // Claude Code authentication handlers
+      claudeCodeHasExistingCliConfig: {
+        params: {};
+        response: { hasConfig: boolean; hasApiKey: boolean; baseUrl: string | null };
+      };
+      claudeCodeGetIntegration: {
+        params: {};
+        response: {
+          isConnected: boolean;
+          connectedAt: string | null;
+          accountId: string | null;
+          displayName: string | null;
+        };
+      };
+      claudeCodeStartAuth: {
+        params: {};
+        response: {
+          sandboxId: string;
+          sandboxUrl: string;
+          sessionId: string;
+          hasExistingToken?: boolean;
+        };
+      };
+      claudeCodePollStatus: {
+        params: { sandboxUrl: string; sessionId: string };
+        response: {
+          state: "has_token" | "waiting" | "error";
+          oauthUrl: string | null;
+          error: string | null;
+        };
+      };
+      claudeCodeSubmitCode: {
+        params: { sandboxUrl: string; sessionId: string; code: string };
+        response: { success: boolean };
+      };
+      claudeCodeGetSystemToken: {
+        params: {};
+        response: { token: string | null };
+      };
+      claudeCodeImportSystemToken: {
+        params: {};
+        response: { success: boolean };
+      };
+      claudeCodeGetToken: {
+        params: {};
+        response: { token: string | null; error: string | null };
+      };
+      claudeCodeDisconnect: {
+        params: {};
+        response: { success: boolean };
+      };
+      claudeCodeOpenOAuthUrl: {
+        params: { url: string };
+        response: { success: boolean };
+      };
+    } & ChatRequests;
     messages: {};
   }>;
   webview: RPCSchema<{
     requests: {};
-    messages: TerminalMessages & {
+    messages: TerminalMessages & ChatMessages & {
       log: { level: "info" | "error"; message: string };
       gitStatusChanged: { worktreePath: string; changes: Array<{ path: string; type: "add" | "change" | "unlink" }> };
     };
   }>;
 }
+
+/** Schema of bun requests (params/response per key). */
+export type BunRequestsSchema = AppRPC["bun"]["requests"];
+
+/** Typed client: each request key is (params) => Promise<response>. */
+export type BunRequestClient = {
+  [K in keyof BunRequestsSchema]: BunRequestsSchema[K] extends {
+    params: infer P;
+    response: infer R;
+  }
+    ? (params: P) => Promise<R>
+    : never;
+};
+
+/** Type for sending messages to webview */
+export type WebviewMessageSender = {
+  [K in keyof AppRPC["webview"]["messages"]]: (payload: AppRPC["webview"]["messages"][K]) => void;
+};

@@ -1,5 +1,5 @@
 import { createEffect, onCleanup } from "solid-js"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/solid-query"
 
 /**
  * Hook that listens for file changes from Claude Write/Edit tools
@@ -30,7 +30,7 @@ export function useFileChangeListener(worktreePath: () => string | null | undefi
 
 /**
  * Hook that subscribes to the GitWatcher for real-time file system monitoring.
- * Uses chokidar on the main process for efficient file watching.
+ * Uses @parcel/watcher on the main process for efficient file watching.
  * Automatically invalidates git status queries when files change.
  */
 export function useGitWatcher(worktreePath: () => string | null | undefined) {

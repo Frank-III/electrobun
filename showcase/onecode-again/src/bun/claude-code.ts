@@ -1,48 +1,43 @@
 import { Utils } from "electrobun/bun";
 import { eq } from "drizzle-orm";
-import { getClaudeShellEnvironment } from "./claude-env";
-import { getApiUrl } from "./config";
-import {
-  anthropicAccounts,
-  anthropicSettings,
-  claudeCodeCredentials,
-  getDatabase,
-} from "./db";
-import { createId } from "./db/utils";
-import { getExistingClaudeToken } from "./legacy/main/lib/claude-token";
+import { getExistingClaudeToken, getClaudeShellEnvironment } from "./claude-token";
+import { getDatabase } from "./db";
+import { claudeCodeCredentials, anthropicAccounts, anthropicSettings } from "./db/schema";
 
-function encryptToken(token: string): string {
+// Simple base64 encoding for token storage (Electrobun doesn't have safeStorage)
+// In production, consider using system keychain via native bindings
+function encodeToken(token: string): string {
   return Buffer.from(token).toString("base64");
 }
 
-function decryptToken(encrypted: string): string {
-  return Buffer.from(encrypted, "base64").toString("utf-8");
+function decodeToken(encoded: string): string {
+  return Buffer.from(encoded, "base64").toString("utf-8");
 }
 
-function getDesktopToken(): string | null {
-  return (
-    process.env.DESKTOP_TOKEN ||
-    process.env.TWENTYFIRST_DESKTOP_TOKEN ||
-    process.env.X_DESKTOP_TOKEN ||
-    null
-  );
+function generateId(): string {
+  return `acc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function storeOAuthToken(db: Awaited<ReturnType<typeof getDatabase>>, oauthToken: string, setAsActive = true): string {
-  const encryptedToken = encryptToken(oauthToken);
-  const newId = createId();
+/**
+ * Store OAuth token in database
+ */
+function storeOAuthToken(oauthToken: string, setAsActive = true): string {
+  const encodedToken = encodeToken(oauthToken);
+  const db = getDatabase();
+  const newId = generateId();
 
+  // Store in multi-account table
   db.insert(anthropicAccounts)
     .values({
       id: newId,
-      oauthToken: encryptedToken,
+      oauthToken: encodedToken,
       displayName: "Anthropic Account",
       connectedAt: new Date(),
-      desktopUserId: null,
     })
     .run();
 
   if (setAsActive) {
+    // Set as active account
     db.insert(anthropicSettings)
       .values({
         id: "singleton",
@@ -59,13 +54,16 @@ function storeOAuthToken(db: Awaited<ReturnType<typeof getDatabase>>, oauthToken
       .run();
   }
 
-  db.delete(claudeCodeCredentials).where(eq(claudeCodeCredentials.id, "default")).run();
+  // Also update legacy table for backward compatibility
+  db.delete(claudeCodeCredentials)
+    .where(eq(claudeCodeCredentials.id, "default"))
+    .run();
+
   db.insert(claudeCodeCredentials)
     .values({
       id: "default",
-      oauthToken: encryptedToken,
+      oauthToken: encodedToken,
       connectedAt: new Date(),
-      userId: null,
     })
     .run();
 
@@ -74,8 +72,11 @@ function storeOAuthToken(db: Awaited<ReturnType<typeof getDatabase>>, oauthToken
 
 export function createClaudeCodeHandlers() {
   return {
+    /**
+     * Check if user has existing CLI config (API key or proxy)
+     */
     claudeCodeHasExistingCliConfig: async () => {
-      const shellEnv = await getClaudeShellEnvironment();
+      const shellEnv = getClaudeShellEnvironment();
       const hasConfig = !!(shellEnv.ANTHROPIC_API_KEY || shellEnv.ANTHROPIC_BASE_URL);
       return {
         hasConfig,
@@ -84,8 +85,13 @@ export function createClaudeCodeHandlers() {
       };
     },
 
+    /**
+     * Check if user has Claude Code connected
+     */
     claudeCodeGetIntegration: async () => {
-      const db = await getDatabase();
+      const db = getDatabase();
+
+      // First try multi-account system
       const settings = db
         .select()
         .from(anthropicSettings)
@@ -102,13 +108,14 @@ export function createClaudeCodeHandlers() {
         if (account) {
           return {
             isConnected: true,
-            connectedAt: account.connectedAt?.toISOString?.() ?? account.connectedAt ?? null,
+            connectedAt: account.connectedAt?.toISOString() ?? null,
             accountId: account.id,
             displayName: account.displayName,
           };
         }
       }
 
+      // Fallback to legacy table
       const cred = db
         .select()
         .from(claudeCodeCredentials)
@@ -117,122 +124,94 @@ export function createClaudeCodeHandlers() {
 
       return {
         isConnected: !!cred?.oauthToken,
-        connectedAt: cred?.connectedAt?.toISOString?.() ?? cred?.connectedAt ?? null,
+        connectedAt: cred?.connectedAt?.toISOString() ?? null,
         accountId: null,
         displayName: null,
       };
     },
 
+    /**
+     * Start OAuth flow - calls server to create sandbox
+     * NOTE: This requires a backend server for sandbox creation
+     * For now, return an error indicating manual setup is needed
+     */
     claudeCodeStartAuth: async () => {
-      const token = getDesktopToken();
-      if (!token) {
-        throw new Error("Missing desktop token. Set DESKTOP_TOKEN to start auth.");
+      // Check for existing system token first
+      const existingToken = getExistingClaudeToken();
+      if (existingToken) {
+        return {
+          sandboxId: "local",
+          sandboxUrl: "local://",
+          sessionId: "use-existing",
+          hasExistingToken: true,
+        };
       }
 
-      const response = await fetch(`${getApiUrl()}/api/auth/claude-code/start`, {
-        method: "POST",
-        headers: { "x-desktop-token": token },
-      });
+      throw new Error(
+        "OAuth sandbox flow not yet implemented for Electrobun. " +
+        "Please use ANTHROPIC_API_KEY environment variable or " +
+        "run 'claude login' in terminal first."
+      );
+    },
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(error.error || `Start auth failed: ${response.status}`);
+    /**
+     * Poll for OAuth URL
+     */
+    claudeCodePollStatus: async (input: { sandboxUrl: string; sessionId: string }) => {
+      if (input.sessionId === "use-existing") {
+        const token = getExistingClaudeToken();
+        if (token) {
+          return {
+            state: "has_token" as const,
+            oauthUrl: null,
+            error: null,
+          };
+        }
       }
 
-      return (await response.json()) as {
-        sandboxId: string;
-        sandboxUrl: string;
-        sessionId: string;
+      return {
+        state: "error" as const,
+        oauthUrl: null,
+        error: "OAuth flow not implemented",
       };
     },
 
-    claudeCodePollStatus: async ({
-      sandboxUrl,
-      sessionId,
-    }: {
-      sandboxUrl: string;
-      sessionId: string;
-    }) => {
-      try {
-        const response = await fetch(`${sandboxUrl}/api/auth/${sessionId}/status`);
-        if (!response.ok) {
-          return { state: "error" as const, oauthUrl: null, error: "Failed to poll status" };
-        }
-
-        const data = await response.json();
-        return {
-          state: data.state as string,
-          oauthUrl: data.oauthUrl ?? null,
-          error: data.error ?? null,
-        };
-      } catch (error) {
-        console.error("[ClaudeCode] Poll status error:", error);
-        return { state: "error" as const, oauthUrl: null, error: "Connection failed" };
-      }
+    /**
+     * Submit OAuth code
+     */
+    claudeCodeSubmitCode: async (_input: { sandboxUrl: string; sessionId: string; code: string }) => {
+      throw new Error("OAuth code submission not implemented for Electrobun");
     },
 
-    claudeCodeSubmitCode: async ({
-      sandboxUrl,
-      sessionId,
-      code,
-    }: {
-      sandboxUrl: string;
-      sessionId: string;
-      code: string;
-    }) => {
-      const codeRes = await fetch(`${sandboxUrl}/api/auth/${sessionId}/code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-
-      if (!codeRes.ok) {
-        throw new Error(`Code submission failed: ${codeRes.statusText}`);
-      }
-
-      let oauthToken: string | null = null;
-      for (let i = 0; i < 10; i += 1) {
-        await new Promise((r) => setTimeout(r, 1000));
-        const statusRes = await fetch(`${sandboxUrl}/api/auth/${sessionId}/status`);
-        if (!statusRes.ok) continue;
-        const status = await statusRes.json();
-        if (status.state === "success" && status.oauthToken) {
-          oauthToken = status.oauthToken;
-          break;
-        }
-        if (status.state === "error") {
-          throw new Error(status.error || "Authentication failed");
-        }
-      }
-
-      if (!oauthToken) {
-        throw new Error("Timeout waiting for OAuth token");
-      }
-
-      const db = await getDatabase();
-      storeOAuthToken(db, oauthToken);
-      return { success: true };
-    },
-
+    /**
+     * Check for existing Claude token in system credentials
+     */
     claudeCodeGetSystemToken: async () => {
       const token = getExistingClaudeToken()?.trim() ?? null;
       return { token };
     },
 
+    /**
+     * Import Claude token from system credentials
+     */
     claudeCodeImportSystemToken: async () => {
       const token = getExistingClaudeToken()?.trim();
       if (!token) {
-        throw new Error("No existing Claude token found");
+        throw new Error("No existing Claude token found. Run 'claude login' in terminal first.");
       }
 
-      const db = await getDatabase();
-      storeOAuthToken(db, token);
+      storeOAuthToken(token);
+      console.log("[ClaudeCode] Token imported from system");
       return { success: true };
     },
 
+    /**
+     * Get decrypted OAuth token
+     */
     claudeCodeGetToken: async () => {
-      const db = await getDatabase();
+      const db = getDatabase();
 
+      // First try multi-account system
       const settings = db
         .select()
         .from(anthropicSettings)
@@ -248,15 +227,16 @@ export function createClaudeCodeHandlers() {
 
         if (account) {
           try {
-            const token = decryptToken(account.oauthToken);
+            const token = decodeToken(account.oauthToken);
             return { token, error: null };
           } catch (error) {
-            console.error("[ClaudeCode] Decrypt error:", error);
-            return { token: null, error: "Failed to decrypt token" };
+            console.error("[ClaudeCode] Decode error:", error);
+            return { token: null, error: "Failed to decode token" };
           }
         }
       }
 
+      // Fallback to legacy table
       const cred = db
         .select()
         .from(claudeCodeCredentials)
@@ -268,17 +248,21 @@ export function createClaudeCodeHandlers() {
       }
 
       try {
-        const token = decryptToken(cred.oauthToken);
+        const token = decodeToken(cred.oauthToken);
         return { token, error: null };
       } catch (error) {
-        console.error("[ClaudeCode] Decrypt error:", error);
-        return { token: null, error: "Failed to decrypt token" };
+        console.error("[ClaudeCode] Decode error:", error);
+        return { token: null, error: "Failed to decode token" };
       }
     },
 
+    /**
+     * Disconnect - delete credentials
+     */
     claudeCodeDisconnect: async () => {
-      const db = await getDatabase();
+      const db = getDatabase();
 
+      // Get active account
       const settings = db
         .select()
         .from(anthropicSettings)
@@ -286,11 +270,14 @@ export function createClaudeCodeHandlers() {
         .get();
 
       if (settings?.activeAccountId) {
+        // Remove active account
         db.delete(anthropicAccounts)
           .where(eq(anthropicAccounts.id, settings.activeAccountId))
           .run();
 
+        // Try to set another account as active
         const firstRemaining = db.select().from(anthropicAccounts).limit(1).get();
+
         if (firstRemaining) {
           db.update(anthropicSettings)
             .set({
@@ -310,12 +297,20 @@ export function createClaudeCodeHandlers() {
         }
       }
 
-      db.delete(claudeCodeCredentials).where(eq(claudeCodeCredentials.id, "default")).run();
+      // Also clear legacy table
+      db.delete(claudeCodeCredentials)
+        .where(eq(claudeCodeCredentials.id, "default"))
+        .run();
+
+      console.log("[ClaudeCode] Disconnected");
       return { success: true };
     },
 
-    claudeCodeOpenOAuthUrl: async ({ url }: { url: string }) => {
-      Utils.openExternal(url);
+    /**
+     * Open OAuth URL in browser
+     */
+    claudeCodeOpenOAuthUrl: async (input: { url: string }) => {
+      Utils.openExternal(input.url);
       return { success: true };
     },
   };

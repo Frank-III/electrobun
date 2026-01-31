@@ -1,9 +1,7 @@
-import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
-import type { AppRPC } from "../shared/rpc-schema";
+import { BrowserView, BrowserWindow, Utils, Updater } from "electrobun/bun";
+import type { AppRPC, WebviewMessageSender } from "../shared/rpc-schema";
 import { createAgentsHandlers } from "./agents";
-import { createAnthropicAccountsHandlers } from "./anthropic-accounts";
-import { createClaudeHandlers } from "./claude";
-import { createClaudeCodeHandlers } from "./claude-code";
+import { createChatStreamHandlers } from "./chat-stream";
 import { createClaudeSettingsHandlers } from "./claude-settings";
 import { createChatsHandlers } from "./chats";
 import { createChangesHandlers } from "./changes";
@@ -21,9 +19,10 @@ import { createSkillsHandlers } from "./skills";
 import { createTerminalHandlers, destroyAll } from "./terminal-manager";
 import { createVoiceHandlers } from "./voice";
 import { createWorktreeConfigHandlers } from "./worktree-config-handlers";
+import { createClaudeCodeHandlers } from "./claude-code";
 
 let mainWindow: BrowserWindow | null = null;
-let sendToWebview: BrowserView["rpc"] | null = null;
+let sendToWebview: { send: WebviewMessageSender } | null = null;
 
 await initDatabase();
 parseLaunchDirectory();
@@ -41,9 +40,6 @@ const commandsHandlers = createCommandsHandlers();
 const ollamaHandlers = createOllamaHandlers();
 const skillsHandlers = createSkillsHandlers();
 const agentsHandlers = createAgentsHandlers();
-const anthropicAccountsHandlers = createAnthropicAccountsHandlers();
-const claudeHandlers = createClaudeHandlers();
-const claudeCodeHandlers = createClaudeCodeHandlers();
 const claudeSettingsHandlers = createClaudeSettingsHandlers();
 const projectsHandlers = createProjectsHandlers();
 const sandboxImportHandlers = createSandboxImportHandlers();
@@ -58,6 +54,10 @@ const gitWatcherHandlers = createGitWatcherHandlers((event) => {
   });
 });
 const voiceHandlers = createVoiceHandlers();
+const claudeCodeHandlers = createClaudeCodeHandlers();
+const chatStreamHandlers = createChatStreamHandlers((subChatId, chunk) => {
+  sendToWebview?.send?.chatChunk({ subChatId, chunk });
+});
 
 const rpc = BrowserView.defineRPC<AppRPC>({
   handlers: {
@@ -95,6 +95,47 @@ const rpc = BrowserView.defineRPC<AppRPC>({
         mainWindow.setFullScreen(!mainWindow.isFullScreen());
       },
       windowIsFullscreen: () => ({ isFullscreen: mainWindow?.isFullScreen() ?? false }),
+      setWindowTitle: ({ title }) => {
+        // NOTE: BrowserWindow.setTitle may not exist in current Electrobun version
+        // @ts-expect-error - setTitle may be added in future version
+        mainWindow?.setTitle?.(title);
+      },
+      showNotification: ({ title, body }) => {
+        // TODO: Implement native notifications via Electrobun
+        console.log(`[notification] ${title}: ${body}`);
+      },
+      setBadge: ({ count }) => {
+        // TODO: Implement dock badge via Electrobun
+        console.log(`[badge] count: ${count}`);
+      },
+      getVersion: async () => {
+        const info = await Updater.localInfo.version();
+        return { version: info };
+      },
+      checkForUpdates: async () => {
+        try {
+          await Updater.checkForUpdates();
+          // Electrobun checkForUpdates doesn't return a value, we need to get info separately
+          const currentVersion = await Updater.localInfo.version();
+          return {
+            updateAvailable: false, // Would need to compare versions
+            currentVersion,
+            latestVersion: undefined,
+          };
+        } catch {
+          const currentVersion = await Updater.localInfo.version();
+          return { updateAvailable: false, currentVersion };
+        }
+      },
+      downloadUpdate: async () => {
+        // TODO: Implement when Electrobun Updater API is available
+        return { success: false };
+      },
+      installUpdate: async () => {
+        // TODO: Implement when Electrobun Updater API is available
+        return { success: false };
+      },
+      openInApp: externalHandlers.openInApp,
       create: terminalHandlers.create,
       write: terminalHandlers.write,
       resize: terminalHandlers.resize,
@@ -126,20 +167,6 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       agentsDelete: agentsHandlers.agentsDelete,
       claudeSettingsGetIncludeCoAuthoredBy: claudeSettingsHandlers.claudeSettingsGetIncludeCoAuthoredBy,
       claudeSettingsSetIncludeCoAuthoredBy: claudeSettingsHandlers.claudeSettingsSetIncludeCoAuthoredBy,
-      claudeCodeHasExistingCliConfig: claudeCodeHandlers.claudeCodeHasExistingCliConfig,
-      claudeCodeGetIntegration: claudeCodeHandlers.claudeCodeGetIntegration,
-      claudeCodeStartAuth: claudeCodeHandlers.claudeCodeStartAuth,
-      claudeCodePollStatus: claudeCodeHandlers.claudeCodePollStatus,
-      claudeCodeSubmitCode: claudeCodeHandlers.claudeCodeSubmitCode,
-      claudeCodeGetSystemToken: claudeCodeHandlers.claudeCodeGetSystemToken,
-      claudeCodeImportSystemToken: claudeCodeHandlers.claudeCodeImportSystemToken,
-      claudeCodeGetToken: claudeCodeHandlers.claudeCodeGetToken,
-      claudeCodeDisconnect: claudeCodeHandlers.claudeCodeDisconnect,
-      claudeCodeOpenOAuthUrl: claudeCodeHandlers.claudeCodeOpenOAuthUrl,
-      claudeGetMcpConfig: claudeHandlers.claudeGetMcpConfig,
-      claudeGetAllMcpConfig: claudeHandlers.claudeGetAllMcpConfig,
-      claudeStartMcpOAuth: claudeHandlers.claudeStartMcpOAuth,
-      claudeFetchMcpOAuthMetadata: claudeHandlers.claudeFetchMcpOAuthMetadata,
       projectsGetLaunchDirectory: projectsHandlers.projectsGetLaunchDirectory,
       projectsList: projectsHandlers.projectsList,
       projectsGet: projectsHandlers.projectsGet,
@@ -157,7 +184,6 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       debugGetDbStats: debugHandlers.debugGetDbStats,
       debugClearChats: debugHandlers.debugClearChats,
       debugClearAllData: debugHandlers.debugClearAllData,
-      debugLogout: debugHandlers.debugLogout,
       debugOpenUserDataFolder: debugHandlers.debugOpenUserDataFolder,
       debugGetOfflineSimulation: debugHandlers.debugGetOfflineSimulation,
       debugSetOfflineSimulation: debugHandlers.debugSetOfflineSimulation,
@@ -223,19 +249,25 @@ const rpc = BrowserView.defineRPC<AppRPC>({
       changesDeleteMultipleUntracked: changesHandlers.changesDeleteMultipleUntracked,
       gitWatcherSubscribe: gitWatcherHandlers.gitWatcherSubscribe,
       gitWatcherUnsubscribe: gitWatcherHandlers.gitWatcherUnsubscribe,
-      anthropicAccountsList: anthropicAccountsHandlers.anthropicAccountsList,
-      anthropicAccountsGetActive: anthropicAccountsHandlers.anthropicAccountsGetActive,
-      anthropicAccountsGetActiveToken: anthropicAccountsHandlers.anthropicAccountsGetActiveToken,
-      anthropicAccountsSetActive: anthropicAccountsHandlers.anthropicAccountsSetActive,
-      anthropicAccountsAdd: anthropicAccountsHandlers.anthropicAccountsAdd,
-      anthropicAccountsRename: anthropicAccountsHandlers.anthropicAccountsRename,
-      anthropicAccountsRemove: anthropicAccountsHandlers.anthropicAccountsRemove,
-      anthropicAccountsHasAccounts: anthropicAccountsHandlers.anthropicAccountsHasAccounts,
-      anthropicAccountsMigrateLegacy: anthropicAccountsHandlers.anthropicAccountsMigrateLegacy,
       voiceTranscribe: voiceHandlers.voiceTranscribe,
       voiceIsAvailable: voiceHandlers.voiceIsAvailable,
       voiceSetOpenAIKey: voiceHandlers.voiceSetOpenAIKey,
       voiceHasOpenAIKey: voiceHandlers.voiceHasOpenAIKey,
+      chatStart: chatStreamHandlers.chatStart,
+      chatStop: chatStreamHandlers.chatStop,
+      chatRespondToolApproval: chatStreamHandlers.chatRespondToolApproval,
+      chatRespondUserQuestion: chatStreamHandlers.chatRespondUserQuestion,
+      // Claude Code authentication handlers
+      claudeCodeHasExistingCliConfig: claudeCodeHandlers.claudeCodeHasExistingCliConfig,
+      claudeCodeGetIntegration: claudeCodeHandlers.claudeCodeGetIntegration,
+      claudeCodeStartAuth: claudeCodeHandlers.claudeCodeStartAuth,
+      claudeCodePollStatus: claudeCodeHandlers.claudeCodePollStatus,
+      claudeCodeSubmitCode: claudeCodeHandlers.claudeCodeSubmitCode,
+      claudeCodeGetSystemToken: claudeCodeHandlers.claudeCodeGetSystemToken,
+      claudeCodeImportSystemToken: claudeCodeHandlers.claudeCodeImportSystemToken,
+      claudeCodeGetToken: claudeCodeHandlers.claudeCodeGetToken,
+      claudeCodeDisconnect: claudeCodeHandlers.claudeCodeDisconnect,
+      claudeCodeOpenOAuthUrl: claudeCodeHandlers.claudeCodeOpenOAuthUrl,
     },
     messages: {
       "*": (name, payload) => {
@@ -254,7 +286,7 @@ mainWindow = new BrowserWindow({
 });
 
 mainWindow.webview?.on("dom-ready", () => {
-  sendToWebview = mainWindow?.webview?.rpc ?? null;
+  sendToWebview = mainWindow?.webview?.rpc as { send: WebviewMessageSender } | null ?? null;
 });
 
 mainWindow.on("close", () => {
