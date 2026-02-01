@@ -83,7 +83,10 @@ const TodoListItem = ({ todo, isLast }: {
 export function TodoWidget(props: TodoWidgetProps) {
 	// Get todos from the active sub-chat
 	const todosAtom = createMemo(() => currentTodosAtomFamily(props.subChatId || "default"));
-	const todoState = () => todosAtom()[0];
+	const todoState = createMemo(() => {
+		const [state] = todosAtom();
+		return state();
+	});
 	const todos = () => todoState().todos;
 	// Expanded/collapsed state
 	const [isExpanded, setIsExpanded] = createSignal(true);

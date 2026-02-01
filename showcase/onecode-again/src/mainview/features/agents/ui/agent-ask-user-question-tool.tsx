@@ -29,11 +29,11 @@ export function AgentAskUserQuestionTool(props: AgentAskUserQuestionToolProps) {
 	const questions = local.input?.questions ?? [];
 	const questionCount = questions.length;
 	// Get real-time results from atom (for immediate updates before DB sync)
-	const resultsMap = askUserQuestionResultsAtom[0];
-	const realtimeResult = local.toolCallId ? resultsMap.get(local.toolCallId) : undefined;
+	const [resultsMap] = askUserQuestionResultsAtom;
+	const realtimeResult = local.toolCallId ? resultsMap().get(local.toolCallId) : undefined;
 	// Check if the question dialog is currently shown for this tool
-	const pendingQuestionsMap = pendingUserQuestionsAtom[0];
-	const isDialogShown = local.toolCallId ? Array.from(pendingQuestionsMap.values()).some((q) => q.toolUseId === local.toolCallId) : false;
+	const [pendingQuestionsMap] = pendingUserQuestionsAtom;
+	const isDialogShown = local.toolCallId ? Array.from(pendingQuestionsMap().values()).some((q) => q.toolUseId === local.toolCallId) : false;
 	// Use realtime result if available, otherwise fall back to prop
 	const effectiveResult = realtimeResult ?? local.result;
 	// For errors, SDK stores errorText separately - use it to detect skip/timeout

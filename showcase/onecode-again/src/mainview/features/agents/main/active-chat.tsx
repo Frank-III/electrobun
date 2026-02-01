@@ -12,7 +12,7 @@ import { createRpcChat } from "../lib/rpc-chat";
 import type { RpcChat, RpcChatTransport } from "../lib/rpc-chat";
 import { useChatSolid } from "../hooks/use-chat-solid";
 import type { DiffViewMode } from "../ui/agent-diff-view";
-import { createContext, createMemo, createSignal, createEffect, For, Index, Match, onCleanup, Show, Switch, useContext, mergeProps, splitProps, type Accessor } from "solid-js";
+import { batch, createContext, createMemo, createSignal, createEffect, For, Index, Match, onCleanup, Show, Switch, useContext, mergeProps, splitProps, untrack, type Accessor } from "solid-js";
 import { ReactiveSet } from "@solid-primitives/set";
 import { ArrowDown, ChevronDown, GitFork, ListTree, TerminalSquare } from "lucide-solid";
 import { Motion, Presence } from "solid-motionone";
@@ -1364,12 +1364,14 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	const [planApprovalPending, setPlanApprovalPending] = createSignal<Record<string, boolean>>({});
 	// Track chat changes for rename trigger reset
 	const [chatRef, setChatRef] = createSignal<RpcChat | null>(null);
-	if (prevSubChatIdRef() !== subChatId) {
-		setHasTriggeredRenameRef(false);
-		setHasTriggeredAutoGenerateRef(false);
-		setPrevSubChatIdRef(subChatId);
-	}
-	setChatRef(chat);
+	createEffect(() => {
+		if (prevSubChatIdRef() !== subChatId) {
+			setHasTriggeredRenameRef(false);
+			setHasTriggeredAutoGenerateRef(false);
+			setPrevSubChatIdRef(subChatId);
+		}
+		setChatRef(chat);
+	});
 	// Restore draft when subChatId changes (switching between sub-chats)
 	const [prevSubChatIdForDraftRef, setPrevSubChatIdForDraftRef] = createSignal<string | null>(null);
 	createEffect(() => {
@@ -2848,73 +2850,104 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 	// Mutual exclusion: Details sidebar vs Plan/Terminal/Diff(side-peek) sidebars
 	// When one opens, close the conflicting ones and remember for restoration
 	// Track what was auto-closed and by whom for restoration
-	const [autoClosedStateRef, setAutoClosedStateRef] = createSignal<{
+	const autoClosedStateRef: {
 		// What closed Details
 		detailsClosedBy: "plan" | "terminal" | "diff" | null;
 		// What Details closed
 		planClosedByDetails: boolean;
 		terminalClosedByDetails: boolean;
 		diffClosedByDetails: boolean;
-	}>({
+	} = {
 		detailsClosedBy: null,
 		planClosedByDetails: false,
 		terminalClosedByDetails: false,
 		diffClosedByDetails: false
-	});
+	};
 	// Track previous states to detect opens/closes
-	const [prevSidebarStatesRef, setPrevSidebarStatesRef] = createSignal({
+	let prevSidebarStatesRef = {
 		details: isDetailsSidebarOpen(),
 		plan: isPlanSidebarOpen() && !!currentPlanPath(),
 		terminal: isTerminalSidebarOpen()
-	});
+	};
 	createEffect(() => {
-		const prev = prevSidebarStatesRef();
-		const auto = autoClosedStateRef();
-		const isPlanOpen = isPlanSidebarOpen() && !!currentPlanPath();
+		const prev = prevSidebarStatesRef;
+		const auto = autoClosedStateRef;
+		const unifiedEnabled = isUnifiedSidebarEnabled();
+		const detailsOpen = isDetailsSidebarOpen();
+		const planOpenRaw = isPlanSidebarOpen();
+		const planPath = currentPlanPath();
+		const planOpen = planOpenRaw && !!planPath;
+		const terminalOpen = isTerminalSidebarOpen();
+		if (!unifiedEnabled) {
+			// Unified sidebar disabled - don't enforce mutual exclusion.
+			auto.detailsClosedBy = null;
+			auto.planClosedByDetails = false;
+			auto.terminalClosedByDetails = false;
+			prevSidebarStatesRef = {
+				details: false,
+				plan: planOpen,
+				terminal: terminalOpen,
+			};
+			return;
+		}
 		// Detect state changes
-		const detailsJustOpened = isDetailsSidebarOpen() && !prev.details;
-		const detailsJustClosed = !isDetailsSidebarOpen() && prev.details;
-		const planJustOpened = isPlanOpen && !prev.plan;
-		const planJustClosed = !isPlanOpen && prev.plan;
-		const terminalJustOpened = isTerminalSidebarOpen() && !prev.terminal;
-		const terminalJustClosed = !isTerminalSidebarOpen() && prev.terminal;
+		const detailsJustOpened = detailsOpen && !prev.details;
+		const detailsJustClosed = !detailsOpen && prev.details;
+		const planJustOpened = planOpen && !prev.plan;
+		const planJustClosed = !planOpen && prev.plan;
+		const terminalJustOpened = terminalOpen && !prev.terminal;
+		const terminalJustClosed = !terminalOpen && prev.terminal;
+		let nextDetails = detailsOpen;
+		let nextPlan = planOpen;
+		let nextTerminal = terminalOpen;
 		// Details opened → close conflicting sidebars and remember
 		if (detailsJustOpened) {
-			if (isPlanOpen) {
+			if (planOpen) {
 				auto.planClosedByDetails = true;
-				setIsPlanSidebarOpen(false);
+				nextPlan = false;
 			}
-			if (isTerminalSidebarOpen()) {
+			if (terminalOpen) {
 				auto.terminalClosedByDetails = true;
-				setIsTerminalSidebarOpen(false);
+				nextTerminal = false;
 			}
 		} else if (detailsJustClosed) {
-			if (auto.planClosedByDetails) {
+			if (auto.planClosedByDetails && planPath) {
 				auto.planClosedByDetails = false;
-				setIsPlanSidebarOpen(true);
+				nextPlan = true;
 			}
 			if (auto.terminalClosedByDetails) {
 				auto.terminalClosedByDetails = false;
-				setIsTerminalSidebarOpen(true);
+				nextTerminal = true;
 			}
-		} else if (planJustOpened && isDetailsSidebarOpen()) {
+		} else if (planJustOpened && detailsOpen) {
 			auto.detailsClosedBy = "plan";
-			setIsDetailsSidebarOpen(false);
+			nextDetails = false;
 		} else if (planJustClosed && auto.detailsClosedBy === "plan") {
 			auto.detailsClosedBy = null;
-			setIsDetailsSidebarOpen(true);
-		} else if (terminalJustOpened && isDetailsSidebarOpen()) {
+			nextDetails = true;
+		} else if (terminalJustOpened && detailsOpen) {
 			auto.detailsClosedBy = "terminal";
-			setIsDetailsSidebarOpen(false);
+			nextDetails = false;
 		} else if (terminalJustClosed && auto.detailsClosedBy === "terminal") {
 			auto.detailsClosedBy = null;
-			setIsDetailsSidebarOpen(true);
+			nextDetails = true;
 		}
-		setPrevSidebarStatesRef({
-			details: isDetailsSidebarOpen(),
-			plan: isPlanOpen,
-			terminal: isTerminalSidebarOpen,
+		batch(() => {
+			if (nextDetails !== detailsOpen) {
+				setIsDetailsSidebarOpen(nextDetails);
+			}
+			if (nextPlan !== planOpenRaw) {
+				setIsPlanSidebarOpen(nextPlan);
+			}
+			if (nextTerminal !== terminalOpen) {
+				setIsTerminalSidebarOpen(nextTerminal);
+			}
 		});
+		prevSidebarStatesRef = {
+			details: nextDetails,
+			plan: nextPlan,
+			terminal: nextTerminal,
+		};
 	});
 	// Diff data cache - stored in atoms to persist across workspace switches
 	const [diffCache, setDiffCache] = workspaceDiffCacheAtomFamily(chatId);
@@ -2969,20 +3002,20 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 	// - If Diff opens in side-peek while Details is open: switch Diff to center-peek (dialog) mode
 	// - If user manually switches Diff to side-peek while Details is open: close Details and remember
 	// - If Details opens while Diff is in side-peek mode: close Diff and remember
-	const [prevDiffStateRef, setPrevDiffStateRef] = createSignal<{
+	let prevDiffStateRef: {
 		isOpen: boolean;
 		mode: string;
 		detailsOpen: boolean;
-	}>({
+	} = {
 		isOpen: isDiffSidebarOpen(),
 		mode: diffDisplayMode(),
 		detailsOpen: isDetailsSidebarOpen()
-	});
+	};
 	// Flag to skip center-peek switch when restoring Diff after Details closes
 	const [isRestoringDiffRef, setIsRestoringDiffRef] = createSignal(false);
 	createEffect(() => {
-		const prev = prevDiffStateRef();
-		const auto = autoClosedStateRef();
+		const prev = prevDiffStateRef;
+		const auto = autoClosedStateRef;
 		const isNowSidePeek = isDiffSidebarOpen() && diffDisplayMode() === "side-peek";
 		const wasSidePeek = prev.isOpen && prev.mode === "side-peek";
 		const detailsJustOpened = isDetailsSidebarOpen() && !prev.detailsOpen;
@@ -3011,11 +3044,11 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 				setIsRestoringDiffRef(false);
 			});
 		}
-		setPrevDiffStateRef({
+		prevDiffStateRef = {
 			isOpen: isDiffSidebarOpen(),
 			mode: diffDisplayMode(),
 			detailsOpen: isDetailsSidebarOpen(),
-		});
+		};
 	});
 	// Hide traffic lights when full-page diff is open (they would overlap with content)
 	createEffect(() => {
@@ -3039,33 +3072,26 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 	const isDiffSidebarNarrow = createMemo(() => diffSidebarWidth() < 500);
 	// ResizeObserver to track diff sidebar width in real-time (atom only updates after resize ends)
 	createEffect(() => {
-		if (!isDiffSidebarOpen) {
+		if (!isDiffSidebarOpen()) {
+			return;
+		}
+		const element = diffSidebarRef();
+		if (!element) {
 			return;
 		}
 		let observer: ResizeObserver | null = null;
-		let rafId: number | null = null;
-		const checkRef = () => {
-			const element = diffSidebarRef();
-			if (!element) {
-				// Retry if ref not ready yet
-				rafId = requestAnimationFrame(checkRef);
-				return;
-			}
-			// Set initial width
-			setDiffSidebarWidth(element.offsetWidth || storedDiffSidebarWidth());
-			observer = new ResizeObserver((entries) => {
-				for (const entry of entries) {
-					const width = entry.contentRect.width;
-					if (width > 0) {
-						setDiffSidebarWidth(width);
-					}
+		// Set initial width
+		setDiffSidebarWidth(element.offsetWidth || storedDiffSidebarWidth());
+		observer = new ResizeObserver((entries) => {
+			for (const entry of entries) {
+				const width = entry.contentRect.width;
+				if (width > 0) {
+					setDiffSidebarWidth(width);
 				}
-			});
-			observer.observe(element);
-		};
-		checkRef();
+			}
+		});
+		observer.observe(element);
 		onCleanup(() => {
-			if (rafId !== null) cancelAnimationFrame(rafId);
 			if (observer) observer.disconnect();
 		});
 	});
@@ -3787,67 +3813,95 @@ Make sure to preserve all functionality from both branches when resolving confli
 	const handleMarkAllUnviewed = () => {
 		diffViewRef()?.markAllUnviewed();
 	};
+	const areSubChatsEqual = (next: SubChatMeta[], prev: SubChatMeta[]) => {
+		if (next.length !== prev.length) return false;
+		for (let i = 0; i < next.length; i++) {
+			const a = next[i];
+			const b = prev[i];
+			if (!b) return false;
+			if (
+				a.id !== b.id ||
+				a.name !== b.name ||
+				a.created_at !== b.created_at ||
+				a.updated_at !== b.updated_at ||
+				a.mode !== b.mode
+			) {
+				return false;
+			}
+		}
+		return true;
+	};
 	// Initialize store when chat data loads
 	createEffect(() => {
-		if (!agentChat()) return;
-		const store = useAgentSubChatStore.getState();
-		// Only initialize if chatId changed
-		if (store.chatId !== chatId) {
-			store.setChatId(chatId);
-		}
-		// Re-get fresh state after setChatId may have loaded from localStorage
-		const freshState = useAgentSubChatStore.getState();
-		// Get sub-chats from DB (like Canvas - no isPersistedInDb flag)
-		// Build a map of existing local sub-chats to preserve their created_at if DB doesn't have it
-		const existingSubChatsMap = new Map(freshState.allSubChats.map((sc) => [sc.id, sc]));
-		const dbSubChats: SubChatMeta[] = agentSubChats.map((sc) => {
-			const existingLocal = existingSubChatsMap.get(sc.id);
-			const createdAt = typeof sc.created_at === "string" ? sc.created_at : sc.created_at?.toISOString();
-			const updatedAt = typeof sc.updated_at === "string" ? sc.updated_at : sc.updated_at?.toISOString();
-			return {
-				id: sc.id,
-				name: sc.name || "New Chat",
-				created_at: createdAt ?? existingLocal?.created_at ?? new Date().toISOString(),
-				updated_at: updatedAt ?? existingLocal?.updated_at,
-				mode: sc.mode as "plan" | "agent" | undefined || existingLocal?.mode || "agent"
-			};
-		});
-		const dbSubChatIds = new Set(dbSubChats.map((sc) => sc.id));
-		// Start with DB sub-chats
-		const allSubChats: SubChatMeta[] = [...dbSubChats];
-		// For each open tab ID that's NOT in DB, add placeholder (like Canvas)
-		// This prevents losing tabs during race conditions
-		const currentOpenIds = freshState.openSubChatIds;
-		currentOpenIds.forEach((id) => {
-			if (!dbSubChatIds.has(id)) {
-				allSubChats.push({
-					id,
-					name: "New Chat",
-					created_at: new Date().toISOString()
-				});
+		const chat = agentChat();
+		if (!chat) return;
+		// Avoid tracking store reads to prevent update loops.
+		untrack(() => {
+			const store = useAgentSubChatStore.getState();
+			// Only initialize if chatId changed
+			if (store.chatId !== chatId) {
+				store.setChatId(chatId);
+			}
+			// Re-get fresh state after setChatId may have loaded from localStorage
+			const freshState = useAgentSubChatStore.getState();
+			// Get sub-chats from DB (like Canvas - no isPersistedInDb flag)
+			// Build a map of existing local sub-chats to preserve their created_at if DB doesn't have it
+			const existingSubChatsMap = new Map(freshState.allSubChats.map((sc) => [sc.id, sc]));
+			const latestSubChats = (chat.subChats ?? []) as typeof agentSubChats;
+			const dbSubChats: SubChatMeta[] = latestSubChats.map((sc) => {
+				const existingLocal = existingSubChatsMap.get(sc.id);
+				const createdAt = typeof sc.created_at === "string" ? sc.created_at : sc.created_at?.toISOString();
+				const updatedAt = typeof sc.updated_at === "string" ? sc.updated_at : sc.updated_at?.toISOString();
+				return {
+					id: sc.id,
+					name: sc.name || existingLocal?.name || "New Chat",
+					created_at: createdAt ?? existingLocal?.created_at ?? new Date().toISOString(),
+					updated_at: updatedAt ?? existingLocal?.updated_at,
+					mode: sc.mode as "plan" | "agent" | undefined || existingLocal?.mode || "agent"
+				};
+			});
+			const dbSubChatIds = new Set(dbSubChats.map((sc) => sc.id));
+			// Start with DB sub-chats
+			const allSubChats: SubChatMeta[] = [...dbSubChats];
+			// For each open tab ID that's NOT in DB, add placeholder (like Canvas)
+			// This prevents losing tabs during race conditions
+			const currentOpenIds = freshState.openSubChatIds;
+			currentOpenIds.forEach((id) => {
+				if (!dbSubChatIds.has(id)) {
+					const existingLocal = existingSubChatsMap.get(id);
+					allSubChats.push({
+						id,
+						name: existingLocal?.name || "New Chat",
+						created_at: existingLocal?.created_at ?? new Date().toISOString(),
+						updated_at: existingLocal?.updated_at,
+						mode: existingLocal?.mode
+					});
+				}
+			});
+			if (!areSubChatsEqual(allSubChats, freshState.allSubChats)) {
+				freshState.setAllSubChats(allSubChats);
+			}
+			// Initialize atomFamily mode for each sub-chat from database
+			// This ensures new chats with mode="plan" use the correct mode
+			for (const sc of dbSubChats) {
+				if (sc.mode) {
+					appStore.set(subChatModeAtomFamily(sc.id), sc.mode);
+				}
+			}
+			// All open tabs are now valid (we created placeholders for non-DB ones)
+			const validOpenIds = currentOpenIds;
+			if (validOpenIds.length === 0 && allSubChats.length > 0) {
+				// No valid open tabs, open the first sub-chat
+				freshState.addToOpenSubChats(allSubChats[0].id);
+				freshState.setActiveSubChat(allSubChats[0].id);
+			} else if (validOpenIds.length > 0) {
+				// Validate active tab is in open tabs
+				const currentActive = freshState.activeSubChatId;
+				if (!currentActive || !validOpenIds.includes(currentActive)) {
+					freshState.setActiveSubChat(validOpenIds[0]);
+				}
 			}
 		});
-		freshState.setAllSubChats(allSubChats);
-		// Initialize atomFamily mode for each sub-chat from database
-		// This ensures new chats with mode="plan" use the correct mode
-		for (const sc of dbSubChats) {
-			if (sc.mode) {
-				appStore.set(subChatModeAtomFamily(sc.id), sc.mode);
-			}
-		}
-		// All open tabs are now valid (we created placeholders for non-DB ones)
-		const validOpenIds = currentOpenIds;
-		if (validOpenIds.length === 0 && allSubChats.length > 0) {
-			// No valid open tabs, open the first sub-chat
-			freshState.addToOpenSubChats(allSubChats[0].id);
-			freshState.setActiveSubChat(allSubChats[0].id);
-		} else if (validOpenIds.length > 0) {
-			// Validate active tab is in open tabs
-			const currentActive = freshState.activeSubChatId;
-			if (!currentActive || !validOpenIds.includes(currentActive)) {
-				freshState.setActiveSubChat(validOpenIds[0]);
-			}
-		}
 	});
 	// Auto-detect plan path from ACTIVE sub-chat messages when sub-chat changes
 	// This ensures the plan sidebar shows the correct plan for the active sub-chat only
@@ -4592,14 +4646,14 @@ Make sure to preserve all functionality from both branches when resolving confli
         { /* Diff View - hidden on mobile fullscreen and when diff is not available */}
         { /* Supports three display modes: side-peek (sidebar), center-peek (dialog), full-page */}
         { /* Wrapped in DiffStateProvider to isolate diff state and prevent ChatView re-renders */}
-        <Show when={canOpenDiff && !isMobileFullscreen}><DiffStateProvider isDiffSidebarOpen={isDiffSidebarOpen} parsedFileDiffs={parsedFileDiffs} isDiffSidebarNarrow={isDiffSidebarNarrow} setIsDiffSidebarOpen={setIsDiffSidebarOpen} setDiffStats={setDiffStats} setDiffContent={setDiffContent} setParsedFileDiffs={setParsedFileDiffs} setPrefetchedFileContents={setPrefetchedFileContents} fetchDiffStats={fetchDiffStats}>
-            <DiffSidebarRenderer worktreePath={worktreePath} chatId={chatId} sandboxId={sandboxId} repository={repository} diffStats={diffStats} branchData={branchData} gitStatus={gitStatus} isGitStatusLoading={isGitStatusLoading} isDiffSidebarOpen={isDiffSidebarOpen} diffDisplayMode={diffDisplayMode} diffSidebarWidth={diffSidebarWidth()} diffViewRef={diffViewRef} diffSidebarRef={diffSidebarRef} handleReview={handleReview} isReviewing={isReviewing} handleCreatePr={handleCreatePr} isCreatingPr={isCreatingPr} handleMergePr={handleMergePr} mergePrMutation={mergePrMutation} handleRefreshGitStatus={handleRefreshGitStatus} hasPrNumber={hasPrNumber} isPrOpen={isPrOpen()} hasMergeConflicts={hasMergeConflicts()} handleFixConflicts={handleFixConflicts} handleExpandAll={handleExpandAll} handleCollapseAll={handleCollapseAll} diffMode={diffMode} setDiffMode={setDiffMode} handleMarkAllViewed={handleMarkAllViewed} handleMarkAllUnviewed={handleMarkAllUnviewed} isDesktop={isDesktop} isFullscreen={isFullscreen} setDiffDisplayMode={setDiffDisplayMode} handleCommitToPr={handleCommitToPr} isCommittingToPr={isCommittingToPr}>
+        <Show when={canOpenDiff && !isMobileFullscreen}><DiffStateProvider isDiffSidebarOpen={isDiffSidebarOpen()} parsedFileDiffs={parsedFileDiffs} isDiffSidebarNarrow={isDiffSidebarNarrow} setIsDiffSidebarOpen={setIsDiffSidebarOpen} setDiffStats={setDiffStats} setDiffContent={setDiffContent} setParsedFileDiffs={setParsedFileDiffs} setPrefetchedFileContents={setPrefetchedFileContents} fetchDiffStats={fetchDiffStats}>
+            <DiffSidebarRenderer worktreePath={worktreePath} chatId={chatId} sandboxId={sandboxId} repository={repository} diffStats={diffStats} branchData={branchData} gitStatus={gitStatus} isGitStatusLoading={isGitStatusLoading} isDiffSidebarOpen={isDiffSidebarOpen()} diffDisplayMode={diffDisplayMode} diffSidebarWidth={diffSidebarWidth()} diffViewRef={diffViewRef} diffSidebarRef={diffSidebarRef} handleReview={handleReview} isReviewing={isReviewing} handleCreatePr={handleCreatePr} isCreatingPr={isCreatingPr} handleMergePr={handleMergePr} mergePrMutation={mergePrMutation} handleRefreshGitStatus={handleRefreshGitStatus} hasPrNumber={hasPrNumber} isPrOpen={isPrOpen()} hasMergeConflicts={hasMergeConflicts()} handleFixConflicts={handleFixConflicts} handleExpandAll={handleExpandAll} handleCollapseAll={handleCollapseAll} diffMode={diffMode} setDiffMode={setDiffMode} handleMarkAllViewed={handleMarkAllViewed} handleMarkAllUnviewed={handleMarkAllUnviewed} isDesktop={isDesktop} isFullscreen={isFullscreen} setDiffDisplayMode={setDiffDisplayMode} handleCommitToPr={handleCommitToPr} isCommittingToPr={isCommittingToPr}>
               <DiffSidebarContent worktreePath={worktreePath} chatId={chatId} sandboxId={sandboxId} repository={repository} diffStats={diffStats} setDiffStats={setDiffStats} diffContent={diffContent} parsedFileDiffs={parsedFileDiffs} prefetchedFileContents={prefetchedFileContents} setDiffCollapseState={setDiffCollapseState} diffViewRef={diffViewRef} agentChat={agentChat} sidebarWidth={diffDisplayMode() === "side-peek" ? diffSidebarWidth() : diffDisplayMode() === "center-peek" ? 1200 : typeof window !== "undefined" ? window.innerWidth : 1200} onCommitWithAI={handleCommitToPr} isCommittingWithAI={isCommittingToPr} diffMode={diffMode} setDiffMode={setDiffMode} onCreatePr={handleCreatePr} subChats={subChatsWithFiles} />
             </DiffSidebarRenderer>
           </DiffStateProvider></Show>
 
         { /* Preview Sidebar - hidden on mobile fullscreen and when preview is not available */}
-        <Show when={canOpenPreview && !isMobileFullscreen}><ResizableSidebar isOpen={isPreviewSidebarOpen} onClose={() => setIsPreviewSidebarOpen(false)} widthAtom={agentsPreviewSidebarWidthAtom} minWidth={350} side="right" animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{ "border-left-width": "0.5px" }}>
+        <Show when={canOpenPreview && !isMobileFullscreen}><ResizableSidebar isOpen={isPreviewSidebarOpen()} onClose={() => setIsPreviewSidebarOpen(false)} widthAtom={agentsPreviewSidebarWidthAtom} minWidth={350} side="right" animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{ "border-left-width": "0.5px" }}>
             <Show when={!isQuickSetup} fallback={<div class="flex flex-col h-full">
                 { /* Header with close button */}
                 <div class="flex items-center justify-end px-3 h-10 bg-tl-background flex-shrink-0 border-b border-border/50">
@@ -4630,7 +4684,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 		<Show when={worktreePath}><TerminalSidebar chatId={chatId} cwd={worktreePath} /></Show>
 
         { /* Open Locally Dialog - for importing sandbox chats to local */}
-        <OpenLocallyDialog isOpen={openLocallyDialogOpen} onClose={() => setOpenLocallyDialogOpen(false)} remoteChat={remoteAgentChat ?? null} matchingProjects={openLocallyMatchingProjects} allProjects={projects() ?? []} remoteSubChatId={activeSubChatId} />
+        <OpenLocallyDialog isOpen={openLocallyDialogOpen()} onClose={() => setOpenLocallyDialogOpen(false)} remoteChat={remoteAgentChat ?? null} matchingProjects={openLocallyMatchingProjects} allProjects={projects() ?? []} remoteSubChatId={activeSubChatId} />
 
         { /* Unified Details Sidebar - combines all right sidebars into one (rightmost) */}
         { /* Show for both local (worktreePath) and remote (sandboxId) chats */}

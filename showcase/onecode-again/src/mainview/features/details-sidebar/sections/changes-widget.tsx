@@ -101,7 +101,7 @@ export function ChangesWidget(props: ChangesWidgetProps) {
 			`${filePath}->/dev/null`
 		];
 		for (const key of possibleKeys) {
-			const viewedState = viewedFiles[key];
+			const viewedState = viewedFiles()[key];
 			if (viewedState?.viewed) {
 				return true;
 			}

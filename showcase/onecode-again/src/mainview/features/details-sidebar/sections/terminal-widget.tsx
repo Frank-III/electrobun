@@ -52,11 +52,12 @@ export function TerminalWidget(props: TerminalWidgetProps) {
 	// Resolved hotkey for tooltip
 	const toggleTerminalHotkey = useResolvedHotkeyDisplay("toggle-terminal");
 	const terminalBg = createMemo(() => {
-		if (fullThemeData?.colors?.["terminal.background"]) {
-			return fullThemeData.colors["terminal.background"];
+		const themeData = fullThemeData();
+		if (themeData?.colors?.["terminal.background"]) {
+			return themeData.colors["terminal.background"];
 		}
-		if (fullThemeData?.colors?.["editor.background"]) {
-			return fullThemeData.colors["editor.background"];
+		if (themeData?.colors?.["editor.background"]) {
+			return themeData.colors["editor.background"];
 		}
 		return getDefaultTerminalBg(isDark);
 	});

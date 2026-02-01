@@ -110,7 +110,7 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
 			if (e.metaKey && e.shiftKey && !e.altKey && !e.ctrlKey && e.code === "Backslash") {
 				e.preventDefault();
 				e.stopPropagation();
-				setIsOpen(!isOpen);
+				setIsOpen(!isOpen());
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown, true);
@@ -177,7 +177,7 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
           </div>
         </div>;
  };
-	return <ResizableSidebar isOpen={isOpen} onClose={closeSidebar} widthAtom={detailsSidebarWidthAtom} side="right" minWidth={350} maxWidth={700} animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{
+	return <ResizableSidebar isOpen={isOpen()} onClose={closeSidebar} widthAtom={detailsSidebarWidthAtom} side="right" minWidth={350} maxWidth={700} animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{
 		"border-left-width": "0.5px",
 		overflow: "hidden"
 	}}>

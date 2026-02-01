@@ -70,7 +70,7 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
         </Button></Show>
 
       { /* Active chat trigger - opens history (shrinks to content, max-width limited) */}
-      <SearchCombobox isOpen={isHistoryOpen} onOpenChange={setIsHistoryOpen} items={sortedSubChats} onSelect={handleSelectFromHistory} placeholder="Search chats..." emptyMessage="No results" align="start" side="bottom" sideOffset={8} getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={(subChat) => {
+      <SearchCombobox isOpen={isHistoryOpen()} onOpenChange={setIsHistoryOpen} items={sortedSubChats} onSelect={handleSelectFromHistory} placeholder="Search chats..." emptyMessage="No results" align="start" side="bottom" sideOffset={8} getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={(subChat) => {
  const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
 		const isActive = subChat.id === activeSubChatId();
 		return <div class={cn("flex items-center gap-2 flex-1 min-w-0", isActive && "font-medium")}>

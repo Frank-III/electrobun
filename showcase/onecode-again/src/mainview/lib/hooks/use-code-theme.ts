@@ -15,15 +15,16 @@ import {
  */
 export function useCodeTheme(): string {
   const { resolvedTheme } = useTheme()
-  const lightTheme = vscodeCodeThemeLightAtom[0]
-  const darkTheme = vscodeCodeThemeDarkAtom[0]
-  const fullTheme = fullThemeDataAtom[0]
+  const [lightTheme] = vscodeCodeThemeLightAtom
+  const [darkTheme] = vscodeCodeThemeDarkAtom
+  const [fullTheme] = fullThemeDataAtom
 
   // If a full VS Code theme is selected, use its ID for syntax highlighting
-  if (fullTheme) {
-    return fullTheme.id
+  const fullThemeValue = fullTheme()
+  if (fullThemeValue) {
+    return fullThemeValue.id
   }
 
   // Fallback to legacy code-only theme selection
-  return resolvedTheme() === "light" ? lightTheme : darkTheme
+  return resolvedTheme() === "light" ? lightTheme() : darkTheme()
 }

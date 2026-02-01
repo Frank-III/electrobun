@@ -70,7 +70,7 @@ function SearchHistoryPopover(props: SearchHistoryPopoverProps & { ref?: (ref: S
         </span>
       </div>;
 	};
-	return <SearchCombobox isOpen={isHistoryOpen} onOpenChange={setIsHistoryOpen} items={props.sortedSubChats} onSelect={props.onSelect} placeholder="Search chats..." emptyMessage="No results" getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={renderItem} trigger={<Tooltip>
+	return <SearchCombobox isOpen={isHistoryOpen()} onOpenChange={setIsHistoryOpen} items={props.sortedSubChats} onSelect={props.onSelect} placeholder="Search chats..." emptyMessage="No results" getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={renderItem} trigger={<Tooltip>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="icon" class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md flex items-center justify-center" disabled={props.allSubChatsLength === 0}>
