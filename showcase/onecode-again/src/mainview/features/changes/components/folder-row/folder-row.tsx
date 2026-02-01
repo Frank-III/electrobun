@@ -14,39 +14,41 @@ interface FolderRowProps {
 	/** Use compact styling (grouped view) or full styling (tree view) */
 	variant?: "tree" | "grouped";
 }
-function LevelIndicators({ level }: {
+function LevelIndicators(props: {
 	level: number;
 }) {
-	if (level === 0) return null;
+	if (props.level === 0) return null;
 	return <div class="flex self-stretch shrink-0">
-			<For each={Array.from({ length: level })}>{(_, i) => <div class="w-3 self-stretch border-r border-border/50" />}</For>
+			<For each={Array.from({ length: props.level })}>{(_, i) => <div class="w-3 self-stretch border-r border-border/50" />}</For>
 		</div>;
 }
-function FolderRowHeader({ name, level, fileCount, isGrouped }: {
+function FolderRowHeader(props: {
 	name: string;
 	level: number;
 	fileCount?: number;
 	isGrouped: boolean;
 }) {
 	return <>
-			<Show when={!isGrouped}>
-				<LevelIndicators level={level} />
+			<Show when={!props.isGrouped}>
+				<LevelIndicators level={props.level} />
 			</Show>
 			<div class="flex items-center gap-1 flex-1 min-w-0">
-				<span class={cn("truncate", isGrouped ? "w-0 grow text-left" : "flex-1 min-w-0 text-xs text-foreground")} dir={isGrouped ? "rtl" : undefined}>
-					{name}
+				<span class={cn("truncate", props.isGrouped ? "w-0 grow text-left" : "flex-1 min-w-0 text-xs text-foreground")} dir={props.isGrouped ? "rtl" : undefined}>
+					{props.name}
 				</span>
-				<Show when={fileCount !== undefined}>
+				<Show when={props.fileCount !== undefined}>
 					<span class="text-[10px] text-muted-foreground shrink-0 tabular-nums">
-						{fileCount}
+						{props.fileCount}
 					</span>
 				</Show>
 			</div>
 		</>;
 }
-export function FolderRow({ name, isExpanded, onToggle, children, level = 0, fileCount, variant = "tree" }: FolderRowProps) {
-	const isGrouped = variant === "grouped";
-	return <CollapsibleRow isExpanded={isExpanded} onToggle={onToggle} showChevron={!isGrouped} class={cn(isGrouped && "overflow-hidden")} triggerClassName={cn("text-xs items-stretch py-0.5", isGrouped && "text-muted-foreground")} contentClassName={cn(isGrouped && "ml-1.5 border-l border-border pl-0.5")} header={<FolderRowHeader name={name} level={level} fileCount={fileCount} isGrouped={isGrouped} />}>
-			{children}
+export function FolderRow(props: FolderRowProps) {
+	const level = () => props.level ?? 0;
+	const variant = () => props.variant ?? "tree";
+	const isGrouped = variant() === "grouped";
+	return <CollapsibleRow isExpanded={props.isExpanded} onToggle={props.onToggle} showChevron={!isGrouped} class={cn(isGrouped && "overflow-hidden")} triggerClassName={cn("text-xs items-stretch py-0.5", isGrouped && "text-muted-foreground")} contentClassName={cn(isGrouped && "ml-1.5 border-l border-border pl-0.5")} header={<FolderRowHeader name={props.name} level={level()} fileCount={props.fileCount} isGrouped={isGrouped} />}>
+			{props.children}
 		</CollapsibleRow>;
 }

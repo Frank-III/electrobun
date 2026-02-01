@@ -1,3 +1,4 @@
+import { splitProps } from "solid-js";
 import type { ChangeCategory, ChangedFile } from "../../../shared/changes-types";
 import { ChangesView } from "./changes-view";
 import type { SubChatFilterItem } from "./components/changes-file-filter";
@@ -31,13 +32,14 @@ interface ChangesPanelProps {
 	/** Number of commits ahead of upstream (for unpushed indicator) */
 	pushCount?: number;
 }
-export function ChangesPanel({ worktreePath, selectedFilePath, onFileSelect, onFileOpenPinned, onCreatePr, onCommitSuccess, subChats, initialSubChatFilter, chatId, selectedCommitHash, onCommitSelect, onCommitFileSelect, onActiveTabChange, pushCount }: ChangesPanelProps) {
-	if (!worktreePath) {
+export function ChangesPanel(props: ChangesPanelProps) {
+	const [local] = splitProps(props, ["worktreePath", "selectedFilePath", "onFileSelect", "onFileOpenPinned", "onCreatePr", "onCommitSuccess", "subChats", "initialSubChatFilter", "chatId", "selectedCommitHash", "onCommitSelect", "onCommitFileSelect", "onActiveTabChange", "pushCount"]);
+	if (!local.worktreePath) {
 		return <div class="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4">
 				No worktree path available
 			</div>;
 	}
 	return <div class="flex flex-col h-full overflow-hidden">
-			<ChangesView worktreePath={worktreePath} selectedFilePath={selectedFilePath} onFileSelect={onFileSelect} onFileOpenPinned={onFileOpenPinned} onCreatePr={onCreatePr} onCommitSuccess={onCommitSuccess} subChats={subChats} initialSubChatFilter={initialSubChatFilter} chatId={chatId} selectedCommitHash={selectedCommitHash} onCommitSelect={onCommitSelect} onCommitFileSelect={onCommitFileSelect} onActiveTabChange={onActiveTabChange} pushCount={pushCount} />
+			<ChangesView worktreePath={local.worktreePath} selectedFilePath={local.selectedFilePath} onFileSelect={local.onFileSelect} onFileOpenPinned={local.onFileOpenPinned} onCreatePr={local.onCreatePr} onCommitSuccess={local.onCommitSuccess} subChats={local.subChats} initialSubChatFilter={local.initialSubChatFilter} chatId={local.chatId} selectedCommitHash={local.selectedCommitHash} onCommitSelect={local.onCommitSelect} onCommitFileSelect={local.onCommitFileSelect} onActiveTabChange={local.onActiveTabChange} pushCount={local.pushCount} />
 		</div>;
 }

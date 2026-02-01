@@ -15,18 +15,18 @@ interface PlanSectionProps {
 * Memoized to prevent re-renders when parent updates
 * Uses caching to show content instantly when switching workspaces
 */
-export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = false }: PlanSectionProps) {
+export function PlanSection(props: PlanSectionProps) {
 	// Refs for scroll gradients (avoid re-renders)
 	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
 	const [topGradientRef, setTopGradientRef] = createSignal<HTMLDivElement>(null);
 	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement>(null);
 	// Plan content cache to avoid flashing loading state
-	const [planCache, setPlanCache] = planContentCacheAtomFamily(chatId);
+	const [planCache, setPlanCache] = planContentCacheAtomFamily(props.chatId);
 	// Fetch plan file content via desktop RPC
 	const planQuery = useQuery(() => ({
-		queryKey: ["files", "readFile", planPath] as const,
-		queryFn: () => desktopRpc.files.readFile({ filePath: planPath! }),
-		enabled: !!planPath,
+		queryKey: ["files", "readFile", props.planPath] as const,
+		queryFn: () => desktopRpc.files.readFile({ filePath: props.planPath! }),
+		enabled: !!props.planPath,
 	}));
 	const planContent = () => planQuery.data;
 	const isLoading = () => planQuery.isLoading;
@@ -35,21 +35,21 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
 	// Update cache when content loads successfully
 	createEffect(() => {
 		const content = planContent();
-		if (content && planPath) {
+		if (content && props.planPath) {
 			setPlanCache({
 				content,
-				planPath,
+				planPath: props.planPath,
 				isReady: true,
 			});
 		}
 	});
 	// Clear cache when plan path changes to a different file
 	createEffect(() => {
-		if (planPath && planCache && planCache.planPath !== planPath) {}
+		if (props.planPath && planCache && planCache.planPath !== props.planPath) {}
 	});
 	// Refetch when trigger changes
 	createEffect(() => {
-		if (refetchTrigger && planPath) {
+		if (props.refetchTrigger && props.planPath) {
 			refetch();
 		}
 	});
@@ -86,7 +86,7 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
 	const displayContent = createMemo(() => {
 		const content = planContent();
 		if (content) return content;
-		if (planCache?.isReady && planCache.planPath === planPath) {
+		if (planCache?.isReady && planCache.planPath === props.planPath) {
 			return planCache.content;
 		}
 		return null;
@@ -103,7 +103,7 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
 		return match ? match[1] : "Plan";
 	});
 	// No plan path - don't render anything (parent should hide the widget)
-	if (!planPath) {
+	if (!props.planPath) {
 		return null;
 	}
 	// Show loading only if we have no cached content
@@ -124,6 +124,7 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
 	if (!displayContent()) {
 		return null;
 	}
+	const isExpanded = () => props.isExpanded ?? false;
 	return <div class="flex flex-col">
       {	/* Plan content with scroll gradients */}
       <div class="relative">
@@ -133,7 +134,7 @@ export function PlanSection({ chatId, planPath, refetchTrigger, isExpanded = fal
 		background: "linear-gradient(to bottom, color-mix(in srgb, hsl(var(--muted)) 30%, hsl(var(--background))) 0%, transparent 100%)"
 	}} />
 
-        <div ref={contentRef} class={`px-2 py-2 overflow-y-auto allow-text-selection ${isExpanded ? "" : "max-h-64"}`} data-plan-path={planPath}>
+        <div ref={contentRef} class={`px-2 py-2 overflow-y-auto allow-text-selection ${isExpanded() ? "" : "max-h-64"}`} data-plan-path={props.planPath}>
           <ChatMarkdownRenderer content={displayContent()!} size="sm" />
         </div>
 

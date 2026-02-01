@@ -105,19 +105,19 @@ interface ToolSelectorProps {
 	onChange: (tools: string[]) => void;
 	mode: "allowlist" | "denylist";
 }
-export function ToolSelector({ selectedTools, onChange, mode }: ToolSelectorProps) {
+export function ToolSelector(props: ToolSelectorProps) {
 	const handleToggle = (toolId: string) => {
-		if (selectedTools.includes(toolId)) {
-			onChange(selectedTools.filter((t) => t !== toolId));
+		if (props.selectedTools.includes(toolId)) {
+			props.onChange(props.selectedTools.filter((t) => t !== toolId));
 		} else {
-			onChange([...selectedTools, toolId]);
+			props.onChange([...props.selectedTools, toolId]);
 		}
 	};
 	const handleSelectAll = () => {
-		onChange(AVAILABLE_TOOLS.map((t) => t.id));
+		props.onChange(AVAILABLE_TOOLS.map((t) => t.id));
 	};
 	const handleSelectNone = () => {
-		onChange([]);
+		props.onChange([]);
 	};
 	return <div class="space-y-3">
       {	/* Quick actions */}
@@ -131,7 +131,7 @@ export function ToolSelector({ selectedTools, onChange, mode }: ToolSelectorProp
         </button>
         <span class="flex-1" />
         <span class="text-xs text-muted-foreground">
-          {selectedTools.length} selected
+          {props.selectedTools.length} selected
         </span>
       </div>
 
@@ -149,10 +149,10 @@ export function ToolSelector({ selectedTools, onChange, mode }: ToolSelectorProp
                   <div class="grid grid-cols-2 gap-2">
                     <For each={categoryTools}>
                       {(tool) => {
-                        const isSelected = selectedTools.includes(tool.id);
+                        const isSelected = props.selectedTools.includes(tool.id);
                         return (
-                          <button type="button" onClick={() => handleToggle(tool.id)} class={cn("flex items-start gap-2 p-2 rounded-md border text-left transition-colors", isSelected ? mode === "allowlist" ? "border-green-500/30 bg-green-500/10" : "border-red-500/30 bg-red-500/10" : "border-transparent bg-background hover:bg-foreground/5")}>
-                            <div class={cn("mt-0.5 h-3.5 w-3.5 rounded border flex items-center justify-center flex-shrink-0", isSelected ? mode === "allowlist" ? "border-green-500 bg-green-500" : "border-red-500 bg-red-500" : "border-muted-foreground/30")}>
+                          <button type="button" onClick={() => handleToggle(tool.id)} class={cn("flex items-start gap-2 p-2 rounded-md border text-left transition-colors", isSelected ? props.mode === "allowlist" ? "border-green-500/30 bg-green-500/10" : "border-red-500/30 bg-red-500/10" : "border-transparent bg-background hover:bg-foreground/5")}>
+                            <div class={cn("mt-0.5 h-3.5 w-3.5 rounded border flex items-center justify-center flex-shrink-0", isSelected ? props.mode === "allowlist" ? "border-green-500 bg-green-500" : "border-red-500 bg-red-500" : "border-muted-foreground/30")}>
                               <Show when={isSelected}>
                                 <svg class="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width={3}>
                                   <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
@@ -181,7 +181,7 @@ export function ToolSelector({ selectedTools, onChange, mode }: ToolSelectorProp
 
       {	/* Hint */}
       <p class="text-xs text-muted-foreground">
-        {mode === "allowlist" ? "Agent will ONLY have access to selected tools" : "Agent will have access to ALL tools EXCEPT selected ones"}
+        {props.mode === "allowlist" ? "Agent will ONLY have access to selected tools" : "Agent will have access to ALL tools EXCEPT selected ones"}
       </p>
     </div>;
  }

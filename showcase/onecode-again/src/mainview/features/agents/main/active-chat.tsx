@@ -12,7 +12,7 @@ import { createRpcChat } from "../lib/rpc-chat";
 import type { RpcChat, RpcChatTransport } from "../lib/rpc-chat";
 import { useChatSolid } from "../hooks/use-chat-solid";
 import type { DiffViewMode } from "../ui/agent-diff-view";
-import { createContext, createMemo, createSignal, createEffect, For, Index, onCleanup, Show, useContext, mergeProps, splitProps, type Accessor } from "solid-js";
+import { createContext, createMemo, createSignal, createEffect, For, Index, Match, onCleanup, Show, Switch, useContext, mergeProps, splitProps, type Accessor } from "solid-js";
 import { ReactiveSet } from "@solid-primitives/set";
 import { ArrowDown, ChevronDown, GitFork, ListTree, TerminalSquare } from "lucide-solid";
 import { Motion, Presence } from "solid-motionone";
@@ -865,37 +865,47 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
         <div class="flex-1 overflow-hidden flex flex-col relative">
           { /* History view - files in commit */}
           <div class={cn("absolute inset-0 overflow-y-auto", activeTab() === "history" && selectedCommit() ? "z-10" : "z-0 invisible")}>
-            <Show when={selectedCommit()}>{(commit) => (!commitFiles ? <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
-                  Loading files...
-                </div> : commitFiles?.length === 0 ? <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
-                  No files changed in this commit
-                </div> : <>
-                  { /* Commit message and description */}
-                  <div class="px-3 py-2 border-b border-border/50">
-                    <div class="flex items-start justify-between gap-2 mb-1">
-                      <div class="text-sm font-medium text-foreground flex-1">
-                        {commit().message}
+            <Show when={selectedCommit()}>{(commit) => (
+                <Switch>
+                  <Match when={!commitFiles}>
+                    <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
+                      Loading files...
+                    </div>
+                  </Match>
+                  <Match when={commitFiles?.length === 0}>
+                    <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
+                      No files changed in this commit
+                    </div>
+                  </Match>
+                  <Match when={true}>
+                    { /* Commit message and description */}
+                    <div class="px-3 py-2 border-b border-border/50">
+                      <div class="flex items-start justify-between gap-2 mb-1">
+                        <div class="text-sm font-medium text-foreground flex-1">
+                          {commit().message}
+                        </div>
+                        <button onClick={() => {
+                          navigator.clipboard.writeText(commit().hash);
+                          toast.success("Copied SHA to clipboard");
+                        }} class="text-xs font-mono text-muted-foreground hover:text-foreground underline cursor-pointer shrink-0">
+                          {commit().shortHash}
+                        </button>
                       </div>
-                      <button onClick={() => {
- navigator.clipboard.writeText(commit().hash);
-			toast.success("Copied SHA to clipboard");
-		}} class="text-xs font-mono text-muted-foreground hover:text-foreground underline cursor-pointer shrink-0">
-                        {commit().shortHash}
-                      </button>
+                      <Show when={commit().description}><div class="text-xs text-foreground/80 mb-2 whitespace-pre-wrap">
+                          {commit().description}
+                        </div></Show>
+                      <div class="text-xs text-muted-foreground">
+                        {commit().author} • {commit().date ? new Date(commit().date as string | number | Date).toLocaleString() : "Unknown date"}
+                      </div>
                     </div>
-                    <Show when={commit().description}><div class="text-xs text-foreground/80 mb-2 whitespace-pre-wrap">
-                        {commit().description}
-                      </div></Show>
-                    <div class="text-xs text-muted-foreground">
-                      {commit().author} • {commit().date ? new Date(commit().date as string | number | Date).toLocaleString() : "Unknown date"}
-                    </div>
-                  </div>
 
-                  <div class="px-2 py-1.5 text-xs text-muted-foreground font-medium bg-muted/30 border-b border-border/50">
-                    Files in commit ({commitFiles?.length ?? 0})
-                  </div>
-                  <For each={commitFiles ?? []}>{(file) => <CommitFileItem file={file} onClick={() => {}} />}</For>
-                </>)}</Show>
+                    <div class="px-2 py-1.5 text-xs text-muted-foreground font-medium bg-muted/30 border-b border-border/50">
+                      Files in commit ({commitFiles?.length ?? 0})
+                    </div>
+                    <For each={commitFiles ?? []}>{(file) => <CommitFileItem file={file} onClick={() => {}} />}</For>
+                  </Match>
+                </Switch>
+              )}</Show>
           </div>
           {		/* Diff view - always mounted to prevent expensive re-initialization */}
           <div class={cn("absolute inset-0 overflow-hidden", activeTab() === "history" && selectedCommit() ? "z-0 invisible" : "z-10")}>
@@ -921,11 +931,19 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
       <div class={cn("flex-1 h-full min-w-0 overflow-hidden relative", "border-l border-border/50")}>
         { /* History view - files in commit */}
         <div class={cn("absolute inset-0 overflow-y-auto", activeTab() === "history" && selectedCommit() ? "z-10" : "z-0 invisible")}>
-          <Show when={selectedCommit()}>{(commit) => (!commitFiles ? <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
-                Loading files...
-              </div> : commitFiles?.length === 0 ? <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
-                No files changed in this commit
-              </div> : <>
+          <Show when={selectedCommit()}>{(commit) => (
+            <Switch>
+              <Match when={!commitFiles}>
+                <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
+                  Loading files...
+                </div>
+              </Match>
+              <Match when={commitFiles?.length === 0}>
+                <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
+                  No files changed in this commit
+                </div>
+              </Match>
+              <Match when={true}>
                 { /* Commit message and description */}
                 <div class="px-3 py-2 border-b border-border/50">
                   <div class="flex items-start justify-between gap-2 mb-1">
@@ -933,9 +951,9 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
                       {commit().message}
                     </div>
                     <button onClick={() => {
- navigator.clipboard.writeText(commit().hash);
-		toast.success("Copied SHA to clipboard");
-	}} class="text-xs font-mono text-muted-foreground hover:text-foreground underline cursor-pointer shrink-0">
+                      navigator.clipboard.writeText(commit().hash);
+                      toast.success("Copied SHA to clipboard");
+                    }} class="text-xs font-mono text-muted-foreground hover:text-foreground underline cursor-pointer shrink-0">
                       {commit().shortHash}
                     </button>
                   </div>
@@ -951,7 +969,9 @@ function DiffSidebarContent({ worktreePath, chatId, sandboxId, repository, diffS
                   Files in commit ({commitFiles?.length ?? 0})
                 </div>
                 <For each={commitFiles ?? []}>{(file) => <CommitFileItem file={file} onClick={() => {}} />}</For>
-              </>)}</Show>
+              </Match>
+            </Switch>
+          )}</Show>
         </div>
         {	/* Diff view - always mounted to prevent expensive re-initialization */}
         <div class={cn("absolute inset-0 overflow-hidden", activeTab() === "history" && selectedCommit() ? "z-0 invisible" : "z-10")}>
@@ -3142,10 +3162,11 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 	// Compute if we're waiting for local chat data (used as loading gate)
 	const isLocalChatLoading = () => chatSourceMode() === "local" && isLocalLoading();
 	// Projects query for "Open Locally" functionality
-	const { data: projects } = useQuery(() => ({
+	const projectsQuery = useQuery(() => ({
 		queryKey: ["projects", "list"] as const,
 		queryFn: () => desktopRpc.projects.list.query(),
 	}));
+	const projects = () => projectsQuery.data;
 	// Open Locally dialog state
 	const [openLocallyDialogOpen, setOpenLocallyDialogOpen] = createSignal(false);
 	// Auto-import hook for "Open Locally"
@@ -3153,7 +3174,7 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 	// Handler for "Open Locally" button in header
 	const handleOpenLocally = () => {
 		if (!remoteAgentChat) return;
-		const matchingProjects = getMatchingProjects(projects() ?? [], remoteAgentChat);
+		const matchingProjects = getMatchingProjects(projectsQuery.data ?? [], remoteAgentChat);
 		if (matchingProjects.length === 1) {
 			// Auto-import: single match found
 			autoImport(remoteAgentChat, matchingProjects[0]!);
@@ -3167,7 +3188,7 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 	// Get matching projects for dialog (only computed when needed)
 	const openLocallyMatchingProjects = createMemo(() => {
 		if (!remoteAgentChat) return [];
-		return getMatchingProjects(projects() ?? [], remoteAgentChat);
+		return getMatchingProjects(projectsQuery.data ?? [], remoteAgentChat);
 	});
 	const agentSubChats = (agentChat()?.subChats ?? []) as Array<{
 		id: string;
@@ -3229,18 +3250,19 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 	});
 	// Get PR status when PR exists (for checking if it's open/merged/closed)
 	const hasPrNumber = !!agentChat()?.prNumber;
-	const { data: prStatusData, isLoading: isPrStatusLoading } = useQuery<{ pr?: { state?: string; mergeable?: string } } | undefined>(() => ({
+	const prStatusQuery = useQuery<{ pr?: { state?: string; mergeable?: string } } | undefined>(() => ({
 		queryKey: ["chats", "getPrStatus", chatId] as const,
 		queryFn: () => desktopRpc.chats.getPrStatus({ chatId }),
 		enabled: hasPrNumber,
 		refetchInterval: 3e4,
 	}));
-	const prState = prStatusData()?.pr?.state as "open" | "draft" | "merged" | "closed" | undefined;
-	const prMergeable = prStatusData()?.pr?.mergeable;
-	const hasMergeConflicts = prMergeable === "CONFLICTING";
+	// Wrap PR status data access in accessors for reactivity
+	const prState = () => prStatusQuery.data?.pr?.state as "open" | "draft" | "merged" | "closed" | undefined;
+	const prMergeable = () => prStatusQuery.data?.pr?.mergeable;
+	const hasMergeConflicts = () => prMergeable() === "CONFLICTING";
 	// PR is open if state is explicitly "open" or "draft"
 	// When PR status is still loading, assume open to avoid showing wrong button
-	const isPrOpen = hasPrNumber && (isPrStatusLoading() || prState === "open" || prState === "draft");
+	const isPrOpen = () => hasPrNumber && (prStatusQuery.isLoading || prState() === "open" || prState() === "draft");
 	// Query client for cache invalidation
 	const queryClient = getQueryClient();
 	// Sync from main mutation (for resolving merge conflicts)
@@ -4571,7 +4593,7 @@ Make sure to preserve all functionality from both branches when resolving confli
         { /* Supports three display modes: side-peek (sidebar), center-peek (dialog), full-page */}
         { /* Wrapped in DiffStateProvider to isolate diff state and prevent ChatView re-renders */}
         <Show when={canOpenDiff && !isMobileFullscreen}><DiffStateProvider isDiffSidebarOpen={isDiffSidebarOpen} parsedFileDiffs={parsedFileDiffs} isDiffSidebarNarrow={isDiffSidebarNarrow} setIsDiffSidebarOpen={setIsDiffSidebarOpen} setDiffStats={setDiffStats} setDiffContent={setDiffContent} setParsedFileDiffs={setParsedFileDiffs} setPrefetchedFileContents={setPrefetchedFileContents} fetchDiffStats={fetchDiffStats}>
-            <DiffSidebarRenderer worktreePath={worktreePath} chatId={chatId} sandboxId={sandboxId} repository={repository} diffStats={diffStats} branchData={branchData()} gitStatus={gitStatus()} isGitStatusLoading={isGitStatusLoading()} isDiffSidebarOpen={isDiffSidebarOpen} diffDisplayMode={diffDisplayMode} diffSidebarWidth={diffSidebarWidth()} diffViewRef={diffViewRef} diffSidebarRef={diffSidebarRef} handleReview={handleReview} isReviewing={isReviewing} handleCreatePr={handleCreatePr} isCreatingPr={isCreatingPr} handleMergePr={handleMergePr} mergePrMutation={mergePrMutation} handleRefreshGitStatus={handleRefreshGitStatus} hasPrNumber={hasPrNumber} isPrOpen={isPrOpen} hasMergeConflicts={hasMergeConflicts} handleFixConflicts={handleFixConflicts} handleExpandAll={handleExpandAll} handleCollapseAll={handleCollapseAll} diffMode={diffMode} setDiffMode={setDiffMode} handleMarkAllViewed={handleMarkAllViewed} handleMarkAllUnviewed={handleMarkAllUnviewed} isDesktop={isDesktop} isFullscreen={isFullscreen} setDiffDisplayMode={setDiffDisplayMode} handleCommitToPr={handleCommitToPr} isCommittingToPr={isCommittingToPr}>
+            <DiffSidebarRenderer worktreePath={worktreePath} chatId={chatId} sandboxId={sandboxId} repository={repository} diffStats={diffStats} branchData={branchData} gitStatus={gitStatus} isGitStatusLoading={isGitStatusLoading} isDiffSidebarOpen={isDiffSidebarOpen} diffDisplayMode={diffDisplayMode} diffSidebarWidth={diffSidebarWidth()} diffViewRef={diffViewRef} diffSidebarRef={diffSidebarRef} handleReview={handleReview} isReviewing={isReviewing} handleCreatePr={handleCreatePr} isCreatingPr={isCreatingPr} handleMergePr={handleMergePr} mergePrMutation={mergePrMutation} handleRefreshGitStatus={handleRefreshGitStatus} hasPrNumber={hasPrNumber} isPrOpen={isPrOpen()} hasMergeConflicts={hasMergeConflicts()} handleFixConflicts={handleFixConflicts} handleExpandAll={handleExpandAll} handleCollapseAll={handleCollapseAll} diffMode={diffMode} setDiffMode={setDiffMode} handleMarkAllViewed={handleMarkAllViewed} handleMarkAllUnviewed={handleMarkAllUnviewed} isDesktop={isDesktop} isFullscreen={isFullscreen} setDiffDisplayMode={setDiffDisplayMode} handleCommitToPr={handleCommitToPr} isCommittingToPr={isCommittingToPr}>
               <DiffSidebarContent worktreePath={worktreePath} chatId={chatId} sandboxId={sandboxId} repository={repository} diffStats={diffStats} setDiffStats={setDiffStats} diffContent={diffContent} parsedFileDiffs={parsedFileDiffs} prefetchedFileContents={prefetchedFileContents} setDiffCollapseState={setDiffCollapseState} diffViewRef={diffViewRef} agentChat={agentChat} sidebarWidth={diffDisplayMode() === "side-peek" ? diffSidebarWidth() : diffDisplayMode() === "center-peek" ? 1200 : typeof window !== "undefined" ? window.innerWidth : 1200} onCommitWithAI={handleCommitToPr} isCommittingWithAI={isCommittingToPr} diffMode={diffMode} setDiffMode={setDiffMode} onCreatePr={handleCreatePr} subChats={subChatsWithFiles} />
             </DiffSidebarRenderer>
           </DiffStateProvider></Show>

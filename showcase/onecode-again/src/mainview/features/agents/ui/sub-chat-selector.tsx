@@ -1,4 +1,4 @@
-import { createMemo, createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { createMemo, createEffect, createSignal, onCleanup, Show, Switch, Match } from "solid-js";
 import { loadingSubChatsAtom, agentsSubChatUnseenChangesAtom, agentsSubChatsSidebarModeAtom, pendingUserQuestionsAtom } from "../atoms";
 import { widgetVisibilityAtomFamily, unifiedSidebarEnabledAtom } from "../../details-sidebar/atoms";
 import { chatSourceModeAtom } from "../../../lib/atoms";
@@ -48,14 +48,17 @@ function SearchHistoryPopover(props: SearchHistoryPopoverProps & { ref?: (ref: S
 	const renderItem = (subChat: SubChatMeta) => {
 		const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
 		const isLoading = props.loadingSubChats.has(subChat.id);
-		const hasUnseen = props.subChatUnseenChanges.has(subChat.id);
 		const mode = subChat.mode || "agent";
 		const hasPendingQuestion = props.pendingQuestionsMap.has(subChat.id);
 		const hasPendingPlan = props.pendingPlanApprovals.has(subChat.id);
 		return <div class="flex items-center gap-2 flex-1 min-w-0">
         <div class="flex-shrink-0 w-4 h-4 flex items-center justify-center relative">
-          {hasPendingQuestion ? <QuestionIcon class="w-4 h-4 text-blue-500" /> : isLoading ? <IconSpinner class="w-4 h-4 text-muted-foreground" /> : mode === "plan" ? <PlanIcon class="w-4 h-4 text-muted-foreground" /> : <AgentIcon class="w-4 h-4 text-muted-foreground" />}
-          <Show when={(hasPendingPlan || hasUnseen) && !isLoading && !hasPendingQuestion}><div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-popover flex items-center justify-center">
+          <Switch fallback={<AgentIcon class="w-4 h-4 text-muted-foreground" />}>
+            <Match when={hasPendingQuestion}><QuestionIcon class="w-4 h-4 text-blue-500" /></Match>
+            <Match when={isLoading}><IconSpinner class="w-4 h-4 text-muted-foreground" /></Match>
+            <Match when={mode === "plan"}><PlanIcon class="w-4 h-4 text-muted-foreground" /></Match>
+          </Switch>
+          <Show when={(hasPendingPlan || props.subChatUnseenChanges.has(subChat.id)) && !isLoading && !hasPendingQuestion}><div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-popover flex items-center justify-center">
               <div class={cn("w-1.5 h-1.5 rounded-full", hasPendingPlan ? "bg-amber-500" : "bg-[#307BD0]")} />
             </div></Show>
         </div>
@@ -105,20 +108,20 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 	const parentChatId = subChatStore.chatId;
 	const togglePinSubChat = subChatStore.togglePinSubChat;
 	const [loadingSubChats] = loadingSubChatsAtom;
-	const subChatUnseenChanges = agentsSubChatUnseenChangesAtom[0];
+	const [subChatUnseenChanges] = agentsSubChatUnseenChangesAtom;
 	const [subChatsSidebarMode, setSubChatsSidebarMode] = agentsSubChatsSidebarModeAtom;
-	const pendingQuestionsMap = pendingUserQuestionsAtom[0];
+	const [pendingQuestionsMap] = pendingUserQuestionsAtom;
 	// Overview sidebar state - to check if widgets are visible
-	const isUnifiedSidebarEnabled = unifiedSidebarEnabledAtom[0];
-	const chatSourceMode = chatSourceModeAtom[0];
-	const widgetVisibilityAtom = createMemo(() => widgetVisibilityAtomFamily(chatId || ""));
-	const widgetVisibility = widgetVisibilityAtom[0];
+	const [isUnifiedSidebarEnabled] = unifiedSidebarEnabledAtom;
+	const [chatSourceMode] = chatSourceModeAtom;
+	const widgetVisibilityAtomResult = createMemo(() => widgetVisibilityAtomFamily(chatId || ""));
+	const widgetVisibility = createMemo(() => widgetVisibilityAtomResult()[0]());
 	// Show standalone buttons when:
 	// 1. Unified sidebar is disabled (use legacy sidebars), OR
 	// 2. Unified sidebar is enabled but the widget is hidden by user, OR
 	// 3. Sandbox mode (DetailsSidebar doesn't render without worktreePath)
-	const showDiffButton = !isUnifiedSidebarEnabled || !widgetVisibility.includes("diff") || chatSourceMode() === "sandbox";
-	const showTerminalButton = !isUnifiedSidebarEnabled || !widgetVisibility.includes("terminal");
+	const showDiffButton = createMemo(() => !isUnifiedSidebarEnabled() || !widgetVisibility().includes("diff") || chatSourceMode() === "sandbox");
+	const showTerminalButton = createMemo(() => !isUnifiedSidebarEnabled() || !widgetVisibility().includes("terminal"));
 	// Resolved hotkeys for tooltips
 	const openDiffHotkey = useResolvedHotkeyDisplay("open-diff");
 	const toggleTerminalHotkey = useResolvedHotkeyDisplay("toggle-terminal");
@@ -408,15 +411,11 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 	)}>
           {hasNoChats ? null : openSubChats.map((subChat, index) => {
 		const isActive = activeSubChatId === subChat.id;
-		const isLoading = loadingSubChats.has(subChat.id);
-		const hasUnseen = subChatUnseenChanges.has(subChat.id);
+		const isLoading = loadingSubChats().has(subChat.id);
 		const hasTabsToRight = index < openSubChats.length - 1;
 		const isPinned = pinnedSubChatIds.includes(subChat.id);
-		// Get mode from sub-chat itself (defaults to "agent")
 		const mode = subChat.mode || "agent";
-		// Check if this chat is waiting for user answer
-		const hasPendingQuestion = pendingQuestionsMap.has(subChat.id);
-		// Check if this chat has a pending plan approval
+		const hasPendingQuestion = pendingQuestionsMap().has(subChat.id);
 		const hasPendingPlan = pendingPlanApprovals.has(subChat.id);
 		return <ContextMenu key={subChat.id}>
                     <ContextMenuTrigger asChild>
@@ -454,25 +453,39 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 		}} class={cn("group relative flex items-center text-sm rounded-md transition-colors duration-75 cursor-pointer h-6 flex-shrink-0", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", editingSubChatId === subChat.id ? "overflow-visible px-0" : "overflow-hidden px-1.5 py-0.5 whitespace-nowrap min-w-[50px] gap-1.5", isActive ? "bg-muted text-foreground max-w-[180px]" : "hover:bg-muted/80 max-w-[150px]")}>
                         {		/* Icon: question icon (priority) OR loading spinner OR mode icon with badge (hide when editing) */}
                         <Show when={editingSubChatId !== subChat.id}><div class="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center relative">
-                            {hasPendingQuestion ? <QuestionIcon class="w-3.5 h-3.5 text-blue-500" /> : isLoading ? <IconSpinner class="w-3.5 h-3.5 text-muted-foreground" /> : <>
-                                { /* Main mode icon */}
-                                {mode === "plan" ? <PlanIcon class="w-3.5 h-3.5 text-muted-foreground" /> : <AgentIcon class="w-3.5 h-3.5 text-muted-foreground" />}
-                                { /* Badge in bottom-right corner: amber dot (plan) > unseen dot > pin icon */}
-                                <Show when={(hasPendingPlan || hasUnseen || isPinned)}><div class={cn("absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full flex items-center justify-center", isActive ? "bg-muted" : "bg-background")}>
-                                    {hasPendingPlan ? <div class="w-1.5 h-1.5 rounded-full bg-amber-500" /> : hasUnseen ? <div class="w-1.5 h-1.5 rounded-full bg-[#307BD0]" /> : isPinned ? <PinFilledIcon class="w-2 h-2 text-muted-foreground" /> : null}
+                            <Switch fallback={<>
+                                <Switch fallback={<AgentIcon class="w-3.5 h-3.5 text-muted-foreground" />}>
+                                  <Match when={mode === "plan"}><PlanIcon class="w-3.5 h-3.5 text-muted-foreground" /></Match>
+                                </Switch>
+                                <Show when={(hasPendingPlan || subChatUnseenChanges().has(subChat.id) || isPinned)}><div class={cn("absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full flex items-center justify-center", isActive ? "bg-muted" : "bg-background")}>
+                                    <Switch>
+                                      <Match when={hasPendingPlan}><div class="w-1.5 h-1.5 rounded-full bg-amber-500" /></Match>
+                                      <Match when={subChatUnseenChanges().has(subChat.id)}><div class="w-1.5 h-1.5 rounded-full bg-[#307BD0]" /></Match>
+                                      <Match when={isPinned}><PinFilledIcon class="w-2 h-2 text-muted-foreground" /></Match>
+                                    </Switch>
                                   </div></Show>
-                              </>}
+                              </>}>
+                          <Match when={hasPendingQuestion}><QuestionIcon class="w-3.5 h-3.5 text-blue-500" /></Match>
+                          <Match when={isLoading}><IconSpinner class="w-3.5 h-3.5 text-muted-foreground" /></Match>
+                        </Switch>
                           </div></Show>
 
-                        {editingSubChatId === subChat.id ? <InlineEdit value={editName()} onChange={setEditName} onSave={() => handleEditSave(subChat)} onCancel={() => handleEditCancel(subChat)} isEditing={true} disabled={editLoading()} class="text-sm !px-1 !py-0 !h-6 min-w-[100px] border border-input rounded-md !ring-0 !shadow-none focus-visible:!ring-0 focus-visible:!ring-offset-0 focus-visible:!border-input" /> : <span ref={(el) => {
-                        if (el) {
-                        textRefs.set(subChat.id, el);
-                        } else {
-                        textRefs.delete(subChat.id);
-                        }
-                        }} class="relative z-0 text-left flex-1 min-w-0 pr-1 overflow-hidden block whitespace-nowrap">
-                        {subChat.name || "New Chat"}
-                        </span>}
+                        <Switch>
+                          <Match when={editingSubChatId === subChat.id}>
+                            <InlineEdit value={editName()} onChange={setEditName} onSave={() => handleEditSave(subChat)} onCancel={() => handleEditCancel(subChat)} isEditing={true} disabled={editLoading()} class="text-sm !px-1 !py-0 !h-6 min-w-[100px] border border-input rounded-md !ring-0 !shadow-none focus-visible:!ring-0 focus-visible:!ring-offset-0 focus-visible:!border-input" />
+                          </Match>
+                          <Match when={editingSubChatId !== subChat.id}>
+                            <span ref={(el) => {
+                              if (el) {
+                                textRefs.set(subChat.id, el);
+                              } else {
+                                textRefs.delete(subChat.id);
+                              }
+                            }} class="relative z-0 text-left flex-1 min-w-0 pr-1 overflow-hidden block whitespace-nowrap">
+                              {subChat.name || "New Chat"}
+                            </span>
+                          </Match>
+                        </Switch>
 
                         {		/* Gradient fade on the right when text is truncated and not editing - visibility controlled via DOM */}
                         <Show when={editingSubChatId !== subChat.id}><div data-truncate-gradient class={cn("absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-[1] rounded-r-md opacity-100 group-hover:opacity-0 transition-opacity duration-200", isActive ? "bg-gradient-to-l from-muted to-transparent" : "bg-gradient-to-l from-background to-transparent")} style={{ display: truncatedTabs.has(subChat.id) ? "block" : "none" }} /></Show>
@@ -521,7 +534,7 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
 
       { /* Diff button - visible on desktop when unified sidebar is disabled OR diff widget is hidden */}
       { /* Only show if onOpenDiff is provided (clickable action available) */}
-      <Show when={!isMobile && canOpenDiff && showDiffButton && onOpenDiff}><div class="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={!isMobile && canOpenDiff && showDiffButton() && onOpenDiff}><div class="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" onClick={() => onOpenDiff?.()} class="h-6 w-6 p-0 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md flex items-center justify-center hover:bg-foreground/10">
@@ -537,7 +550,7 @@ export function SubChatSelector({ onCreateNew, isMobile = false, onBackToChats, 
         </div></Show>
 
       { /* Terminal button - visible on desktop when unified sidebar is disabled OR terminal widget is hidden */}
-      <Show when={!isMobile && canOpenTerminal && showTerminalButton}><div class="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={!isMobile && canOpenTerminal && showTerminalButton()}><div class="rounded-md bg-background/10 backdrop-blur-[10px] flex items-center justify-center" style={{ WebkitAppRegion: "no-drag" }}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" onClick={() => onOpenTerminal?.()} class="h-6 w-6 p-0 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md flex items-center justify-center hover:bg-foreground/10">

@@ -98,10 +98,14 @@ function TerminalTab(props: TerminalTabProps) {
             </div>
 
             { /* Terminal name or input */}
-            {props.isEditing ? <input ref={el => inputRef = el} type="text" value={editValue()} onInput={(e) => setEditValue(e.currentTarget.value)} onKeyDown={handleKeyDown} onBlur={handleBlur} onClick={(e) => e.stopPropagation()} class={cn("relative z-0 text-left flex-1 min-w-0 pr-1 bg-transparent outline-none border-none", props.small ? "text-xs" : "text-sm")} /> : <span ref={props.textRef} class="relative z-0 text-left flex-1 min-w-0 pr-1 overflow-hidden flex items-center gap-1.5 whitespace-nowrap select-none cursor-[inherit]">
+            <Show when={props.isEditing} fallback={
+              <span ref={props.textRef} class="relative z-0 text-left flex-1 min-w-0 pr-1 overflow-hidden flex items-center gap-1.5 whitespace-nowrap select-none cursor-[inherit]">
                 <span>{props.terminal.name}</span>
                 <Show when={shortPath()}><span class="text-muted-foreground">{shortPath()}</span></Show>
-              </span>}
+              </span>
+            }>
+              <input ref={el => inputRef = el} type="text" value={editValue()} onInput={(e) => setEditValue(e.currentTarget.value)} onKeyDown={handleKeyDown} onBlur={handleBlur} onClick={(e) => e.stopPropagation()} class={cn("relative z-0 text-left flex-1 min-w-0 pr-1 bg-transparent outline-none border-none", props.small ? "text-xs" : "text-sm")} />
+            </Show>
 
             { /* Gradient fade on the right when text is truncated */}
             <Show when={props.isTruncated && !props.isEditing}><div class={cn("absolute right-0 top-0 bottom-0 w-6 pointer-events-none z-[1] rounded-r-md opacity-100 group-hover:opacity-0 transition-opacity duration-200", props.isActive ? "bg-gradient-to-l from-muted to-transparent" : "bg-gradient-to-l from-background to-transparent")} /></Show>

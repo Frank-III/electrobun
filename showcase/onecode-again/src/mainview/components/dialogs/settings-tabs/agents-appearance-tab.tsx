@@ -39,15 +39,16 @@ function ThemePreviewBox(props: {
 	size?: "sm" | "md";
 	class?: string;
 }) {
-	const { theme, size = "md", class: cls } = props;
-	const bgColor = theme?.colors?.["editor.background"] || "#1a1a1a";
+	const size = () => props.size ?? "md";
+	const cls = () => props.class;
+	const bgColor = () => props.theme?.colors?.["editor.background"] || "#1a1a1a";
 	// Get accent color, preferring button.background and skipping transparent colors
 	const getAccentColor = () => {
 		const candidates = [
-			theme?.colors?.["button.background"],
-			theme?.colors?.["textLink.foreground"],
-			theme?.colors?.["focusBorder"],
-			theme?.colors?.["activityBarBadge.background"]
+			props.theme?.colors?.["button.background"],
+			props.theme?.colors?.["textLink.foreground"],
+			props.theme?.colors?.["focusBorder"],
+			props.theme?.colors?.["activityBarBadge.background"]
 		];
 		for (const color of candidates) {
 			if (isVisibleColor(color)) {
@@ -56,18 +57,18 @@ function ThemePreviewBox(props: {
 		}
 		return "#0034FF";
 	};
-	const accentColor = getAccentColor();
-	const isDark = theme ? theme.type === "dark" : true;
-	const sizeClasses = size === "sm" ? "w-7 h-5 text-[9px] gap-0.5 rounded-sm" : "w-8 h-6 text-[10px] gap-1 rounded-sm";
-	const dotSize = size === "sm" ? "w-1 h-1" : "w-1.5 h-1.5";
-	return <div class={cn("flex-shrink-0 flex items-center justify-center font-semibold", sizeClasses,cls)} style={{
-		"background-color": bgColor,
+	const accentColor = getAccentColor;
+	const isDark = () => props.theme ? props.theme.type === "dark" : true;
+	const sizeClasses = () => size() === "sm" ? "w-7 h-5 text-[9px] gap-0.5 rounded-sm" : "w-8 h-6 text-[10px] gap-1 rounded-sm";
+	const dotSize = () => size() === "sm" ? "w-1 h-1" : "w-1.5 h-1.5";
+	return <div class={cn("flex-shrink-0 flex items-center justify-center font-semibold", sizeClasses(), cls())} style={{
+		"background-color": bgColor(),
 		"box-shadow": "inset 0 0 0 0.5px rgba(128, 128, 128, 0.3)"
 	}}>
       {	/* Accent dot to the left of text */}
-      <div class={cn("rounded-full flex-shrink-0", dotSize)} style={{ "background-color": accentColor }} />
+      <div class={cn("rounded-full flex-shrink-0", dotSize())} style={{ "background-color": accentColor() }} />
       <span style={{
- color: isDark ? "#fff" : "#000",
+ color: isDark() ? "#fff" : "#000",
 		opacity: .9
 	}}>Aa</span>
     </div>;

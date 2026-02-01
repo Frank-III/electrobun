@@ -1,4 +1,4 @@
-import type { JSX } from "solid-js";
+import { splitProps, type JSX } from "solid-js";
 
 // LucideProps type from lucide-solid - approximate since not exported
 type LucideProps = JSX.SvgSVGAttributes<SVGSVGElement> & { class?: string };
@@ -11,9 +11,8 @@ export function IconSpinner(props: IconProps & {
 	color?: string;
 	size?: "default" | "nano";
 }) {
-	const { style, color, size = "default", ...rest } = props;
-	const cls = props.class;
-	const strokeWidth = size === "nano" ? 4 : 3;
+	const [local, rest] = splitProps(props, ["style", "color", "size", "class"]);
+	const strokeWidth = () => (local.size ?? "default") === "nano" ? 4 : 3;
 	return <>
       <style>{`
         @keyframes spin {
@@ -21,12 +20,12 @@ export function IconSpinner(props: IconProps & {
           to { transform: rotate(360deg); }
         }
       `}</style>
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" class={cls} style={{
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" class={local.class} style={{
 		animation: "spin 1s linear infinite",
-		...style
+		...local.style
 	}} {...rest}>
-        <circle cx="12" cy="12" r="10" stroke={color || "currentColor"} stroke-width={strokeWidth} stroke-linecap="round" fill="none" opacity={.2} />
-        <path d="M12 2C6.48 2 2 6.48 2 12" stroke={color || "currentColor"} stroke-width={strokeWidth} stroke-linecap="round" fill="none" />
+        <circle cx="12" cy="12" r="10" stroke={local.color || "currentColor"} stroke-width={strokeWidth()} stroke-linecap="round" fill="none" opacity={.2} />
+        <path d="M12 2C6.48 2 2 6.48 2 12" stroke={local.color || "currentColor"} stroke-width={strokeWidth()} stroke-linecap="round" fill="none" />
       </svg>
     </>;
 }
@@ -37,9 +36,9 @@ export function LoadingDot(props: {
 	class?: string;
 	dotClassName?: string;
 }) {
-	const { isLoading, dotClassName = "bg-[#307BD0]" } = props;
-	const cls = props.class ?? "";
-	return <div class={`relative ${cls}`}>
+	const dotClassName = () => props.dotClassName ?? "bg-[#307BD0]";
+	const cls = () => props.class ?? "";
+	return <div class={`relative ${cls()}`}>
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
@@ -47,12 +46,12 @@ export function LoadingDot(props: {
         }
       `}</style>
       {	/* Spinner - visible when loading */}
-      <svg viewBox="0 0 24 24" fill="none" class={`absolute inset-0 w-full h-full transition-[opacity,transform] duration-200 ease-out ${isLoading ? "opacity-100 scale-100" : "opacity-0 scale-50"}`} style={{ animation: isLoading ? "spin 1s linear infinite" : undefined }}>
+      <svg viewBox="0 0 24 24" fill="none" class={`absolute inset-0 w-full h-full transition-[opacity,transform] duration-200 ease-out ${props.isLoading ? "opacity-100 scale-100" : "opacity-0 scale-50"}`} style={{ animation: props.isLoading ? "spin 1s linear infinite" : undefined }}>
         <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width={4} stroke-linecap="round" fill="none" opacity={.2} />
         <path d="M12 2C6.48 2 2 6.48 2 12" stroke="currentColor" stroke-width={4} stroke-linecap="round" fill="none" />
       </svg>
       { /* Dot - appears when not loading */}
-      <div class={`absolute inset-0 m-auto w-[80%] h-[80%] rounded-full transition-[opacity,transform] duration-200 ease-out ${dotClassName} ${isLoading ? "opacity-0 scale-50" : "opacity-100 scale-100"}`} />
+      <div class={`absolute inset-0 m-auto w-[80%] h-[80%] rounded-full transition-[opacity,transform] duration-200 ease-out ${dotClassName()} ${props.isLoading ? "opacity-0 scale-50" : "opacity-100 scale-100"}`} />
     </div>;
  }
 // Edit file icon

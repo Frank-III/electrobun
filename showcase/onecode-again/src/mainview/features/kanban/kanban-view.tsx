@@ -86,19 +86,19 @@ export function KanbanView() {
 	// Drafts from localStorage
 	const drafts = useNewChatDrafts();
 	// Fetch all chats (workspaces)
-	const { data: chats } = useQuery(() => ({
+	const chatsQuery = useQuery(() => ({
 		queryKey: ["chats", "list"] as const,
 		queryFn: () => desktopRpc.chats.list.query({}),
 	}));
 	// Fetch projects for metadata
-	const { data: projects } = useQuery(() => ({
+	const projectsQuery = useQuery(() => ({
 		queryKey: ["projects", "list"] as const,
 		queryFn: () => desktopRpc.projects.list.query({}),
 	}));
 	// Create projects map
 	type Project = { id: string; name: string; path: string; [k: string]: unknown };
 	const projectsMap = createMemo(() => {
-		const proj = projects?.();
+		const proj = projectsQuery.data;
 		if (!proj) return new Map<string, Project>();
 		return new Map(proj.map((p) => [p.id, p as Project]));
 	});
@@ -114,7 +114,7 @@ export function KanbanView() {
 	// Collect all open sub-chat IDs from localStorage for all workspaces
 	const allOpenSubChatIds = createMemo(() => {
 		void openSubChatsVersion;
-		const chatList = chats?.();
+		const chatList = chatsQuery.data;
 		if (!chatList) return prevOpenSubChatIdsRef();
 		const windowId = getWindowId();
 		const allIds: string[] = [];
@@ -137,7 +137,7 @@ export function KanbanView() {
 		return allIds;
 	});
 	// Pending plan approvals from DB
-	const { data: pendingPlanApprovalsData } = useQuery(() => ({
+	const pendingPlanApprovalsQuery = useQuery(() => ({
 		queryKey: ["chats", "getPendingPlanApprovals", allOpenSubChatIds()] as const,
 		queryFn: () => desktopRpc.chats.getPendingPlanApprovals({ openSubChatIds: allOpenSubChatIds() }),
 		refetchInterval: 5e3,
@@ -145,7 +145,7 @@ export function KanbanView() {
 		placeholderData: (prev) => prev,
 	}));
 	// File stats from DB
-	const { data: fileStatsData } = useQuery(() => ({
+	const fileStatsQuery = useQuery(() => ({
 		queryKey: ["chats", "getFileStats", allOpenSubChatIds()] as const,
 		queryFn: () => desktopRpc.chats.getFileStats({ openSubChatIds: allOpenSubChatIds() }),
 		refetchInterval: 5e3,
@@ -155,7 +155,7 @@ export function KanbanView() {
 	// Build set of chatIds with pending plan approvals from DB
 	const workspacesWithPendingApprovalsFromDb = createMemo(() => {
 		const set = new Set<string>();
-		const data = pendingPlanApprovalsData?.();
+		const data = pendingPlanApprovalsQuery.data;
 		if (data) {
 			for (const item of data) {
 				set.add(item.chatId);
@@ -179,7 +179,7 @@ export function KanbanView() {
 			additions: number;
 			deletions: number;
 		}>();
-		const data = fileStatsData?.();
+		const data = fileStatsQuery.data;
 		if (data) {
 			for (const stat of data) {
 				statsMap.set(stat.chatId, {
@@ -372,18 +372,18 @@ export function KanbanView() {
 	return <div class="flex flex-col h-full w-full bg-background">
       {	/* Header with sidebar toggle */}
       <div class="flex-shrink-0 flex items-center p-1.5">
-        <AgentsHeaderControls isSidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} />
+        <AgentsHeaderControls isSidebarOpen={sidebarOpen()} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} />
       </div>
 
       { /* Board */}
       <div class="flex-1 overflow-hidden">
-        <KanbanBoard cards={cards} pinnedChatIds={pinnedChatIds} isMultiSelectMode={isMultiSelectMode} selectedChatIds={selectedChatIds} onCardClick={handleCardClick} onCheckboxClick={handleCheckboxClick} onTogglePin={handleTogglePin} onRename={handleRenameClick} onArchive={handleArchive} onCopyBranch={handleCopyBranch} onExportChat={handleExportChat} onCopyChat={handleCopyChat} />
+        <KanbanBoard cards={cards()} pinnedChatIds={pinnedChatIds()} isMultiSelectMode={isMultiSelectMode()} selectedChatIds={selectedChatIds()} onCardClick={handleCardClick} onCheckboxClick={handleCheckboxClick} onTogglePin={handleTogglePin} onRename={handleRenameClick} onArchive={handleArchive} onCopyBranch={handleCopyBranch} onExportChat={handleExportChat} onCopyChat={handleCopyChat} />
       </div>
 
       { /* Rename Dialog */}
-      <AgentsRenameSubChatDialog isOpen={renameDialogOpen} onClose={() => setRenameDialogOpen(false)} currentName={renamingChat?.name || ""} onSave={handleRenameSave} />
+      <AgentsRenameSubChatDialog isOpen={renameDialogOpen()} onClose={() => setRenameDialogOpen(false)} currentName={renamingChat()?.name || ""} onSave={handleRenameSave} />
 
       { /* Archive Confirmation Dialog */}
-      <ConfirmArchiveDialog isOpen={confirmArchiveDialogOpen} onClose={handleCancelArchive} onConfirm={handleConfirmArchive} activeProcessCount={activeProcessCount} hasWorktree={hasWorktree} uncommittedCount={uncommittedCount} />
+      <ConfirmArchiveDialog isOpen={confirmArchiveDialogOpen()} onClose={handleCancelArchive} onConfirm={handleConfirmArchive} activeProcessCount={activeProcessCount()} hasWorktree={hasWorktree()} uncommittedCount={uncommittedCount()} />
     </div>;
  }

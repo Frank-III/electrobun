@@ -3,15 +3,12 @@
 * 
 * Provides full VS Code theme support for the application:
 * - Applies CSS variables for UI theming
-* - Provides terminal theme for xterm.js
-* - Integrates with Shiki for syntax highlighting
-*/
+ * - Integrates with Shiki for syntax highlighting
+ */
 import { createContext, useContext, createEffect, createMemo, onCleanup, type ParentProps } from "solid-js";
 import { useColorMode } from "@kobalte/core";
-import type { ITheme } from "xterm";
 import { selectedFullThemeIdAtom, fullThemeDataAtom, systemLightThemeIdAtom, systemDarkThemeIdAtom, importedThemesAtom, type VSCodeFullTheme } from "../atoms";
 import { generateCSSVariables, applyCSSVariables, removeCSSVariables, getThemeTypeFromColors } from "./vscode-to-css-mapping";
-import { extractTerminalTheme } from "./terminal-theme-mapper";
 import { BUILTIN_THEMES, getBuiltinThemeById, DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID } from "./builtin-themes";
 /**
 * Theme context value
@@ -22,8 +19,6 @@ interface ThemeContextValue {
 	currentThemeId: string | null;
 	// Theme type (light/dark)
 	isDark: boolean;
-	// Terminal theme for xterm.js
-	terminalTheme: ITheme;
 	// All available themes
 	allThemes: VSCodeFullTheme[];
 	// Theme actions
@@ -43,54 +38,8 @@ export function useVSCodeTheme(): ThemeContextValue {
 	return context;
 }
 /**
-* Default terminal themes (fallback when no VS Code theme is selected)
+* VS Code Theme Provider Component
 */
-const DEFAULT_TERMINAL_THEME_DARK: ITheme = {
-	background: "#121212",
-	foreground: "#f4f4f5",
-	cursor: "#f4f4f5",
-	cursorAccent: "#121212",
-	selectionBackground: "#3f3f46",
-	black: "#18181b",
-	red: "#ef4444",
-	green: "#22c55e",
-	yellow: "#eab308",
-	blue: "#3b82f6",
-	magenta: "#a855f7",
-	cyan: "#06b6d4",
-	white: "#f4f4f5",
-	brightBlack: "#71717a",
-	brightRed: "#f87171",
-	brightGreen: "#4ade80",
-	brightYellow: "#facc15",
-	brightBlue: "#60a5fa",
-	brightMagenta: "#c084fc",
-	brightCyan: "#22d3ee",
-	brightWhite: "#fafafa"
-};
-const DEFAULT_TERMINAL_THEME_LIGHT: ITheme = {
-	background: "#fafafa",
-	foreground: "#0a0a0a",
-	cursor: "#0a0a0a",
-	cursorAccent: "#fafafa",
-	selectionBackground: "#d4d4d8",
-	black: "#18181b",
-	red: "#dc2626",
-	green: "#16a34a",
-	yellow: "#ca8a04",
-	blue: "#2563eb",
-	magenta: "#9333ea",
-	cyan: "#0891b2",
-	white: "#f4f4f5",
-	brightBlack: "#52525b",
-	brightRed: "#ef4444",
-	brightGreen: "#22c55e",
-	brightYellow: "#eab308",
-	brightBlue: "#3b82f6",
-	brightMagenta: "#a855f7",
-	brightCyan: "#06b6d4",
-	brightWhite: "#fafafa"
-};
 /**
 * VS Code Theme Provider Component
 */
@@ -157,15 +106,6 @@ export function VSCodeThemeProvider(props: ParentProps) {
 			removeCSSVariables();
 		});
 	});
-	// Get terminal theme
-	const terminalTheme = createMemo((): ITheme => {
-		const currentTheme = fullThemeData();
-		if (currentTheme?.colors) {
-			return extractTerminalTheme(currentTheme.colors);
-		}
-		// Fallback to default themes
-		return isDark() ? DEFAULT_TERMINAL_THEME_DARK : DEFAULT_TERMINAL_THEME_LIGHT;
-	});
 	// Get Shiki theme name for syntax highlighting
 	const shikiThemeName = createMemo(() => {
 		const currentTheme = fullThemeData();
@@ -189,7 +129,6 @@ export function VSCodeThemeProvider(props: ParentProps) {
 		currentTheme: fullThemeData(),
 		currentThemeId: selectedThemeId(),
 		isDark: isDark(),
-		terminalTheme: terminalTheme(),
 		allThemes: allThemes(),
 		setThemeById,
 		shikiThemeName: shikiThemeName()
@@ -197,13 +136,6 @@ export function VSCodeThemeProvider(props: ParentProps) {
 	return <ThemeContext.Provider value={contextValue}>
       {props.children}
     </ThemeContext.Provider>;
-}
-/**
-* Hook to get just the terminal theme (for performance)
-*/
-export function useTerminalTheme(): ITheme {
-	const { terminalTheme } = useVSCodeTheme();
-	return terminalTheme;
 }
 /**
 * Hook to get just the Shiki theme name

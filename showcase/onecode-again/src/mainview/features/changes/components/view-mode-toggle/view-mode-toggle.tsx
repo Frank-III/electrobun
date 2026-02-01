@@ -1,3 +1,4 @@
+import { Show, splitProps } from "solid-js";
 import { Button } from "../../../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../../components/ui/tooltip";
 import { Folder, FolderTree } from "lucide-solid";
@@ -6,18 +7,23 @@ interface ViewModeToggleProps {
 	viewMode: ChangesViewMode;
 	onViewModeChange: (mode: ChangesViewMode) => void;
 }
-export function ViewModeToggle({ viewMode, onViewModeChange }: ViewModeToggleProps) {
+export function ViewModeToggle(props: ViewModeToggleProps) {
+	const [local] = splitProps(props, ["viewMode", "onViewModeChange"]);
 	const handleToggle = () => {
-		onViewModeChange(viewMode === "grouped" ? "tree" : "grouped");
+		local.onViewModeChange(local.viewMode === "grouped" ? "tree" : "grouped");
 	};
 	return <Tooltip>
 			<TooltipTrigger asChild>
-				<Button variant="ghost" size="icon" onClick={handleToggle} class="size-6 p-0" aria-label={viewMode === "grouped" ? "Grouped view" : "Tree view"}>
-					{viewMode === "grouped" ? <Folder class="size-3.5" /> : <FolderTree class="size-3.5" />}
+				<Button variant="ghost" size="icon" onClick={handleToggle} class="size-6 p-0" aria-label={local.viewMode === "grouped" ? "Grouped view" : "Tree view"}>
+					<Show when={local.viewMode === "grouped"} fallback={<FolderTree class="size-3.5" />}>
+						<Folder class="size-3.5" />
+					</Show>
 				</Button>
 			</TooltipTrigger>
 			<TooltipContent side="bottom" showArrow={false}>
-				{viewMode === "grouped" ? "Switch to tree view" : "Switch to grouped view"}
+				<Show when={local.viewMode === "grouped"} fallback="Switch to grouped view">
+					Switch to tree view
+				</Show>
 			</TooltipContent>
 		</Tooltip>;
 }

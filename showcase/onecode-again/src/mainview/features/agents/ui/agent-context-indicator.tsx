@@ -1,3 +1,4 @@
+import { mergeProps, Show, splitProps } from "solid-js";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { cn } from "../../../lib/utils";
 // Claude model context windows
@@ -32,39 +33,45 @@ function formatTokens(tokens: number): string {
 	return tokens.toString();
 }
 // Circular progress component
-function CircularProgress({ percent, size = 18, strokeWidth = 2, class: cls }: {
+function CircularProgress(props: {
 	percent: number;
 	size?: number;
 	strokeWidth?: number;
 	class?: string;
 }) {
-	const radius = (size - strokeWidth) / 2;
+	const merged = mergeProps({ size: 18, strokeWidth: 2 }, props);
+	const [local] = splitProps(merged, ["percent", "size", "strokeWidth", "class"]);
+	const radius = (local.size - local.strokeWidth) / 2;
 	const circumference = 2 * Math.PI * radius;
-	const offset = circumference - percent / 100 * circumference;
-	return <svg width={size} height={size} class={cn("transform -rotate-90",cls)}>
+	const offset = circumference - local.percent / 100 * circumference;
+	return <svg width={local.size} height={local.size} class={cn("transform -rotate-90",local.class)}>
       {	/* Background circle */}
-      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" stroke-width={strokeWidth} class="text-muted-foreground/20" />
+		<circle cx={local.size / 2} cy={local.size / 2} r={radius} fill="none" stroke="currentColor" stroke-width={local.strokeWidth} class="text-muted-foreground/20" />
       { /* Progress circle */}
-      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" stroke-width={strokeWidth} stroke-dasharray={circumference} stroke-dashoffset={offset} stroke-linecap="round" class="transition-all duration-300 text-muted-foreground/60" />
+		<circle cx={local.size / 2} cy={local.size / 2} r={radius} fill="none" stroke="currentColor" stroke-width={local.strokeWidth} stroke-dasharray={circumference} stroke-dashoffset={offset} stroke-linecap="round" class="transition-all duration-300 text-muted-foreground/60" />
     </svg>;
  }
-export function AgentContextIndicator({ tokenData, modelId = "sonnet", class: cls, onCompact, isCompacting, disabled }: AgentContextIndicatorProps) {
-	const totalTokens = tokenData.totalInputTokens + tokenData.totalOutputTokens;
-	const contextWindow = CONTEXT_WINDOWS[modelId];
+export function AgentContextIndicator(props: AgentContextIndicatorProps) {
+	const merged = mergeProps({ modelId: "sonnet" }, props);
+	const [local] = splitProps(merged, ["tokenData", "modelId", "class", "onCompact", "isCompacting", "disabled"]);
+	const totalTokens = local.tokenData.totalInputTokens + local.tokenData.totalOutputTokens;
+	const contextWindow = CONTEXT_WINDOWS[local.modelId];
 	const percentUsed = Math.min(100, totalTokens / contextWindow * 100);
 	const isEmpty = totalTokens === 0;
-	const isClickable = onCompact && !disabled && !isCompacting;
+	const isClickable = local.onCompact && !local.disabled && !local.isCompacting;
 	return <Tooltip delayDuration={300}>
       <TooltipTrigger asChild>
-        <div onClick={isClickable ? onCompact : undefined} class={cn("h-4 w-4 flex items-center justify-center", isClickable ? "cursor-pointer hover:opacity-70 transition-opacity" : "cursor-default", disabled && "opacity-50",cls)}>
-          <CircularProgress percent={percentUsed} size={14} stroke-width={2.5} class={isCompacting ? "animate-pulse" : undefined} />
-        </div>
+		<div onClick={isClickable ? local.onCompact : undefined} class={cn("h-4 w-4 flex items-center justify-center", isClickable ? "cursor-pointer hover:opacity-70 transition-opacity" : "cursor-default", local.disabled && "opacity-50",local.class)}>
+			<CircularProgress percent={percentUsed} size={14} stroke-width={2.5} class={local.isCompacting ? "animate-pulse" : undefined} />
+		</div>
       </TooltipTrigger>
       <TooltipContent side="top" sideOffset={8}>
         <p class="text-xs">
-          {isEmpty ? <span class="text-muted-foreground">
-              Context: 0 / {formatTokens(contextWindow)}
-            </span> : <>
+          <Show when={!isEmpty} fallback={
+              <span class="text-muted-foreground">
+                Context: 0 / {formatTokens(contextWindow)}
+              </span>
+            }>
               <span class="font-mono font-medium text-foreground">
                 {percentUsed.toFixed(1)}%
               </span>
@@ -73,7 +80,7 @@ export function AgentContextIndicator({ tokenData, modelId = "sonnet", class: cl
                 {formatTokens(totalTokens)} /{" "}
                 {formatTokens(contextWindow)} context
               </span>
-            </>}
+            </Show>
         </p>
       </TooltipContent>
     </Tooltip>;

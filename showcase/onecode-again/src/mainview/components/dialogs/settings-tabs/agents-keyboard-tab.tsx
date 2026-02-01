@@ -8,11 +8,14 @@ import { useHotkeyRecorder } from "../../../lib/hotkeys/use-hotkey-recorder";
 /**
 * Display a single key in a keyboard shortcut
 */
-function ShortcutKey({ keyName, size = "md", isSelected = false }: {
+interface ShortcutKeyProps {
 	keyName: string;
 	size?: "sm" | "md" | "lg";
 	isSelected?: boolean;
-}) {
+}
+function ShortcutKey(props: ShortcutKeyProps) {
+	const size = () => props.size ?? "md";
+	const isSelected = () => props.isSelected ?? false;
 	const sizeClasses = {
 		sm: "h-5 min-w-5 text-[10px] px-1",
 		md: "h-6 min-w-6 text-xs px-1.5",
@@ -23,27 +26,27 @@ function ShortcutKey({ keyName, size = "md", isSelected = false }: {
 		md: "h-3 w-3",
 		lg: "h-4 w-4"
 	};
-	const baseClasses = cn("inline-flex items-center justify-center rounded border font-[inherit] font-normal", sizeClasses[size], isSelected ? "bg-primary-foreground/20 text-primary-foreground border-primary-foreground/30" : "bg-secondary text-secondary-foreground border-muted");
-	const lower = keyName.toLowerCase();
+	const baseClasses = cn("inline-flex items-center justify-center rounded border font-[inherit] font-normal", sizeClasses[size()], isSelected() ? "bg-primary-foreground/20 text-primary-foreground border-primary-foreground/30" : "bg-secondary text-secondary-foreground border-muted");
+	const lower = props.keyName.toLowerCase();
 	// Modifier keys with icons
 	if (lower === "cmd" || lower === "meta") {
 		return <kbd class={baseClasses}>
-        <CmdIcon class={iconSizes[size]} />
+        <CmdIcon class={iconSizes[size()]} />
       </kbd>;
 	}
 	if (lower === "opt" || lower === "alt") {
 		return <kbd class={baseClasses}>
-        <OptionIcon class={iconSizes[size]} />
+        <OptionIcon class={iconSizes[size()]} />
       </kbd>;
 	}
 	if (lower === "shift") {
 		return <kbd class={baseClasses}>
-        <ShiftIcon class={iconSizes[size]} />
+        <ShiftIcon class={iconSizes[size()]} />
       </kbd>;
 	}
 	if (lower === "ctrl") {
 		return <kbd class={baseClasses}>
-        <ControlIcon class={iconSizes[size]} />
+        <ControlIcon class={iconSizes[size()]} />
       </kbd>;
 	}
 	// Text-based keys
@@ -56,7 +59,7 @@ function ShortcutKey({ keyName, size = "md", isSelected = false }: {
 		tab: "Tab",
 		space: "Space"
 	};
-	const display = displayMap[lower] || keyName.toUpperCase();
+	const display = displayMap[lower] || props.keyName.toUpperCase();
 	return <kbd class={baseClasses}>
       {display}
     </kbd>;
@@ -64,28 +67,29 @@ function ShortcutKey({ keyName, size = "md", isSelected = false }: {
 /**
 * Shortcut item in the left list
 */
-function ShortcutListItem({ action, config, isSelected, hasConflict, onClick, ctrlTabTarget }: {
+interface ShortcutListItemProps {
 	action: ShortcutAction;
 	config: CustomHotkeysConfig;
 	isSelected: boolean;
 	hasConflict: boolean;
 	onClick: () => void;
 	ctrlTabTarget: "workspaces" | "agents";
-}) {
-	const isCustom = isCustomHotkey(action.id, config);
-	let currentHotkey = getResolvedHotkey(action.id, config);
+}
+function ShortcutListItem(props: ShortcutListItemProps) {
+	const isCustom = isCustomHotkey(props.action.id, props.config);
+	let currentHotkey = getResolvedHotkey(props.action.id, props.config);
 	// Handle dynamic shortcuts for ctrl+tab
-	if (action.isDynamic && !isCustom) {
-		if (action.id === "quick-switch-workspaces") {
-			currentHotkey = ctrlTabTarget === "workspaces" ? "ctrl+tab" : "opt+ctrl+tab";
-		} else if (action.id === "quick-switch-agents") {
-			currentHotkey = ctrlTabTarget === "workspaces" ? "opt+ctrl+tab" : "ctrl+tab";
+	if (props.action.isDynamic && !isCustom) {
+		if (props.action.id === "quick-switch-workspaces") {
+			currentHotkey = props.ctrlTabTarget === "workspaces" ? "ctrl+tab" : "opt+ctrl+tab";
+		} else if (props.action.id === "quick-switch-agents") {
+			currentHotkey = props.ctrlTabTarget === "workspaces" ? "opt+ctrl+tab" : "ctrl+tab";
 		}
 	}
 	const keys = currentHotkey ? hotkeyStringToKeys(currentHotkey) : [];
-	return <button type="button" onClick={onClick} class={cn("w-full flex items-center justify-between px-3 py-2 rounded-md text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50", isSelected ? "bg-secondary text-foreground" : "hover:bg-secondary/50", hasConflict && !isSelected && "bg-red-500/10")}>
+	return <button type="button" onClick={props.onClick} class={cn("w-full flex items-center justify-between px-3 py-2 rounded-md text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50", props.isSelected ? "bg-secondary text-foreground" : "hover:bg-secondary/50", props.hasConflict && !props.isSelected && "bg-red-500/10")}>
       <span class="text-sm truncate">
-        {action.label}
+        {props.action.label}
       </span>
       <div class="flex items-center gap-0.5 ml-2 flex-shrink-0">
         <Index each={keys}>{(key) => <ShortcutKey keyName={key()} size="sm" />}</Index>
@@ -95,7 +99,7 @@ function ShortcutListItem({ action, config, isSelected, hasConflict, onClick, ct
 /**
 * Right panel showing selected shortcut details
 */
-function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, onRecord, onCancel, onReset, ctrlTabTarget, conflictMessage }: {
+interface ShortcutDetailPanelProps {
 	action: ShortcutAction;
 	config: CustomHotkeysConfig;
 	isRecording: boolean;
@@ -105,32 +109,33 @@ function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, on
 	onReset: () => void;
 	ctrlTabTarget: "workspaces" | "agents";
 	conflictMessage: string | null;
-}) {
-	const isCustom = isCustomHotkey(action.id, config);
-	let currentHotkey = getResolvedHotkey(action.id, config);
+}
+function ShortcutDetailPanel(props: ShortcutDetailPanelProps) {
+	const isCustom = isCustomHotkey(props.action.id, props.config);
+	let currentHotkey = getResolvedHotkey(props.action.id, props.config);
 	let recorderButtonRef: HTMLButtonElement | undefined;
 	// Handle dynamic shortcuts for ctrl+tab
-	if (action.isDynamic && !isCustom) {
-		if (action.id === "quick-switch-workspaces") {
-			currentHotkey = ctrlTabTarget === "workspaces" ? "ctrl+tab" : "opt+ctrl+tab";
-		} else if (action.id === "quick-switch-agents") {
-			currentHotkey = ctrlTabTarget === "workspaces" ? "opt+ctrl+tab" : "ctrl+tab";
+	if (props.action.isDynamic && !isCustom) {
+		if (props.action.id === "quick-switch-workspaces") {
+			currentHotkey = props.ctrlTabTarget === "workspaces" ? "ctrl+tab" : "opt+ctrl+tab";
+		} else if (props.action.id === "quick-switch-agents") {
+			currentHotkey = props.ctrlTabTarget === "workspaces" ? "opt+ctrl+tab" : "ctrl+tab";
 		}
 	}
 	const keys = currentHotkey ? hotkeyStringToKeys(currentHotkey) : [];
-	const defaultAction = getShortcutAction(action.id);
+	const defaultAction = getShortcutAction(props.action.id);
 	const defaultKeys = defaultAction?.defaultKeys || [];
 	const { currentKeys } = useHotkeyRecorder({
-		onRecord,
-		onCancel,
-		isRecording: () => isRecording
+		onRecord: props.onRecord,
+		onCancel: props.onCancel,
+		isRecording: () => props.isRecording
 	});
 	// Click outside to cancel recording
 	createEffect(() => {
-		if (!isRecording) return;
+		if (!props.isRecording) return;
 		const handleClickOutside = (e: MouseEvent) => {
 			if (recorderButtonRef && !recorderButtonRef.contains(e.target as Node)) {
-				onCancel();
+				props.onCancel();
 			}
 		};
 		document.addEventListener("mousedown", handleClickOutside);
@@ -138,16 +143,16 @@ function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, on
 	});
 	return <div class="flex flex-col items-center justify-center h-full p-8">
       {	/* Title */}
-      <h3 class="text-base font-medium text-foreground mb-1">{action.label}</h3>
+      <h3 class="text-base font-medium text-foreground mb-1">{props.action.label}</h3>
       <p class="text-sm text-muted-foreground mb-8">
-        {action.isDynamic ? action.dynamicDescription : `${CATEGORY_LABELS[action.category]} shortcut`}
+        {props.action.isDynamic ? props.action.dynamicDescription : `${CATEGORY_LABELS[props.action.category]} shortcut`}
       </p>
 
       { /* Hotkey display / recorder */}
-      <button ref={el => recorderButtonRef = el} type="button" onClick={onStartRecording} class={cn("flex items-center justify-center gap-1 px-6 py-3 h-[52px] rounded-lg border-2 transition-shadow", isRecording ? "border-primary bg-secondary ring-[3px] ring-primary/20" : conflictMessage ? "border-red-500 bg-red-500/10" : "border-border bg-background hover:border-muted-foreground/50 hover:bg-secondary/50")}>
+      <button ref={el => recorderButtonRef = el} type="button" onClick={props.onStartRecording} class={cn("flex items-center justify-center gap-1 px-6 py-3 h-[52px] rounded-lg border-2 transition-shadow", props.isRecording ? "border-primary bg-secondary ring-[3px] ring-primary/20" : props.conflictMessage ? "border-red-500 bg-red-500/10" : "border-border bg-background hover:border-muted-foreground/50 hover:bg-secondary/50")}>
         {(() => {
  // During recording, show currentKeys or "Press keys..."
-		if (isRecording) {
+		if (props.isRecording) {
 			if (currentKeys().length > 0) {
 				return <div class="flex items-center gap-1">
                   <Index each={currentKeys()}>{(key) => <ShortcutKey keyName={key()} size="lg" />}</Index>
@@ -168,16 +173,16 @@ function ShortcutDetailPanel({ action, config, isRecording, onStartRecording, on
       </button>
 
       {	/* Conflict warning - shown temporarily when trying to set conflicting hotkey */}
-      <Show when={conflictMessage}>
+      <Show when={props.conflictMessage}>
         <p class="text-xs text-red-500 mt-3 animate-pulse">
-          {conflictMessage}
+          {props.conflictMessage}
         </p>
       </Show>
 
       { /* Reset to default / Instructions - always reserve space to prevent layout shift */}
       <div class="mt-6 h-8 flex items-center justify-center">
         <Show when={isCustom} fallback={<p class="text-xs text-muted-foreground text-center">Click to record a new shortcut</p>}>
-          <button type="button" onClick={onReset} class="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground bg-secondary/50 hover:bg-secondary border border-border rounded-lg transition-colors">
+          <button type="button" onClick={props.onReset} class="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground bg-secondary/50 hover:bg-secondary border border-border rounded-lg transition-colors">
             <RotateCcw class="h-3 w-3" />
             <span>Reset to</span>
             <div class="flex items-center gap-0.5">
@@ -333,43 +338,45 @@ export function AgentsKeyboardTab() {
           </div>
 
           { /* Shortcuts list - padding to prevent focus ring clipping */}
-          <div class="flex-1 min-h-0 overflow-y-auto p-1">
-            {totalShortcuts() === 0 ? <div class="text-center py-8 text-sm text-muted-foreground">
-                No shortcuts found
-              </div> : <div class="space-y-4">
-                <For each={["general", "workspaces", "agents"] as ShortcutCategory[]}>
-                  {(category) => {
-                    const actions = filteredShortcuts()[category];
-                    return (
-                      <Show when={actions.length > 0}>
-                        <div>
-                          <h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 py-1">
-                            {CATEGORY_LABELS[category]}
-                          </h4>
-                          <div class="space-y-0.5">
-                            <For each={actions}>
-                              {(action) => (
-                                <ShortcutListItem
-                                  action={action}
-                                  config={customHotkeys()}
-                                  isSelected={selectedActionId() === action.id}
-                                  hasConflict={!!conflicts().get(action.id)}
-                                  onClick={() => {
-                                    setSelectedActionId(action.id);
-                                    setIsRecording(false);
-                                  }}
-                                  ctrlTabTarget={ctrlTabTarget()}
-                                />
-                              )}
-                            </For>
-                          </div>
-                        </div>
-                      </Show>
-                    );
-                  }}
-                </For>
-              </div>}
-          </div>
+			<div class="flex-1 min-h-0 overflow-y-auto p-1">
+				<Show when={totalShortcuts() === 0} fallback={<div class="space-y-4">
+					<For each={["general", "workspaces", "agents"] as ShortcutCategory[]}>
+						{(category) => {
+							const actions = filteredShortcuts()[category];
+							return (
+								<Show when={actions.length > 0}>
+									<div>
+										<h4 class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 py-1">
+											{CATEGORY_LABELS[category]}
+										</h4>
+										<div class="space-y-0.5">
+											<For each={actions}>
+												{(action) => (
+													<ShortcutListItem
+														action={action}
+														config={customHotkeys()}
+														isSelected={selectedActionId() === action.id}
+														hasConflict={!!conflicts().get(action.id)}
+														onClick={() => {
+															setSelectedActionId(action.id);
+															setIsRecording(false);
+														}}
+														ctrlTabTarget={ctrlTabTarget()}
+													/>
+												)}
+											</For>
+										</div>
+									</div>
+								</Show>
+							);
+						}}
+					</For>
+				</div>}>
+					<div class="text-center py-8 text-sm text-muted-foreground">
+						No shortcuts found
+					</div>
+				</Show>
+			</div>
 
           {	/* Reset all button at bottom */}
           <Show when={hasCustomHotkeys()}>

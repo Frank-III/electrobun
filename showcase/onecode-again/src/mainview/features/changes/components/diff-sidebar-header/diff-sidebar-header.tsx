@@ -195,7 +195,7 @@ export function DiffSidebarHeader(props: DiffSidebarHeaderComponentProps) {
 	};
 	const handleOpenPR = () => {
 		if (pr?.url) {
-			window.open(pr.url, "_blank");
+			desktopRpc.window.openExternal.mutate({ url: pr.url });
 		}
 	};
 	const handleCopyPRLink = () => {
@@ -231,7 +231,7 @@ interface ActionButton {
 	}
 	const getPrimaryAction = (): ActionButton => {
 		// 0. Loading state - show loading indicator
-		if (isSyncStatusLoading) {
+		if (merged.isSyncStatusLoading) {
 			return {
 				label: "",
 				pendingLabel: "",
@@ -244,7 +244,7 @@ interface ActionButton {
 			};
 		}
 		// 1. Branch not published - must publish first
-		if (!hasUpstream) {
+		if (!merged.hasUpstream) {
 			return {
 				label: "Publish",
 				pendingLabel: "Publishing...",
@@ -256,27 +256,27 @@ interface ActionButton {
 			};
 		}
 		// 2. Remote has changes we need to pull first
-		if (pullCount > 0) {
+		if (merged.pullCount > 0) {
 			return {
 				label: "Pull",
 				pendingLabel: "Pulling...",
 				icon: <ArrowDown class="size-3.5" />,
 				handler: handlePull,
-				tooltip: `Pull ${pullCount} commit${pullCount !== 1 ? "s" : ""} from remote`,
-				badge: `↓${pullCount}`,
+				tooltip: `Pull ${merged.pullCount} commit${merged.pullCount !== 1 ? "s" : ""} from remote`,
+				badge: `↓${merged.pullCount}`,
 				variant: "default",
 				isPending: isPullPending
 			};
 		}
 		// 3. We have commits to push
-		if (pushCount > 0) {
+		if (merged.pushCount > 0) {
 			return {
 				label: "Push",
 				pendingLabel: "Pushing...",
 				icon: <ArrowUp class="size-3.5" />,
 				handler: handlePush,
-				tooltip: `Push ${pushCount} commit${pushCount !== 1 ? "s" : ""} to remote`,
-				badge: `↑${pushCount}`,
+				tooltip: `Push ${merged.pushCount} commit${merged.pushCount !== 1 ? "s" : ""} to remote`,
+				badge: `↑${merged.pushCount}`,
 				variant: "default",
 				isPending: isPushPending
 			};
@@ -292,18 +292,18 @@ interface ActionButton {
 			};
 		}
 		// 5. No PR, branch is synced - Create PR if ahead of default, otherwise Fetch
-		if (hasUpstream && !pr) {
+		if (merged.hasUpstream && !pr) {
 			// Show Create PR if we have commits ahead of default branch (not on default branch)
-			if (aheadOfDefault > 0 && !isDefaultBranch() && onCreatePr) {
+			if (merged.aheadOfDefault > 0 && !isDefaultBranch() && merged.onCreatePr) {
 				return {
 					label: "Create PR",
 					pendingLabel: "Creating...",
 					icon: <GitPullRequest class="size-3.5" />,
-					handler: onCreatePr,
-					tooltip: `Create Pull Request (${aheadOfDefault} commit${aheadOfDefault !== 1 ? "s" : ""} ahead of ${branchData()?.defaultBranch || "main"})`,
-					badge: `↑${aheadOfDefault}`,
+					handler: merged.onCreatePr,
+					tooltip: `Create Pull Request (${merged.aheadOfDefault} commit${merged.aheadOfDefault !== 1 ? "s" : ""} ahead of ${branchData()?.defaultBranch || "main"})`,
+					badge: `↑${merged.aheadOfDefault}`,
 					variant: "default",
-					isPending: isCreatingPr
+					isPending: merged.isCreatingPr
 				};
 			}
 			// Otherwise show Fetch
@@ -330,26 +330,32 @@ interface ActionButton {
 	};
 	const primaryAction = getPrimaryAction();
 	// Override primary action when fetching from dropdown
-	const displayAction: ActionButton = isFetchPending && !primaryAction.isPending ? {
-		label: "Fetching",
-		pendingLabel: "Fetching...",
-		icon: <IconFetch class="size-3.5" />,
-		handler: () => {},
-		tooltip: "Fetching from remote...",
-		variant: primaryAction.variant,
-		isPending: true
-	} : primaryAction;
+	const getDisplayAction = (): ActionButton => {
+		if (isFetchPending && !primaryAction.isPending) {
+			return {
+				label: "Fetching",
+				pendingLabel: "Fetching...",
+				icon: <IconFetch class="size-3.5" />,
+				handler: () => {},
+				tooltip: "Fetching from remote...",
+				variant: primaryAction.variant,
+				isPending: true
+			};
+		}
+		return primaryAction;
+	};
+	const displayAction = getDisplayAction();
 	return <div class="relative flex items-center justify-between h-10 px-2 border-b border-border/50 bg-background flex-shrink-0">
 			{	/* Drag region for window dragging */}
-			<Show when={isDesktop && !isFullscreen}>
+			<Show when={merged.isDesktop && !merged.isFullscreen}>
 				<div class="absolute inset-0 z-0" style={{ WebkitAppRegion: "drag" }} />
 			</Show>
 			{ /* Left side: Close button + Branch selector */}
 			<div class="relative z-10 flex items-center gap-1 min-w-0 flex-shrink" style={{ WebkitAppRegion: "no-drag" }}>
 				{ /* Close button - X icon for dialog/fullpage modes, chevron for sidebar */}
-				<Button variant="ghost" size="sm" class="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10" onClick={onClose}>
+				<Button variant="ghost" size="sm" class="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10" onClick={merged.onClose}>
 					<Show
-						when={displayMode === "side-peek"}
+						when={merged.displayMode === "side-peek"}
 						fallback={<X class="size-4 text-muted-foreground" />}
 					>
 						<IconCloseSidebarRight class="size-4 text-muted-foreground" />
@@ -357,15 +363,15 @@ interface ActionButton {
 				</Button>
 
 				{ /* Display mode switcher (side-peek, center-peek, full-page) */}
-				<Show when={onDisplayModeChange}>
-					<DiffViewModeSwitcher mode={displayMode} onModeChange={onDisplayModeChange} />
+				<Show when={merged.onDisplayModeChange}>
+					<DiffViewModeSwitcher mode={merged.displayMode} onModeChange={merged.onDisplayModeChange} />
 				</Show>
 
 				{ /* Branch name display (branch switching will be added later) */}
 				<div class="h-6 px-2 gap-1 text-xs font-medium min-w-0 flex items-center">
 					<LuGitBranch class="size-3.5 shrink-0 opacity-70" />
 					<span class="truncate max-w-[120px] text-foreground">
-						{currentBranch || "No branch"}
+						{merged.currentBranch || "No branch"}
 					</span>
 				</div>
 
@@ -395,11 +401,11 @@ interface ActionButton {
 			{ /* Right side: Review + View mode toggle + Primary action (split button) + Secondary action + Overflow menu */}
 			<div class="relative z-10 flex items-center gap-1 flex-shrink-0" style={{ WebkitAppRegion: "no-drag" }}>
 				{ /* Review button - visible when there's enough space */}
-				<Show when={showReviewButton && diffStats.hasChanges && onReview}>
+				<Show when={showReviewButton() && merged.diffStats.hasChanges && merged.onReview}>
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<Button variant="ghost" size="sm" onClick={onReview} disabled={isReviewing} class="h-6 px-2 gap-1 text-xs hover:bg-foreground/10">
-								<Show when={isReviewing} fallback={<IconReview class="size-3.5" />}>
+							<Button variant="ghost" size="sm" onClick={merged.onReview} disabled={merged.isReviewing} class="h-6 px-2 gap-1 text-xs hover:bg-foreground/10">
+								<Show when={merged.isReviewing} fallback={<IconReview class="size-3.5" />}>
 									<IconSpinner class="size-3.5" />
 								</Show>
 								<span>Review</span>
@@ -469,7 +475,7 @@ interface ActionButton {
 								</DropdownMenuItem>
 
 								{ /* Force Push - only when history diverged (remote has commits we don't have locally) */}
-								<Show when={hasUpstream && pullCount > 0}>
+								<Show when={merged.hasUpstream && merged.pullCount > 0}>
 									<DropdownMenuItem onClick={handleForcePush} disabled={forcePushMutation.isPending} class="text-xs data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400 [&_div]:data-[highlighted]:text-red-400/70">
 										<IconForcePush class="mr-2 size-3.5" />
 										<div class="flex-1">
@@ -482,78 +488,78 @@ interface ActionButton {
 								</Show>
 
 								{ /* Merge/Rebase from default branch */}
-								<Show when={!isDefaultBranch() && hasUpstream}>
+								<Show when={!isDefaultBranch() && merged.hasUpstream}>
 									<DropdownMenuSeparator />
-									<DropdownMenuItem onClick={() => handleMergeFromDefault(false)} disabled={mergeFromDefaultMutation.isPending || behindDefault === 0} class="text-xs">
+									<DropdownMenuItem onClick={() => handleMergeFromDefault(false)} disabled={mergeFromDefaultMutation.isPending || merged.behindDefault === 0} class="text-xs">
 										<GitMerge class="mr-2 size-3.5" />
 										<div class="flex-1">
 											<div>Merge from {branchData()?.defaultBranch || "main"}</div>
 											<div class="text-[10px] text-muted-foreground">
-												<Show when={behindDefault > 0} fallback="Already up to date">
-													{`${behindDefault} commit${behindDefault !== 1 ? "s" : ""} to merge`}
+												<Show when={merged.behindDefault > 0} fallback="Already up to date">
+													{`${merged.behindDefault} commit${merged.behindDefault !== 1 ? "s" : ""} to merge`}
 												</Show>
 											</div>
 										</div>
-										<Show when={behindDefault > 0}>
+										<Show when={merged.behindDefault > 0}>
 											<span class="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium ml-2">
-												↓{behindDefault}
+												↓{merged.behindDefault}
 											</span>
 										</Show>
 									</DropdownMenuItem>
-									<DropdownMenuItem onClick={() => handleMergeFromDefault(true)} disabled={mergeFromDefaultMutation.isPending || behindDefault === 0} class="text-xs">
+									<DropdownMenuItem onClick={() => handleMergeFromDefault(true)} disabled={mergeFromDefaultMutation.isPending || merged.behindDefault === 0} class="text-xs">
 										<GitMerge class="mr-2 size-3.5" />
 										<div class="flex-1">
 											<div>Rebase on {branchData()?.defaultBranch || "main"}</div>
 											<div class="text-[10px] text-muted-foreground">
-												<Show when={behindDefault > 0} fallback="Already up to date">
-													{`Replay on top of ${behindDefault} commit${behindDefault !== 1 ? "s" : ""}`}
+												<Show when={merged.behindDefault > 0} fallback="Already up to date">
+													{`Replay on top of ${merged.behindDefault} commit${merged.behindDefault !== 1 ? "s" : ""}`}
 												</Show>
 											</div>
 										</div>
-										<Show when={behindDefault > 0}>
+										<Show when={merged.behindDefault > 0}>
 											<span class="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium ml-2">
-												↓{behindDefault}
+												↓{merged.behindDefault}
 											</span>
 										</Show>
 									</DropdownMenuItem>
 								</Show>
 
 								{ /* PR actions separator */}
-								<Show when={hasUpstream && !pr && onCreatePr && !isDefaultBranch() && primaryAction.label !== "Create PR" || hasUpstream && !pr && onCreatePrWithAI && !isDefaultBranch() || pr || hasPrNumber && isPrOpen && onMergePr}>
+								<Show when={merged.hasUpstream && !pr && merged.onCreatePr && !isDefaultBranch() && primaryAction.label !== "Create PR" || merged.hasUpstream && !pr && merged.onCreatePrWithAI && !isDefaultBranch() || pr || merged.hasPrNumber && merged.isPrOpen && merged.onMergePr}>
 									<DropdownMenuSeparator />
 								</Show>
 
 								{ /* Create PR */}
-								<Show when={hasUpstream && !pr && onCreatePr && !isDefaultBranch() && primaryAction.label !== "Create PR"}>
-									<DropdownMenuItem onClick={onCreatePr} disabled={isCreatingPr || aheadOfDefault === 0} class="text-xs">
+								<Show when={merged.hasUpstream && !pr && merged.onCreatePr && !isDefaultBranch() && primaryAction.label !== "Create PR"}>
+									<DropdownMenuItem onClick={merged.onCreatePr} disabled={merged.isCreatingPr || merged.aheadOfDefault === 0} class="text-xs">
 										<GitPullRequest class="mr-2 size-3.5" />
 										<div class="flex-1">
 											<div>
-												<Show when={isCreatingPr} fallback="Create Pull Request">
+												<Show when={merged.isCreatingPr} fallback="Create Pull Request">
 													Creating...
 												</Show>
 											</div>
-											<Show when={aheadOfDefault === 0}>
+											<Show when={merged.aheadOfDefault === 0}>
 												<div class="text-[10px] text-muted-foreground">
 													No commits to merge into {branchData()?.defaultBranch || "main"}
 												</div>
 											</Show>
 										</div>
-										<Show when={aheadOfDefault > 0}>
+										<Show when={merged.aheadOfDefault > 0}>
 											<span class="text-[10px] bg-muted px-1.5 py-0.5 rounded font-medium ml-2">
-												↑{aheadOfDefault}
+												↑{merged.aheadOfDefault}
 											</span>
 										</Show>
 									</DropdownMenuItem>
 								</Show>
 
 								{ /* Create PR with AI */}
-								<Show when={hasUpstream && !pr && onCreatePrWithAI && !isDefaultBranch()}>
-									<DropdownMenuItem onClick={onCreatePrWithAI} disabled={isCreatingPrWithAI} class="text-xs">
+								<Show when={merged.hasUpstream && !pr && merged.onCreatePrWithAI && !isDefaultBranch()}>
+									<DropdownMenuItem onClick={merged.onCreatePrWithAI} disabled={merged.isCreatingPrWithAI} class="text-xs">
 										<GitPullRequest class="mr-2 size-3.5" />
 										<div class="flex-1">
 											<div>
-												<Show when={isCreatingPrWithAI} fallback="Create PR with AI">
+												<Show when={merged.isCreatingPrWithAI} fallback="Create PR with AI">
 													Creating...
 												</Show>
 											</div>
@@ -573,11 +579,11 @@ interface ActionButton {
 								</Show>
 
 								{ /* Merge PR */}
-								<Show when={hasPrNumber && isPrOpen && onMergePr && !hasMergeConflicts}>
-									<DropdownMenuItem onClick={onMergePr} disabled={isMergingPr} class="text-xs">
+								<Show when={merged.hasPrNumber && merged.isPrOpen && merged.onMergePr && !merged.hasMergeConflicts}>
+									<DropdownMenuItem onClick={merged.onMergePr} disabled={merged.isMergingPr} class="text-xs">
 										<GitMerge class="mr-2 size-3.5" />
 										<span>
-											<Show when={isMergingPr} fallback="Merge Pull Request">
+											<Show when={merged.isMergingPr} fallback="Merge Pull Request">
 												Merging...
 											</Show>
 										</span>
@@ -585,12 +591,12 @@ interface ActionButton {
 								</Show>
 
 								{ /* Fix Conflicts */}
-								<Show when={hasPrNumber && isPrOpen && hasMergeConflicts && onFixConflicts}>
-									<DropdownMenuItem onClick={onFixConflicts} class="text-xs text-yellow-600 dark:text-yellow-500">
-										<GitMerge class="mr-2 size-3.5" />
-										<span>Fix Merge Conflicts</span>
-									</DropdownMenuItem>
-								</Show>
+								<Show when={merged.hasPrNumber && merged.isPrOpen && merged.hasMergeConflicts && merged.onFixConflicts}>
+									<DropdownMenuItem onClick={merged.onFixConflicts} class="text-xs text-yellow-600 dark:text-yellow-500">
+								<GitMerge class="mr-2 size-3.5" />
+								<span>Fix Merge Conflicts</span>
+							</DropdownMenuItem>
+						</Show>
 							</DropdownMenuContent>
 						</DropdownMenu>
 					</div>}
@@ -631,12 +637,12 @@ interface ActionButton {
 				</Show>
 
 				{ /* View mode toggle - visible when there's enough space */}
-				<Show when={showViewModeToggle && onViewModeChange}>
+				<Show when={showViewModeToggle() && merged.onViewModeChange}>
 					<div class="inline-flex rounded-md border border-input">
-						<Button variant={viewMode === "split" ? "secondary" : "ghost"} size="sm" onClick={() => onViewModeChange("split")} class={cn("h-6 w-6 p-0 rounded-r-none border-0", viewMode !== "split" && "hover:bg-foreground/10")} title="Split view">
+						<Button variant={merged.viewMode === "split" ? "secondary" : "ghost"} size="sm" onClick={() => merged.onViewModeChange?.("split")} class={cn("h-6 w-6 p-0 rounded-r-none border-0", merged.viewMode !== "split" && "hover:bg-foreground/10")} title="Split view">
 							<Columns2 class="size-3.5" />
 						</Button>
-						<Button variant={viewMode === "unified" ? "secondary" : "ghost"} size="sm" onClick={() => onViewModeChange("unified")} class={cn("h-6 w-6 p-0 rounded-l-none border-0 border-l border-input", viewMode !== "unified" && "hover:bg-foreground/10")} title="Unified view">
+						<Button variant={merged.viewMode === "unified" ? "secondary" : "ghost"} size="sm" onClick={() => merged.onViewModeChange?.("unified")} class={cn("h-6 w-6 p-0 rounded-l-none border-0 border-l border-input", merged.viewMode !== "unified" && "hover:bg-foreground/10")} title="Unified view">
 							<Rows2 class="size-3.5" />
 						</Button>
 					</div>
@@ -651,11 +657,11 @@ interface ActionButton {
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end" class="w-48">
 						{ /* Review - shown here when button is hidden */}
-						<Show when={!showReviewButton && diffStats.hasChanges && onReview}>
-							<DropdownMenuItem onClick={onReview} disabled={isReviewing} class="text-xs">
+						<Show when={!showReviewButton() && merged.diffStats.hasChanges && merged.onReview}>
+							<DropdownMenuItem onClick={merged.onReview} disabled={merged.isReviewing} class="text-xs">
 								<IconReview class="mr-2 size-3.5" />
 								<span>
-									<Show when={isReviewing} fallback="Review changes">
+									<Show when={merged.isReviewing} fallback="Review changes">
 										Reviewing...
 									</Show>
 								</span>
@@ -663,36 +669,36 @@ interface ActionButton {
 						</Show>
 
 						{ /* Separator only if we have hidden review above */}
-						<Show when={!showReviewButton && diffStats.hasChanges && onReview}>
+						<Show when={!showReviewButton() && merged.diffStats.hasChanges && merged.onReview}>
 							<DropdownMenuSeparator />
 						</Show>
 
 						{ /* Refresh diff view */}
-						<Show when={onRefresh}>
-							<DropdownMenuItem onClick={onRefresh} class="text-xs">
+						<Show when={merged.onRefresh}>
+							<DropdownMenuItem onClick={merged.onRefresh} class="text-xs">
 								<RefreshCw class="mr-2 size-3.5" />
 								<span>Refresh diff view</span>
 							</DropdownMenuItem>
 						</Show>
 
 						{ /* Separator after refresh if view mode submenu follows */}
-						<Show when={onRefresh && !showViewModeToggle && onViewModeChange}>
+						<Show when={merged.onRefresh && !showViewModeToggle() && merged.onViewModeChange}>
 							<DropdownMenuSeparator />
 						</Show>
 
 						{ /* View mode submenu - only shown when toggle is hidden */}
-						<Show when={!showViewModeToggle && onViewModeChange}>
+						<Show when={!showViewModeToggle() && merged.onViewModeChange}>
 							<DropdownMenuSub>
 								<DropdownMenuSubTrigger class="text-xs">
 									<Eye class="mr-2 size-3.5" />
 									<span>View</span>
 								</DropdownMenuSubTrigger>
 								<DropdownMenuSubContent>
-									<DropdownMenuItem onClick={() => onViewModeChange("split")} class={cn("text-xs", viewMode === "split" && "bg-muted")}>
+									<DropdownMenuItem onClick={() => merged.onViewModeChange?.("split")} class={cn("text-xs", merged.viewMode === "split" && "bg-muted")}>
 										<Columns2 class="mr-2 size-3.5" />
 										<span>Split view</span>
 									</DropdownMenuItem>
-									<DropdownMenuItem onClick={() => onViewModeChange("unified")} class={cn("text-xs", viewMode === "unified" && "bg-muted")}>
+									<DropdownMenuItem onClick={() => merged.onViewModeChange?.("unified")} class={cn("text-xs", merged.viewMode === "unified" && "bg-muted")}>
 										<Rows2 class="mr-2 size-3.5" />
 										<span>Unified view</span>
 									</DropdownMenuItem>
@@ -702,31 +708,31 @@ interface ActionButton {
 						</Show>
 
 						{ /* Expand/Collapse all */}
-						<Show when={onExpandAll}>
-							<DropdownMenuItem onClick={onExpandAll} class="text-xs">
+						<Show when={merged.onExpandAll}>
+							<DropdownMenuItem onClick={merged.onExpandAll} class="text-xs">
 								<ChevronsUpDown class="mr-2 size-3.5" />
 								<span>Expand all</span>
 							</DropdownMenuItem>
 						</Show>
-						<Show when={onCollapseAll}>
-							<DropdownMenuItem onClick={onCollapseAll} class="text-xs">
+						<Show when={merged.onCollapseAll}>
+							<DropdownMenuItem onClick={merged.onCollapseAll} class="text-xs">
 								<ChevronsDownUp class="mr-2 size-3.5" />
 								<span>Collapse all</span>
 							</DropdownMenuItem>
 						</Show>
 
 						{ /* Mark all as viewed/unviewed */}
-						<Show when={(onMarkAllViewed || onMarkAllUnviewed) && (onExpandAll || onCollapseAll)}>
+						<Show when={(merged.onMarkAllViewed || merged.onMarkAllUnviewed) && (merged.onExpandAll || merged.onCollapseAll)}>
 							<DropdownMenuSeparator />
 						</Show>
-						<Show when={onMarkAllViewed}>
-							<DropdownMenuItem onClick={onMarkAllViewed} class="text-xs">
+						<Show when={merged.onMarkAllViewed}>
+							<DropdownMenuItem onClick={merged.onMarkAllViewed} class="text-xs">
 								<Check class="mr-2 size-3.5" />
 								<span>Mark all as viewed</span>
 							</DropdownMenuItem>
 						</Show>
-						<Show when={onMarkAllUnviewed && viewedCount > 0}>
-							<DropdownMenuItem onClick={onMarkAllUnviewed} class="text-xs">
+						<Show when={merged.onMarkAllUnviewed && merged.viewedCount > 0}>
+							<DropdownMenuItem onClick={merged.onMarkAllUnviewed} class="text-xs">
 								<Square class="mr-2 size-3.5" />
 								<span>Mark all as unviewed</span>
 							</DropdownMenuItem>

@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show, splitProps } from "solid-js";
 import { Portal } from "solid-js/web";
 import { useTextSelection, type TextSelectionSource } from "../context/text-selection-context";
 interface TextSelectionPopoverProps {
@@ -6,25 +6,26 @@ interface TextSelectionPopoverProps {
 	onQuickComment?: (text: string, source: TextSelectionSource, rect: DOMRect) => void;
 	onFocusInput?: () => void;
 }
-export function TextSelectionPopover({ onAddToContext, onQuickComment, onFocusInput }: TextSelectionPopoverProps) {
+export function TextSelectionPopover(props: TextSelectionPopoverProps) {
+	const [local] = splitProps(props, ["onAddToContext", "onQuickComment", "onFocusInput"]);
 	const { selectedText, source, selectionRect, clearSelection } = useTextSelection();
 	const [isVisible, setIsVisible] = createSignal(false);
 	const [isMouseDown, setIsMouseDown] = createSignal(false);
 	let popoverRef: HTMLDivElement | undefined;
 	const handleAddToContext = () => {
 		if (selectedText && source) {
-			onAddToContext(selectedText, source);
+			local.onAddToContext(selectedText, source);
 			clearSelection();
 			setIsVisible(false);
 			// Focus the chat input after adding to context
 			requestAnimationFrame(() => {
-				onFocusInput?.();
+				local.onFocusInput?.();
 			});
 		}
 	};
 	const handleQuickComment = () => {
-		if (selectedText && source && selectionRect && onQuickComment) {
-			onQuickComment(selectedText, source, selectionRect);
+		if (selectedText && source && selectionRect && local.onQuickComment) {
+			local.onQuickComment(selectedText, source, selectionRect);
 			setIsVisible(false);
 		}
 	};
@@ -60,48 +61,50 @@ export function TextSelectionPopover({ onAddToContext, onQuickComment, onFocusIn
 			setIsVisible(false);
 		}
 	});
-	// Don't render if not visible
-	if (!isVisible || !selectedText || !source || !selectionRect) {
-		return null;
-	}
-	// Calculate position - above the selection by default, below if not enough space
-	const viewportWidth = window.innerWidth;
 	const popoverWidth = 120;
 	const popoverHeight = 28;
-	let left = selectionRect.left + selectionRect.width / 2;
-	// Clamp left position to prevent overflow
-	left = Math.max(popoverWidth / 2 + 8, Math.min(left, viewportWidth - popoverWidth / 2 - 8));
-	// Calculate actual left position accounting for centering
-	const popoverWidthEstimate = onQuickComment && (source.type === "diff" || source.type === "tool-edit") ? 160 : 100;
-	const centeredLeft = left - popoverWidthEstimate / 2;
-	// Position above by default, below if not enough space above
-	const spaceAbove = selectionRect.top;
-	const showAbove = spaceAbove > popoverHeight + 8;
-	const top = showAbove ? selectionRect.top - popoverHeight - 4 : selectionRect.bottom + 4;
-	const style: JSX.CSSProperties = {
-		position: "fixed",
-		top,
-		left: centeredLeft,
-		zIndex: 1e5
+
+	const computedPosition = () => {
+		if (!selectionRect) return { top: 0, left: 0, showAbove: true };
+		const viewportWidth = window.innerWidth;
+		let left = selectionRect.left + selectionRect.width / 2;
+		left = Math.max(popoverWidth / 2 + 8, Math.min(left, viewportWidth - popoverWidth / 2 - 8));
+		const popoverWidthEstimate = local.onQuickComment && (source?.type === "diff" || source?.type === "tool-edit") ? 160 : 100;
+		const centeredLeft = left - popoverWidthEstimate / 2;
+		const spaceAbove = selectionRect.top;
+		const showAbove = spaceAbove > popoverHeight + 8;
+		const top = showAbove ? selectionRect.top - popoverHeight - 4 : selectionRect.bottom + 4;
+		return { top, left: centeredLeft, showAbove };
 	};
-	// Animation: scale from direction of selection
-	const animationClass = showAbove ? "animate-in fade-in-0 zoom-in-95 origin-bottom duration-100" : "animate-in fade-in-0 zoom-in-95 origin-top duration-100";
+
+	const style = (): JSX.CSSProperties => ({
+		position: "fixed",
+		top: computedPosition().top,
+		left: computedPosition().left,
+		"z-index": 100000
+	});
+
+	const animationClass = () => computedPosition().showAbove
+		? "animate-in fade-in-0 zoom-in-95 origin-bottom duration-100"
+		: "animate-in fade-in-0 zoom-in-95 origin-top duration-100";
+
 	return (
-		<Portal mount={document.body}>
-			<div ref={el => popoverRef = el} style={style} class={animationClass}>
-				<div class="flex items-center gap-0.5 rounded-md border border-border bg-popover px-0.5 py-0.5 shadow-lg">
-					<button onClick={handleAddToContext} class="rounded px-1.5 py-0.5 text-xs text-popover-foreground hover:bg-white/15 transition-colors duration-100 active:scale-[0.97]">
-						Add to context
-					</button>
-					{/* Quick comment button shows for diff and tool-edit selections */}
-					<Show when={onQuickComment && (source.type === "diff" || source.type === "tool-edit")}>
-						<div class="w-px h-3 bg-border" />
-						<button onClick={handleQuickComment} class="rounded px-1.5 py-0.5 text-xs text-popover-foreground hover:bg-white/15 transition-colors duration-100 active:scale-[0.97]">
-							Reply
+		<Show when={isVisible() && selectedText && source && selectionRect}>
+			<Portal mount={document.body}>
+				<div ref={el => popoverRef = el} style={style()} class={animationClass()}>
+					<div class="flex items-center gap-0.5 rounded-md border border-border bg-popover px-0.5 py-0.5 shadow-lg">
+						<button onClick={handleAddToContext} class="rounded px-1.5 py-0.5 text-xs text-popover-foreground hover:bg-white/15 transition-colors duration-100 active:scale-[0.97]">
+							Add to context
 						</button>
-					</Show>
+						<Show when={local.onQuickComment && (source!.type === "diff" || source!.type === "tool-edit")}>
+							<div class="w-px h-3 bg-border" />
+							<button onClick={handleQuickComment} class="rounded px-1.5 py-0.5 text-xs text-popover-foreground hover:bg-white/15 transition-colors duration-100 active:scale-[0.97]">
+								Reply
+							</button>
+						</Show>
+					</div>
 				</div>
-			</div>
-		</Portal>
+			</Portal>
+		</Show>
 	);
 }

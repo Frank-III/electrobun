@@ -146,16 +146,18 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
 		return <div class="mx-2 mb-2">
           <div class={cn("rounded-lg border border-border/50 overflow-hidden")}>
             {		/* Widget Header - fixed height h-8 for consistency */}
-            <div class={cn("flex items-center gap-2 px-2 h-8 select-none group", !cardLocal.headerBg && "bg-muted/30")} style={cardLocal.headerBg ? { "background-color": cardLocal.headerBg } : undefined}>
-              {cardLocal.customHeader ? <div class="flex-1 min-w-0 flex items-center gap-1">
-                  {cardLocal.customHeader}
-                </div> : <>
-                  <Icon class="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                  <span class="text-xs font-medium text-foreground flex-1">
-                    {cardLocal.title}
-                  </span>
-                  {cardLocal.badge}
-                </>}
+			<div class={cn("flex items-center gap-2 px-2 h-8 select-none group", !cardLocal.headerBg && "bg-muted/30")} style={cardLocal.headerBg ? { "background-color": cardLocal.headerBg } : undefined}>
+				<Show when={cardLocal.customHeader} fallback={<>
+					<Icon class="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+					<span class="text-xs font-medium text-foreground flex-1">
+						{cardLocal.title}
+					</span>
+					{cardLocal.badge}
+				</>}>
+					<div class="flex-1 min-w-0 flex items-center gap-1">
+						{cardLocal.customHeader}
+					</div>
+				</Show>
 
               { /* Expand to sidebar button */}
               <Show when={canExpand}>
@@ -196,7 +198,7 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
             </Tooltip>
             <span class="text-sm font-medium">Details</span>
           </div>
-          <WidgetSettingsPopup workspaceId={chatId} isRemoteChat={isRemoteChat} />
+          <WidgetSettingsPopup workspaceId={local.chatId} isRemoteChat={local.isRemoteChat} />
         </div>
 
         { /* Widget Cards - rendered in user-defined order */}
@@ -207,20 +209,20 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
                 <Switch>
                   <Match when={widgetId === "info"}>
                     <WidgetCard widgetId="info" title="Workspace">
-                      <InfoSection chatId={chatId} worktreePath={worktreePath} remoteInfo={remoteInfo} />
+                      <InfoSection chatId={local.chatId} worktreePath={local.worktreePath} remoteInfo={local.remoteInfo} />
                     </WidgetCard>
                   </Match>
                   <Match when={widgetId === "todo"}>
-                    <TodoWidget subChatId={activeSubChatId || null} />
+                    <TodoWidget subChatId={local.activeSubChatId || null} />
                   </Match>
-                  <Match when={widgetId === "plan" && planPath && !isPlanSidebarOpen}>
-                    <PlanWidget chatId={chatId} activeSubChatId={activeSubChatId} planPath={planPath} refetchTrigger={planRefetchTrigger} mode={mode} onApprovePlan={onBuildPlan} onExpandPlan={onExpandPlan} />
+                  <Match when={widgetId === "plan" && local.planPath && !local.isPlanSidebarOpen}>
+                    <PlanWidget chatId={local.chatId} activeSubChatId={local.activeSubChatId} planPath={local.planPath} refetchTrigger={local.planRefetchTrigger} mode={local.mode} onApprovePlan={local.onBuildPlan} onExpandPlan={local.onExpandPlan} />
                   </Match>
-				<Match when={widgetId === "terminal" && worktreePath && !isTerminalSidebarOpen}>
-					<TerminalWidget chatId={chatId} cwd={worktreePath} onExpand={onExpandTerminal} />
+				<Match when={widgetId === "terminal" && local.worktreePath && !local.isTerminalSidebarOpen}>
+					<TerminalWidget chatId={local.chatId} cwd={local.worktreePath} onExpand={local.onExpandTerminal} />
 				</Match>
-                  <Match when={widgetId === "diff" && (canOpenDiff || (isRemoteChat && diffStats && (diffStats.fileCount > 0 || diffStats.additions > 0 || diffStats.deletions > 0))) && !(isDiffSidebarOpen && diffDisplayMode === "side-peek")}>
-                    <ChangesWidget chatId={chatId} worktreePath={worktreePath} diffStats={diffStats} parsedFileDiffs={parsedFileDiffs} onCommit={onCommit} isCommitting={isCommitting} onExpand={canOpenDiff ? onExpandDiff : undefined} onFileSelect={canOpenDiff ? onFileSelect : undefined} diffDisplayMode={diffDisplayMode} />
+                  <Match when={widgetId === "diff" && (local.canOpenDiff || (local.isRemoteChat && local.diffStats && (local.diffStats.fileCount > 0 || local.diffStats.additions > 0 || local.diffStats.deletions > 0))) && !(local.isDiffSidebarOpen && local.diffDisplayMode === "side-peek")}>
+                    <ChangesWidget chatId={local.chatId} worktreePath={local.worktreePath} diffStats={local.diffStats} parsedFileDiffs={local.parsedFileDiffs} onCommit={local.onCommit} isCommitting={local.isCommitting} onExpand={local.canOpenDiff ? local.onExpandDiff : undefined} onFileSelect={local.canOpenDiff ? local.onFileSelect : undefined} diffDisplayMode={local.diffDisplayMode} />
                   </Match>
                 </Switch>
               </Show>

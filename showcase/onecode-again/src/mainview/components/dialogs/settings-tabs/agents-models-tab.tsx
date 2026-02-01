@@ -1,5 +1,5 @@
 import { MoreHorizontal, Plus } from "lucide-solid";
-import { createEffect, createSignal, onCleanup, Show, type Accessor } from "solid-js";
+import { createEffect, createSignal, onCleanup, For, Show, type Accessor } from "solid-js";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/solid-query";
 import { toast } from "solid-sonner";
 import { agentsSettingsDialogOpenAtom, anthropicOnboardingCompletedAtom, customClaudeConfigAtom, openaiApiKeyAtom, type CustomClaudeConfig } from "../../../lib/atoms";
@@ -28,7 +28,7 @@ const EMPTY_CONFIG: CustomClaudeConfig = {
 	baseUrl: ""
 };
 // Account row component
-function AccountRow({ account, isActive, onSetActive, onRename, onRemove, isLoading }: {
+interface AccountRowProps {
 	account: {
 		id: string;
 		displayName: string | null;
@@ -40,32 +40,33 @@ function AccountRow({ account, isActive, onSetActive, onRename, onRemove, isLoad
 	onRename: () => void;
 	onRemove: () => void;
 	isLoading: boolean;
-}) {
+}
+function AccountRow(props: AccountRowProps) {
     return <div class="flex items-center justify-between p-3 hover:bg-muted/50">
       <div class="flex items-center gap-3">
         <div>
           <div class="text-sm font-medium">
-            {account.displayName || "Anthropic Account"}
+            {props.account.displayName || "Anthropic Account"}
           </div>
-          <Show when={account.email}>
-            <div class="text-xs text-muted-foreground">{account.email}</div>
+          <Show when={props.account.email}>
+            <div class="text-xs text-muted-foreground">{props.account.email}</div>
           </Show>
-          <Show when={!account.email && account.connectedAt}>
+          <Show when={!props.account.email && props.account.connectedAt}>
             <div class="text-xs text-muted-foreground">
               Connected{" "}
-              {new Date(account.connectedAt!).toLocaleDateString(undefined, { dateStyle: "short" })}
+              {new Date(props.account.connectedAt!).toLocaleDateString(undefined, { dateStyle: "short" })}
             </div>
           </Show>
         </div>
       </div>
 
       <div class="flex items-center gap-2">
-        <Show when={!isActive}>
-          <Button size="sm" variant="ghost" onClick={onSetActive} disabled={isLoading}>
+        <Show when={!props.isActive}>
+          <Button size="sm" variant="ghost" onClick={props.onSetActive} disabled={props.isLoading}>
             Switch
           </Button>
         </Show>
-        <Show when={isActive}>
+        <Show when={props.isActive}>
           <Badge variant="secondary" class="text-xs">
             Active
           </Badge>
@@ -77,8 +78,8 @@ function AccountRow({ account, isActive, onSetActive, onRename, onRemove, isLoad
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onRename}>Rename</DropdownMenuItem>
-            <DropdownMenuItem class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400" onClick={onRemove}>
+            <DropdownMenuItem onClick={props.onRename}>Rename</DropdownMenuItem>
+            <DropdownMenuItem class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400" onClick={props.onRemove}>
               Remove
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -183,10 +184,14 @@ function AnthropicAccountsSection() {
 		return null;
 	}
 	return <div class="bg-background rounded-lg border border-border overflow-hidden divide-y divide-border">
-        {isAccountsLoading() ? <div class="p-4 text-center text-sm text-muted-foreground">
-            Loading accounts...
-          </div> : accounts()?.map((account) => <AccountRow key={account.id} account={account} isActive={activeAccount()?.id === account.id} onSetActive={() => setActiveMutation.mutate({ accountId: account.id })} onRename={() => handleRename(account.id, account.displayName)} onRemove={() => handleRemove(account.id, account.displayName)} isLoading={isLoading()} />)}
-    </div>;
+			<Show when={isAccountsLoading()} fallback={<For each={accounts() ?? []}>
+				{(account) => <AccountRow account={account} isActive={activeAccount()?.id === account.id} onSetActive={() => setActiveMutation.mutate({ accountId: account.id })} onRename={() => handleRename(account.id, account.displayName)} onRemove={() => handleRemove(account.id, account.displayName)} isLoading={isLoading()} />}
+			</For>}>
+				<div class="p-4 text-center text-sm text-muted-foreground">
+					Loading accounts...
+				</div>
+			</Show>
+		</div>;
 }
 export function AgentsModelsTab() {
 	const [storedConfig, setStoredConfig] = customClaudeConfigAtom;

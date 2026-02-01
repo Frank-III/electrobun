@@ -32,7 +32,7 @@ export function WorkModeSelector({ value, onChange, disabled }: WorkModeSelector
 	const [open, setOpen] = createSignal(false);
 	const selectedOption = workModeOptions.find((opt) => opt.id === value) || workModeOptions[1];
 	const Icon = selectedOption.icon;
-	return <Popover open={open} onOpenChange={setOpen}>
+	return <Popover open={open()} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" class={cn("flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", disabled && "opacity-50 pointer-events-none")} disabled={disabled}>
           <Icon class="w-4 h-4" />
@@ -41,12 +41,12 @@ export function WorkModeSelector({ value, onChange, disabled }: WorkModeSelector
         </button>
       </PopoverTrigger>
       <PopoverContent class="w-[160px] min-w-[160px]" align="start">
-        {workModeOptions.map((option) => {
+        <For each={workModeOptions}>{(option) => {
 		const OptionIcon = option.icon;
 		const isSelected = value === option.id;
 		const isDisabled = "disabled" in option && option.disabled;
 		const isSoon = "soon" in option && option.soon;
-		return <button key={option.id} onClick={() => {
+		return <button onClick={() => {
 			if (isDisabled) return;
 			onChange(option.id);
 			setOpen(false);
@@ -58,7 +58,7 @@ export function WorkModeSelector({ value, onChange, disabled }: WorkModeSelector
                 </span></Show>
               <Show when={isSelected && !isDisabled}><CheckIcon class="h-4 w-4 shrink-0" /></Show>
             </button>;
-	})}
+	}}</For>
       </PopoverContent>
     </Popover>;
 }

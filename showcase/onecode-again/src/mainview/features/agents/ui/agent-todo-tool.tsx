@@ -328,9 +328,11 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
           <div class="flex items-center gap-1.5">
             <PlanIcon class="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
             <span class="text-xs font-medium whitespace-nowrap flex-shrink-0">
-              {isPending ? <TextShimmer as="span" duration={1.2} class="inline-flex items-center text-xs leading-none h-4 m-0">
+              <Show when={isPending} fallback="Creating to-do list...">
+                <TextShimmer as="span" duration={1.2} class="inline-flex items-center text-xs leading-none h-4 m-0">
                   Creating to-do list...
-                </TextShimmer> : "Creating to-do list..."}
+                </TextShimmer>
+              </Show>
             </span>
           </div>
         </div>
@@ -369,9 +371,11 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
         <div class="flex-1 min-w-0 flex items-center gap-1.5">
           <div class="text-xs text-muted-foreground flex items-center gap-1.5 min-w-0">
             <span class="font-medium whitespace-nowrap flex-shrink-0">
-              {isPending ? <TextShimmer as="span" duration={1.2} class="inline-flex items-center text-xs leading-none h-4 m-0">
+              <Show when={isPending} fallback={summaryTitle}>
+                <TextShimmer as="span" duration={1.2} class="inline-flex items-center text-xs leading-none h-4 m-0">
                   {summaryTitle}
-                </TextShimmer> : summaryTitle}
+                </TextShimmer>
+              </Show>
             </span>
             <div class="flex items-center gap-1 text-muted-foreground/60 font-normal truncate min-w-0">
               {visibleItems.map((c, idx) => <TodoChangeItem key={idx} change={c} showSeparator={idx < visibleItems.length - 1} />)}
@@ -424,10 +428,14 @@ export function AgentTodoTool({ part, chatStatus, subChatId }: AgentTodoToolProp
       <div class="rounded-b-lg border border-border bg-muted/20 shadow-xl shadow-background">
         { /* Collapsed view - progress circle + current task + count */}
         <Show when={!isExpanded()}><div class="flex items-center gap-2.5 px-2.5 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors duration-150" onClick={handleExpand}>
-            { /* Progress circle or checkmark when all completed */}
-            {completedCount === totalTodos && totalTodos > 0 ? <div class="w-4 h-4 rounded-full bg-muted flex items-center justify-center flex-shrink-0" style={{ border: "0.5px solid hsl(var(--border))" }}>
+            {/* Progress circle or checkmark when all completed */}
+            <Show when={completedCount === totalTodos && totalTodos > 0} fallback={
+              <ProgressCircle completed={visualProgress} total={totalTodos} size={16} class="flex-shrink-0" />
+            }>
+              <div class="w-4 h-4 rounded-full bg-muted flex items-center justify-center flex-shrink-0" style={{ border: "0.5px solid hsl(var(--border))" }}>
                 <CheckIcon class="w-2.5 h-2.5 text-muted-foreground" />
-              </div> : <ProgressCircle completed={visualProgress} total={totalTodos} size={16} class="flex-shrink-0" />}
+              </div>
+            </Show>
 
             { /* Current task name */}
             <div class="flex items-center gap-1.5 min-w-0 flex-1">

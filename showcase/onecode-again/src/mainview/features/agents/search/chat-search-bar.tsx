@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, X } from "lucide-solid";
-import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { leading, debounce } from "@solid-primitives/scheduled";
 import { cn } from "../../../lib/utils";
 import { chatSearchCountInfoAtom, chatSearchInputAtom, chatSearchMatchesAtom, chatSearchOpenAtom, chatSearchQueryAtom, chatSearchCurrentIndexAtom, closeSearchAtom, goToNextMatchAtom, goToPrevMatchAtom } from "./chat-search-atoms";
 import { extractSearchableText, findMatches } from "./chat-search-utils";
@@ -37,27 +38,31 @@ export function ChatSearchBar({ messages, class: cls, topOffset }: ChatSearchBar
 		window.addEventListener("chat-search-select-all", handleSelectAll);
 		onCleanup(() => window.removeEventListener("chat-search-select-all", handleSelectAll));
 	});
-	// Debounced search
-	createEffect(() => {
-		// Mark search as not completed when input changes
-		setSearchCompleted(false);
-		const timeout = setTimeout(() => {
-			const value = inputValue();
-			setSearchQuery(value);
-			if (!value.trim()) {
-				setMatches([]);
-				setCurrentIndex(0);
-				setSearchCompleted(true);
-				return;
-			}
-			// Extract and search
-			const extracted = extractSearchableText(messages);
-			const matches = findMatches(extracted, value);
-			setMatches(matches);
+	// Debounced search - use createMemo with debounced setter for reactive debouncing
+	const performSearch = debounce((value: string) => {
+		setSearchQuery(value);
+		if (!value.trim()) {
+			setMatches([]);
 			setCurrentIndex(0);
 			setSearchCompleted(true);
-		}, 200);
-		onCleanup(() => clearTimeout(timeout));
+			return;
+		}
+		// Extract and search
+		const extracted = extractSearchableText(messages);
+		const matches = findMatches(extracted, value);
+		setMatches(matches);
+		setCurrentIndex(0);
+		setSearchCompleted(true);
+	}, 200);
+
+	// Track input changes and trigger debounced search
+	createEffect(() => {
+		const value = inputValue();
+		// Mark search as not completed when input changes
+		setSearchCompleted(false);
+		performSearch(value);
+		// Cleanup pending debounce on effect re-run or unmount
+		onCleanup(() => performSearch.clear());
 	});
 	// Keyboard navigation
 	const handleKeyDown = (e: KeyboardEvent) => {
@@ -94,23 +99,30 @@ export function ChatSearchBar({ messages, class: cls, topOffset }: ChatSearchBar
 
       { /* Results area - fixed width: shows counter+arrows OR "No results" */}
       <div class="w-[128px] flex items-center justify-end shrink-0">
-        {countInfo().total > 0 ? <>
-            <span class="text-xs text-muted-foreground mr-1">
-              {`${countInfo().current} of ${countInfo().total}`}
-            </span>
-            <button type="button" class="h-6 w-6 flex items-center justify-center rounded-md cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95 transition-all duration-150 ease-out" onClick={() => {
- goToPrevMatchAtom();
-		inputRef?.focus();
-	}} title="Previous match (Shift+Enter)">
-              <ChevronUp class="h-4 w-4" />
-            </button>
-            <button type="button" class="h-6 w-6 flex items-center justify-center rounded-md cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95 transition-all duration-150 ease-out" onClick={() => {
-		goToNextMatchAtom();
-		inputRef?.focus();
-	}} title="Next match (Enter)">
-              <ChevronDown class="h-4 w-4" />
-            </button>
-          </> : inputValue().trim() && searchCompleted() && <span class="text-xs text-muted-foreground">No results</span>}
+        <Show
+          when={countInfo().total > 0}
+          fallback={
+            <Show when={inputValue().trim() && searchCompleted()}>
+              <span class="text-xs text-muted-foreground">No results</span>
+            </Show>
+          }
+        >
+          <span class="text-xs text-muted-foreground mr-1">
+            {`${countInfo().current} of ${countInfo().total}`}
+          </span>
+          <button type="button" class="h-6 w-6 flex items-center justify-center rounded-md cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95 transition-all duration-150 ease-out" onClick={() => {
+            goToPrevMatchAtom();
+            inputRef?.focus();
+          }} title="Previous match (Shift+Enter)">
+            <ChevronUp class="h-4 w-4" />
+          </button>
+          <button type="button" class="h-6 w-6 flex items-center justify-center rounded-md cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95 transition-all duration-150 ease-out" onClick={() => {
+            goToNextMatchAtom();
+            inputRef?.focus();
+          }} title="Next match (Enter)">
+            <ChevronDown class="h-4 w-4" />
+          </button>
+        </Show>
       </div>
 
       {	/* Close button - fixed width */}

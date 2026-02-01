@@ -8,7 +8,6 @@
 export {
   VSCodeThemeProvider,
   useVSCodeTheme,
-  useTerminalTheme,
   useShikiTheme,
 } from "./theme-provider"
 
@@ -33,9 +32,6 @@ export {
   isLightColor,
   getThemeTypeFromColors,
 } from "./vscode-to-css-mapping"
-
-// Terminal theme mapping
-export { extractTerminalTheme, hasTerminalColors } from "./terminal-theme-mapper"
 
 // Shiki theme loader
 export {

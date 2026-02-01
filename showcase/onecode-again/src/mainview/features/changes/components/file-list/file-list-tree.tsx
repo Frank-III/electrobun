@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, For } from "solid-js";
 import type { ChangedFile } from "../../../../../shared/changes-types";
 import { FileItem } from "../file-item";
 import { FolderRow } from "../folder-row";
@@ -83,25 +83,33 @@ interface TreeNodeComponentProps {
 	worktreePath?: string;
 	onDiscard?: (file: ChangedFile) => void;
 }
-function TreeNodeComponent({ node, level = 0, selectedPath, selectedCommitHash, onFileSelect, onFileDoubleClick, showStats, showCheckbox, isStaged, onStage, onUnstage, isActioning, worktreePath, onDiscard }: TreeNodeComponentProps) {
+function TreeNodeComponent(props: TreeNodeComponentProps) {
+	const level = () => props.level ?? 0;
 	const [isExpanded, setIsExpanded] = createSignal(true);
-	const hasChildren = node.children && node.children.length > 0;
-	const isFile = node.type === "file";
-	const isSelected = selectedPath === node.path && !selectedCommitHash;
+	const hasChildren = props.node.children && props.node.children.length > 0;
+	const isFile = props.node.type === "file";
+	const isSelected = props.selectedPath === props.node.path && !props.selectedCommitHash;
 	if (hasChildren) {
-		return <FolderRow name={node.name} isExpanded={isExpanded} onToggle={setIsExpanded} level={level} variant="tree">
-				{node.children?.map((child) => <TreeNodeComponent key={child.id} node={child} level={level + 1} selectedPath={selectedPath} selectedCommitHash={selectedCommitHash} onFileSelect={onFileSelect} onFileDoubleClick={onFileDoubleClick} showStats={showStats} showCheckbox={showCheckbox} isStaged={isStaged} onStage={onStage} onUnstage={onUnstage} isActioning={isActioning} worktreePath={worktreePath} onDiscard={onDiscard} />)}
+		return <FolderRow name={props.node.name} isExpanded={isExpanded} onToggle={setIsExpanded} level={level()} variant="tree">
+				<For each={props.node.children ?? []}>
+					{(child) => <TreeNodeComponent node={child} level={level() + 1} selectedPath={props.selectedPath} selectedCommitHash={props.selectedCommitHash} onFileSelect={props.onFileSelect} onFileDoubleClick={props.onFileDoubleClick} showStats={props.showStats} showCheckbox={props.showCheckbox} isStaged={props.isStaged} onStage={props.onStage} onUnstage={props.onUnstage} isActioning={props.isActioning} worktreePath={props.worktreePath} onDiscard={props.onDiscard} />}
+				</For>
 			</FolderRow>;
 	}
-	if (isFile && node.file) {
-		const file = node.file;
-		return <FileItem file={file} isSelected={isSelected} onClick={() => onFileSelect(file)} onDoubleClick={onFileDoubleClick ? () => onFileDoubleClick(file) : undefined} showStats={showStats} showCheckbox={showCheckbox} isStaged={isStaged} level={level} onStage={onStage ? () => onStage(file) : undefined} onUnstage={onUnstage ? () => onUnstage(file) : undefined} isActioning={isActioning} worktreePath={worktreePath} onDiscard={onDiscard ? () => onDiscard(file) : undefined} />;
+	if (isFile && props.node.file) {
+		const file = props.node.file;
+		return <FileItem file={file} isSelected={isSelected} onClick={() => props.onFileSelect(file)} onDoubleClick={props.onFileDoubleClick ? () => props.onFileDoubleClick!(file) : undefined} showStats={props.showStats} showCheckbox={props.showCheckbox} isStaged={props.isStaged} level={level()} onStage={props.onStage ? () => props.onStage!(file) : undefined} onUnstage={props.onUnstage ? () => props.onUnstage!(file) : undefined} isActioning={props.isActioning} worktreePath={props.worktreePath} onDiscard={props.onDiscard ? () => props.onDiscard!(file) : undefined} />;
 	}
 	return null;
 }
-export function FileListTree({ files, selectedFile, selectedCommitHash, onFileSelect, onFileDoubleClick, showStats = true, showCheckbox = false, isStaged = false, onStage, onUnstage, isActioning, worktreePath, onDiscard }: FileListTreeProps) {
-	const tree = buildFileTree(files);
+export function FileListTree(props: FileListTreeProps) {
+	const showStats = () => props.showStats ?? true;
+	const showCheckbox = () => props.showCheckbox ?? false;
+	const isStaged = () => props.isStaged ?? false;
+	const tree = buildFileTree(props.files);
 	return <div class="flex flex-col overflow-hidden">
-			{tree.map((node) => <TreeNodeComponent key={node.id} node={node} selectedPath={selectedFile?.path ?? null} selectedCommitHash={selectedCommitHash} onFileSelect={onFileSelect} onFileDoubleClick={onFileDoubleClick} showStats={showStats} showCheckbox={showCheckbox} isStaged={isStaged} onStage={onStage} onUnstage={onUnstage} isActioning={isActioning} worktreePath={worktreePath} onDiscard={onDiscard} />)}
+			<For each={tree}>
+				{(node) => <TreeNodeComponent node={node} selectedPath={props.selectedFile?.path ?? null} selectedCommitHash={props.selectedCommitHash} onFileSelect={props.onFileSelect} onFileDoubleClick={props.onFileDoubleClick} showStats={showStats()} showCheckbox={showCheckbox()} isStaged={isStaged()} onStage={props.onStage} onUnstage={props.onUnstage} isActioning={props.isActioning} worktreePath={props.worktreePath} onDiscard={props.onDiscard} />}
+			</For>
 		</div>;
 }

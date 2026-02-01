@@ -1,6 +1,6 @@
 import { cn } from "../../../lib/utils";
 import { Motion, Presence } from "solid-motionone";
-import { Show, createEffect, createSignal, onCleanup } from "solid-js";
+import { Show, createEffect, createSignal, onCleanup, mergeProps, splitProps } from "solid-js";
 
 interface PreviewUrlInputProps {
 	/** The base host (e.g., "sandbox-3000.21st.sh") */
@@ -17,7 +17,9 @@ interface PreviewUrlInputProps {
 	variant?: "default" | "mobile";
 }
 
-export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading = false, class: cls, variant = "default" }: PreviewUrlInputProps) {
+export function PreviewUrlInput(props: PreviewUrlInputProps) {
+	const merged = mergeProps({ isLoading: false, variant: "default" }, props);
+	const [local] = splitProps(merged, ["baseHost", "currentPath", "onPathChange", "isLoading", "class", "variant"]);
 	const [isEditing, setIsEditing] = createSignal(false);
 	const [inputValue, setInputValue] = createSignal("");
 	let inputRef: HTMLInputElement | undefined;
@@ -28,7 +30,7 @@ export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading
 	
 	// Handle loading state changes for progress animation
 	createEffect(() => {
-		if (isLoading) {
+		if (local.isLoading) {
 			// Reset progress
 			setTransitionDuration("0s");
 			setProgress(0);
@@ -66,7 +68,7 @@ export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading
 			const pathStartAfterSlash = 2;
 			// If path is just "/" (main page), place cursor at end
 			// Otherwise select the path portion AFTER "~/"
-			if (currentPath === "/") {
+			if (local.currentPath === "/") {
 				input.setSelectionRange(value.length, value.length);
 			} else {
 				input.setSelectionRange(pathStartAfterSlash, value.length);
@@ -104,8 +106,8 @@ export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading
 		}
 		if (!newPath) newPath = "/";
 		// Only navigate if path actually changed
-		if (newPath !== currentPath) {
-			onPathChange(newPath);
+		if (newPath !== local.currentPath) {
+			local.onPathChange(newPath);
 		}
 		setIsEditing(false);
 	};
@@ -116,17 +118,17 @@ export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading
 			handleSubmit();
 		} else if (e.key === "Escape") {
 			e.preventDefault();
-			setInputValue(`~${currentPath}`);
+			setInputValue(`~${local.currentPath}`);
 			setIsEditing(false);
 		}
 	};
 	
 	const startEditing = () => {
-		setInputValue(`~${currentPath}`);
+		setInputValue(`~${local.currentPath}`);
 		setIsEditing(true);
 	};
 	
-	if (!baseHost) {
+	if (!local.baseHost) {
 		return null;
 	}
 	
@@ -140,20 +142,20 @@ export function PreviewUrlInput({ baseHost, currentPath, onPathChange, isLoading
 		return 1 - (p - 95) / 5;
 	};
 	
-	return <div class={cn("min-w-0 flex-1 text-center flex items-center justify-center relative",cls)}>
+	return <div class={cn("min-w-0 flex-1 text-center flex items-center justify-center relative",local.class)}>
       {/* URL input/button container */}
       <div class="relative max-w-[350px] w-full">
-        <Show when={isEditing()} fallback={
-          <button type="button" onClick={startEditing} class={cn(sharedStyles, variant === "mobile" ? "truncate text-muted-foreground hover:text-foreground transition-all cursor-pointer bg-muted hover:bg-muted/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" : "truncate text-muted-foreground hover:text-foreground transition-all cursor-pointer hover:bg-background hover:shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:hover:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70")}>
-            ~{currentPath}
-          </button>
-        }>
-          <input ref={inputRef} type="text" value={inputValue()} onInput={(e) => setInputValue(e.currentTarget.value)} onKeyDown={handleKeyDown} onBlur={handleSubmit} spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off" class={cn(sharedStyles, variant === "mobile" ? "bg-muted shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 text-foreground" : "bg-background shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 text-foreground")} placeholder="~/" />
-        </Show>
+	        <Show when={isEditing()} fallback={
+	          <button type="button" onClick={startEditing} class={cn(sharedStyles, local.variant === "mobile" ? "truncate text-muted-foreground hover:text-foreground transition-all cursor-pointer bg-muted hover:bg-muted/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" : "truncate text-muted-foreground hover:text-foreground transition-all cursor-pointer hover:bg-background hover:shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:hover:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70")}>
+	            ~{local.currentPath}
+	          </button>
+	        }>
+	          <input ref={inputRef} type="text" value={inputValue()} onInput={(e) => setInputValue(e.currentTarget.value)} onKeyDown={handleKeyDown} onBlur={handleSubmit} spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off" class={cn(sharedStyles, local.variant === "mobile" ? "bg-muted shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 text-foreground" : "bg-background shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 text-foreground")} placeholder="~/" />
+	        </Show>
 
         {/* Progress bar at bottom with upward glow */}
         <Presence>
-          <Show when={isLoading}>
+	          <Show when={local.isLoading}>
             <Motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }} class="absolute bottom-0 left-0 right-0 pointer-events-none z-0 rounded-md overflow-hidden">
               {/* Glow effect - uniform along progress, fades at edges via blur */}
               <div 

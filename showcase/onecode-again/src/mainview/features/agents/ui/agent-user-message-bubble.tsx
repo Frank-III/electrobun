@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, onCleanup } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup, Show, For, mergeProps, splitProps } from "solid-js";
 import { cn } from "../../../lib/utils";
 import { useOverflowDetection } from "../../../hooks/use-overflow-detection";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
@@ -28,7 +28,7 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentO
 			parent.normalize();
 		}
 	});
-	if (!searchText) return;
+	if (!searchText || typeof searchText !== "string") return;
 	const lowerSearch = searchText.toLowerCase();
 	const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
 	const textNodes: Text[] = [];
@@ -80,15 +80,17 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentO
 		globalOffset += text.length;
 	}
 }
-export function AgentUserMessageBubble({ messageId, textContent, imageParts = [], skipTextMentionBlocks = false }: AgentUserMessageBubbleProps) {
+export function AgentUserMessageBubble(props: AgentUserMessageBubbleProps) {
+	const merged = mergeProps({ imageParts: [], skipTextMentionBlocks: false }, props);
+	const [local] = splitProps(merged, ["messageId", "textContent", "imageParts", "skipTextMentionBlocks"]);
 	const [isExpanded, setIsExpanded] = createSignal(false);
 	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
 	// Extract quote/diff mentions to display above the bubble
-	const { textMentions, cleanedText } = createMemo(() => extractTextMentions(textContent));
+	const { textMentions, cleanedText } = createMemo(() => extractTextMentions(local.textContent));
 	// VS Code style overflow detection using ResizeObserver (no layout thrashing)
-	const showGradient = useOverflowDetection(contentRef, [textContent]);
+	const showGradient = useOverflowDetection(contentRef, [local.textContent]);
 	// Search highlight support
-	const highlights = useSearchHighlight(messageId, 0, "text");
+	const highlights = useSearchHighlight(local.messageId, 0, "text");
 	const searchQuery = useSearchQuery();
 	const currentHighlight = highlights.find((h) => h.isCurrent);
 	// Determine if we should scroll for search (has current highlight in this message)
@@ -137,55 +139,65 @@ export function AgentUserMessageBubble({ messageId, textContent, imageParts = []
 	return <>
       <div class="flex justify-start drop-shadow-[0_10px_20px_hsl(var(--background))]" data-user-bubble>
         <div class="space-y-2 w-full">
-          {	/* Show attached images from stored message */}
-          {imageParts.length > 0 && <div class="flex flex-wrap gap-1.5">
-              {(() => {
- // Build allImages array for gallery navigation
-		const allImages = imageParts.filter((img) => img.data?.url).map((img, idx) => ({
-			id: `${messageId}-img-${idx}`,
-			filename: img.data?.filename || "image",
-			url: img.data?.url || ""
-		}));
-		return imageParts.map((img, idx) => <AgentImageItem key={`${messageId}-img-${idx}`} id={`${messageId}-img-${idx}`} filename={img.data?.filename || "image"} url={img.data?.url || ""} allImages={allImages} imageIndex={idx} />);
-	})()}
-            </div>}
-          {	/* Show text mentions (quote/diff) as blocks above text bubble - only if not rendered by parent */}
-          {!skipTextMentionBlocks && textMentions.length > 0 && <TextMentionBlocks mentions={textMentions} />}
+			{	/* Show attached images from stored message */}
+			<Show when={local.imageParts.length > 0}>
+				<div class="flex flex-wrap gap-1.5">
+					{(() => {
+						// Build allImages array for gallery navigation
+					const allImages = local.imageParts.filter((img) => img.data?.url).map((img, idx) => ({
+						id: `${local.messageId}-img-${idx}`,
+						filename: img.data?.filename || "image",
+						url: img.data?.url || ""
+					}));
+					return <For each={local.imageParts}>{(img, idx) => <AgentImageItem id={`${local.messageId}-img-${idx()}`} filename={img.data?.filename || "image"} url={img.data?.url || ""} allImages={allImages} imageIndex={idx()} />}</For>;
+					})()}
+				</div>
+			</Show>
+			{	/* Show text mentions (quote/diff) as blocks above text bubble - only if not rendered by parent */}
+			<Show when={!local.skipTextMentionBlocks && textMentions.length > 0}>
+				<TextMentionBlocks mentions={textMentions} />
+			</Show>
           { /* Text bubble with overflow detection */}
-          {cleanedText ? <div ref={contentRef} onClick={() => showGradient() && !hasCurrentSearchHighlight && setIsExpanded(true)} class={cn(
- "relative bg-input-background border px-3 py-2 rounded-xl whitespace-pre-wrap text-sm transition-all duration-200 max-h-[100px]",
-		// When searching in this message, allow scroll; otherwise hide overflow
-		hasCurrentSearchHighlight ? "overflow-y-auto" : "overflow-hidden",
-		// Cursor and hover only when can expand (not during search)
-		showGradient() && !hasCurrentSearchHighlight && "cursor-pointer hover:brightness-110"
-	)} data-message-id={messageId} data-part-index={0} data-part-type="text">
+	          <Show when={cleanedText} fallback={<Show when={(local.imageParts.length > 0 || textMentions.length > 0) && !local.skipTextMentionBlocks}>
+            <div class="bg-input-background border px-3 py-2 rounded-xl text-sm text-muted-foreground italic">
+              {(() => {
+                const parts: string[] = [];
+                // Count images
+	                if (local.imageParts.length > 0) {
+	                  parts.push(local.imageParts.length === 1 ? "image" : `${local.imageParts.length} images`);
+	                }
+                // Count text mentions by type
+                const quoteCount = textMentions.filter((m) => m.type === "quote" || m.type === "pasted").length;
+                const codeCount = textMentions.filter((m) => m.type === "diff").length;
+                if (quoteCount > 0) {
+                  parts.push(quoteCount === 1 ? "selected text" : `${quoteCount} text selections`);
+                }
+                if (codeCount > 0) {
+                  parts.push(codeCount === 1 ? "code selection" : `${codeCount} code selections`);
+                }
+                return `Using ${parts.join(", ")}`;
+              })()}
+            </div>
+          </Show>}>
+            <div ref={contentRef} onClick={() => showGradient() && !hasCurrentSearchHighlight && setIsExpanded(true)} class={cn(
+              "relative bg-input-background border px-3 py-2 rounded-xl whitespace-pre-wrap text-sm transition-all duration-200 max-h-[100px]",
+              // When searching in this message, allow scroll; otherwise hide overflow
+              hasCurrentSearchHighlight ? "overflow-y-auto" : "overflow-hidden",
+              // Cursor and hover only when can expand (not during search)
+              showGradient() && !hasCurrentSearchHighlight && "cursor-pointer hover:brightness-110"
+	            )} data-message-id={local.messageId} data-part-index={0} data-part-type="text">
               <RenderFileMentions text={cleanedText} />
               {	/* Show gradient only when collapsed and not searching in this message */}
-              {showGradient() && !hasCurrentSearchHighlight && <div class="absolute bottom-0 left-0 right-0 h-10 pointer-events-none bg-gradient-to-t from-[hsl(var(--input-background))] to-transparent rounded-b-xl" />}
-            </div> : (imageParts.length > 0 || textMentions.length > 0) && !skipTextMentionBlocks ? <div class="bg-input-background border px-3 py-2 rounded-xl text-sm text-muted-foreground italic">
-              {(() => {
- const parts: string[] = [];
-		// Count images
-		if (imageParts.length > 0) {
-			parts.push(imageParts.length === 1 ? "image" : `${imageParts.length} images`);
-		}
-		// Count text mentions by type
-		const quoteCount = textMentions.filter((m) => m.type === "quote" || m.type === "pasted").length;
-		const codeCount = textMentions.filter((m) => m.type === "diff").length;
-		if (quoteCount > 0) {
-			parts.push(quoteCount === 1 ? "selected text" : `${quoteCount} text selections`);
-		}
-		if (codeCount > 0) {
-			parts.push(codeCount === 1 ? "code selection" : `${codeCount} code selections`);
-		}
-		return `Using ${parts.join(", ")}`;
-	})()}
-            </div> : null}
+              <Show when={showGradient() && !hasCurrentSearchHighlight}>
+                <div class="absolute bottom-0 left-0 right-0 h-10 pointer-events-none bg-gradient-to-t from-[hsl(var(--input-background))] to-transparent rounded-b-xl" />
+              </Show>
+            </div>
+          </Show>
         </div>
       </div>
 
       {	/* Full message dialog */}
-      <Dialog open={isExpanded} onOpenChange={setIsExpanded}>
+      <Dialog open={isExpanded()} onOpenChange={setIsExpanded}>
         <DialogContent class="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle class="text-sm font-medium text-muted-foreground">
@@ -193,7 +205,9 @@ export function AgentUserMessageBubble({ messageId, textContent, imageParts = []
             </DialogTitle>
           </DialogHeader>
           <div class="space-y-3">
-            {textMentions.length > 0 && <TextMentionBlocks mentions={textMentions} />}
+				<Show when={textMentions.length > 0}>
+					<TextMentionBlocks mentions={textMentions} />
+				</Show>
             <div class="whitespace-pre-wrap text-sm">
               <RenderFileMentions text={cleanedText} />
             </div>

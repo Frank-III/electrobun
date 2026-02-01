@@ -1,6 +1,6 @@
 import { ChevronDown, Zap } from "lucide-solid";
 import type { Accessor } from "solid-js";
-import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Button } from "../../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
@@ -37,37 +37,32 @@ import { customHotkeysAtom } from "../../../lib/atoms";
 // Hook to get available models (including offline models if Ollama is available and debug enabled)
 function useAvailableModels() {
 	const showOfflineFeatures = showOfflineModeFeaturesAtom[0];
-	const { data: ollamaStatus } = useQuery(() => ({
+	const ollamaQuery = useQuery(() => ({
 		queryKey: ["ollama", "getStatus"] as const,
 		queryFn: () => desktopRpc.ollama.getStatus(),
 		refetchInterval: showOfflineFeatures() ? 3e4 : false,
 		enabled: showOfflineFeatures(),
 	}));
 	const baseModels = CLAUDE_MODELS;
-	const status = ollamaStatus;
-	const isOffline = status ? !status.internet.online : false;
-	const hasOllama = status?.ollama.available && (status.ollama.models?.length ?? 0) > 0;
-	const ollamaModels = status?.ollama.models || [];
-	const recommendedModel = status?.ollama.recommendedModel;
-	// Only show offline models if:
-	// 1. Debug flag is enabled (showOfflineFeatures)
-	// 2. Ollama is available with models
-	// 3. User is actually offline
-	if (showOfflineFeatures() && hasOllama && isOffline) {
-		return {
-			models: baseModels,
-			ollamaModels,
-			recommendedModel,
-			isOffline,
-			hasOllama: true
-		};
-	}
+	// Wrap query data access in accessor for reactivity
+	const status = () => ollamaQuery.data;
+	const isOffline = () => {
+		const s = status();
+		return s ? !s.internet.online : false;
+	};
+	const hasOllama = () => {
+		const s = status();
+		return s?.ollama.available && (s.ollama.models?.length ?? 0) > 0;
+	};
+	const ollamaModels = () => status()?.ollama.models || [];
+	const recommendedModel = () => status()?.ollama.recommendedModel;
+	// Return accessors so consumers can react to changes
 	return {
-		models: baseModels,
-		ollamaModels: [] as string[],
-		recommendedModel: undefined as string | undefined,
-		isOffline,
-		hasOllama: false
+		get models() { return baseModels; },
+		get ollamaModels() { return showOfflineFeatures() && hasOllama() && isOffline() ? ollamaModels() : []; },
+		get recommendedModel() { return showOfflineFeatures() && hasOllama() && isOffline() ? recommendedModel() : undefined; },
+		get isOffline() { return isOffline(); },
+		get hasOllama() { return showOfflineFeatures() && hasOllama() && isOffline(); }
 	};
 }
 export interface ChatInputAreaProps {
@@ -315,11 +310,11 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
 			desktopRpc.voice.transcribe.mutate(input),
 	}));
 	// Check if voice input is available (authenticated OR has OPENAI_API_KEY)
-	const { data: voiceAvailability } = useQuery(() => ({
+	const voiceQuery = useQuery(() => ({
 		queryKey: ["voice", "isAvailable"] as const,
 		queryFn: () => desktopRpc.voice.isAvailable(),
 	}));
-	const isVoiceAvailable = voiceAvailability?.available ?? false;
+	const isVoiceAvailable = () => voiceQuery.data?.available ?? false;
 	// Get resolved voice input hotkey
 	const customHotkeys = customHotkeysAtom[0];
 	const voiceInputHotkey = getResolvedHotkey("voice-input", customHotkeys());
@@ -790,23 +785,25 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
       <div class="w-full max-w-2xl mx-auto">
         <div class="relative w-full" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
           <div class="relative w-full cursor-text" onClick={() => editorRef()?.focus()}>
-            <PromptInput class={cn("border bg-input-background relative z-10 p-2 rounded-xl transition-[border-color,box-shadow] duration-150", isDragOver() && "ring-2 ring-primary/50 border-primary/50", isFocused() && !isDragOver() && "ring-2 ring-primary/50")} maxHeight={200} onSubmit={onSend} contextItems={images.length > 0 || files.length > 0 || textContexts.length > 0 || (diffTextContexts?.length ?? 0) > 0 || pastedTexts.length > 0 ? <div class="flex flex-wrap gap-[6px]">
-                    {(() => {
-		// Build allImages array for gallery navigation
-		const allImages = images.filter((img): img is typeof img & {
-			url: string;
-		} => !!img.url && !img.isLoading).map((img) => ({
-			id: img.id,
-			filename: img.filename,
-			url: img.url
-		}));
-		return images.map((img, idx) => <AgentImageItem id={img.id} filename={img.filename} url={img.url || ""} isLoading={img.isLoading} onRemove={() => onRemoveImage(img.id)} allImages={allImages} imageIndex={idx} />);
-	})()}
-                    {files.map((f) => <AgentFileItem id={f.id} filename={f.filename} url={f.url || ""} size={f.size} isLoading={f.isLoading} onRemove={() => onRemoveFile(f.id)} />)}
-                    {textContexts.map((tc) => <AgentTextContextItem text={tc.text} preview={tc.preview} onRemove={() => onRemoveTextContext(tc.id)} />)}
-                    {diffTextContexts?.map((dtc) => <AgentDiffTextContextItem text={dtc.text} preview={dtc.preview} filePath={dtc.filePath} lineNumber={dtc.lineNumber} lineType={dtc.lineType} onRemove={onRemoveDiffTextContext ? () => onRemoveDiffTextContext(dtc.id) : undefined} />)}
-                    {pastedTexts.map((pt) => <AgentPastedTextItem filePath={pt.filePath} filename={pt.filename} size={pt.size} preview={pt.preview} onRemove={onRemovePastedText ? () => onRemovePastedText(pt.id) : undefined} />)}
-                  </div> : null}>
+            <PromptInput class={cn("border bg-input-background relative z-10 p-2 rounded-xl transition-[border-color,box-shadow] duration-150", isDragOver() && "ring-2 ring-primary/50 border-primary/50", isFocused() && !isDragOver() && "ring-2 ring-primary/50")} maxHeight={200} onSubmit={onSend} contextItems={<Show when={images.length > 0 || files.length > 0 || textContexts.length > 0 || (diffTextContexts?.length ?? 0) > 0 || pastedTexts.length > 0}>
+                    <div class="flex flex-wrap gap-[6px]">
+                      {(() => {
+                        // Build allImages array for gallery navigation
+                        const allImages = images.filter((img): img is typeof img & {
+                          url: string;
+                        } => !!img.url && !img.isLoading).map((img) => ({
+                          id: img.id,
+                          filename: img.filename,
+                          url: img.url
+                        }));
+                        return <For each={images}>{(img, idx) => <AgentImageItem id={img.id} filename={img.filename} url={img.url || ""} isLoading={img.isLoading} onRemove={() => onRemoveImage(img.id)} allImages={allImages} imageIndex={idx()} />}</For>;
+                      })()}
+                      <For each={files}>{(f) => <AgentFileItem id={f.id} filename={f.filename} url={f.url || ""} size={f.size} isLoading={f.isLoading} onRemove={() => onRemoveFile(f.id)} />}</For>
+                      <For each={textContexts}>{(tc) => <AgentTextContextItem text={tc.text} preview={tc.preview} onRemove={() => onRemoveTextContext(tc.id)} />}</For>
+                      <For each={diffTextContexts ?? []}>{(dtc) => <AgentDiffTextContextItem text={dtc.text} preview={dtc.preview} filePath={dtc.filePath} lineNumber={dtc.lineNumber} lineType={dtc.lineType} onRemove={onRemoveDiffTextContext ? () => onRemoveDiffTextContext(dtc.id) : undefined} />}</For>
+                      <For each={pastedTexts}>{(pt) => <AgentPastedTextItem filePath={pt.filePath} filename={pt.filename} size={pt.size} preview={pt.preview} onRemove={onRemovePastedText ? () => onRemovePastedText(pt.id) : undefined} />}</For>
+                    </div>
+                  </Show>}>
               <PromptInputContextItems />
               <div class="relative">
                 <AgentsMentionsEditor ref={setEditorRef} onTrigger={({ searchText, rect }) => {
@@ -844,7 +841,9 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
 	}}>
                     <DropdownMenuTrigger asChild>
                       <button class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
-                        {subChatMode() === "plan" ? <PlanIcon class="h-3.5 w-3.5 shrink-0" /> : <AgentIcon class="h-3.5 w-3.5 shrink-0" />}
+                        <Show when={subChatMode() === "plan"} fallback={<AgentIcon class="h-3.5 w-3.5 shrink-0" />}>
+                          <PlanIcon class="h-3.5 w-3.5 shrink-0" />
+                        </Show>
                         <span class="truncate">{subChatMode() === "plan" ? "Plan" : "Agent"}</span>
                         <ChevronDown class="h-3 w-3 shrink-0 opacity-50" />
                       </button>
@@ -893,7 +892,9 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
                           <AgentIcon class="w-4 h-4 text-muted-foreground" />
                           <span>Agent</span>
                         </div>
-                        {subChatMode() !== "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
+                        <Show when={subChatMode() !== "plan"}>
+                          <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />
+                        </Show>
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => {
 		// Clear tooltip before closing dropdown (onMouseLeave won't fire)
@@ -938,7 +939,9 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
                           <PlanIcon class="w-4 h-4 text-muted-foreground" />
                           <span>Plan</span>
                         </div>
-                        {subChatMode() === "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
+                        <Show when={subChatMode() === "plan"}>
+                          <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />
+                        </Show>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                     <Show when={modeTooltip()?.visible}>
@@ -959,34 +962,7 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
                   </DropdownMenu>
 
                   {	/* Model selector - shows Ollama models when offline, Claude models when online */}
-                  {availableModels.isOffline && availableModels.hasOllama ? <DropdownMenu open={isModelDropdownOpen()} onOpenChange={setIsModelDropdownOpen}>
-                      <DropdownMenuTrigger asChild>
-                        <button class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 border border-border">
-                          <Zap class="h-4 w-4 shrink-0" />
-                          <span class="truncate">{currentOllamaModel() || "Select model"}</span>
-                          <ChevronDown class="h-3 w-3 shrink-0 opacity-50" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" class="w-[240px]">
-                        {availableModels.ollamaModels.map((model) => {
- const isSelected = model === currentOllamaModel();
-		const isRecommended = model === availableModels.recommendedModel;
-		return <DropdownMenuItem onClick={() => {
-			console.log(`[Ollama UI] Setting selected model: ${model}`);
-			setSelectedOllamaModel(model);
-		}} class="gap-2 justify-between">
-                              <div class="flex items-center gap-1.5">
-                                <Zap class="h-4 w-4 text-muted-foreground shrink-0" />
-                                <span>
-                                  {model}
-                                  {isRecommended && <span class="text-muted-foreground ml-1">(recommended)</span>}
-                                </span>
-                              </div>
-                              {isSelected && <CheckIcon class="h-3.5 w-3.5 shrink-0" />}
-                            </DropdownMenuItem>;
-	})}
-                      </DropdownMenuContent>
-                    </DropdownMenu> : <DropdownMenu open={hasCustomClaudeConfig ? false : isModelDropdownOpen()} onOpenChange={(open) => {
+                  <Show when={availableModels.isOffline && availableModels.hasOllama} fallback={<DropdownMenu open={hasCustomClaudeConfig ? false : isModelDropdownOpen()} onOpenChange={(open) => {
 		if (!hasCustomClaudeConfig) {
 			setIsModelDropdownOpen(open);
 		}
@@ -995,16 +971,16 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
                         <button disabled={hasCustomClaudeConfig} class={cn("flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground transition-colors rounded-md outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", hasCustomClaudeConfig ? "opacity-70 cursor-not-allowed" : "hover:text-foreground hover:bg-muted/50")}>
                           <ClaudeCodeIcon class="h-3.5 w-3.5 shrink-0" />
                           <span class="truncate">
-                            {hasCustomClaudeConfig ? "Custom Model" : <>
+                            <Show when={!hasCustomClaudeConfig} fallback="Custom Model">
                                 {selectedModel()?.name}{" "}
                                 <span class="text-muted-foreground">4.5</span>
-                              </>}
+                            </Show>
                           </span>
                           <ChevronDown class="h-3 w-3 shrink-0 opacity-50" />
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" class="w-[200px]">
-                        {availableModels.models.map((model) => {
+                        <For each={availableModels.models}>{(model) => {
 		const isSelected = selectedModel()?.id === model.id;
 		return <DropdownMenuItem onClick={() => {
 			setSelectedModel(model);
@@ -1017,9 +993,11 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
                                   <span class="text-muted-foreground">4.5</span>
                                 </span>
                               </div>
-                              {isSelected && <CheckIcon class="h-3.5 w-3.5 shrink-0" />}
+                              <Show when={isSelected}>
+                                <CheckIcon class="h-3.5 w-3.5 shrink-0" />
+                              </Show>
                             </DropdownMenuItem>;
-	})}
+	}}</For>
                         <DropdownMenuSeparator />
                         <div class="flex items-center justify-between px-1.5 py-1.5 mx-1" onClick={(e) => e.stopPropagation()}>
                           <div class="flex items-center gap-1.5">
@@ -1029,7 +1007,40 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
                           <Switch checked={thinkingEnabled()} onCheckedChange={setThinkingEnabled} class="scale-75" />
                         </div>
                       </DropdownMenuContent>
-                    </DropdownMenu>}
+                    </DropdownMenu>}>
+                    <DropdownMenu open={isModelDropdownOpen()} onOpenChange={setIsModelDropdownOpen}>
+                      <DropdownMenuTrigger asChild>
+                        <button class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 border border-border">
+                          <Zap class="h-4 w-4 shrink-0" />
+                          <span class="truncate">{currentOllamaModel() || "Select model"}</span>
+                          <ChevronDown class="h-3 w-3 shrink-0 opacity-50" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" class="w-[240px]">
+                        <For each={availableModels.ollamaModels}>{(model) => {
+ const isSelected = model === currentOllamaModel();
+		const isRecommended = model === availableModels.recommendedModel;
+		return <DropdownMenuItem onClick={() => {
+			console.log(`[Ollama UI] Setting selected model: ${model}`);
+			setSelectedOllamaModel(model);
+		}} class="gap-2 justify-between">
+                              <div class="flex items-center gap-1.5">
+                                <Zap class="h-4 w-4 text-muted-foreground shrink-0" />
+                                <span>
+                                  {model}
+                                  <Show when={isRecommended}>
+                                    <span class="text-muted-foreground ml-1">(recommended)</span>
+                                  </Show>
+                                </span>
+                              </div>
+                              <Show when={isSelected}>
+                                <CheckIcon class="h-3.5 w-3.5 shrink-0" />
+                              </Show>
+                            </DropdownMenuItem>;
+	}}</For>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </Show>
                 </div>
 
                 <div class="flex items-center gap-0.5 ml-auto flex-shrink-0">
@@ -1041,7 +1052,7 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
 	}} />
 
                   {	/* Voice wave indicator - shown during recording */}
-                  {isVoiceRecording() ? <VoiceWaveIndicator isRecording={isVoiceRecording()} audioLevel={voiceAudioLevel()} /> : <>
+                  <Show when={isVoiceRecording()} fallback={<>
                       { /* Context window indicator - click to compact */}
                       <AgentContextIndicator tokenData={messageTokenData} onCompact={onCompact} isCompacting={isCompacting} disabled={isStreaming} />
 
@@ -1049,7 +1060,9 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
                       <Button variant="ghost" size="icon" class="h-7 w-7 rounded-sm outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" onClick={() => fileInputRef()?.click()} disabled={images.length >= 5 && files.length >= 10}>
                         <AttachIcon class="h-4 w-4" />
                       </Button>
-                    </>}
+                    </>}>
+                    <VoiceWaveIndicator isRecording={isVoiceRecording()} audioLevel={voiceAudioLevel()} />
+                  </Show>
 
                   { /* Send/Stop/Voice button */}
                   <div class="ml-1">
@@ -1060,7 +1073,7 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
 		} else {
 			onSend();
 		}
-	}} onStop={onStop} mode={subChatMode()} showVoiceInput={isVoiceAvailable} isRecording={isVoiceRecording()} isTranscribing={isTranscribing()} onVoiceMouseDown={handleVoiceMouseDown} onVoiceMouseUp={handleVoiceMouseUp} onVoiceMouseLeave={handleVoiceMouseLeave} />
+	}} onStop={onStop} mode={subChatMode()} showVoiceInput={isVoiceAvailable()} isRecording={isVoiceRecording()} isTranscribing={isTranscribing()} onVoiceMouseDown={handleVoiceMouseDown} onVoiceMouseUp={handleVoiceMouseUp} onVoiceMouseLeave={handleVoiceMouseLeave} />
                   </div>
                 </div>
               </PromptInputActions>

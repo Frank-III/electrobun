@@ -253,20 +253,20 @@ export function AgentsSettingsDialog(props: AgentsSettingsDialogProps) {
 		}
 
 		// Handle static tabs
-		switch (tab) {
-			case "profile": return <AgentsProfileTab />;
-			case "appearance": return <AgentsAppearanceTab />;
-			case "keyboard": return <AgentsKeyboardTab />;
-			case "preferences": return <AgentsPreferencesTab />;
-			case "models": return <AgentsModelsTab />;
-			case "skills": return <AgentsSkillsTab />;
-			case "agents": return <AgentsCustomAgentsTab />;
-			case "mcp": return <AgentsMcpTab />;
-			case "beta": return <AgentsBetaTab />;
-			case "debug": return showDebugTab() ? <AgentsDebugTab /> : null;
-			default: return null;
-		}
-	};
+			switch (tab) {
+				case "profile": return <AgentsProfileTab />;
+				case "appearance": return <AgentsAppearanceTab />;
+				case "keyboard": return <AgentsKeyboardTab />;
+				case "preferences": return <AgentsPreferencesTab />;
+				case "models": return <AgentsModelsTab />;
+				case "skills": return <AgentsSkillsTab />;
+				case "agents": return <AgentsCustomAgentsTab />;
+				case "mcp": return <AgentsMcpTab />;
+				case "beta": return <AgentsBetaTab />;
+				case "debug": return <Show when={showDebugTab()}><AgentsDebugTab /></Show>;
+				default: return null;
+			}
+		};
 
 	const renderTabList = () => (
 		<div class="space-y-4 px-1">

@@ -1,7 +1,6 @@
-import { createSignal, createMemo, createEffect, onCleanup } from "solid-js";
+import { createSignal, createMemo, createEffect, onCleanup, For, Show } from "solid-js";
 import { ChevronDown } from "lucide-solid";
 import { Motion, Presence } from "solid-motionone";
-import { Show } from "solid-js";
 import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/utils";
 import { useQuery } from "@tanstack/solid-query";
@@ -145,35 +144,41 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
           <ChevronDown class={cn("w-4 h-4 text-muted-foreground transition-transform duration-200", !isExpanded && "-rotate-90")} />
 
           { /* Streaming indicator */}
-          {props.isStreaming && <span class="text-xs text-muted-foreground">
+          <Show when={props.isStreaming}>
+            <span class="text-xs text-muted-foreground">
               {props.isCompacting ? "Compacting" : "Generating"}<AnimatedDots />
-            </span>}
+            </span>
+          </Show>
 
           { /* File count and stats - only show when not streaming */}
-          {!props.isStreaming && <span class="text-xs text-muted-foreground">
+          <Show when={!props.isStreaming}>
+            <span class="text-xs text-muted-foreground">
               {totals.fileCount} {totals.fileCount === 1 ? "file" : "files"}
-              {(totals.additions > 0 || totals.deletions > 0) && <>
-                  {" "}
-                  <span class="text-green-600 dark:text-green-400">
-                    +{totals.additions}
-                  </span>{" "}
-                  <span class="text-red-600 dark:text-red-400">
-                    -{totals.deletions}
-                  </span>
-                </>}
-            </span>}
+              <Show when={totals.additions > 0 || totals.deletions > 0}>
+                {" "}
+                <span class="text-green-600 dark:text-green-400">
+                  +{totals.additions}
+                </span>{" "}
+                <span class="text-red-600 dark:text-red-400">
+                  -{totals.deletions}
+                </span>
+              </Show>
+            </span>
+          </Show>
         </div>
 
         { /* Right side: buttons */}
         <div class="flex items-center gap-2 flex-shrink-0">
           { /* Stop button */}
-          {props.isStreaming && props.onStop && <Button variant="ghost" size="sm" onClick={(e) => {
+          <Show when={props.isStreaming && props.onStop}>
+            <Button variant="ghost" size="sm" onClick={(e) => {
  e.stopPropagation();
 		props.onStop!();
 	}} class="h-6 px-2 text-xs font-normal rounded-md transition-transform duration-150 active:scale-[0.97]">
               Stop
               <span class="text-muted-foreground/60 ml-1">⌃C</span>
-            </Button>}
+            </Button>
+          </Show>
 
           {	/* Review button */}
           <Button variant="secondary" size="sm" onClick={(e) => {
@@ -207,33 +212,35 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
 		]
 	}} class="overflow-hidden">
             <div class="border-t border-border max-h-[200px] overflow-y-auto">
-              {uncommittedFiles().map((file) => {
-		const FileIcon = getFileIconByExtension(file.displayPath);
-		const handleFileClick = () => {
-			const filePaths = uncommittedFiles().map((f) => f.displayPath);
-			setFilteredDiffFiles(filePaths.length > 0 ? filePaths : null);
-			setFocusedDiffFile(file.displayPath);
-			setDiffSidebarOpen(true);
-		};
-		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Enter" || e.key === " ") {
-				e.preventDefault();
-				handleFileClick();
-			}
-		};
-		return <div key={file.filePath} role="button" tabIndex={0} onClick={handleFileClick} onKeyDown={handleKeyDown} aria-label={`View diff for ${file.displayPath}`} class="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors cursor-pointer focus:outline-none rounded-sm">
-                    {FileIcon && <FileIcon class="w-4 h-4 flex-shrink-0 text-muted-foreground" />}
-                    <span class="truncate flex-1 text-foreground">
-                      {file.displayPath}
-                    </span>
-                    <span class="flex-shrink-0 text-green-600 dark:text-green-400">
-                      +{file.additions}
-                    </span>
-                    <span class="flex-shrink-0 text-red-600 dark:text-red-400">
-                      -{file.deletions}
-                    </span>
-                  </div>;
-	})}
+              <For each={uncommittedFiles()}>{(file) => {
+                const FileIcon = getFileIconByExtension(file.displayPath);
+                const handleFileClick = () => {
+                  const filePaths = uncommittedFiles().map((f) => f.displayPath);
+                  setFilteredDiffFiles(filePaths.length > 0 ? filePaths : null);
+                  setFocusedDiffFile(file.displayPath);
+                  setDiffSidebarOpen(true);
+                };
+                const handleKeyDown = (e: KeyboardEvent) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleFileClick();
+                  }
+                };
+                return <div role="button" tabIndex={0} onClick={handleFileClick} onKeyDown={handleKeyDown} aria-label={`View diff for ${file.displayPath}`} class="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors cursor-pointer focus:outline-none rounded-sm">
+                  <Show when={FileIcon}>
+                    <FileIcon class="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                  </Show>
+                  <span class="truncate flex-1 text-foreground">
+                    {file.displayPath}
+                  </span>
+                  <span class="flex-shrink-0 text-green-600 dark:text-green-400">
+                    +{file.additions}
+                  </span>
+                  <span class="flex-shrink-0 text-red-600 dark:text-red-400">
+                    -{file.deletions}
+                  </span>
+                </div>;
+              }}</For>
             </div>
           </Motion.div>
         </Show>

@@ -1,4 +1,4 @@
-import { createSignal, createMemo, Show } from "solid-js";
+import { createSignal, createMemo, Show, mergeProps, splitProps } from "solid-js";
 import { Input } from "../../../../components/ui/input";
 import { Button } from "../../../../components/ui/button";
 import { cn } from "../../../../lib/utils";
@@ -25,23 +25,25 @@ interface ChangesFileFilterProps {
 	/** Callback when subchat filter changes */
 	onSubChatFilterChange?: (subChatId: string | null) => void;
 }
-export function ChangesFileFilter({ value, onChange, placeholder = "Filter files...", class: cls, subChats = [], selectedSubChatId, onSubChatFilterChange }: ChangesFileFilterProps) {
+export function ChangesFileFilter(props: ChangesFileFilterProps) {
+	const merged = mergeProps({ placeholder: "Filter files...", subChats: [] }, props);
+	const [local] = splitProps(merged, ["value", "onChange", "placeholder", "class", "subChats", "selectedSubChatId", "onSubChatFilterChange"]);
 	const [isSubChatFilterOpen, setIsSubChatFilterOpen] = createSignal(false);
 	const selectedSubChat = createMemo(() => {
-		if (!selectedSubChatId) return null;
-		return subChats.find((sc) => sc.id === selectedSubChatId) || null;
+		if (!local.selectedSubChatId) return null;
+		return local.subChats.find((sc) => sc.id === local.selectedSubChatId) || null;
 	});
 	const handleSubChatSelect = (subChat: SubChatFilterItem) => {
 		// Toggle off if same subchat selected
-		if (selectedSubChatId === subChat.id) {
-			onSubChatFilterChange?.(null);
+		if (local.selectedSubChatId === subChat.id) {
+			local.onSubChatFilterChange?.(null);
 		} else {
-			onSubChatFilterChange?.(subChat.id);
+			local.onSubChatFilterChange?.(subChat.id);
 		}
 		setIsSubChatFilterOpen(false);
 	};
 	const handleClearSubChatFilter = () => {
-		onSubChatFilterChange?.(null);
+		local.onSubChatFilterChange?.(null);
 	};
 	const renderSubChatItem = (subChat: SubChatFilterItem) => {
 		return <div class="flex items-center gap-2 flex-1 min-w-0">
@@ -54,16 +56,16 @@ export function ChangesFileFilter({ value, onChange, placeholder = "Filter files
 				</span>
 			</div>;
 	};
-	const hasSubChats = subChats.length > 0;
-	return <div class={cn("flex flex-col gap-1.5 px-2 py-1.5",cls)}>
+	const hasSubChats = local.subChats.length > 0;
+	return <div class={cn("flex flex-col gap-1.5 px-2 py-1.5",local.class)}>
 			{	/* Search row */}
 			<div class="flex items-center gap-1">
 				{ /* Search input */}
 				<div class="relative flex-1">
 					<Search class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-					<Input type="search" value={value} onInput={(e) => onChange(e.currentTarget.value)} placeholder={placeholder} class="h-7 pl-7 pr-7 text-xs bg-muted/50" />
-					<Show when={value}>
-						<button type="button" onClick={() => onChange("")} class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted-foreground/20 transition-colors">
+				<Input type="search" value={local.value} onInput={(e) => local.onChange(e.currentTarget.value)} placeholder={local.placeholder} class="h-7 pl-7 pr-7 text-xs bg-muted/50" />
+				<Show when={local.value}>
+					<button type="button" onClick={() => local.onChange("")} class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-muted-foreground/20 transition-colors">
 							<X class="size-3 text-muted-foreground" />
 						</button>
 					</Show>
@@ -71,11 +73,11 @@ export function ChangesFileFilter({ value, onChange, placeholder = "Filter files
 
 				{ /* Subchat filter button */}
 				<Show when={hasSubChats}>
-					<SearchCombobox isOpen={isSubChatFilterOpen} onOpenChange={setIsSubChatFilterOpen} items={subChats} onSelect={handleSubChatSelect} placeholder="Search chats..." emptyMessage="No chats with changes" getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={renderSubChatItem} side="bottom" align="end" sideOffset={4} collisionPadding={16} trigger={<Tooltip delayDuration={300}>
+				<SearchCombobox isOpen={isSubChatFilterOpen()} onOpenChange={setIsSubChatFilterOpen} items={local.subChats} onSelect={handleSubChatSelect} placeholder="Search chats..." emptyMessage="No chats with changes" getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={renderSubChatItem} side="bottom" align="end" sideOffset={4} collisionPadding={16} trigger={<Tooltip delayDuration={300}>
 								<TooltipTrigger asChild>
 									<PopoverTrigger asChild>
-										<Button variant={selectedSubChatId ? "secondary" : "ghost"} size="icon" class={cn("h-7 w-7 p-0 flex-shrink-0 rounded-md transition-colors", selectedSubChatId && "bg-primary/10 hover:bg-primary/20")}>
-											<CircleFilterIcon class={cn("h-4 w-4", selectedSubChatId ? "text-primary" : "text-muted-foreground")} />
+								<Button variant={local.selectedSubChatId ? "secondary" : "ghost"} size="icon" class={cn("h-7 w-7 p-0 flex-shrink-0 rounded-md transition-colors", local.selectedSubChatId && "bg-primary/10 hover:bg-primary/20")}>
+									<CircleFilterIcon class={cn("h-4 w-4", local.selectedSubChatId ? "text-primary" : "text-muted-foreground")} />
 										</Button>
 									</PopoverTrigger>
 								</TooltipTrigger>

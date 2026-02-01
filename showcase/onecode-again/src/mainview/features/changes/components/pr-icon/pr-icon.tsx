@@ -18,12 +18,12 @@ const stateStyles: Record<PRState, string> = {
 * - closed: red dot icon
 * - draft: muted pull request icon
 */
-export function PRIcon({ state, class: cls }: PRIconProps) {
-	const baseClass = cn(stateStyles[state],cls);
-	if (state === "merged") {
+export function PRIcon(props: PRIconProps) {
+	const baseClass = cn(stateStyles[props.state], props.class);
+	if (props.state === "merged") {
 		return <GitMerge class={baseClass} />;
 	}
-	if (state === "closed") {
+	if (props.state === "closed") {
 		return <CircleDot class={baseClass} />;
 	}
 	// open or draft

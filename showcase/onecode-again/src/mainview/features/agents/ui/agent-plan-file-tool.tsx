@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, Show, mergeProps, splitProps } from "solid-js";
 import { Button } from "../../../components/ui/button";
 import { ExpandIcon, CollapseIcon, PlanIcon } from "../../../components/ui/icons";
 import { Kbd } from "../../../components/ui/kbd";
@@ -27,12 +27,14 @@ interface AgentPlanFileToolProps {
 * Shows plan content during streaming and after completion.
 * Features: expand/collapse, View plan (sidebar), Build button.
 */
-export function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false }: AgentPlanFileToolProps) {
+export function AgentPlanFileTool(props: AgentPlanFileToolProps) {
+	const merged = mergeProps({ isEdit: false }, props);
+	const [local] = splitProps(merged, ["part", "chatStatus", "subChatId", "isEdit"]);
 	const [isExpanded, setIsExpanded] = createSignal(false);
-	const { isPending } = getToolStatus(part, chatStatus);
-	const isWrite = part.type === "tool-Write";
+	const { isPending } = getToolStatus(local.part, local.chatStatus);
+	const isWrite = local.part.type === "tool-Write";
 	// Get mode from per-subChat atomFamily
-	const subChatModeAtom = createMemo(() => subChatModeAtomFamily(subChatId));
+	const subChatModeAtom = createMemo(() => subChatModeAtomFamily(local.subChatId));
 	const subChatMode = subChatModeAtom[0];
 	const setPendingBuildPlanSubChatId = pendingBuildPlanSubChatIdAtom[1];
 	// Refs for scroll gradients (avoid re-renders)
@@ -40,16 +42,16 @@ export function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false 
 	const [topGradientRef, setTopGradientRef] = createSignal<HTMLDivElement>(null);
 	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement>(null);
 	// Plan sidebar atoms - per subChat
-	const planSidebarOpenAtom = createMemo(() => planSidebarOpenAtomFamily(subChatId));
-	const currentPlanPathAtom = createMemo(() => currentPlanPathAtomFamily(subChatId));
+	const planSidebarOpenAtom = createMemo(() => planSidebarOpenAtomFamily(local.subChatId));
+	const currentPlanPathAtom = createMemo(() => currentPlanPathAtomFamily(local.subChatId));
 	const [, setIsPlanSidebarOpen] = planSidebarOpenAtom;
 	const [, setCurrentPlanPath] = currentPlanPathAtom;
 	// Only consider streaming if chat is actively streaming
-	const isActivelyStreaming = chatStatus === "streaming" || chatStatus === "submitted";
-	const isInputStreaming = part.state === "input-streaming" && isActivelyStreaming;
+	const isActivelyStreaming = local.chatStatus === "streaming" || local.chatStatus === "submitted";
+	const isInputStreaming = local.part.state === "input-streaming" && isActivelyStreaming;
 	// Get plan content - for Write mode it's in input.content, for Edit it's in new_string
-	const planContent = isWrite ? part.input?.content || "" : part.input?.new_string || "";
-	const filePath = part.input?.file_path || "";
+	const planContent = isWrite ? local.part.input?.content || "" : local.part.input?.new_string || "";
+	const filePath = local.part.input?.file_path || "";
 	// Show shimmer during streaming/pending
 	const shouldShowShimmer = isPending || isInputStreaming;
 	// View plan button enabled when there's content
@@ -113,23 +115,29 @@ export function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false 
 	// If no content yet, show minimal view with shimmer (no icon during shimmer)
 	if (!hasVisibleContent) {
 		return <div class="flex items-center gap-1.5 px-2 py-0.5">
-        {!shouldShowShimmer && <PlanIcon class="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />}
+        <Show when={!shouldShowShimmer}>
+          <PlanIcon class="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+        </Show>
         <span class="text-xs text-muted-foreground">
-          {shouldShowShimmer ? <TextShimmer as="span" duration={1.2}>
-              {isEdit ? "Updating plan..." : "Creating plan..."}
-            </TextShimmer> : "Plan"}
-        </span>
+			<Show when={shouldShowShimmer} fallback="Plan">
+				<TextShimmer as="span" duration={1.2}>
+					{local.isEdit ? "Updating plan..." : "Creating plan..."}
+				</TextShimmer>
+			</Show>
+		</span>
       </div>;
 	}
 	return <div class="rounded-lg border border-border bg-muted/30 overflow-hidden mx-2">
       {	/* Header - title + expand/collapse button */}
-      <div onClick={handleToggleExpand} class="flex items-center justify-between pl-2.5 pr-0.5 h-7 cursor-pointer hover:bg-muted/50 transition-colors duration-150">
-        <div class="flex items-center gap-1.5 text-xs truncate flex-1 min-w-0">
-          <PlanIcon class="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
-          {shouldShowShimmer ? <TextShimmer as="span" duration={1.2} class="truncate">
-              {isEdit ? "Updating plan..." : "Creating plan..."}
-            </TextShimmer> : <span class="truncate text-foreground font-medium">Plan</span>}
-        </div>
+	      <div onClick={handleToggleExpand} class="flex items-center justify-between pl-2.5 pr-0.5 h-7 cursor-pointer hover:bg-muted/50 transition-colors duration-150">
+	        <div class="flex items-center gap-1.5 text-xs truncate flex-1 min-w-0">
+	          <PlanIcon class="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+	          <Show when={shouldShowShimmer} fallback={<span class="truncate text-foreground font-medium">Plan</span>}>
+	            <TextShimmer as="span" duration={1.2} class="truncate">
+	              {local.isEdit ? "Updating plan..." : "Creating plan..."}
+	            </TextShimmer>
+	          </Show>
+	        </div>
 
         <div class="flex items-center gap-1">
           { /* Expand/Collapse button */}
@@ -172,10 +180,12 @@ export function AgentPlanFileTool({ part, chatStatus, subChatId, isEdit = false 
           View plan
         </Button>
 
-        {subChatMode === "plan" && <Button size="sm" onClick={handleBuildPlan} disabled={buildDisabled} class="h-6 px-3 text-xs font-medium rounded-md transition-transform duration-150 active:scale-[0.97] disabled:opacity-50">
+        <Show when={subChatMode === "plan"}>
+          <Button size="sm" onClick={handleBuildPlan} disabled={buildDisabled} class="h-6 px-3 text-xs font-medium rounded-md transition-transform duration-150 active:scale-[0.97] disabled:opacity-50">
             Approve
             <Kbd class="ml-1.5 text-primary-foreground/70">⌘↵</Kbd>
-          </Button>}
+          </Button>
+        </Show>
       </div>
     </div>;
 }

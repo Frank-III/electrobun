@@ -24,15 +24,15 @@ function formatTimeSince(date: Date): string {
 	const days = Math.floor(hours / 24);
 	return `${days}d ago`;
 }
-export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: ChangesPanelHeaderProps) {
+export function ChangesPanelHeader(props: ChangesPanelHeaderProps) {
 	const [lastFetchTime, setLastFetchTime] = createSignal<Date | null>(null);
 	const [isRefreshing, setIsRefreshing] = createSignal(false);
 	const [displayTime, setDisplayTime] = createSignal("");
 	let timeoutRef: ReturnType<typeof setTimeout> | undefined;
 	const branchDataQuery = useQuery(() => ({
-		queryKey: ["changes", "getBranches", worktreePath] as const,
-		queryFn: () => desktopRpc.changes.getBranches({ worktreePath }),
-		enabled: !!worktreePath,
+		queryKey: ["changes", "getBranches", props.worktreePath] as const,
+		queryFn: () => desktopRpc.changes.getBranches({ worktreePath: props.worktreePath }),
+		enabled: !!props.worktreePath,
 	}));
 	const branchData = () => branchDataQuery.data;
 	const refetchBranches = () => branchDataQuery.refetch();
@@ -50,7 +50,7 @@ export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: 
 		onSuccess: () => refetchBranches(),
 	}));
 	const { pr } = usePRStatus({
-		worktreePath,
+		worktreePath: props.worktreePath,
 		refetchInterval: 3e4
 	});
 	// Update display time every minute
@@ -67,7 +67,7 @@ export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: 
 	const handleFetch = () => {
 		setIsRefreshing(true);
 		fetchMutation.mutate(
-			{ worktreePath },
+			{ worktreePath: props.worktreePath },
 			{
 				onSettled: () => {
 					if (timeoutRef) clearTimeout(timeoutRef);
@@ -77,14 +77,14 @@ export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: 
 		);
 	};
 	const handleBranchSelect = (branch: string) => {
-		if (branch === currentBranch) return;
-		checkoutMutation.mutate({ worktreePath, branch });
+		if (branch === props.currentBranch) return;
+		checkoutMutation.mutate({ worktreePath: props.worktreePath, branch });
 	};
 	onCleanup(() => {
 		if (timeoutRef) clearTimeout(timeoutRef);
 	});
 	const branches = () => branchData()?.local ?? [];
-	const isCompact = layoutMode === "compact";
+	const isCompact = props.layoutMode === "compact";
 	return <div class={cn("flex items-center gap-2 px-2 py-1.5 flex-1 min-w-0", isCompact && "px-1.5 py-1")}>
 			{	/* Branch selector */}
 			<DropdownMenu>
@@ -94,7 +94,7 @@ export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: 
 							<Button variant="ghost" size="sm" class={cn("h-6 px-2 gap-1.5 text-xs font-medium min-w-0", isCompact && "h-5 px-1.5 gap-1 text-[10px]")}>
 								<GitBranch class={cn("size-3.5 shrink-0", isCompact && "size-3")} />
 								<span class="truncate max-w-[120px]">
-									{currentBranch || "No branch"}
+									{props.currentBranch || "No branch"}
 								</span>
 								<ChevronDown class={cn("size-3 shrink-0 opacity-50", isCompact && "size-2.5")} />
 							</Button>
@@ -146,15 +146,15 @@ export function ChangesPanelHeader({ worktreePath, currentBranch, layoutMode }: 
 					<TooltipTrigger asChild>
 						<Button variant="ghost" size="sm" onClick={handleFetch} disabled={isRefreshing() || fetchMutation.isPending} class={cn("h-6 px-2 gap-1.5 text-xs", isCompact && "h-5 px-1.5 gap-1")}>
 							<RefreshCw class={cn("size-3.5", (isRefreshing() || fetchMutation.isPending) && "animate-spin", isCompact && "size-3")} />
-							<Show when={layoutMode !== "compact"}>
-								<span class="text-[10px] text-muted-foreground">{displayTime() || "Fetch"}</span>
-							</Show>
-						</Button>
-					</TooltipTrigger>
-					<TooltipContent side="bottom">
-						{lastFetchTime() ? `Last fetched ${displayTime()}` : "Fetch from remote"}
-					</TooltipContent>
-				</Tooltip>
-			</div>
-		</div>;
- }
+							<Show when={!isCompact}>
+												<span class="text-[10px] text-muted-foreground">{displayTime() || "Fetch"}</span>
+											</Show>
+										</Button>
+									</TooltipTrigger>
+									<TooltipContent side="bottom">
+										{lastFetchTime() ? `Last fetched ${displayTime()}` : "Fetch from remote"}
+									</TooltipContent>
+								</Tooltip>
+							</div>
+							</div>;
+							}

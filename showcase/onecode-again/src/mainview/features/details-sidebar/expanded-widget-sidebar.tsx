@@ -31,9 +31,9 @@ interface ExpandedWidgetSidebarProps {
 		fileCount: number;
 	} | null;
 }
-export function ExpandedWidgetSidebar({ chatId, worktreePath, planPath, planRefetchTrigger, activeSubChatId, canOpenDiff, isDiffSidebarOpen, setIsDiffSidebarOpen, diffStats }: ExpandedWidgetSidebarProps) {
+export function ExpandedWidgetSidebar(props: ExpandedWidgetSidebarProps) {
 	// Per-workspace expanded widget state
-	const expandedWidgetAtom = createMemo(() => expandedWidgetAtomFamily(chatId));
+	const expandedWidgetAtom = createMemo(() => expandedWidgetAtomFamily(props.chatId));
 	const [expandedWidget, setExpandedWidget] = expandedWidgetAtom;
 	// Get widget config
 	const widgetConfig = createMemo(() => WIDGET_REGISTRY.find((w) => w.id === expandedWidget));
@@ -56,10 +56,10 @@ export function ExpandedWidgetSidebar({ chatId, worktreePath, planPath, planRefe
 	// Render the appropriate widget content based on expandedWidget
 	const renderWidgetContent = () => {
 		switch (expandedWidget) {
-			case "info": return <InfoSection chatId={chatId} worktreePath={worktreePath} isExpanded />;
-			case "plan": return <PlanSection chatId={activeSubChatId || chatId} planPath={planPath} refetchTrigger={planRefetchTrigger} isExpanded />;
-			case "terminal": return worktreePath ? <TerminalSection chatId={chatId} cwd={worktreePath} isExpanded /> : null;
-			case "diff": return <DiffSection chatId={chatId} isDiffSidebarOpen={isDiffSidebarOpen} setIsDiffSidebarOpen={setIsDiffSidebarOpen} diffStats={diffStats} isExpanded />;
+			case "info": return <InfoSection chatId={props.chatId} worktreePath={props.worktreePath} isExpanded />;
+			case "plan": return <PlanSection chatId={props.activeSubChatId || props.chatId} planPath={props.planPath} refetchTrigger={props.planRefetchTrigger} isExpanded />;
+			case "terminal": return <Show when={props.worktreePath}>{(path) => <TerminalSection chatId={props.chatId} cwd={path()} isExpanded />}</Show>;
+			case "diff": return <DiffSection chatId={props.chatId} isDiffSidebarOpen={props.isDiffSidebarOpen} setIsDiffSidebarOpen={props.setIsDiffSidebarOpen} diffStats={props.diffStats} isExpanded />;
 			default: return null;
 		}
 	};

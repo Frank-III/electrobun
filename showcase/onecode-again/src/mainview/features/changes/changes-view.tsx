@@ -4,7 +4,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/ui/tabs";
 import { toast } from "solid-sonner";
-import { createEffect, createSignal, createMemo, For, Show, Switch, Match, onCleanup } from "solid-js";
+import { createEffect, createSignal, createMemo, For, Show, Switch, Match, onCleanup, mergeProps, splitProps } from "solid-js";
 import { useQuery, useMutation } from "@tanstack/solid-query";
 import { desktopRpc } from "../../lib/desktop-rpc";
 import { useChangesStore } from "../../lib/stores/changes-store";
@@ -152,34 +152,37 @@ interface ChangesViewProps {
 	/** Number of commits ahead of upstream (for unpushed indicator) */
 	pushCount?: number;
 }
-export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFileSelectProp, onFileOpenPinned, onCreatePr, onCommitSuccess, subChats = [], initialSubChatFilter = null, chatId, selectedCommitHash, onCommitSelect, onCommitFileSelect, onActiveTabChange, pushCount }: ChangesViewProps) {
-	useFileChangeListener(worktreePath);
+export function ChangesView(props: ChangesViewProps) {
+	const merged = mergeProps({ subChats: [], initialSubChatFilter: null }, props);
+	const [local] = splitProps(merged, ["worktreePath", "selectedFilePath", "onFileSelect", "onFileOpenPinned", "onCreatePr", "onCommitSuccess", "subChats", "initialSubChatFilter", "chatId", "selectedCommitHash", "onCommitSelect", "onCommitFileSelect", "onActiveTabChange", "pushCount"]);
+	const onFileSelectProp = local.onFileSelect;
+	useFileChangeListener(local.worktreePath);
 	// Viewed files state from agents diff view (for showing eye icon and toggling)
-	const [viewedFiles, setViewedFiles] = viewedFilesAtomFamily(chatId || "");
+	const [viewedFiles, setViewedFiles] = viewedFilesAtomFamily(local.chatId || "");
 	const { baseBranch } = useChangesStore();
 	const branchDataQuery = useQuery(() => ({
-		queryKey: ["changes", "getBranches", worktreePath || ""] as const,
-		queryFn: () => desktopRpc.changes.getBranches({ worktreePath: worktreePath || "" }),
-		enabled: !!worktreePath,
+		queryKey: ["changes", "getBranches", local.worktreePath || ""] as const,
+		queryFn: () => desktopRpc.changes.getBranches({ worktreePath: local.worktreePath || "" }),
+		enabled: !!local.worktreePath,
 	}));
 	const branchData = () => branchDataQuery.data;
 	const effectiveBaseBranch = () => baseBranch ?? branchData()?.defaultBranch ?? "main";
 
 	const statusQuery = useQuery(() => ({
-		queryKey: ["changes", "getStatus", worktreePath || "", effectiveBaseBranch()] as const,
+		queryKey: ["changes", "getStatus", local.worktreePath || "", effectiveBaseBranch()] as const,
 		queryFn: () =>
 			desktopRpc.changes.getStatus({
-				worktreePath: worktreePath || "",
+				worktreePath: local.worktreePath || "",
 				defaultBranch: effectiveBaseBranch(),
 			}),
-		enabled: !!worktreePath,
+		enabled: !!local.worktreePath,
 		refetchOnWindowFocus: true,
 	}));
 	const status = () => statusQuery.data;
 	const isLoading = () => statusQuery.isLoading;
 	const refetch = () => statusQuery.refetch();
 	const { pr, refetch: refetchPRStatus } = usePRStatus({
-		worktreePath,
+		worktreePath: local.worktreePath,
 		refetchInterval: 1e4
 	});
 	const handleRefresh = () => {
@@ -192,7 +195,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 		setHasInitializedSelection(false);
 		setSelectedForCommit(new Set());
 		// Notify parent to reset diff view selection
-		onCommitSuccess?.();
+		local.onCommitSuccess?.();
 	};
 	const openInFinderMutation = useMutation(() => ({
 		mutationFn: (input: { path: string }) => desktopRpc.external.openInFinder.mutate(input),
@@ -242,15 +245,15 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	// Discard confirmation dialog state - multiple files
 	const [discardFiles, setDiscardFiles] = createSignal<ChangedFile[] | null>(null);
 	const { selectFile, getSelectedFile } = useChangesStore();
-	const selectedFileState = getSelectedFile(worktreePath || "");
-	const selectedFile = selectedFilePath !== undefined ? selectedFilePath ? { path: selectedFilePath } as ChangedFile : null : selectedFileState?.file ?? null;
+	const selectedFileState = getSelectedFile(local.worktreePath || "");
+	const selectedFile = local.selectedFilePath !== undefined ? local.selectedFilePath ? { path: local.selectedFilePath } as ChangedFile : null : selectedFileState?.file ?? null;
 	const [fileFilter, setFileFilter] = createSignal("");
-	const [subChatFilter, setSubChatFilter] = createSignal<string | null>(initialSubChatFilter);
+	const [subChatFilter, setSubChatFilter] = createSignal<string | null>(local.initialSubChatFilter);
 	const [activeTab, setActiveTab] = createSignal<"changes" | "history">("changes");
 	let fileListRef: HTMLDivElement | undefined;
 	// Update subchat filter when initialSubChatFilter changes (e.g., from Review button)
 	createEffect(() => {
-		setSubChatFilter(initialSubChatFilter);
+		setSubChatFilter(local.initialSubChatFilter);
 	});
 	// Local selection state - tracks which files are selected for commit (checkboxes)
 	const [selectedForCommit, setSelectedForCommit] = createSignal(new Set());
@@ -264,7 +267,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 		setFileFilter("");
 		// Don't reset subChatFilter to null - use initialSubChatFilter instead
 		// This preserves the filter when component remounts (e.g., when diff sidebar opens)
-		setSubChatFilter(initialSubChatFilter);
+		setSubChatFilter(local.initialSubChatFilter);
 		setHasInitializedSelection(false);
 		setSelectedForCommit(new Set());
 		setHighlightedFiles(new Set());
@@ -296,7 +299,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	// Get file paths for selected subchat filter
 	const subChatFilterPaths = createMemo(() => {
 		if (!subChatFilter()) return null;
-		const subChat = subChats.find((sc) => sc.id === subChatFilter());
+		const subChat = local.subChats.find((sc) => sc.id === subChatFilter());
 		return subChat?.filePaths || null;
 	});
 	// Apply filters (text filter + subchat filter)
@@ -323,16 +326,16 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	const highlightedCount = () => highlightedFiles().size;
 	// Handle file click - selects file for diff view and clears highlighting
 	const handleFileSelect = (file: ChangedFile, category: ChangeCategory) => {
-		if (!worktreePath) return;
-		selectFile(worktreePath, file, category, null);
+		if (!local.worktreePath) return;
+		selectFile(local.worktreePath, file, category, null);
 		onFileSelectProp?.(file, category);
 		// Clear multi-select highlighting on regular click
 		setHighlightedFiles(new Set());
 	};
 	const handleFileDoubleClick = (file: ChangedFile, category: ChangeCategory) => {
-		if (!worktreePath) return;
-		selectFile(worktreePath, file, category, null);
-		onFileOpenPinned?.(file, category);
+		if (!local.worktreePath) return;
+		selectFile(local.worktreePath, file, category, null);
+		local.onFileOpenPinned?.(file, category);
 	};
 	// Toggle individual file for commit (checkbox) - doesn't affect highlighting
 	const handleCheckboxChange = (filePath: string) => {
@@ -520,16 +523,16 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	// Handle single file discard confirmation
 	const handleConfirmDiscard = () => {
 		const file = discardFile();
-		if (!file || !worktreePath) return;
+		if (!file || !local.worktreePath) return;
 		const isUntracked = file.status === "untracked" || file.status === "added";
 		if (isUntracked) {
 			deleteUntrackedMutation.mutate({
-				worktreePath,
+				worktreePath: local.worktreePath,
 				filePath: file.path
 			});
 		} else {
 			discardChangesMutation.mutate({
-				worktreePath,
+				worktreePath: local.worktreePath,
 				filePath: file.path
 			});
 		}
@@ -538,21 +541,21 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	// Handle multi-file discard confirmation
 	const handleConfirmMultiDiscard = () => {
 		const files = discardFiles();
-		if (!files || files.length === 0 || !worktreePath) return;
+		if (!files || files.length === 0 || !local.worktreePath) return;
 		// Split files by type - untracked/added need deletion, others need checkout
 		const untrackedFiles = files.filter((f: ChangedFile) => f.status === "untracked" || f.status === "added");
 		const trackedFiles = files.filter((f: ChangedFile) => f.status !== "untracked" && f.status !== "added");
 		// Discard tracked files (git checkout)
 		if (trackedFiles.length > 0) {
 			discardMultipleChangesMutation.mutate({
-				worktreePath,
+				worktreePath: local.worktreePath,
 				filePaths: trackedFiles.map((f: ChangedFile) => f.path)
 			});
 		}
 		// Delete untracked files
 		if (untrackedFiles.length > 0) {
 			deleteMultipleUntrackedMutation.mutate({
-				worktreePath,
+				worktreePath: local.worktreePath,
 				filePaths: untrackedFiles.map((f: ChangedFile) => f.path)
 			});
 		}
@@ -569,21 +572,21 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 	};
 	// Context menu handlers
 	const handleCopyPath = (filePath: string) => {
-		const absolutePath = `${worktreePath}/${filePath}`;
+		const absolutePath = `${local.worktreePath}/${filePath}`;
 		navigator.clipboard.writeText(absolutePath);
 	};
 	const handleCopyRelativePath = (filePath: string) => {
 		navigator.clipboard.writeText(filePath);
 	};
 	const handleRevealInFinder = (filePath: string) => {
-		const absolutePath = `${worktreePath}/${filePath}`;
+		const absolutePath = `${local.worktreePath}/${filePath}`;
 		openInFinderMutation.mutate({ path: absolutePath });
 	};
 	const handleOpenInEditor = (filePath: string) => {
-		const absolutePath = `${worktreePath}/${filePath}`;
+		const absolutePath = `${local.worktreePath}/${filePath}`;
 		openInEditorMutation.mutate({
 			path: absolutePath,
-			cwd: worktreePath
+			cwd: local.worktreePath
 		});
 	};
 	// Use Switch/Match for proper SolidJS reactivity (if/return doesn't re-run on signal changes)
@@ -592,14 +595,14 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 			<div class="flex flex-col h-full">
 				<Tabs value={activeTab()} onValueChange={(v: string) => {
 		const newTab = v as "changes" | "history";
-		setActiveTab(newTab);
-		// Notify parent about tab change
-		onActiveTabChange?.(newTab);
-		// Reset selected commit when switching to Changes tab
-		if (v === "changes" && onCommitSelect) {
-			onCommitSelect(null);
-		}
-	}} class="flex flex-col h-full">
+					setActiveTab(newTab);
+					// Notify parent about tab change
+					local.onActiveTabChange?.(newTab);
+					// Reset selected commit when switching to Changes tab
+					if (v === "changes" && local.onCommitSelect) {
+						local.onCommitSelect(null);
+					}
+				}} class="flex flex-col h-full">
 					{	/* Tab triggers */}
 					<TabsList class="h-8 px-2 bg-transparent border-b border-border/50 rounded-none justify-start gap-1 shrink-0">
 						<TabsTrigger value="changes" class="h-6 px-2.5 text-xs rounded-md data-[state=active]:bg-muted data-[state=active]:shadow-none">
@@ -613,7 +616,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 					{ /* Changes tab content */}
 					<TabsContent value="changes" class="flex-1 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden">
 						{ /* Filter */}
-						<ChangesFileFilter value={fileFilter()} onChange={setFileFilter} subChats={subChats} selectedSubChatId={subChatFilter()} onSubChatFilterChange={setSubChatFilter} />
+						<ChangesFileFilter value={fileFilter()} onChange={setFileFilter} subChats={local.subChats} selectedSubChatId={subChatFilter()} onSubChatFilterChange={setSubChatFilter} />
 
 						{ /* Select all header */}
 						<div class="flex items-center gap-2 px-2 py-1.5 border-b border-border/50">
@@ -628,22 +631,22 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 							<Show when={filteredCount() > 0} fallback={<div class="flex-1 flex items-center justify-center text-muted-foreground text-sm px-4 text-center">No files match filter</div>}>
 								<div ref={el => fileListRef = el} class="flex-1 overflow-y-auto outline-none" tabIndex={0} onKeyDown={handleKeyDown}>
 									<For each={filteredFiles()}>
-										{({ file, category }, index) => <ChangesFileItemWithContext file={file} category={category} isSelected={selectedFile?.path === file.path} isChecked={selectedForCommit().has(file.path)} isViewed={isFileMarkedAsViewed(file.path)} isHighlighted={highlightedFiles().has(file.path)} highlightedCount={highlightedCount()} highlightedPaths={highlightedPaths()} index={index()} onSelect={() => {
-											handleFileSelect(file, category);
-											fileListRef?.focus();
-										}} onDoubleClick={() => handleFileDoubleClick(file, category)} onCheckboxChange={() => handleCheckboxChange(file.path)} onShiftClick={handleShiftClick} onCopyPath={() => handleCopyPath(file.path)} onCopyRelativePath={() => handleCopyRelativePath(file.path)} onRevealInFinder={() => handleRevealInFinder(file.path)} onToggleViewed={() => toggleFileViewed(file.path)} onDiscard={() => setDiscardFile(file)} onDiscardSelected={handleDiscardSelected} onIncludeSelected={handleIncludeSelected} onExcludeSelected={handleExcludeSelected} onCopySelectedPaths={() => handleCopySelectedPaths(worktreePath)} onCopySelectedRelativePaths={handleCopySelectedRelativePaths} />}
-									</For>
-								</div>
-							</Show>
+									{({ file, category }, index) => <ChangesFileItemWithContext file={file} category={category} isSelected={selectedFile?.path === file.path} isChecked={selectedForCommit().has(file.path)} isViewed={isFileMarkedAsViewed(file.path)} isHighlighted={highlightedFiles().has(file.path)} highlightedCount={highlightedCount()} highlightedPaths={highlightedPaths()} index={index()} onSelect={() => {
+										handleFileSelect(file, category);
+										fileListRef?.focus();
+									}} onDoubleClick={() => handleFileDoubleClick(file, category)} onCheckboxChange={() => handleCheckboxChange(file.path)} onShiftClick={handleShiftClick} onCopyPath={() => handleCopyPath(file.path)} onCopyRelativePath={() => handleCopyRelativePath(file.path)} onRevealInFinder={() => handleRevealInFinder(file.path)} onToggleViewed={() => toggleFileViewed(file.path)} onDiscard={() => setDiscardFile(file)} onDiscardSelected={handleDiscardSelected} onIncludeSelected={handleIncludeSelected} onExcludeSelected={handleExcludeSelected} onCopySelectedPaths={() => handleCopySelectedPaths(local.worktreePath)} onCopySelectedRelativePaths={handleCopySelectedRelativePaths} />}
+								</For>
+							</div>
 						</Show>
+					</Show>
 
 						{	/* Commit input */}
-						<CommitInput worktreePath={worktreePath} hasStagedChanges={selectedCount() > 0} onRefresh={handleRefresh} onCommitSuccess={handleCommitSuccess} stagedCount={selectedCount()} currentBranch={status()?.branch} selectedFilePaths={selectedFilePaths()} chatId={chatId} />
+					<CommitInput worktreePath={local.worktreePath} hasStagedChanges={selectedCount() > 0} onRefresh={handleRefresh} onCommitSuccess={handleCommitSuccess} stagedCount={selectedCount()} currentBranch={status()?.branch} selectedFilePaths={selectedFilePaths()} chatId={local.chatId} />
 					</TabsContent>
 
 					{ /* History tab content */}
 					<TabsContent value="history" class="flex-1 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden">
-						<HistoryView worktreePath={worktreePath} selectedCommitHash={selectedCommitHash} selectedFilePath={selectedFilePath} onCommitSelect={onCommitSelect} onFileSelect={onCommitFileSelect} pushCount={pushCount} />
+					<HistoryView worktreePath={local.worktreePath} selectedCommitHash={local.selectedCommitHash} selectedFilePath={local.selectedFilePath} onCommitSelect={local.onCommitSelect} onFileSelect={local.onCommitFileSelect} pushCount={local.pushCount} />
 					</TabsContent>
 				</Tabs>
 			</div>
@@ -699,7 +702,7 @@ export function ChangesView({ worktreePath, selectedFilePath, onFileSelect: onFi
 				</AlertDialogContent>
 			</AlertDialog>
 		</>}>
-			<Match when={!worktreePath}>
+			<Match when={!local.worktreePath}>
 				<div class="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4">
 					No worktree path available
 				</div>

@@ -1,7 +1,7 @@
 import { createEffect, createSignal, onCleanup, Show, type Accessor } from "solid-js";
 import { analyticsOptOutAtom, autoAdvanceTargetAtom, ctrlTabTargetAtom, defaultAgentModeAtom, desktopNotificationsEnabledAtom, extendedThinkingEnabledAtom, soundNotificationsEnabledAtom, type AgentMode, type AutoAdvanceTarget, type CtrlTabTarget } from "../../../lib/atoms";
 import { Kbd } from "../../ui/kbd";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "../../ui/select";
+import { Select, SelectContent, SelectTrigger } from "../../ui/select";
 import { Switch } from "../../ui/switch";
 import { useQuery, useMutation } from "@tanstack/solid-query";
 import { desktopRpc } from "../../../lib/desktop-rpc";
@@ -132,16 +132,18 @@ export function AgentsPreferencesTab() {
                 What <Kbd>⌃Tab</Kbd> switches between
               </span>
             </div>
-            <Select value={ctrlTabTarget()} onChange={(value: CtrlTabTarget) => setCtrlTabTarget(value)}>
+            <Select 
+              options={["workspaces", "agents"] as CtrlTabTarget[]}
+              value={ctrlTabTarget()} 
+              onChange={(value) => setCtrlTabTarget(value as CtrlTabTarget)}
+              optionTextValue={(v) => v === "workspaces" ? "Workspaces" : "Agents"}
+            >
               <SelectTrigger class="w-auto px-2">
                 <span class="text-xs">
                   {ctrlTabTarget() === "workspaces" ? "Workspaces" : "Agents"}
                 </span>
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="workspaces">Workspaces</SelectItem>
-                <SelectItem value="agents">Agents</SelectItem>
-              </SelectContent>
+              <SelectContent />
             </Select>
           </div>
 
@@ -155,17 +157,18 @@ export function AgentsPreferencesTab() {
                 Where to go after archiving a workspace
               </span>
             </div>
-            <Select value={autoAdvanceTarget()} onChange={(value: AutoAdvanceTarget) => setAutoAdvanceTarget(value)}>
+            <Select 
+              options={["next", "previous", "close"] as AutoAdvanceTarget[]}
+              value={autoAdvanceTarget()} 
+              onChange={(value) => setAutoAdvanceTarget(value as AutoAdvanceTarget)}
+              optionTextValue={(v) => v === "next" ? "Go to next workspace" : v === "previous" ? "Go to previous workspace" : "Close workspace"}
+            >
               <SelectTrigger class="w-auto px-2">
                 <span class="text-xs">
                   {autoAdvanceTarget() === "next" ? "Go to next workspace" : autoAdvanceTarget() === "previous" ? "Go to previous workspace" : "Close workspace"}
                 </span>
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="next">Go to next workspace</SelectItem>
-                <SelectItem value="previous">Go to previous workspace</SelectItem>
-                <SelectItem value="close">Close workspace</SelectItem>
-              </SelectContent>
+              <SelectContent />
             </Select>
           </div>
 
@@ -179,16 +182,18 @@ export function AgentsPreferencesTab() {
                 Mode for new agents (Plan = read-only, Agent = can edit)
               </span>
             </div>
-            <Select value={defaultAgentMode()} onChange={(value: AgentMode) => setDefaultAgentMode(value)}>
+            <Select 
+              options={["agent", "plan"] as AgentMode[]}
+              value={defaultAgentMode()} 
+              onChange={(value) => setDefaultAgentMode(value as AgentMode)}
+              optionTextValue={(v) => v === "agent" ? "Agent" : "Plan"}
+            >
               <SelectTrigger class="w-auto px-2">
                 <span class="text-xs">
                   {defaultAgentMode() === "agent" ? "Agent" : "Plan"}
                 </span>
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="agent">Agent</SelectItem>
-                <SelectItem value="plan">Plan</SelectItem>
-              </SelectContent>
+              <SelectContent />
             </Select>
           </div>
         </div>

@@ -173,6 +173,7 @@ export function AgentsWorktreesTab() {
               </Select>
             </div>
           </div>
-        </Show>
+        </div>
+      </div>
     </div>;
- }
+}

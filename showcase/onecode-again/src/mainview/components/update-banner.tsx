@@ -1,13 +1,15 @@
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
 import { useUpdateChecker } from "../lib/hooks/use-update-checker";
 import { useJustUpdated } from "../lib/hooks/use-just-updated";
 import { Button } from "./ui/button";
 import { IconSpinner } from "../icons";
 import { desktopRpc } from "../lib/desktop-rpc";
+
 // For testing: set to "available", "downloading", or "just-updated" to see the UI
 // Change to "none" for production
 const MOCK_STATE: "none" | "available" | "downloading" | "just-updated" | "dismissed" = "none";
 type BannerStatus = "available" | "downloading" | "just-updated" | "dismissed";
+
 export function UpdateBanner() {
 	const { state: realState, downloadUpdate, installUpdate, dismissUpdate } = useUpdateChecker();
 	const { justUpdated: realJustUpdated, justUpdatedVersion, dismissJustUpdated, openChangelog } = useJustUpdated();
@@ -19,6 +21,7 @@ export function UpdateBanner() {
 	// Mock state for testing UI
 	const [mockStatus, setMockStatus] = createSignal<BannerStatus>(MOCK_STATE === "none" ? "available" : MOCK_STATE as BannerStatus);
 	const [mockProgress, setMockProgress] = createSignal(0);
+	
 	// Simulate progress when mocking download
 	createEffect(() => {
 		if (isMocking && mockStatus() === "downloading") {
@@ -34,21 +37,28 @@ export function UpdateBanner() {
 			onCleanup(() => clearInterval(interval));
 		}
 	});
-	// Just updated state (show "What's New" banner)
-	// When mocking "just-updated", we need to show that state regardless of real state
-	const justUpdated = isMocking && MOCK_STATE === "just-updated" ? true : realJustUpdated;
+	
+	// Just updated state (show "What's New" banner) - reactive memo
+	const justUpdated = createMemo(() => {
+		if (isMocking && MOCK_STATE === "just-updated") return true;
+		return realJustUpdated();
+	});
+	
 	// Get current app version for display
-	const [currentVersion, setCurrentVersion] = createSignal(null);
+	const [currentVersion, setCurrentVersion] = createSignal<string | null>(null);
 	// Track if app is packaged (official build) - default to true to avoid flash
 	const [isPackaged, setIsPackaged] = createSignal(true);
+	
 	createEffect(() => {
 		desktopRpc.system.getVersion().then(setCurrentVersion);
 		window.desktopApi?.isPackaged().then(setIsPackaged);
 	});
+	
 	// Use current version for display (or the just updated version if available)
-	const displayVersion = justUpdatedVersion || currentVersion;
-	// Get state value - need to call accessor if not mocking
-	const stateValue = () => {
+	const displayVersion = createMemo(() => justUpdatedVersion() || currentVersion());
+	
+	// Get state value - reactive memo
+	const stateValue = createMemo(() => {
 		if (isMocking && MOCK_STATE === "just-updated") {
 			return { status: "idle" as const, progress: 0 };
 		}
@@ -60,19 +70,21 @@ export function UpdateBanner() {
 			};
 		}
 		return realState();
-	};
+	});
+	
 	// Clear pending state when status changes from "available"
-	// This handles: download started, error occurred, or state reset
 	createEffect(() => {
 		if (realState().status !== "available") {
 			setIsPending(false);
 		}
 	});
+	
 	// Get progress percentage
-	const progress = () => {
+	const progress = createMemo(() => {
 		const sv = stateValue();
 		return "progress" in sv ? sv.progress : undefined;
-	};
+	});
+	
 	// Auto-install when download completes
 	createEffect(() => {
 		if (realState().status === "ready" && !hasTriggeredInstall()) {
@@ -83,22 +95,24 @@ export function UpdateBanner() {
 			}, 500);
 		}
 	});
+	
 	// Reset install trigger when going back to available state
 	createEffect(() => {
 		if (realState().status === "available") {
 			setHasTriggeredInstall(false);
 		}
 	});
+	
 	// Mock handlers for testing
 	const handleUpdate = () => {
 		if (isMocking) {
 			setMockStatus("downloading");
 		} else {
-			// SolidJS signals update synchronously, no flushSync needed
 			setIsPending(true);
 			downloadUpdate();
 		}
 	};
+	
 	const handleDismiss = () => {
 		if (isMocking) {
 			setMockStatus("dismissed");
@@ -106,6 +120,7 @@ export function UpdateBanner() {
 			dismissUpdate();
 		}
 	};
+	
 	const handleOpenChangelog = () => {
 		// Open changelog URL
 		window.desktopApi?.openExternal("https://1code.dev/changelog");
@@ -116,6 +131,7 @@ export function UpdateBanner() {
 			dismissJustUpdated();
 		}
 	};
+	
 	const handleDismissWhatsNew = () => {
 		if (isMocking) {
 			setMockStatus("dismissed");
@@ -123,62 +139,68 @@ export function UpdateBanner() {
 			dismissJustUpdated();
 		}
 	};
-	// For open source builds (!isPackaged), hide all update banners
-	if (!isPackaged()) {
-		return null;
-	}
-	// Show "What's New" banner if app was just updated
-	if (justUpdated) {
-		return <div class="fixed bottom-4 left-4 z-50 flex items-center gap-3 rounded-lg border border-border bg-popover p-2.5 text-sm text-popover-foreground shadow-lg animate-in fade-in-0 slide-in-from-bottom-2">
-        <span class="text-foreground">
-          Updated to v{displayVersion()}
-        </span>
-        <div class="flex items-center gap-2 ml-2">
-          <Button size="sm" onClick={handleOpenChangelog}>
-            See what's new
-          </Button>
-          <button onClick={handleDismissWhatsNew} class="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-muted" aria-label="Dismiss">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M11 3L3 11M3 3L11 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
-        </div>
-      </div>;
-	}
-	// Get current state value
-	const state = stateValue();
-	// Don't show anything for idle, checking, or error states
-	if (state.status === "idle" || state.status === "checking" || state.status === "error") {
-		return null;
-	}
-	// Updating state (downloading or ready to install, or pending click)
-	const isUpdating = state.status === "downloading" || state.status === "ready" || isPending();
-	const progressVal = progress();
-	return <div class="fixed bottom-4 left-4 z-50 flex items-center gap-3 rounded-lg border border-border bg-popover p-2.5 text-sm text-popover-foreground shadow-lg animate-in fade-in-0 slide-in-from-bottom-2">
-      {	/* Update Available State */}
-      <Show when={state.status === "available" && !isPending()}>
-          <span class="text-foreground">Update available</span>
-          <div class="flex items-center gap-2 ml-2">
-            <button onClick={handleDismiss} class="text-muted-foreground hover:text-foreground transition-colors">
-              Later
-            </button>
-            <Button size="sm" onClick={handleUpdate}>
-              Update
-            </Button>
-          </div>
-        </Show>
-
-      { /* Updating State (downloading, installing, or pending) */}
-      <Show when={isUpdating}>
-          <IconSpinner class="h-4 w-4 text-muted-foreground" />
-          <span class="text-foreground">
-            {isPending() ? "Starting update..." : "Updating..."}
-          </span>
-          <Show when={progressVal !== undefined && !isPending()}>
-            <span class="text-muted-foreground ml-1">
-              {Math.round(progressVal!)}%
-            </span>
-          </Show>
-        </Show>
-    </div>;
- }
+	
+	// Derived states for Show conditions
+	const showJustUpdated = createMemo(() => isPackaged() && justUpdated());
+	const showUpdateAvailable = createMemo(() => {
+		const state = stateValue();
+		return isPackaged() && !justUpdated() && state.status === "available" && !isPending();
+	});
+	const showUpdating = createMemo(() => {
+		const state = stateValue();
+		return isPackaged() && !justUpdated() && (state.status === "downloading" || state.status === "ready" || isPending());
+	});
+	
+	return (
+		<>
+			{/* Just Updated Banner */}
+			<Show when={showJustUpdated()}>
+				<div class="fixed bottom-4 left-4 z-50 flex items-center gap-3 rounded-lg border border-border bg-popover p-2.5 text-sm text-popover-foreground shadow-lg animate-in fade-in-0 slide-in-from-bottom-2">
+					<span class="text-foreground">
+						Updated to v{displayVersion()}
+					</span>
+					<div class="flex items-center gap-2 ml-2">
+						<Button size="sm" onClick={handleOpenChangelog}>
+							See what's new
+						</Button>
+						<button onClick={handleDismissWhatsNew} class="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-muted" aria-label="Dismiss">
+							<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+								<path d="M11 3L3 11M3 3L11 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+							</svg>
+						</button>
+					</div>
+				</div>
+			</Show>
+			
+			{/* Update Available Banner */}
+			<Show when={showUpdateAvailable()}>
+				<div class="fixed bottom-4 left-4 z-50 flex items-center gap-3 rounded-lg border border-border bg-popover p-2.5 text-sm text-popover-foreground shadow-lg animate-in fade-in-0 slide-in-from-bottom-2">
+					<span class="text-foreground">Update available</span>
+					<div class="flex items-center gap-2 ml-2">
+						<button onClick={handleDismiss} class="text-muted-foreground hover:text-foreground transition-colors">
+							Later
+						</button>
+						<Button size="sm" onClick={handleUpdate}>
+							Update
+						</Button>
+					</div>
+				</div>
+			</Show>
+			
+			{/* Updating Banner */}
+			<Show when={showUpdating()}>
+				<div class="fixed bottom-4 left-4 z-50 flex items-center gap-3 rounded-lg border border-border bg-popover p-2.5 text-sm text-popover-foreground shadow-lg animate-in fade-in-0 slide-in-from-bottom-2">
+					<IconSpinner class="h-4 w-4 text-muted-foreground" />
+					<span class="text-foreground">
+						{isPending() ? "Starting update..." : "Updating..."}
+					</span>
+					<Show when={progress() !== undefined && !isPending()}>
+						<span class="text-muted-foreground ml-1">
+							{Math.round(progress()!)}%
+						</span>
+					</Show>
+				</div>
+			</Show>
+		</>
+	);
+}

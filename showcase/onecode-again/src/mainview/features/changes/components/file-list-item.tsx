@@ -46,61 +46,63 @@ export interface FileListItemProps {
 * Shared file list item component used in both changes-view and changes-widget
 * Memoized to prevent re-renders
 */
-export function FileListItem({ filePath, fileName, dirPath, status, isSelected = false, isChecked, isViewed, isUntracked, onSelect, onDoubleClick, onCheckboxChange, onCopyPath, onCopyRelativePath, onRevealInFinder, onToggleViewed, onDiscard, showContextMenu = true }: FileListItemProps) {
-	const content = <div data-file-item class={cn("flex items-center gap-2 px-2 py-1 cursor-pointer", "hover:bg-muted/80 transition-colors", isSelected && "bg-muted")} onClick={onSelect} onDoubleClick={onDoubleClick}>
-      <Checkbox checked={isChecked} onCheckedChange={onCheckboxChange} onClick={(e) => e.stopPropagation()} class="size-4 shrink-0 border-muted-foreground/50" />
+export function FileListItem(props: FileListItemProps) {
+	const isSelected = () => props.isSelected ?? false;
+	const showContextMenu = () => props.showContextMenu ?? true;
+	const content = <div data-file-item class={cn("flex items-center gap-2 px-2 py-1 cursor-pointer", "hover:bg-muted/80 transition-colors", isSelected() && "bg-muted")} onClick={props.onSelect} onDoubleClick={props.onDoubleClick}>
+      <Checkbox checked={props.isChecked} onCheckedChange={props.onCheckboxChange} onClick={(e) => e.stopPropagation()} class="size-4 shrink-0 border-muted-foreground/50" />
       <div class="flex-1 min-w-0 flex items-center overflow-hidden">
-        <Show when={dirPath}>
+        <Show when={props.dirPath}>
           <span class="text-xs text-muted-foreground truncate flex-shrink min-w-0">
-            {dirPath}/
+            {props.dirPath}/
           </span>
         </Show>
         <span class="text-xs font-medium flex-shrink-0 whitespace-nowrap">
-          {fileName}
+          {props.fileName}
         </span>
       </div>
       <div class="shrink-0 flex items-center gap-1.5">
-        <Show when={isViewed}>
+        <Show when={props.isViewed}>
           <div class="size-4 rounded bg-emerald-500/20 flex items-center justify-center">
             <Eye class="size-2.5 text-emerald-500" />
           </div>
         </Show>
-        {getStatusIndicator(status)}
+        {getStatusIndicator(props.status)}
       </div>
     </div>;
-	if (!showContextMenu) {
+	if (!showContextMenu()) {
 		return content;
 	}
 	return <ContextMenu>
       <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
       <ContextMenuContent class="w-52">
-        <Show when={onCopyPath}>
-          <ContextMenuItem onClick={onCopyPath}>Copy Path</ContextMenuItem>
+        <Show when={props.onCopyPath}>
+          <ContextMenuItem onClick={props.onCopyPath}>Copy Path</ContextMenuItem>
         </Show>
-        <Show when={onCopyRelativePath}>
-          <ContextMenuItem onClick={onCopyRelativePath}>
+        <Show when={props.onCopyRelativePath}>
+          <ContextMenuItem onClick={props.onCopyRelativePath}>
             Copy Relative Path
           </ContextMenuItem>
         </Show>
-        <Show when={(onCopyPath || onCopyRelativePath) && onRevealInFinder}>
+        <Show when={(props.onCopyPath || props.onCopyRelativePath) && props.onRevealInFinder}>
           <ContextMenuSeparator />
         </Show>
-        <Show when={onRevealInFinder}>
-          <ContextMenuItem onClick={onRevealInFinder}>
+        <Show when={props.onRevealInFinder}>
+          <ContextMenuItem onClick={props.onRevealInFinder}>
             Reveal in Finder
           </ContextMenuItem>
         </Show>
-        <Show when={onToggleViewed}>
+        <Show when={props.onToggleViewed}>
           <ContextMenuSeparator />
-          <ContextMenuItem onClick={onToggleViewed} class="justify-between">
-            {isViewed ? "Mark as unviewed" : "Mark as viewed"}
+          <ContextMenuItem onClick={props.onToggleViewed} class="justify-between">
+            {props.isViewed ? "Mark as unviewed" : "Mark as viewed"}
             <Kbd>V</Kbd>
           </ContextMenuItem>
         </Show>
-        <Show when={onDiscard}>
+        <Show when={props.onDiscard}>
           <ContextMenuSeparator />
-          <ContextMenuItem onClick={onDiscard} class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
-            {isUntracked ? "Delete File..." : "Discard Changes..."}
+          <ContextMenuItem onClick={props.onDiscard} class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
+            {props.isUntracked ? "Delete File..." : "Discard Changes..."}
           </ContextMenuItem>
         </Show>
       </ContextMenuContent>

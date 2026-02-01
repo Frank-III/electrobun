@@ -1,4 +1,4 @@
-import { createSignal, createMemo, Show } from "solid-js";
+import { createSignal, createMemo, Show, splitProps } from "solid-js";
 import { Check, X } from "lucide-solid";
 import { IconSpinner, ExpandIcon, CollapseIcon } from "../../../components/ui/icons";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
@@ -45,13 +45,14 @@ function limitLines(text: string, maxLines: number): {
 		truncated: true
 	};
 }
-export function AgentBashTool({ part, messageId, partIndex, chatStatus }: AgentBashToolProps) {
+export function AgentBashTool(props: AgentBashToolProps) {
+	const [local] = splitProps(props, ["part", "messageId", "partIndex", "chatStatus"]);
 	const [isOutputExpanded, setIsOutputExpanded] = createSignal(false);
-	const { isPending } = getToolStatus(part, chatStatus);
-	const command = part.input?.command || "";
-	const stdout = part.output?.stdout || part.output?.output || "";
-	const stderr = part.output?.stderr || "";
-	const exitCode = part.output?.exitCode ?? part.output?.exit_code;
+	const { isPending } = getToolStatus(local.part, local.chatStatus);
+	const command = local.part.input?.command || "";
+	const stdout = local.part.output?.stdout || local.part.output?.output || "";
+	const stderr = local.part.output?.stderr || "";
+	const exitCode = local.part.output?.exitCode ?? local.part.output?.exit_code;
 	// For bash tools, success/error is determined by exitCode, not by state
 	// exitCode 0 = success, anything else (or undefined if no output yet) = error
 	const isSuccess = exitCode === 0;
@@ -68,8 +69,8 @@ export function AgentBashTool({ part, messageId, partIndex, chatStatus }: AgentB
 	// Check if command input is still being streamed
 	// Only consider streaming if chat is actively streaming (prevents hang on stop)
 	// Include "submitted" status - this is when request was sent but streaming hasn't started yet
-	const isActivelyStreaming = chatStatus === "streaming" || chatStatus === "submitted";
-	const isInputStreaming = part.state === "input-streaming" && isActivelyStreaming;
+	const isActivelyStreaming = local.chatStatus === "streaming" || local.chatStatus === "submitted";
+	const isInputStreaming = local.part.state === "input-streaming" && isActivelyStreaming;
 	// If command is still being generated (input-streaming state), show loading state
 	if (isInputStreaming) {
 		return <div class="flex items-start gap-1.5 rounded-md py-0.5 px-2">
@@ -88,7 +89,7 @@ export function AgentBashTool({ part, messageId, partIndex, chatStatus }: AgentB
 	if (!command) {
 		return <AgentToolInterrupted toolName="Command" />;
 	}
-	return <div data-message-id={messageId} data-part-index={partIndex} data-part-type="tool-Bash" class="rounded-lg border border-border bg-muted/30 overflow-hidden mx-2">
+	return <div data-message-id={local.messageId} data-part-index={local.partIndex} data-part-type="tool-Bash" class="rounded-lg border border-border bg-muted/30 overflow-hidden mx-2">
       {	/* Header - clickable to expand, fixed height to prevent layout shift */}
       <div onClick={() => hasMoreOutput && !isPending && setIsOutputExpanded(!isOutputExpanded)} class={cn("flex items-center justify-between pl-2.5 pr-0.5 h-7", hasMoreOutput && !isPending && "cursor-pointer hover:bg-muted/50 transition-colors duration-150")}>
         <span class="text-xs text-muted-foreground truncate flex-1 min-w-0">
@@ -100,13 +101,19 @@ export function AgentBashTool({ part, messageId, partIndex, chatStatus }: AgentB
         <div class="flex items-center gap-2 flex-shrink-0 ml-2">
           { /* Status - min-width ensures no layout shift */}
           <div class="flex items-center gap-1 text-xs text-muted-foreground min-w-[60px] justify-end">
-            {isPending ? <IconSpinner class="w-3 h-3" /> : isSuccess ? <>
-                <Check class="w-3 h-3" />
-                <span>Success</span>
-              </> : isError ? <>
+            <Show when={isPending} fallback={<Show when={isSuccess} fallback={<Show when={isError} fallback={null}>
+              <>
                 <X class="w-3 h-3" />
                 <span>Failed</span>
-              </> : null}
+              </>
+            </Show>}>
+              <>
+                <Check class="w-3 h-3" />
+                <span>Success</span>
+              </>
+            </Show>}>
+              <IconSpinner class="w-3 h-3" />
+            </Show>
           </div>
 
           { /* Expand/Collapse button - only show when not pending and has output that can be expanded */}
@@ -114,9 +121,11 @@ export function AgentBashTool({ part, messageId, partIndex, chatStatus }: AgentB
           <div class="w-6 h-6 flex items-center justify-center">
             <Show when={!isPending && hasOutput && hasMoreOutput}><button onClick={(e) => {
  e.stopPropagation();
-		setIsOutputExpanded(!isOutputExpanded);
-	}} class="p-1 rounded-md hover:bg-accent transition-[background-color,transform] duration-150 ease-out active:scale-95">
-                {isOutputExpanded() ? <CollapseIcon class="w-4 h-4 text-muted-foreground" /> : <ExpandIcon class="w-4 h-4 text-muted-foreground" />}
+ 		setIsOutputExpanded(!isOutputExpanded);
+ 	}} class="p-1 rounded-md hover:bg-accent transition-[background-color,transform] duration-150 ease-out active:scale-95">
+                <Show when={isOutputExpanded()} fallback={<ExpandIcon class="w-4 h-4 text-muted-foreground" />}>
+                  <CollapseIcon class="w-4 h-4 text-muted-foreground" />
+                </Show>
               </button></Show>
           </div>
         </div>

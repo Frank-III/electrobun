@@ -356,6 +356,21 @@ export const desktopRpc = {
       rpc().destroy({ id: input.paneId }),
     ),
   },
+  ghosttyTabs: {
+    create: mutation((input: { tabId: string; frame: { x: number; y: number; width: number; height: number }; cwd?: string; command?: string }) =>
+      rpc().ghosttyTabsCreate(input),
+    ),
+    focus: mutation((input: { tabId: string }) =>
+      rpc().ghosttyTabsFocus(input),
+    ),
+    resize: mutation((input: { tabId: string; frame: { x: number; y: number; width: number; height: number } }) =>
+      rpc().ghosttyTabsResize(input),
+    ),
+    close: mutation((input: { tabId: string }) =>
+      rpc().ghosttyTabsClose(input),
+    ),
+    list: () => rpc().ghosttyTabsList({}),
+  },
   commands: {
     list: (input?: { projectPath?: string }) =>
       rpc().commandsList(input ?? {}),

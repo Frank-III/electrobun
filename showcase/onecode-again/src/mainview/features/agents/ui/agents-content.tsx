@@ -1,4 +1,5 @@
-import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 // import { useSearchParams, useRouter } from "next/navigation" // Desktop doesn't use next/navigation
 // Desktop: mock Next.js navigation hooks
 const useSearchParams = () => ({ get: () => null });
@@ -9,7 +10,7 @@ const useRouter = () => ({
 // Desktop: mock Clerk hooks
 const useUser = () => ({ user: null });
 const useClerk = () => ({ signOut: () => {} });
-import { selectedAgentChatIdAtom, selectedChatIsRemoteAtom, previousAgentChatIdAtom, selectedDraftIdAtom, showNewChatFormAtom, agentsMobileViewModeAtom, agentsPreviewSidebarOpenAtom, agentsSidebarOpenAtom, agentsSubChatsSidebarModeAtom, agentsSubChatsSidebarWidthAtom } from "../atoms";
+import { selectedAgentChatIdAtom, selectedChatIsRemoteAtom, previousAgentChatIdAtom, selectedDraftIdAtom, showNewChatFormAtom, agentsMobileViewModeAtom, agentsPreviewSidebarOpenAtom, agentsSidebarOpenAtom, agentsSubChatsSidebarModeAtom, agentsSubChatsSidebarWidthAtom, selectedProjectAtom } from "../atoms";
 import { selectedTeamIdAtom, agentsQuickSwitchOpenAtom, agentsQuickSwitchSelectedIndexAtom, subChatsQuickSwitchOpenAtom, subChatsQuickSwitchSelectedIndexAtom, ctrlTabTargetAtom, betaKanbanEnabledAtom, chatSourceModeAtom } from "../../../lib/atoms";
 import { NewChatForm } from "../main/new-chat-form";
 import { KanbanView } from "../../kanban";
@@ -36,8 +37,87 @@ import { AlignJustify } from "lucide-solid";
 import { AgentsQuickSwitchDialog } from "../components/agents-quick-switch-dialog";
 import { SubChatsQuickSwitchDialog } from "../components/subchats-quick-switch-dialog";
 import { isDesktopApp } from "../../../lib/utils/platform";
+import { Kbd } from "../../../components/ui/kbd";
+import { cn } from "../../../lib/utils";
+import { createShortcut, useKeyDownList } from "@solid-primitives/keyboard";
 // Desktop mock
 const useIsAdmin = () => false;
+
+type CmdOverlayItem = {
+  id: string;
+  label: string;
+  subLabel?: string | null;
+  isActive?: boolean;
+};
+
+function CmdKeymapOverlay(props: {
+  open: boolean;
+  sessions: CmdOverlayItem[];
+  tabs: CmdOverlayItem[];
+  worktrees: CmdOverlayItem[];
+}) {
+  const renderKeyHint = (modifiers: string[], index: number) => (
+    <div class="flex items-center gap-1 text-[11px] text-muted-foreground">
+      <For each={modifiers}>{(modifier) => <Kbd>{modifier}</Kbd>}</For>
+      <Kbd>{index + 1}</Kbd>
+    </div>
+  );
+
+  const renderSection = (title: string, items: CmdOverlayItem[], modifiers: string[], emptyLabel: string) => (
+    <div class="space-y-2">
+      <div class="text-[11px] uppercase tracking-[0.2em] text-muted-foreground/70">
+        {title}
+      </div>
+      <div class="space-y-1">
+        <Show when={items.length > 0} fallback={
+          <div class="text-xs text-muted-foreground/60 py-2">{emptyLabel}</div>
+        }>
+          <For each={items}>{(item, index) => (
+            <div class={cn(
+              "flex items-center justify-between gap-2 rounded-md px-2.5 py-2 border border-transparent",
+              item.isActive ? "bg-foreground/5 border-border/60" : "bg-muted/40"
+            )}>
+              <div class="min-w-0">
+                <div class={cn("text-sm truncate", item.isActive ? "text-foreground" : "text-muted-foreground")}>\
+                  {item.label}
+                </div>
+                <Show when={item.subLabel}>
+                  <div class="text-xs text-muted-foreground/70 truncate">{item.subLabel}</div>
+                </Show>
+              </div>
+              {renderKeyHint(modifiers, index())}
+            </div>
+          )}</For>
+        </Show>
+      </div>
+    </div>
+  );
+
+  return (
+    <Show when={props.open}>
+      <Portal>
+        <div class="fixed inset-0 z-[70]">
+          <div class="absolute inset-0 bg-background/40 backdrop-blur-sm" />
+          <div class="absolute left-1/2 top-16 w-[720px] max-w-[calc(100vw-32px)] -translate-x-1/2 rounded-xl border border-border/60 bg-background/90 shadow-[0_20px_50px_rgba(0,0,0,0.25)]">
+            <div class="flex items-center justify-between px-4 pt-4">
+              <div class="text-sm font-medium text-foreground">Command Navigation</div>
+              <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Hold</span>
+                <Kbd>Cmd</Kbd>
+                <span>then press a number</span>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 gap-4 p-4 md:grid-cols-3">
+              {renderSection("Worktrees", props.worktrees, ["Cmd", "Opt"], "No worktrees")}
+              {renderSection("Sessions", props.sessions, ["Cmd"], "No sessions")}
+              {renderSection("Tabs", props.tabs, ["Cmd", "Shift"], "No tabs")}
+            </div>
+          </div>
+        </div>
+      </Portal>
+    </Show>
+  );
+}
 // Main Component
 export function AgentsContent() {
 	const [selectedChatId, setSelectedChatId] = selectedAgentChatIdAtom;
@@ -48,6 +128,7 @@ export function AgentsContent() {
 	const [showNewChatForm] = showNewChatFormAtom;
 	const [betaKanbanEnabled] = betaKanbanEnabledAtom;
 	const [selectedTeamId] = selectedTeamIdAtom;
+	const [selectedProject, setSelectedProject] = selectedProjectAtom;
 	const [sidebarOpen, setSidebarOpen] = agentsSidebarOpenAtom;
 	const [previewSidebarOpen, setPreviewSidebarOpen] = agentsPreviewSidebarOpenAtom;
 	const [mobileViewMode, setMobileViewMode] = agentsMobileViewModeAtom;
@@ -90,6 +171,8 @@ export function AgentsContent() {
 	// Refs to avoid effect re-running when dialog state changes (prevents keyup event loss)
 	const [subChatQuickSwitchOpenRef, setSubChatQuickSwitchOpenRef] = createSignal(subChatQuickSwitchOpen());
 	const [subChatQuickSwitchSelectedIndexRef, setSubChatQuickSwitchSelectedIndexRef] = createSignal(subChatQuickSwitchSelectedIndex());
+	const [cmdOverlayOpen, setCmdOverlayOpen] = createSignal(false);
+	const [cmdOverlayHeld, setCmdOverlayHeld] = createSignal(false);
 	createEffect(() => {
 		setSubChatQuickSwitchOpenRef(subChatQuickSwitchOpen());
 		setSubChatQuickSwitchSelectedIndexRef(subChatQuickSwitchSelectedIndex());
@@ -142,7 +225,7 @@ export function AgentsContent() {
 		queryFn: () => desktopRpc.chats.get({ id: selectedChatId()! }),
 		enabled: !!selectedChatId(),
 	}));
-	const chatData = createMemo(() => transformAgentChatFromRpc(chatDataQuery.data?.()));
+	const chatData = createMemo(() => transformAgentChatFromRpc(chatDataQuery.data));
 	// Track previous chat ID for navigation after archive
 	const [previousChatId, setPreviousChatId] = previousAgentChatIdAtom;
 	const [prevSelectedChatIdRef, setPrevSelectedChatIdRef] = createSignal<string | null>(null);
@@ -399,6 +482,98 @@ export function AgentsContent() {
 		}
 		return openSubChats.slice(0, 5);
 	});
+	const cmdOverlaySessions = createMemo<CmdOverlayItem[]>(() => {
+		const list = agentChats() ?? [];
+		return list.slice(0, 9).map((chat: any) => {
+			const projectPath = chat.projectId && projectsMap().get(chat.projectId)?.path;
+			return {
+				id: chat.id,
+				label: chat.name ?? "Untitled session",
+				subLabel: projectPath ?? chat.worktreePath ?? chat.projectPath ?? null,
+				isActive: chat.id === selectedChatId(),
+			};
+		});
+	});
+	const cmdOverlayTabs = createMemo<CmdOverlayItem[]>(() => {
+		if (!openSubChatIds || openSubChatIds.length === 0) return [];
+		return openSubChatIds
+			.slice(0, 9)
+			.map((id) => {
+				const subChat = allSubChats.find((entry) => entry.id === id);
+				if (!subChat) return null;
+				return {
+					id: subChat.id,
+					label: subChat.name ?? "Tab",
+					subLabel: subChat.mode ?? null,
+					isActive: subChat.id === activeSubChatId,
+				};
+			})
+			.filter((item): item is CmdOverlayItem => item !== null);
+	});
+	const cmdOverlayWorktrees = createMemo<CmdOverlayItem[]>(() => {
+		const list = projects() ?? [];
+		return list.slice(0, 9).map((project: any) => ({
+			id: project.id,
+			label: project.name ?? project.path ?? "Worktree",
+			subLabel: project.path ?? null,
+			isActive: project.id === selectedProject()?.id,
+		}));
+	});
+	const selectSessionByIndex = (index: number) => {
+		const target = cmdOverlaySessions()[index];
+		if (!target) return;
+		setSelectedChatId(target.id);
+		setSelectedChatIsRemote(false);
+		setChatSourceMode("local");
+		setCmdOverlayOpen(false);
+	};
+	const selectTabByIndex = (index: number) => {
+		const target = cmdOverlayTabs()[index];
+		if (!target) return;
+		const store = useAgentSubChatStore.getState();
+		store.addToOpenSubChats(target.id);
+		store.setActiveSubChat(target.id);
+		setCmdOverlayOpen(false);
+	};
+	const selectWorktreeByIndex = (index: number) => {
+		const target = cmdOverlayWorktrees()[index];
+		if (!target) return;
+		const project = (projects() ?? []).find((entry: any) => entry.id === target.id);
+		if (!project) return;
+		setSelectedProject(project);
+		setSelectedChatId(null);
+		setSelectedChatIsRemote(false);
+		setChatSourceMode("local");
+		setCmdOverlayOpen(false);
+	};
+	const pressedKeys = useKeyDownList();
+	createEffect(() => {
+		const hasMeta = pressedKeys().includes("META");
+		if (hasMeta && !cmdOverlayHeld()) {
+			setCmdOverlayHeld(true);
+			setCmdOverlayOpen(true);
+			return;
+		}
+		if (!hasMeta && cmdOverlayHeld()) {
+			setCmdOverlayHeld(false);
+			setCmdOverlayOpen(false);
+		}
+	});
+	for (let index = 0; index < 9; index += 1) {
+		const key = String(index + 1);
+		createShortcut(["META", key], (event) => {
+			if (event?.ctrlKey) return;
+			selectSessionByIndex(index);
+		});
+		createShortcut(["META", "SHIFT", key], (event) => {
+			if (event?.ctrlKey) return;
+			selectTabByIndex(index);
+		});
+		createShortcut(["META", "ALT", key], (event) => {
+			if (event?.ctrlKey) return;
+			selectWorktreeByIndex(index);
+		});
+	}
 	// Keyboard navigation: Quick switch between agents (sub-chats within workspace)
 	// Shortcut depends on ctrlTabTarget preference:
 	// - "workspaces" (default): Opt+Ctrl+Tab switches agents
@@ -527,16 +702,16 @@ export function AgentsContent() {
 				}
 			}
 		};
-		window.addEventListener("keydown", handleKeyDown);
-		window.addEventListener("keyup", handleKeyUp);
-		onCleanup(() => {
-			window.removeEventListener("keydown", handleKeyDown);
-			window.removeEventListener("keyup", handleKeyUp);
-			const timer = subChatHoldTimerRef();
-			if (timer) {
-				clearTimeout(timer);
-			}
-		});
+	window.addEventListener("keydown", handleKeyDown);
+	window.addEventListener("keyup", handleKeyUp);
+	onCleanup(() => {
+		window.removeEventListener("keydown", handleKeyDown);
+		window.removeEventListener("keyup", handleKeyUp);
+		const timer = subChatHoldTimerRef();
+		if (timer) {
+			clearTimeout(timer);
+		}
+	});
 	});
 	// Note: Cmd+E archive hotkey is handled in AgentsSidebar to share undo stack
 	const handleSignOut = async () => {
@@ -598,7 +773,7 @@ export function AgentsContent() {
           <AgentsSubChatsSidebar onClose={() => {
 		setShouldAnimateSubChatsSidebar(true);
 		setSubChatsSidebarMode("tabs");
-	}} isMobile={isMobile()} isSidebarOpen={sidebarOpen} onBackToChats={() => setSidebarOpen((prev) => !prev)} isLoading={isLoadingSubChats()} agentName={chatData()?.name} />
+	}} isMobile={isMobile()} isSidebarOpen={sidebarOpen()} onBackToChats={() => setSidebarOpen((prev) => !prev)} isLoading={isLoadingSubChats()} agentName={chatData()?.name} />
         </ResizableSidebar>
 
         {	/* Main content */}
@@ -637,8 +812,15 @@ export function AgentsContent() {
       { /* Quick-switch dialog - Agents (Opt+Ctrl+Tab) */}
       <AgentsQuickSwitchDialog isOpen={quickSwitchOpen()} chats={quickSwitchOpen() ? frozenRecentChatsRef() ?? [] : recentChats} selectedIndex={quickSwitchSelectedIndex()} projectsMap={projectsMap} onHover={setQuickSwitchSelectedIndex} />
 
-      { /* Quick-switch dialog - Sub-chats (Ctrl+Tab) */}
-      <SubChatsQuickSwitchDialog isOpen={subChatQuickSwitchOpen()} subChats={subChatQuickSwitchOpen() ? frozenSubChatsRef() ?? [] : recentSubChats} selectedIndex={subChatQuickSwitchSelectedIndex()} onHover={setSubChatQuickSwitchSelectedIndex} />
+	      { /* Quick-switch dialog - Sub-chats (Ctrl+Tab) */}
+	      <SubChatsQuickSwitchDialog isOpen={subChatQuickSwitchOpen()} subChats={subChatQuickSwitchOpen() ? frozenSubChatsRef() ?? [] : recentSubChats} selectedIndex={subChatQuickSwitchSelectedIndex()} onHover={setSubChatQuickSwitchSelectedIndex} />
+
+	      <CmdKeymapOverlay
+	        open={cmdOverlayOpen()}
+	        sessions={cmdOverlaySessions()}
+	        tabs={cmdOverlayTabs()}
+	        worktrees={cmdOverlayWorktrees()}
+	      />
 
 	      { /* Dev mode / Admin sandbox debugger */}
 	      <Show when={(process.env.NODE_ENV === "development" || isAdmin) && chatData()?.sandbox_id}>

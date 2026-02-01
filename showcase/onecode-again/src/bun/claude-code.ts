@@ -21,9 +21,9 @@ function generateId(): string {
 /**
  * Store OAuth token in database
  */
-function storeOAuthToken(oauthToken: string, setAsActive = true): string {
+async function storeOAuthToken(oauthToken: string, setAsActive = true): Promise<string> {
   const encodedToken = encodeToken(oauthToken);
-  const db = getDatabase();
+  const db = await getDatabase();
   const newId = generateId();
 
   // Store in multi-account table
@@ -89,7 +89,7 @@ export function createClaudeCodeHandlers() {
      * Check if user has Claude Code connected
      */
     claudeCodeGetIntegration: async () => {
-      const db = getDatabase();
+      const db = await getDatabase();
 
       // First try multi-account system
       const settings = db
@@ -200,7 +200,7 @@ export function createClaudeCodeHandlers() {
         throw new Error("No existing Claude token found. Run 'claude login' in terminal first.");
       }
 
-      storeOAuthToken(token);
+      await storeOAuthToken(token);
       console.log("[ClaudeCode] Token imported from system");
       return { success: true };
     },
@@ -209,7 +209,7 @@ export function createClaudeCodeHandlers() {
      * Get decrypted OAuth token
      */
     claudeCodeGetToken: async () => {
-      const db = getDatabase();
+      const db = await getDatabase();
 
       // First try multi-account system
       const settings = db
@@ -260,7 +260,7 @@ export function createClaudeCodeHandlers() {
      * Disconnect - delete credentials
      */
     claudeCodeDisconnect: async () => {
-      const db = getDatabase();
+      const db = await getDatabase();
 
       // Get active account
       const settings = db

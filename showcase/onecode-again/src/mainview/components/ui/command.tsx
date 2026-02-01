@@ -1,4 +1,4 @@
-import { createContext, useContext, createSignal, createEffect, createMemo, createUniqueId, type JSX, splitProps, onMount, onCleanup } from "solid-js";
+import { createContext, useContext, createSignal, createEffect, createMemo, createUniqueId, type JSX, splitProps, onMount, onCleanup, Show } from "solid-js";
 import { cn } from "../../lib/utils";
 import { SearchIcon } from "./icons";
 import { overlayItem, overlaySeparator } from "../../lib/overlay-styles";
@@ -189,11 +189,11 @@ function CommandGroup(props: CommandGroupProps) {
 	const [local, others] = splitProps(props, ["class", "heading", "children", "ref"]);
 	return (
 		<div ref={local.ref} class={cn("overflow-hidden text-foreground", local.class)} {...others}>
-			{local.heading && (
+			<Show when={local.heading}>
 				<div class="py-1.5 px-1.5 mx-1 text-xs font-medium text-muted-foreground">
 					{local.heading}
 				</div>
-			)}
+			</Show>
 			{local.children}
 		</div>
 	);

@@ -90,8 +90,8 @@ export function AgentsLayout() {
 	createEffect(() => {
 		// No-op: Electrobun doesn't support setTrafficLightVisibility
 		// When sidebar is open, TrafficLights component handles visibility
-		if (!sidebarOpen) {
-			window.desktopApi.setTrafficLightVisibility(false);
+		if (!sidebarOpen()) {
+			window.desktopApi?.setTrafficLightVisibility(false);
 		}
 	});
 	const { setChatId } = useAgentSubChatStore();
@@ -137,8 +137,8 @@ export function AgentsLayout() {
 	};
 	// Initialize sub-chats when chat is selected
 	createEffect(() => {
-		if (selectedChatId) {
-			setChatId(selectedChatId);
+		if (selectedChatId()) {
+			setChatId(selectedChatId());
 		} else {
 			setChatId(null);
 		}
@@ -166,14 +166,14 @@ export function AgentsLayout() {
 	return <TooltipProvider delayDuration={300}>
       {	/* Global queue processor - handles message queues for all sub-chats */}
       <QueueProcessor />
-      <AgentsSettingsDialog isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <AgentsSettingsDialog isOpen={settingsOpen()} onClose={() => setSettingsOpen(false)} />
       <ClaudeLoginModal />
       <div class="flex flex-col w-full h-full relative overflow-hidden bg-background select-none">
         { /* Windows Title Bar (only shown on Windows with frameless window) */}
         <WindowsTitleBar />
         <div class="flex flex-1 overflow-hidden">
           { /* Left Sidebar (Agents) */}
-          <ResizableSidebar isOpen={!isMobile && sidebarOpen} onClose={handleCloseSidebar} widthAtom={agentsSidebarWidthAtom} minWidth={SIDEBAR_MIN_WIDTH} maxWidth={SIDEBAR_MAX_WIDTH} side="left" closeHotkey={SIDEBAR_CLOSE_HOTKEY} animationDuration={SIDEBAR_ANIMATION_DURATION} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="overflow-hidden bg-background border-r" style={{ "border-right-width": "0.5px" }}>
+          <ResizableSidebar isOpen={!isMobile && sidebarOpen()} onClose={handleCloseSidebar} widthAtom={agentsSidebarWidthAtom} minWidth={SIDEBAR_MIN_WIDTH} maxWidth={SIDEBAR_MAX_WIDTH} side="left" closeHotkey={SIDEBAR_CLOSE_HOTKEY} animationDuration={SIDEBAR_ANIMATION_DURATION} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="overflow-hidden bg-background border-r" style={{ "border-right-width": "0.5px" }}>
           <AgentsSidebar desktopUser={desktopUser} onSignOut={handleSignOut} onToggleSidebar={handleCloseSidebar} />
         </ResizableSidebar>
 

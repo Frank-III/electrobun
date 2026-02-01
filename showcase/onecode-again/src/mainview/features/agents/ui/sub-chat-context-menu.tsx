@@ -1,5 +1,5 @@
 import { desktopRpc } from "../../../lib/desktop-rpc";
-import { createMemo, Show } from "solid-js";
+import { createMemo, Show, mergeProps, splitProps } from "solid-js";
 import { ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "../../../components/ui/context-menu";
 import { Kbd } from "../../../components/ui/kbd";
 import { isMac } from "../../../lib/utils";
@@ -41,35 +41,37 @@ interface SubChatContextMenuProps {
 	/** Parent chat ID for export functionality */
 	chatId?: string | null;
 }
-export function SubChatContextMenu({ subChat, isPinned, onTogglePin, onRename, onArchive, onArchiveOthers, onArchiveAllBelow, isOnlyChat, currentIndex, totalCount, showCloseTabOptions = false, onCloseTab, onCloseOtherTabs, onCloseTabsToRight, visualIndex = 0, hasTabsToRight = false, canCloseOtherTabs = false, chatId }: SubChatContextMenuProps) {
+export function SubChatContextMenu(props: SubChatContextMenuProps) {
+	const merged = mergeProps({ showCloseTabOptions: false, visualIndex: 0, hasTabsToRight: false, canCloseOtherTabs: false }, props);
+	const [local] = splitProps(merged, ["subChat", "isPinned", "onTogglePin", "onRename", "onArchive", "onArchiveOthers", "onArchiveAllBelow", "isOnlyChat", "currentIndex", "totalCount", "showCloseTabOptions", "onCloseTab", "onCloseOtherTabs", "onCloseTabsToRight", "visualIndex", "hasTabsToRight", "canCloseOtherTabs", "chatId"]);
 	const closeTabShortcut = useCloseTabShortcut();
 	const handleExport = (format: ExportFormat) => {
-		if (!chatId) return;
+		if (!local.chatId) return;
 		exportChat({
-			chatId,
-			subChatId: subChat.id,
+			chatId: local.chatId,
+			subChatId: local.subChat.id,
 			format
 		});
 	};
 	const handleCopy = (format: ExportFormat) => {
-		if (!chatId) return;
+		if (!local.chatId) return;
 		copyChat({
-			chatId,
-			subChatId: subChat.id,
+			chatId: local.chatId,
+			subChatId: local.subChat.id,
 			format
 		});
 	};
 	return <ContextMenuContent class="w-48">
-      <ContextMenuItem onClick={() => onTogglePin(subChat.id)}>
-        {isPinned ? "Unpin chat" : "Pin chat"}
-      </ContextMenuItem>
-      <ContextMenuItem onClick={() => onRename(subChat)}>
-        Rename chat
-      </ContextMenuItem>
-      <Show when={chatId}>
-          <ContextMenuSub>
-            <ContextMenuSubTrigger>Export chat</ContextMenuSubTrigger>
-            <ContextMenuSubContent sideOffset={6} alignOffset={-4}>
+	      <ContextMenuItem onClick={() => local.onTogglePin(local.subChat.id)}>
+	        {local.isPinned ? "Unpin chat" : "Pin chat"}
+	      </ContextMenuItem>
+	      <ContextMenuItem onClick={() => local.onRename(local.subChat)}>
+	        Rename chat
+	      </ContextMenuItem>
+	      <Show when={local.chatId}>
+	          <ContextMenuSub>
+	            <ContextMenuSubTrigger>Export chat</ContextMenuSubTrigger>
+	            <ContextMenuSubContent sideOffset={6} alignOffset={-4}>
               <ContextMenuItem onClick={() => handleExport("markdown")}>
                 Download as Markdown
               </ContextMenuItem>
@@ -92,39 +94,39 @@ export function SubChatContextMenu({ subChat, isPinned, onTogglePin, onRename, o
             </ContextMenuSubContent>
           </ContextMenuSub>
         </Show>
-      <Show when={isDesktopApp() && chatId}>
-          <ContextMenuItem onClick={() => openInNewWindow(chatId!, subChat.id)}>
-            Open in new window
-          </ContextMenuItem>
-        </Show>
+	      <Show when={isDesktopApp() && local.chatId}>
+	          <ContextMenuItem onClick={() => openInNewWindow(local.chatId!, local.subChat.id)}>
+	            Open in new window
+	          </ContextMenuItem>
+	        </Show>
       <ContextMenuSeparator />
 
-{showCloseTabOptions ? <>
-          <ContextMenuItem onClick={() => onCloseTab?.(subChat.id)} class="justify-between" disabled={isOnlyChat}>
-            Close chat
-            <Show when={!isOnlyChat}>
-              <Kbd>{closeTabShortcut}</Kbd>
-            </Show>
-          </ContextMenuItem>
-          <ContextMenuItem onClick={() => onCloseOtherTabs?.(subChat.id)} disabled={!canCloseOtherTabs}>
-            Close other chats
-          </ContextMenuItem>
-          <ContextMenuItem onClick={() => onCloseTabsToRight?.(subChat.id, visualIndex)} disabled={!hasTabsToRight}>
-            Close chats to the right
-          </ContextMenuItem>
-        </> : <>
-          <ContextMenuItem onClick={() => onArchive(subChat.id)} class="justify-between" disabled={isOnlyChat}>
-            Archive chat
-            <Show when={!isOnlyChat}>
-              <Kbd>{closeTabShortcut}</Kbd>
-            </Show>
-          </ContextMenuItem>
-          <ContextMenuItem onClick={() => onArchiveAllBelow?.(subChat.id)} disabled={currentIndex === undefined || currentIndex >= (totalCount || 0) - 1}>
-            Archive chats below
-          </ContextMenuItem>
-          <ContextMenuItem onClick={() => onArchiveOthers(subChat.id)} disabled={isOnlyChat}>
-            Archive other chats
-          </ContextMenuItem>
+ {local.showCloseTabOptions ? <>
+	      <ContextMenuItem onClick={() => local.onCloseTab?.(local.subChat.id)} class="justify-between" disabled={local.isOnlyChat}>
+	        Close chat
+	        <Show when={!local.isOnlyChat}>
+	          <Kbd>{closeTabShortcut}</Kbd>
+	        </Show>
+	      </ContextMenuItem>
+	      <ContextMenuItem onClick={() => local.onCloseOtherTabs?.(local.subChat.id)} disabled={!local.canCloseOtherTabs}>
+	        Close other chats
+	      </ContextMenuItem>
+	      <ContextMenuItem onClick={() => local.onCloseTabsToRight?.(local.subChat.id, local.visualIndex)} disabled={!local.hasTabsToRight}>
+	        Close chats to the right
+	      </ContextMenuItem>
+	    </> : <>
+	      <ContextMenuItem onClick={() => local.onArchive(local.subChat.id)} class="justify-between" disabled={local.isOnlyChat}>
+	        Archive chat
+	        <Show when={!local.isOnlyChat}>
+	          <Kbd>{closeTabShortcut}</Kbd>
+	        </Show>
+	      </ContextMenuItem>
+	      <ContextMenuItem onClick={() => local.onArchiveAllBelow?.(local.subChat.id)} disabled={local.currentIndex === undefined || local.currentIndex >= (local.totalCount || 0) - 1}>
+	        Archive chats below
+	      </ContextMenuItem>
+	      <ContextMenuItem onClick={() => local.onArchiveOthers(local.subChat.id)} disabled={local.isOnlyChat}>
+	        Archive other chats
+	      </ContextMenuItem>
         </>}
     </ContextMenuContent>;
 }

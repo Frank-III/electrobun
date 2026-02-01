@@ -79,11 +79,15 @@ export function AgentTaskTool(props: AgentTaskToolProps) {
         <div class="flex-1 min-w-0 flex items-center gap-1">
           <div class="text-xs flex items-center gap-1.5 min-w-0">
             { /* Title with shimmer effect when running */}
-            {isPending ? <TextShimmer as="span" duration={1.2} class="font-medium whitespace-nowrap flex-shrink-0">
+            <Show when={isPending} fallback={
+              <span class="font-medium whitespace-nowrap flex-shrink-0 text-muted-foreground">
                 {getTitle()}
-              </TextShimmer> : <span class="font-medium whitespace-nowrap flex-shrink-0 text-muted-foreground">
+              </span>
+            }>
+              <TextShimmer as="span" duration={1.2} class="font-medium whitespace-nowrap flex-shrink-0">
                 {getTitle()}
-              </span>}
+              </TextShimmer>
+            </Show>
             <Show when={subtitle}>
               <span class="text-muted-foreground/60 truncate">
                 {subtitle}

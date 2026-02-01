@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
+import { For } from "solid-js";
 import { useTheme } from "../../lib/hooks/use-theme";
 import { fullThemeDataAtom } from "@/lib/atoms";
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar";
@@ -89,8 +90,20 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
 	const activeTerminalId = createMemo(() => store.activeTerminalIdByChatId[chatId] ?? null);
 	// Get the active terminal instance
 	const activeTerminal = createMemo(() => terminals().find((t) => t.id === activeTerminalId()) || null);
+	const renderTerminalStack = () => (
+		<div class="h-full relative">
+			<For each={terminals()}>{(terminal) => {
+				const isActive = () => terminal.id === activeTerminalId();
+				return (
+					<div class="absolute inset-0" classList={{ "opacity-0 pointer-events-none": !isActive(), "opacity-100": isActive() }}>
+						<Terminal paneId={terminal.paneId} cwd={cwd} initialCwd={cwd} isActive={isActive()} />
+					</div>
+				);
+			}}</For>
+		</div>
+	);
 	// Kill terminal session on backend
-	const killTerminal = (paneId: string) => desktopRpc.terminal.kill.mutate({ paneId });
+const killTerminal = (paneId: string) => desktopRpc.ghosttyTabs.close.mutate({ tabId: paneId });
 	// Create a new terminal - stable callback
 	const createTerminal = () => {
 		const currentChatId = chatId;
@@ -160,7 +173,7 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
 	const closeSidebar = () => {
 		setIsOpen(false);
 	};
-	// Delay terminal rendering until animation completes to avoid xterm.js sizing issues
+	// Delay terminal rendering until animation completes to avoid resize jitter
 	const [canRenderTerminal, setCanRenderTerminal] = createSignal(false);
 	let wasOpenRef = false;
 	createEffect(() => {
@@ -223,16 +236,16 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
           </div>
         </div>
 
-        { /* Terminal Content */}
-        <div class="flex-1 min-h-0 min-w-0 overflow-hidden" style={{ "background-color": terminalBg() }}>
-          <Show when={activeTerminal() && canRenderTerminal()} fallback={<div class="flex items-center justify-center h-full text-muted-foreground text-sm">
-              {!canRenderTerminal() ? "" : "No terminal open"}
-            </div>}>
-            <div class="h-full">
-              <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} initialCwd={cwd} />
-            </div>
-          </Show>
-        </div>
+		{ /* Terminal Content */}
+		<div class="flex-1 min-h-0 min-w-0 overflow-hidden" style={{ "background-color": terminalBg() }}>
+		  <Show when={activeTerminal() && canRenderTerminal()} fallback={<div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+			  {!canRenderTerminal() ? "" : "No terminal open"}
+			</div>}>
+			<div class="h-full">
+			  {renderTerminalStack()}
+			</div>
+		  </Show>
+		</div>
       </div>;
 	}
 	// Desktop sidebar layout
@@ -264,16 +277,16 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
           </Show>
         </div>
 
-        { /* Terminal Content */}
-        <div class="flex-1 min-h-0 min-w-0 overflow-hidden" style={{ "background-color": terminalBg() }}>
-          <Show when={activeTerminal() && canRenderTerminal()} fallback={<div class="flex items-center justify-center h-full text-muted-foreground text-sm">
-              {!canRenderTerminal() ? "" : "No terminal open"}
-            </div>}>
-            <div class="h-full">
-              <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} initialCwd={cwd} />
-            </div>
-          </Show>
-        </div>
+		{ /* Terminal Content */}
+		<div class="flex-1 min-h-0 min-w-0 overflow-hidden" style={{ "background-color": terminalBg() }}>
+		  <Show when={activeTerminal() && canRenderTerminal()} fallback={<div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+			  {!canRenderTerminal() ? "" : "No terminal open"}
+			</div>}>
+			<div class="h-full">
+			  {renderTerminalStack()}
+			</div>
+		  </Show>
+		</div>
       </div>
     </ResizableSidebar>;
 }

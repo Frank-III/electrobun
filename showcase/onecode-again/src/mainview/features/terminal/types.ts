@@ -15,6 +15,7 @@ export interface TerminalProps {
   paneId: string
   cwd: string
   initialCwd?: string
+  isActive?: boolean
 }
 
 export interface TerminalStreamEvent {

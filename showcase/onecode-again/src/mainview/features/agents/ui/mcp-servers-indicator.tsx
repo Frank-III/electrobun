@@ -145,11 +145,11 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
 				break;
 		}
 	};
-	return <Popover open={isOpen} onOpenChange={setIsOpen}>
+	return <Popover open={isOpen()} onOpenChange={setIsOpen}>
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" class="h-6 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors rounded-md" aria-label="MCP Servers" aria-haspopup="dialog" aria-expanded={isOpen}>
+            <Button variant="ghost" size="sm" class="h-6 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors rounded-md" aria-label="MCP Servers" aria-haspopup="dialog" aria-expanded={isOpen()}>
               <OriginalMCPIcon class="h-3.5 w-3.5" aria-hidden="true" />
               <span>{connectedCount} MCP</span>
             </Button>

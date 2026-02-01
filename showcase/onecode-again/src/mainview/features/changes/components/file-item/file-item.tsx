@@ -225,33 +225,33 @@ export function FileItem(props: FileItemProps) {
 						Open in Editor
 					</ContextMenuItem>
 
-					<Show when={onStage || onUnstage || onDiscard}>
+					<Show when={local.onStage || local.onUnstage || local.onDiscard}>
 						<ContextMenuSeparator />
 					</Show>
 
-					<Show when={onStage}>
-						<ContextMenuItem onClick={onStage} disabled={isActioning}>
+					<Show when={local.onStage}>
+						<ContextMenuItem onClick={local.onStage} disabled={local.isActioning}>
 							<Plus class="mr-2 size-4" />
 							Stage
 						</ContextMenuItem>
 					</Show>
 
-					<Show when={onUnstage}>
-						<ContextMenuItem onClick={onUnstage} disabled={isActioning}>
+					<Show when={local.onUnstage}>
+						<ContextMenuItem onClick={local.onUnstage} disabled={local.isActioning}>
 							<Minus class="mr-2 size-4" />
 							Unstage
 						</ContextMenuItem>
 					</Show>
 
-					<Show when={onDiscard}>
-						<ContextMenuItem onClick={handleDiscardClick} disabled={isActioning} class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
+					<Show when={local.onDiscard}>
+						<ContextMenuItem onClick={handleDiscardClick} disabled={local.isActioning} class="data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
 							{discardLabel}
 						</ContextMenuItem>
 					</Show>
 				</ContextMenuContent>
 			</ContextMenu>
 
-			<AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+			<AlertDialog open={showDiscardDialog()} onOpenChange={setShowDiscardDialog}>
 				<AlertDialogContent class="w-[340px]">
 					<AlertDialogHeader>
 						<AlertDialogTitle>

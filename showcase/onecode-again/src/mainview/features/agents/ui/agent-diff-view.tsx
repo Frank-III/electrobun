@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, ErrorBoundary, For, onCleanup, Show, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, ErrorBoundary, For, onCleanup, Show, splitProps, type JSX } from "solid-js";
 // Solid-compatible stubs for React APIs used in this file (no actual deferral; can be refined later)
 function useDeferredValue<T>(value: T | (() => T)): T | (() => T) {
 	// If it's an accessor (function), return a memo so consumers stay reactive
@@ -545,21 +545,30 @@ export interface AgentDiffViewRef {
 // DEBUG: Render counter
 let renderCount = 0;
 export function AgentDiffView(props: AgentDiffViewProps) {
-	const { chatId, sandboxId, worktreePath, repository, onStatsChange, initialDiff, initialParsedFiles, prefetchedFileContents, showFooter = true, onCreatePr: externalOnCreatePr, isCreatingPr: externalIsCreatingPr, isMobile = false, onClose, onCollapsedStateChange, onSelectNextFile, onViewedCountChange, initialSelectedFile } = props;
+	const [local, _rest] = splitProps(props, [
+		"chatId", "sandboxId", "worktreePath", "repository", "onStatsChange",
+		"initialDiff", "initialParsedFiles", "prefetchedFileContents", "showFooter",
+		"onCreatePr", "isCreatingPr", "isMobile", "onClose", "onCollapsedStateChange",
+		"onSelectNextFile", "onViewedCountChange", "initialSelectedFile"
+	]);
+	const showFooter = () => local.showFooter ?? true;
+	const externalOnCreatePr = () => local.onCreatePr;
+	const externalIsCreatingPr = () => local.isCreatingPr;
+	const isMobile = () => local.isMobile ?? false;
 	// DEBUG: Log renders
 	renderCount++;
 	if (DEBUG_AGENT_DIFF_VIEW) console.log(`[AgentDiffView] RENDER #${renderCount}`, {
-		chatId,
-		sandboxId,
-		initialDiff: initialDiff?.slice(0, 50),
-		initialParsedFiles: initialParsedFiles?.length
+		chatId: local.chatId,
+		sandboxId: local.sandboxId,
+		initialDiff: local.initialDiff?.slice(0, 50),
+		initialParsedFiles: local.initialParsedFiles?.length
 	});
 	const { resolvedTheme } = useTheme();
 	const isHydrated = useIsHydrated();
-	const [diff, setDiff] = createSignal(initialDiff ?? null);
+	const [diff, setDiff] = createSignal(local.initialDiff ?? null);
 	// Loading if initialDiff not provided, or if it's null AND no parsed files array provided
 	// Note: empty array [] means "no changes", null/undefined means "still loading"
-	const [isLoadingDiff, setIsLoadingDiff] = createSignal(initialDiff === undefined || initialDiff === null && !Array.isArray(initialParsedFiles));
+	const [isLoadingDiff, setIsLoadingDiff] = createSignal(local.initialDiff === undefined || local.initialDiff === null && !Array.isArray(local.initialParsedFiles));
 	const [diffError, setDiffError] = createSignal<string | null>(null);
 	// Use local state for collapsed - faster than atom for frequent updates
 	const [collapsedByFileKey, setCollapsedByFileKey] = createSignal<Record<string, boolean>>({});
@@ -571,7 +580,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 		setDiscardFilePath(filePath);
 	};
 	// Viewed files state for tracking reviewed files (GitHub-style)
-	const [viewedFiles, setViewedFiles] = viewedFilesAtomFamily(chatId);
+	const [viewedFiles, setViewedFiles] = viewedFilesAtomFamily(local.chatId);
 	// Undo stack for viewed actions (stores previous viewedFiles states)
 	const [viewedUndoStackRef, setViewedUndoStackRef] = createSignal<Array<{
 		fileKey: string;
@@ -586,12 +595,12 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 	};
 	// Pre-fetched file contents for expand functionality
 	// Use prefetched data if available, otherwise start empty
-	const [fileContents, setFileContents] = createSignal<Record<string, string>>(prefetchedFileContents ?? {});
+	const [fileContents, setFileContents] = createSignal<Record<string, string>>(local.prefetchedFileContents ?? {});
 	const [isLoadingFileContents, setIsLoadingFileContents] = createSignal(false);
 	// Sync with prefetched file contents when they arrive after mount
 	createEffect(() => {
-		if (prefetchedFileContents && Object.keys(prefetchedFileContents).length > 0) {
-			setFileContents(prefetchedFileContents);
+		if (local.prefetchedFileContents && Object.keys(local.prefetchedFileContents).length > 0) {
+			setFileContents(local.prefetchedFileContents);
 		}
 	});
 	// Focused file for scroll-to functionality

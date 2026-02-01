@@ -192,6 +192,17 @@ export interface AppRPC {
       installUpdate: { params: {}; response: { success: boolean } };
       clipboardWrite: { params: { text: string }; response: void };
       clipboardRead: { params: {}; response: { text: string } };
+      ghosttyTabsCreate: {
+        params: { tabId: string; frame: GhosttyTabFrame; cwd?: string; command?: string };
+        response: { surfaceId: number };
+      };
+      ghosttyTabsFocus: { params: { tabId: string }; response: { success: boolean } };
+      ghosttyTabsResize: { params: { tabId: string; frame: GhosttyTabFrame }; response: { success: boolean } };
+      ghosttyTabsClose: { params: { tabId: string }; response: { success: boolean } };
+      ghosttyTabsList: {
+        params: {};
+        response: { tabs: { tabId: string; surfaceId: number }[]; activeTabId: string | null };
+      };
       filesSearch: {
         params: { projectPath: string; query?: string; limit?: number };
         response: FileEntryResult[];

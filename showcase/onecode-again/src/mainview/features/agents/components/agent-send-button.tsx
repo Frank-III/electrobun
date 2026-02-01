@@ -42,8 +42,17 @@ interface AgentSendButtonProps {
 	onVoiceMouseLeave?: () => void;
 }
 export function AgentSendButton(props: AgentSendButtonProps) {
-	const { isStreaming = false, isSubmitting = false, disabled = false, onClick, onStop, size = "sm", ariaLabel, mode = "agent", hasContent = false, showVoiceInput = false, isRecording = false, isTranscribing = false, onVoiceMouseDown, onVoiceMouseUp, onVoiceMouseLeave } = props;
-	const cls = props.class ?? "";
+	const isStreaming = () => props.isStreaming ?? false;
+	const isSubmitting = () => props.isSubmitting ?? false;
+	const disabled = () => props.disabled ?? false;
+	const size = () => props.size ?? "sm";
+	const ariaLabel = () => props.ariaLabel;
+	const mode = () => props.mode ?? "agent";
+	const hasContent = () => props.hasContent ?? false;
+	const showVoiceInput = () => props.showVoiceInput ?? false;
+	const isRecording = () => props.isRecording ?? false;
+	const isTranscribing = () => props.isTranscribing ?? false;
+	const cls = () => props.class ?? "";
 	// Resolved hotkeys for stop-generation tooltip
 	const stopHotkey = useResolvedHotkeyDisplayWithAlt("stop-generation");
 	// Resolved hotkey for voice input
@@ -51,40 +60,40 @@ export function AgentSendButton(props: AgentSendButtonProps) {
 	// Note: Enter shortcut is now handled by input components directly
 	// When streaming AND user has typed content, show arrow to add to queue
 	// Otherwise during streaming, show stop button
-	const shouldShowQueueArrow = isStreaming && hasContent;
+	const shouldShowQueueArrow = () => isStreaming() && hasContent();
 	// Determine the actual click handler based on state
 	const handleClick = () => {
-		if (isStreaming && !hasContent && onStop) {
+		if (isStreaming() && !hasContent() && props.onStop) {
 			// Stop only when streaming and no content to queue
-			onStop();
+			props.onStop();
 		} else {
 			// Send (or add to queue if streaming)
-			onClick();
+			props.onClick();
 		}
 	};
 	// Check if currently in voice mode (showing mic/stop when no content)
-	const isVoiceMode = showVoiceInput && !isStreaming && !hasContent;
+	const isVoiceMode = () => showVoiceInput() && !isStreaming() && !hasContent();
 	// Determine if button should be disabled
 	// During streaming with content, enable the button for queue
 	// In voice mode, button should always be enabled (unless transcribing)
-	const isDisabled = isVoiceMode ? false : isStreaming ? false : disabled;
+	const isDisabled = () => isVoiceMode() ? false : isStreaming() ? false : disabled();
 	// Determine icon to show
 	const getIcon = () => {
 		// Voice input mode: show mic/stop when no content and not streaming
-		if (isVoiceMode) {
-			if (isTranscribing) {
+		if (isVoiceMode()) {
+			if (isTranscribing()) {
 				return <Loader2 class="size-4 animate-spin" />;
 			}
-			if (isRecording) {
+			if (isRecording()) {
 				// Show stop icon during recording
 				return <div class="w-2.5 h-2.5 bg-current rounded-[2px] flex-shrink-0 mx-auto" />;
 			}
 			return <MicrophoneIcon class="size-4" />;
 		}
-		if (isStreaming && !hasContent) {
+		if (isStreaming() && !hasContent()) {
 			return <div class="w-2.5 h-2.5 bg-current rounded-[2px] flex-shrink-0 mx-auto" />;
 		}
-		if (isSubmitting) {
+		if (isSubmitting()) {
 			return <IconSpinner class="size-4" />;
 		}
 		return <ArrowUp class="size-4" />;
@@ -92,15 +101,15 @@ export function AgentSendButton(props: AgentSendButtonProps) {
 	// Determine tooltip content
 	const getTooltipContent = () => {
 		// Voice input mode
-		if (isVoiceMode) {
-			if (isTranscribing) return "Transcribing...";
-			if (isRecording) return "Click to stop";
+		if (isVoiceMode()) {
+			if (isTranscribing()) return "Transcribing...";
+			if (isRecording()) return "Click to stop";
 			return <div class="flex flex-col items-start gap-0.5">
           <span>Voice input</span>
           <Show when={voiceHotkey}><span class="text-muted-foreground">{voiceHotkey}</span></Show>
         </div>;
 		}
-		if (isStreaming && !hasContent) return <span class="flex items-center gap-1">
+		if (isStreaming() && !hasContent()) return <span class="flex items-center gap-1">
           Stop
           <Show when={stopHotkey.primary}><Kbd class="ms-0.5">{stopHotkey.primary}</Kbd></Show>
           <Show when={stopHotkey.alt}><>
@@ -108,7 +117,7 @@ export function AgentSendButton(props: AgentSendButtonProps) {
               <Kbd class="-me-1">{stopHotkey.alt}</Kbd>
             </></Show>
         </span>;
-		if (isStreaming && hasContent) return <span class="flex items-center gap-1">
+		if (isStreaming() && hasContent()) return <span class="flex items-center gap-1">
           Add to queue
           <Kbd class="ms-0.5">
             <EnterIcon class="size-2.5 inline" />
@@ -120,7 +129,7 @@ export function AgentSendButton(props: AgentSendButtonProps) {
             <EnterIcon class="size-2.5 inline" />
           </Kbd>
         </span>;
-		if (isSubmitting) return "Generating...";
+		if (isSubmitting()) return "Generating...";
 		return <div class="flex flex-col items-start gap-0.5">
         <div class="flex items-center gap-1">
           <span>Send</span>
@@ -143,29 +152,29 @@ export function AgentSendButton(props: AgentSendButtonProps) {
 	};
 	// Determine aria-label
 	const getAriaLabel = () => {
-		if (ariaLabel) return ariaLabel;
-		if (isVoiceMode) {
-			if (isTranscribing) return "Transcribing...";
-			if (isRecording) return "Stop recording";
+		if (ariaLabel()) return ariaLabel();
+		if (isVoiceMode()) {
+			if (isTranscribing()) return "Transcribing...";
+			if (isRecording()) return "Stop recording";
 			return "Voice input";
 		}
-		if (isStreaming && !hasContent) return "Stop generation";
-		if (isStreaming && hasContent) return "Add to queue";
-		if (isSubmitting) return "Generating...";
+		if (isStreaming() && !hasContent()) return "Stop generation";
+		if (isStreaming() && hasContent()) return "Add to queue";
+		if (isSubmitting()) return "Generating...";
 		return "Send message";
 	};
 	// Apply glow effect when button is active and ready to send/queue
 	// Also apply for voice mode when not recording/transcribing
-	const shouldShowGlow = (!isStreaming && !isSubmitting && !disabled || shouldShowQueueArrow) && !isRecording;
-	const glowClass = shouldShowGlow ? "shadow-[0_0_0_2px_white,0_0_0_4px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_2px_#1a1a1a,0_0_0_4px_rgba(255,255,255,0.08)]" : undefined;
+	const shouldShowGlow = () => (!isStreaming() && !isSubmitting() && !disabled() || shouldShowQueueArrow()) && !isRecording();
+	const glowClass = () => shouldShowGlow() ? "shadow-[0_0_0_2px_white,0_0_0_4px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_2px_#1a1a1a,0_0_0_4px_rgba(255,255,255,0.08)]" : undefined;
 	// Mode-specific styling (agent=foreground, plan=orange)
 	// Recording state uses same styling as normal mode (wave indicator shows recording state)
-	const modeClass = mode === "plan" ? "!bg-plan-mode hover:!bg-plan-mode/90 !text-background !shadow-none" : "!bg-foreground hover:!bg-foreground/90 !text-background !shadow-none";
+	const modeClass = () => mode() === "plan" ? "!bg-plan-mode hover:!bg-plan-mode/90 !text-background !shadow-none" : "!bg-foreground hover:!bg-foreground/90 !text-background !shadow-none";
 	// Handle button interactions for voice mode
 	// Supports both hold-to-talk AND click-to-toggle
 	const handleMouseDown = () => {
-		if (isVoiceMode && !isRecording && onVoiceMouseDown) {
-			onVoiceMouseDown();
+		if (isVoiceMode() && !isRecording() && props.onVoiceMouseDown) {
+			props.onVoiceMouseDown();
 		}
 	};
 	const handleMouseUp = () => {
@@ -173,15 +182,15 @@ export function AgentSendButton(props: AgentSendButtonProps) {
 		// Click-to-toggle is handled in handleButtonClick
 	};
 	const handleMouseLeave = () => {
-		if (isVoiceMode && isRecording && onVoiceMouseLeave) {
-			onVoiceMouseLeave();
+		if (isVoiceMode() && isRecording() && props.onVoiceMouseLeave) {
+			props.onVoiceMouseLeave();
 		}
 	};
 	const handleButtonClick = () => {
 		// In voice mode: if recording, stop it; if not recording, start it
-		if (isVoiceMode) {
-			if (isRecording && onVoiceMouseUp) {
-				onVoiceMouseUp();
+		if (isVoiceMode()) {
+			if (isRecording() && props.onVoiceMouseUp) {
+				props.onVoiceMouseUp();
 			}
 			// Starting is handled by mouseDown
 			return;
@@ -189,10 +198,10 @@ export function AgentSendButton(props: AgentSendButtonProps) {
 		handleClick();
 	};
 	// Hide tooltip during recording so wave indicator is visible
-	const tooltipOpen = isRecording ? false : undefined;
-	return <Tooltip delayDuration={1e3} open={tooltipOpen}>
+	const tooltipOpen = () => isRecording() ? false : undefined;
+	return <Tooltip delayDuration={1e3} open={tooltipOpen()}>
       <TooltipTrigger asChild>
-        <Button size={size} class={`h-7 w-7 rounded-full transition-[background-color,transform,opacity] duration-150 ease-out active:scale-[0.97] flex items-center justify-center ${glowClass || ""} ${modeClass} ${cls}`} disabled={isDisabled || isTranscribing} type="button" onClick={handleButtonClick} onMouseDown={handleMouseDown} onMouseUp={handleMouseUp} onMouseLeave={handleMouseLeave} aria-label={getAriaLabel()}>
+        <Button size={size()} class={`h-7 w-7 rounded-full transition-[background-color,transform,opacity] duration-150 ease-out active:scale-[0.97] flex items-center justify-center ${glowClass() || ""} ${modeClass()} ${cls()}`} disabled={isDisabled() || isTranscribing()} type="button" onClick={handleButtonClick} onMouseDown={handleMouseDown} onMouseUp={handleMouseUp} onMouseLeave={handleMouseLeave} aria-label={getAriaLabel()}>
           {getIcon()}
         </Button>
       </TooltipTrigger>

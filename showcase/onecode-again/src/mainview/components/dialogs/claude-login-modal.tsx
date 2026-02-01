@@ -7,7 +7,7 @@
  * then use "Import existing token" in settings.
  */
 import { X } from "lucide-solid";
-import { createSignal, createEffect, Show } from "solid-js";
+import { createSignal, createEffect, Show, Switch, Match } from "solid-js";
 import { agentsLoginModalOpenAtom } from "../../lib/atoms";
 import { desktopRpc } from "../../lib/desktop-rpc";
 import { cn } from "../../lib/utils";
@@ -123,13 +123,14 @@ export function ClaudeLoginModal() {
                 (isImporting() || !hasSystemToken()) && "opacity-50 cursor-not-allowed"
               )}
             >
-              {isImporting() ? (
-                <IconSpinner class="h-4 w-4" />
-              ) : hasSystemToken() ? (
-                "Import existing token"
-              ) : (
-                "No token available"
-              )}
+              <Switch fallback="No token available">
+                <Match when={isImporting()}>
+                  <IconSpinner class="h-4 w-4" />
+                </Match>
+                <Match when={hasSystemToken()}>
+                  Import existing token
+                </Match>
+              </Switch>
             </button>
 
             <p class="text-xs text-muted-foreground text-center">

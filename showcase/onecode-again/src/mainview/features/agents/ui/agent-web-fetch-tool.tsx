@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, Show, splitProps } from "solid-js";
 import { GlobeIcon, IconSpinner, ExpandIcon, CollapseIcon } from "../../../components/ui/icons";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { getToolStatus } from "./agent-tool-registry";
@@ -8,13 +8,14 @@ interface AgentWebFetchToolProps {
 	part: any;
 	chatStatus?: string;
 }
-export function AgentWebFetchTool({ part, chatStatus }: AgentWebFetchToolProps) {
+export function AgentWebFetchTool(props: AgentWebFetchToolProps) {
+	const [local] = splitProps(props, ["part", "chatStatus"]);
 	const [isExpanded, setIsExpanded] = createSignal(false);
-	const { isPending, isError, isInterrupted } = getToolStatus(part, chatStatus);
-	const url = part.input?.url || "";
-	const result = part.output?.result || "";
-	const bytes = part.output?.bytes || 0;
-	const statusCode = part.output?.code;
+	const { isPending, isError, isInterrupted } = getToolStatus(local.part, local.chatStatus);
+	const url = local.part.input?.url || "";
+	const result = local.part.output?.result || "";
+	const bytes = local.part.output?.bytes || 0;
+	const statusCode = local.part.output?.code;
 	const isSuccess = statusCode === 200;
 	// Extract hostname for display
 	let hostname = "";
@@ -40,9 +41,11 @@ export function AgentWebFetchTool({ part, chatStatus }: AgentWebFetchToolProps) 
         <div class="flex items-center gap-1.5 text-xs truncate flex-1 min-w-0">
           <GlobeIcon class="w-3 h-3 flex-shrink-0 text-muted-foreground" />
           
-          {isPending ? <TextShimmer as="span" duration={1.2} class="text-xs text-muted-foreground">
+          <Show when={isPending} fallback={<span class="text-xs text-muted-foreground">Fetched</span>}>
+            <TextShimmer as="span" duration={1.2} class="text-xs text-muted-foreground">
               Fetching
-            </TextShimmer> : <span class="text-xs text-muted-foreground">Fetched</span>}
+            </TextShimmer>
+          </Show>
           
           <span class="truncate text-foreground">{hostname}</span>
         </div>
@@ -50,26 +53,34 @@ export function AgentWebFetchTool({ part, chatStatus }: AgentWebFetchToolProps) 
         { /* Status and expand button */}
         <div class="flex items-center gap-2 flex-shrink-0 ml-2">
           <div class="flex items-center gap-1.5 text-xs">
-            {isPending ? <IconSpinner class="w-3 h-3" /> : isError || !isSuccess ? <span class="text-destructive">
+            <Show when={isPending} fallback={<Show when={isError || !isSuccess} fallback={<span class="text-muted-foreground">
+              {formatBytes(bytes)}
+            </span>}>
+              <span class="text-destructive">
                 {statusCode ? `Error ${statusCode}` : "Failed"}
-              </span> : <span class="text-muted-foreground">
-                {formatBytes(bytes)}
-              </span>}
+              </span>
+            </Show>}>
+              <IconSpinner class="w-3 h-3" />
+            </Show>
           </div>
 
           { /* Expand/Collapse icon */}
-          {hasContent && !isPending && <div class="relative w-4 h-4">
+          <Show when={hasContent && !isPending}>
+            <div class="relative w-4 h-4">
               <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
               <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
-            </div>}
+            </div>
+          </Show>
         </div>
       </div>
 
       { /* Content - expandable */}
-      {hasContent && isExpanded() && <div class="border-t border-border max-h-[300px] overflow-y-auto">
+      <Show when={hasContent && isExpanded()}>
+        <div class="border-t border-border max-h-[300px] overflow-y-auto">
           <pre class="px-2.5 py-2 text-xs text-foreground whitespace-pre-wrap break-words font-mono">
             {result}
           </pre>
-        </div>}
+        </div>
+      </Show>
     </div>;
 }

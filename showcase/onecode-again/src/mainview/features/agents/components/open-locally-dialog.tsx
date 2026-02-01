@@ -164,12 +164,12 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 	};
 	// Handler: Select project from list
 	const handleSelectProject = () => {
-		if (!selectedProjectId || !remoteChat?.sandbox_id) return;
+		if (!selectedProjectId() || !remoteChat?.sandbox_id) return;
 		importMutation.mutate({
 			sandboxId: remoteChat.sandbox_id,
 			remoteChatId: remoteChat.id,
 			remoteSubChatId: remoteSubChatId ?? undefined,
-			projectId: selectedProjectId,
+			projectId: selectedProjectId()!,
 			chatName: remoteChat.name
 		});
 	};

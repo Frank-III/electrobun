@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { For, Show, splitProps } from "solid-js";
 import { Check } from "lucide-solid";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -25,8 +25,9 @@ const MODES = [
 		Icon: IconFullPage
 	}
 ];
-export function DiffViewModeSwitcher({ mode, onModeChange }: DiffViewModeSwitcherProps) {
-	const currentMode = MODES.find((m) => m.value === mode) ?? MODES[0];
+export function DiffViewModeSwitcher(props: DiffViewModeSwitcherProps) {
+	const [local] = splitProps(props, ["mode", "onModeChange"]);
+	const currentMode = MODES.find((m) => m.value === local.mode) ?? MODES[0];
 	const CurrentIcon = currentMode.Icon;
 	return <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -34,12 +35,16 @@ export function DiffViewModeSwitcher({ mode, onModeChange }: DiffViewModeSwitche
           <CurrentIcon class="size-4 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" class="min-w-[140px]">
-        {MODES.map(({ value, label, Icon }) => <DropdownMenuItem key={value} onClick={() => onModeChange(value)} class="flex items-center gap-2">
-            <Icon class="size-4 text-muted-foreground" />
-            <span class="flex-1">{label}</span>
-            <Show when={mode === value}><Check class="size-4 text-muted-foreground ml-auto" /></Show>
-          </DropdownMenuItem>)}
-      </DropdownMenuContent>
-    </DropdownMenu>;
+		<DropdownMenuContent align="start" class="min-w-[140px]">
+			<For each={MODES}>
+				{({ value, label, Icon }) => (
+					<DropdownMenuItem onClick={() => local.onModeChange(value)} class="flex items-center gap-2">
+						<Icon class="size-4 text-muted-foreground" />
+						<span class="flex-1">{label}</span>
+						<Show when={local.mode === value}><Check class="size-4 text-muted-foreground ml-auto" /></Show>
+					</DropdownMenuItem>
+				)}
+			</For>
+		</DropdownMenuContent>
+	</DropdownMenu>;
 }

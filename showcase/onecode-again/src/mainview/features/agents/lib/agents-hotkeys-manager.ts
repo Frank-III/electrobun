@@ -158,6 +158,9 @@ export function useAgentsHotkeys(
     if (!enabled) return
     // TODO: Use GlobalShortcut API in Bun: GlobalShortcut.register("CmdOrCtrl+N", handler)
 
+    // Guard for environments where desktopApi may not be available
+    if (!window.desktopApi?.onShortcutNewAgent) return
+
     const cleanup = window.desktopApi.onShortcutNewAgent(() => {
       console.log("[Hotkey] Cmd+N received via IPC, executing create-new-agent")
       handleHotkeyAction("create-new-agent")

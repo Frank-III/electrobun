@@ -1,4 +1,4 @@
-import { createSignal, createMemo } from "solid-js";
+import { createSignal, createMemo, For, Show, splitProps } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 import { ExternalLinkIcon } from "../../../components/ui/icons";
 import { cn } from "../../../lib/utils";
@@ -10,17 +10,18 @@ interface AgentWebSearchCollapsibleProps {
 	part: any;
 	chatStatus?: string;
 }
-export function AgentWebSearchCollapsible({ part, chatStatus }: AgentWebSearchCollapsibleProps) {
+export function AgentWebSearchCollapsible(props: AgentWebSearchCollapsibleProps) {
+	const [local] = splitProps(props, ["part", "chatStatus"]);
 	const [isExpanded, setIsExpanded] = createSignal(false);
-	const isPending = part.state !== "output-available" && part.state !== "output-error";
+	const isPending = local.part.state !== "output-available" && local.part.state !== "output-error";
 	// Include "submitted" status - this is when request was sent but streaming hasn't started yet
-	const isActivelyStreaming = chatStatus === "streaming" || chatStatus === "submitted";
+	const isActivelyStreaming = local.chatStatus === "streaming" || local.chatStatus === "submitted";
 	const isStreaming = isPending && isActivelyStreaming;
-	const query = part.input?.query || "";
+	const query = local.part.input?.query || "";
 	// Parse results from output
 	const results = createMemo(() => {
-		if (!part.output?.results) return [];
-		const rawResults = part.output.results;
+		if (!local.part.output?.results) return [];
+		const rawResults = local.part.output.results;
 		const allResults: SearchResult[] = [];
 		for (const result of rawResults) {
 			if (result.content && Array.isArray(result.content)) {
@@ -56,30 +57,36 @@ export function AgentWebSearchCollapsible({ part, chatStatus }: AgentWebSearchCo
                 {query.length > 40 ? query.slice(0, 37) + "..." : query}
               </span>
               { /* Result count */}
-              {!isStreaming && hasResults && <span class="text-muted-foreground/60 whitespace-nowrap flex-shrink-0">
+              <Show when={!isStreaming && hasResults}>
+                <span class="text-muted-foreground/60 whitespace-nowrap flex-shrink-0">
                   · {resultCount} {resultCount === 1 ? "result" : "results"}
-                </span>}
+                </span>
+              </Show>
               { /* Chevron - rotates when expanded, visible on hover when collapsed */}
-              {hasResults && !isPending && <ChevronRight class={cn("w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200 ease-out flex-shrink-0", isExpanded() && "rotate-90", !isExpanded() && "opacity-0 group-hover:opacity-100")} />}
+              <Show when={hasResults && !isPending}>
+                <ChevronRight class={cn("w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200 ease-out flex-shrink-0", isExpanded() && "rotate-90", !isExpanded() && "opacity-0 group-hover:opacity-100")} />
+              </Show>
             </div>
           </div>
         </div>
 
         { /* Results list - only show when expanded */}
-        {isExpanded() && hasResults && <div class="px-2 pb-1">
+        <Show when={isExpanded() && hasResults}>
+          <div class="px-2 pb-1">
             <div class="space-y-1">
-              {results.map((result, idx) => <a key={idx} href={result.url} target="_blank" rel="noopener noreferrer" class="flex items-start gap-1.5 px-2 py-1 rounded hover:bg-muted/50 transition-colors group/link">
-                  <ExternalLinkIcon class="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground group-hover/link:text-foreground transition-colors" />
-                  <div class="min-w-0 flex-1">
-                    <div class="text-xs text-foreground truncate">
-                      {result.title}
-                    </div>
-                    <div class="text-[10px] text-muted-foreground truncate">
-                      {result.url}
-                    </div>
+              <For each={results}>{(result) => <a href={result.url} target="_blank" rel="noopener noreferrer" class="flex items-start gap-1.5 px-2 py-1 rounded hover:bg-muted/50 transition-colors group/link">
+                <ExternalLinkIcon class="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground group-hover/link:text-foreground transition-colors" />
+                <div class="min-w-0 flex-1">
+                  <div class="text-xs text-foreground truncate">
+                    {result.title}
                   </div>
-                </a>)}
+                  <div class="text-[10px] text-muted-foreground truncate">
+                    {result.url}
+                  </div>
+                </div>
+              </a>}</For>
             </div>
-          </div>}
+          </div>
+        </Show>
       </div>;
 }

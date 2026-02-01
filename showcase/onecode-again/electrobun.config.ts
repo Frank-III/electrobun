@@ -19,6 +19,7 @@ export default {
       "src/mainview/index.html": "views/mainview/index.html",
       "dist/mainview/main.css": "views/mainview/main.css",
       "src/native/zig-out/lib/libelectrobun_vt.dylib": "native/zig-out/lib/libelectrobun_vt.dylib",
+      "src/bun/drizzle": "bun/drizzle",
     },
     mac: {
       bundleCEF: true,

@@ -30,13 +30,19 @@ const DEFAULT_ANIMATION_DURATION = 0;
 const EXTENDED_HOVER_AREA_WIDTH = 8;
 
 export function ResizableSidebar(props: ResizableSidebarProps) {
-	const { isOpen, onClose, minWidth = DEFAULT_MIN_WIDTH, maxWidth = DEFAULT_MAX_WIDTH, side, closeHotkey, animationDuration = DEFAULT_ANIMATION_DURATION, children, initialWidth = 0, exitWidth = 0, dataAttributes, disableClickToClose = false, showResizeTooltip = false, style } = props;
+	const minWidth = () => props.minWidth ?? DEFAULT_MIN_WIDTH;
+	const maxWidth = () => props.maxWidth ?? DEFAULT_MAX_WIDTH;
+	const animationDuration = () => props.animationDuration ?? DEFAULT_ANIMATION_DURATION;
+	const initialWidth = () => props.initialWidth ?? 0;
+	const exitWidth = () => props.exitWidth ?? 0;
+	const disableClickToClose = () => props.disableClickToClose ?? false;
+	const showResizeTooltip = () => props.showResizeTooltip ?? false;
 	const widthAtom = props.widthAtom;
-	const cls = props.class ?? "";
+	const cls = () => props.class ?? "";
 	const [sidebarWidth, setSidebarWidth] = widthAtom;
 	const [hasOpenedOnce, setHasOpenedOnce] = createSignal(false);
 	const [wasOpen, setWasOpen] = createSignal(false);
-	const [shouldAnimate, setShouldAnimate] = createSignal(!isOpen);
+	const [shouldAnimate, setShouldAnimate] = createSignal(!props.isOpen);
 	const [isResizing, setIsResizing] = createSignal(false);
 	const [isHoveringResizeHandle, setIsHoveringResizeHandle] = createSignal(false);
 	const [tooltipY, setTooltipY] = createSignal<number | null>(null);
@@ -54,27 +60,27 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
 		const y = tooltipY();
 		if (y === null || !sidebarRef) return null;
 		const rect = sidebarRef.getBoundingClientRect();
-		const x = side === "left" ? rect.right + 8 : rect.left - 8;
+		const x = props.side === "left" ? rect.right + 8 : rect.left - 8;
 		return { x, y };
 	});
 
 	createEffect(() => {
-		if (!isOpen && wasOpen()) {
+		if (!props.isOpen && wasOpen()) {
 			setHasOpenedOnce(false);
 			setShouldAnimate(true);
 			setLocalWidth(null);
 		}
-		if (isOpen) {
+		if (props.isOpen) {
 			setIsTooltipDismissed(false);
 		}
-		setWasOpen(isOpen);
-		if (isOpen && !hasOpenedOnce()) {
+		setWasOpen(props.isOpen);
+		if (props.isOpen && !hasOpenedOnce()) {
 			const timer = setTimeout(() => {
 				setHasOpenedOnce(true);
 				setShouldAnimate(false);
-			}, animationDuration * 1e3 + 50);
+			}, animationDuration() * 1e3 + 50);
 			onCleanup(() => clearTimeout(timer));
-		} else if (isOpen && hasOpenedOnce()) {
+		} else if (props.isOpen && hasOpenedOnce()) {
 			setShouldAnimate(false);
 		}
 	});
@@ -90,13 +96,13 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
 			setLocalWidth(null);
 		}
 		setShouldAnimate(true);
-		onClose();
+		props.onClose();
 		setIsHoveringResizeHandle(false);
 		setTooltipY(null);
 	};
 
 	createEffect(() => {
-		if (!isOpen) {
+		if (!props.isOpen) {
 			if (tooltipTimeout) {
 				clearTimeout(tooltipTimeout);
 				tooltipTimeout = undefined;
@@ -113,7 +119,7 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
 	});
 
 	createEffect(() => {
-		if (!isOpen || !isHoveringResizeHandle() || isTooltipDismissed()) {
+		if (!props.isOpen || !isHoveringResizeHandle() || isTooltipDismissed()) {
 			return;
 		}
 		const handleDocumentClick = (e: MouseEvent) => {
@@ -147,7 +153,7 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
 		let hasMoved = false;
 		let currentLocalWidthValue: number | null = null;
 		const handleElement = resizeHandleRef ?? event.currentTarget as HTMLElement;
-		const clampWidth = (width: number) => Math.max(minWidth, Math.min(maxWidth, width));
+		const clampWidth = (width: number) => Math.max(minWidth(), Math.min(maxWidth(), width));
 		handleElement.setPointerCapture?.(pointerId);
 		if (tooltipTimeout) {
 			clearTimeout(tooltipTimeout);
@@ -156,13 +162,13 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
 		setIsResizing(true);
 		setIsHoveringResizeHandle(false);
 			const updateWidth = (clientX: number) => {
-			const delta = side === "left" ? clientX - startX : startX - clientX;
+			const delta = props.side === "left" ? clientX - startX : startX - clientX;
 			const newWidth = clampWidth(startWidth + delta);
 			currentLocalWidthValue = newWidth;
 			setLocalWidth(newWidth);
 		};
 		const handlePointerMove = (pointerEvent: PointerEvent) => {
-			const delta = Math.abs(side === "left" ? pointerEvent.clientX - startX : startX - pointerEvent.clientX);
+			const delta = Math.abs(props.side === "left" ? pointerEvent.clientX - startX : startX - pointerEvent.clientX);
 			if (!hasMoved && delta >= 3) {
 				hasMoved = true;
 			}
@@ -178,10 +184,10 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
 			document.removeEventListener("pointerup", handlePointerUp);
 			document.removeEventListener("pointercancel", handlePointerCancel);
 			setIsResizing(false);
-			if (!hasMoved && pointerEvent && !disableClickToClose) {
+			if (!hasMoved && pointerEvent && !disableClickToClose()) {
 				handleClose();
 			} else if (hasMoved && pointerEvent) {
-				const delta = side === "left" ? pointerEvent.clientX - startX : startX - pointerEvent.clientX;
+				const delta = props.side === "left" ? pointerEvent.clientX - startX : startX - pointerEvent.clientX;
 				const finalWidth = clampWidth(startWidth + delta);
 				setSidebarWidth(finalWidth);
 				setLocalWidth(null);
@@ -204,7 +210,7 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
 	};
 	// Determine resize handle position based on side
 	const resizeHandleStyle = createMemo(() => {
-		if (side === "left") {
+		if (props.side === "left") {
 			return {
 				right: "0px",
 				width: "4px",
@@ -223,7 +229,7 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
 		}
 	});
 	const extendedHoverAreaStyle = createMemo(() => {
-		if (side === "left") {
+		if (props.side === "left") {
 			return {
 				width: `${EXTENDED_HOVER_AREA_WIDTH}px`,
 				right: "0px"
@@ -237,32 +243,32 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
 	});
 	return <>
       <Presence>
-        <Show when={isOpen}>
+        <Show when={props.isOpen}>
           <Motion.div ref={(el: HTMLDivElement) => sidebarRef = el} initial={!shouldAnimate() ? {
 		width: `${currentWidth()}px`,
 		opacity: 1
 	} : {
-		width: typeof initialWidth === 'number' ? `${initialWidth}px` : initialWidth,
+		width: typeof initialWidth() === 'number' ? `${initialWidth()}px` : initialWidth(),
 		opacity: 0
 	}} animate={{
 		width: `${currentWidth()}px`,
 		opacity: 1
 	}} exit={{
-		width: typeof exitWidth === 'number' ? `${exitWidth}px` : exitWidth,
+		width: typeof exitWidth() === 'number' ? `${exitWidth()}px` : exitWidth(),
 		opacity: 0
 	}} transition={{
-		duration: isResizing() ? 0 : animationDuration,
+		duration: isResizing() ? 0 : animationDuration(),
 		easing: [
 			0.4,
 			0,
 			0.2,
 			1
 		]
-	}} class={`bg-transparent flex flex-col text-xs h-full relative ${cls}`} style={{
-		"min-width": `${minWidth}px`,
+	}} class={`bg-transparent flex flex-col text-xs h-full relative ${cls()}`} style={{
+		"min-width": `${minWidth()}px`,
 		overflow: "hidden",
-		...style
-	}} {...dataAttributes ? Object.fromEntries(Object.entries(dataAttributes).map(([key, value]) => [`data-${key}`, value])) : {}}>
+		...props.style
+	}} {...props.dataAttributes ? Object.fromEntries(Object.entries(props.dataAttributes).map(([key, value]) => [`data-${key}`, value])) : {}}>
             <div data-extended-hover-area class="absolute top-0 bottom-0 cursor-col-resize" style={{
  ...extendedHoverAreaStyle(),
 		"pointer-events": isResizing() ? "none" : "auto",
@@ -320,7 +326,7 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
 		setIsTooltipDismissed(false);
 	}} class={`absolute top-0 bottom-0 cursor-col-resize z-10`} style={resizeHandleStyle()} />
 
-            <Show when={showResizeTooltip && isHoveringResizeHandle() && !isResizing() && !isTooltipDismissed() && tooltipPosition() && typeof window !== "undefined"}>
+            <Show when={showResizeTooltip() && isHoveringResizeHandle() && !isResizing() && !isTooltipDismissed() && tooltipPosition() && typeof window !== "undefined"}>
               <Portal mount={document.body}>
                 <Presence>
                   <Show when={tooltipPosition()}>
@@ -330,8 +336,8 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
                     }} class="fixed z-10" style={{
                       left: `${tooltipPosition()!.x}px`,
                       top: `${tooltipPosition()!.y}px`,
-                      transform: side === "left" ? "translateY(-50%)" : "translateX(-100%) translateY(-50%)",
-                      "transform-origin": side === "left" ? "left center" : "right center",
+                      transform: props.side === "left" ? "translateY(-50%)" : "translateX(-100%) translateY(-50%)",
+                      "transform-origin": props.side === "left" ? "left center" : "right center",
                       "pointer-events": "none"
                     }}>
                       <div ref={(el) => tooltipRef = el} role="dialog" data-tooltip="true" class="relative rounded-md border border-border bg-popover px-2 py-1 flex flex-col items-start gap-0.5 text-xs text-popover-foreground shadow-lg dark pointer-events-auto" onPointerDown={(e) => {
@@ -346,14 +352,14 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
                         setIsTooltipDismissed(true);
                         handleClose();
                       }}>
-                        <Show when={!disableClickToClose}>
+                        <Show when={!disableClickToClose()}>
                           <div class="flex items-center gap-1 text-xs">
                             <span>Close</span>
                             <span class="text-muted-foreground inline-flex items-center gap-1">
                               <span>Click</span>
-                              <Show when={closeHotkey}>
+                              <Show when={props.closeHotkey}>
                                 <span>or</span>
-                                <Kbd>{closeHotkey}</Kbd>
+                                <Kbd>{props.closeHotkey}</Kbd>
                               </Show>
                             </span>
                           </div>
@@ -369,7 +375,7 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
               </Portal>
             </Show>
 
-            {children}
+            {props.children}
           </Motion.div>
         </Show>
       </Presence>

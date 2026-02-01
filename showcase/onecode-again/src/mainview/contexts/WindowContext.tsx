@@ -1,18 +1,18 @@
-import type { JSX } from "solid-js";
+import type { JSX, Accessor } from "solid-js";
 import { createContext, useContext, createMemo } from "solid-js";
-const WindowContext = createContext<string>("default");
-export function WindowProvider({ children }: {
+const WindowContext = createContext<Accessor<string>>(() => "default");
+export function WindowProvider(props: {
 	children: JSX.Element;
 }) {
 	const windowId = createMemo(() => {
 		return getWindowId();
 	});
 	return <WindowContext.Provider value={windowId}>
-      {children}
+      {props.children}
     </WindowContext.Provider>;
 }
 export function useWindowId(): string {
-	return useContext(WindowContext);
+	return useContext(WindowContext)();
 }
 // Global getter for use outside React (in atom definitions)
 // This is cached after first call for the lifetime of the window

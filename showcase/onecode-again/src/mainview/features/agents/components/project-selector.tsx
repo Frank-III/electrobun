@@ -1,6 +1,6 @@
-import { createSignal, createMemo, Show, For } from "solid-js";
+import { createSignal, createMemo, Show, For, Switch, Match } from "solid-js";
 import { FolderOpen } from "lucide-solid";
-import { showOfflineModeFeaturesAtom } from "../../../lib/atoms";
+import { showOfflineModeFeaturesAtom, agentsSettingsDialogOpenAtom } from "../../../lib/atoms";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../../../components/ui/command";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
@@ -19,24 +19,25 @@ function ProjectIcon(props: {
 	class?: string;
 	isOffline?: boolean;
 }) {
-	const { gitOwner, gitProvider, isOffline = false } = props;
-	const cls = props.class ?? "h-4 w-4";
+	const isOffline = () => props.isOffline ?? false;
+	const cls = () => props.class ?? "h-4 w-4";
 	const [isLoaded, setIsLoaded] = createSignal(false);
 	const [hasError, setHasError] = createSignal(false);
 	const handleLoad = () => setIsLoaded(true);
 	const handleError = () => setHasError(true);
 	// In offline mode or on error, don't try to load remote images
-	if (isOffline || hasError() || !gitOwner || gitProvider !== "github") {
-		return <FolderOpen class={`${cls} text-muted-foreground flex-shrink-0`} />;
+	if (isOffline() || hasError() || !props.gitOwner || props.gitProvider !== "github") {
+		return <FolderOpen class={`${cls()} text-muted-foreground flex-shrink-0`} />;
 	}
-	return <div class={`${cls} relative flex-shrink-0`}>
+	return <div class={`${cls()} relative flex-shrink-0`}>
       {	/* Placeholder background while loading */}
       <Show when={!isLoaded()}><div class="absolute inset-0 rounded-sm bg-muted" /></Show>
-      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={`${cls} rounded-sm flex-shrink-0 ${isLoaded() ? "opacity-100" : "opacity-0"}`} onLoad={handleLoad} onError={handleError} />
+      <img src={`https://github.com/${props.gitOwner}.png?size=64`} alt={props.gitOwner} class={`${cls()} rounded-sm flex-shrink-0 ${isLoaded() ? "opacity-100" : "opacity-0"}`} onLoad={handleLoad} onError={handleError} />
     </div>;
  }
 export function ProjectSelector() {
 	const [selectedProject, setSelectedProject] = selectedProjectAtom;
+	const [, setSettingsDialogOpen] = agentsSettingsDialogOpenAtom;
 	const [open, setOpen] = createSignal(false);
 	const [searchQuery, setSearchQuery] = createSignal("");
 	const [githubDialogOpen, setGithubDialogOpen] = createSignal(false);
@@ -142,12 +143,12 @@ export function ProjectSelector() {
 		}
 	};
 	const validSelection = createMemo(() => {
-		if (!selectedProject) return null;
-		if (isLoadingProjects()) return selectedProject;
+		if (!selectedProject()) return null;
+		if (isLoadingProjects()) return selectedProject();
 		const list = projects();
 		if (!list) return null;
-		const exists = list.some((p) => p.id === selectedProject.id);
-		return exists ? selectedProject : null;
+		const exists = list.some((p) => p.id === selectedProject()!.id);
+		return exists ? selectedProject() : null;
 	});
 
 	if (!validSelection() && (!projects() || projects()!.length === 0) && !isLoadingProjects()) {
@@ -163,7 +164,7 @@ export function ProjectSelector() {
 		);
 	}
 	return <>
-    <Popover open={open} onOpenChange={(isOpen) => {
+    <Popover open={open()} onOpenChange={(isOpen) => {
 		setOpen(isOpen);
 		if (!isOpen) setSearchQuery("");
 	}}>
@@ -180,18 +181,30 @@ export function ProjectSelector() {
         <Command shouldFilter={false}>
           <CommandInput placeholder="Search repos..." value={searchQuery()} onValueChange={setSearchQuery} />
           <CommandList class="max-h-[300px] overflow-y-auto">
-            {isLoadingProjects() ? <div class="px-2.5 py-4 text-center text-sm text-muted-foreground">
-                Loading...
-              </div> : filteredProjects().length > 0 ? <CommandGroup>
-                {filteredProjects().map((project) => {
-		const isSelected = validSelection()?.id === project.id;
-		return <CommandItem key={project.id} value={`${project.name} ${project.path}`} onSelect={() => handleSelectProject(project.id)} class="gap-2">
-                      <ProjectIcon gitOwner={project.gitOwner} gitProvider={project.gitProvider} isOffline={isOffline()} />
-                      <span class="truncate flex-1">{project.name}</span>
-                      <Show when={isSelected}><CheckIcon class="h-4 w-4 shrink-0" /></Show>
-                    </CommandItem>;
-	})}
-              </CommandGroup> : <CommandEmpty>No projects found.</CommandEmpty>}
+            <Switch>
+              <Match when={isLoadingProjects()}>
+                <div class="px-2.5 py-4 text-center text-sm text-muted-foreground">
+                  Loading...
+                </div>
+              </Match>
+              <Match when={filteredProjects().length > 0}>
+                <CommandGroup>
+                  <For each={filteredProjects()}>{(project) => {
+                    const isSelected = () => validSelection()?.id === project.id;
+                    return (
+                      <CommandItem value={`${project.name} ${project.path}`} onSelect={() => handleSelectProject(project.id)} class="gap-2">
+                        <ProjectIcon gitOwner={project.gitOwner} gitProvider={project.gitProvider} isOffline={isOffline()} />
+                        <span class="truncate flex-1">{project.name}</span>
+                        <Show when={isSelected()}><CheckIcon class="h-4 w-4 shrink-0" /></Show>
+                      </CommandItem>
+                    );
+                  }}</For>
+                </CommandGroup>
+              </Match>
+              <Match when={true}>
+                <CommandEmpty>No projects found.</CommandEmpty>
+              </Match>
+            </Switch>
           </CommandList>
           <div class="border-t border-border/50 py-1">
             <button onClick={handleOpenFolder} disabled={openFolder.isPending} class="flex items-center gap-1.5 min-h-[32px] py-[5px] px-1.5 mx-1 w-[calc(100%-8px)] rounded-md text-sm cursor-default select-none outline-none dark:hover:bg-neutral-800 hover:text-foreground transition-colors">
@@ -200,6 +213,7 @@ export function ProjectSelector() {
             </button>
             <button onClick={() => {
 		setOpen(false);
+		setSettingsDialogOpen(false);
 		setGithubDialogOpen(true);
 	}} class="flex items-center gap-1.5 min-h-[32px] py-[5px] px-1.5 mx-1 w-[calc(100%-8px)] rounded-md text-sm cursor-default select-none outline-none dark:hover:bg-neutral-800 hover:text-foreground transition-colors">
               <GitHubIcon class="h-4 w-4 text-muted-foreground" />
@@ -210,7 +224,7 @@ export function ProjectSelector() {
       </PopoverContent>
     </Popover>
 
-    <Dialog open={githubDialogOpen} onOpenChange={setGithubDialogOpen}>
+    <Dialog open={githubDialogOpen()} onOpenChange={setGithubDialogOpen}>
       <DialogContent class="w-[400px] p-0 gap-0 overflow-hidden">
         <form onSubmit={(e) => {
 		e.preventDefault();

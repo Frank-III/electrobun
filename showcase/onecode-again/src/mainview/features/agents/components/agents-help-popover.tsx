@@ -1,9 +1,10 @@
 import type { JSX } from "solid-js";
-import { createSignal } from "solid-js";
+import { createSignal, createMemo, Show } from "solid-js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
 import { KeyboardIcon } from "../../../components/ui/icons";
 import { DiscordIcon } from "../../../icons";
 import { agentsSettingsDialogOpenAtom, agentsSettingsDialogActiveTabAtom } from "../../../lib/atoms";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 interface AgentsHelpPopoverProps {
 	children: JSX.Element;
 	open?: boolean;
@@ -15,17 +16,17 @@ export function AgentsHelpPopover({ children, open: controlledOpen, onOpenChange
 	const setSettingsDialogOpen = agentsSettingsDialogOpenAtom[1];
 	const setSettingsActiveTab = agentsSettingsDialogActiveTabAtom[1];
 	// Use controlled state if provided, otherwise use internal state
-	const open = controlledOpen ?? internalOpen;
+	const isOpen = createMemo(() => controlledOpen ?? internalOpen());
 	const setOpen = controlledOnOpenChange ?? setInternalOpen;
 	const handleCommunityClick = () => {
-		window.open("https://discord.gg/8ektTZGnj4", "_blank");
+		desktopRpc.window.openExternal.mutate({ url: "https://discord.gg/8ektTZGnj4" });
 	};
 	const handleKeyboardShortcutsClick = () => {
 		setOpen(false);
 		setSettingsActiveTab("keyboard");
 		setSettingsDialogOpen(true);
 	};
-	return <DropdownMenu open={open} onOpenChange={setOpen}>
+	return <DropdownMenu open={isOpen()} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" class="w-36">
         <DropdownMenuItem onClick={handleCommunityClick} class="gap-2">
@@ -33,10 +34,12 @@ export function AgentsHelpPopover({ children, open: controlledOpen, onOpenChange
           <span class="flex-1">Discord</span>
         </DropdownMenuItem>
 
-        {!isMobile && <DropdownMenuItem onClick={handleKeyboardShortcutsClick} class="gap-2">
+        <Show when={!isMobile}>
+          <DropdownMenuItem onClick={handleKeyboardShortcutsClick} class="gap-2">
             <KeyboardIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             <span class="flex-1">Shortcuts</span>
-          </DropdownMenuItem>}
+          </DropdownMenuItem>
+        </Show>
       </DropdownMenuContent>
     </DropdownMenu>;
 }

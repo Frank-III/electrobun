@@ -34,13 +34,16 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
 	const subChatStore = useAgentSubChatStore();
 	const activeSubChatId = createMemo(() => subChatStore.activeSubChatId);
 	const allSubChats = createMemo(() => subChatStore.allSubChats);
-	const loadingSubChatsAtomValue = loadingSubChatsAtom[0];
+	const [loadingSubChats] = loadingSubChatsAtom;
 	const [isHistoryOpen, setIsHistoryOpen] = createSignal(false);
 	// Find active sub-chat metadata
 	const activeSubChat = createMemo(() => {
 		return allSubChats().find((sc) => sc.id === activeSubChatId());
 	});
-	const isLoading = activeSubChatId() ? loadingSubChatsAtomValue.has(activeSubChatId()) : false;
+	const isLoading = createMemo(() => {
+		const id = activeSubChatId();
+		return id ? loadingSubChats().has(id) : false;
+	});
 	const mode = activeSubChat()?.mode || "agent";
 	// Sort sub-chats by most recent first for history
 	const sortedSubChats = createMemo(() => [...allSubChats()].sort((a, b) => {
@@ -82,7 +85,9 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
             <button class={cn("flex items-center gap-1.5 h-7 px-2 rounded-md text-sm", "bg-muted/50 hover:bg-muted transition-colors", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", "min-w-0 max-w-[50vw] shrink")} style={{ WebkitAppRegion: "no-drag" }}>
               {	/* Icon */}
               <div class="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
-                {isLoading ? <IconSpinner class="w-3.5 h-3.5 text-muted-foreground" /> : mode === "plan" ? <PlanIcon class="w-3.5 h-3.5 text-muted-foreground" /> : <AgentIcon class="w-3.5 h-3.5 text-muted-foreground" />}
+                <Show when={isLoading} fallback={<Show when={mode === "plan"} fallback={<AgentIcon class="w-3.5 h-3.5 text-muted-foreground" />}><PlanIcon class="w-3.5 h-3.5 text-muted-foreground" /></Show>}>
+                  <IconSpinner class="w-3.5 h-3.5 text-muted-foreground" />
+                </Show>
               </div>
 
               { /* Name */}
@@ -118,7 +123,9 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
 
         { /* Diff button */}
         <Show when={onOpenDiff && canOpenDiff}><Button variant="ghost" size="icon" onClick={onOpenDiff} disabled={!diffStats?.hasChanges || diffStats?.isLoading} class={cn("h-7 w-7 p-0 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md", diffStats?.hasChanges && !diffStats?.isLoading ? "hover:bg-foreground/10" : "text-muted-foreground")}>
-            {diffStats?.isLoading ? <IconSpinner class="h-4 w-4" /> : <DiffIcon class="h-4 w-4" />}
+            <Show when={diffStats?.isLoading} fallback={<DiffIcon class="h-4 w-4" />}>
+              <IconSpinner class="h-4 w-4" />
+            </Show>
           </Button></Show>
 
         { /* Preview button */}

@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, splitProps } from "solid-js";
 import { Button } from "../../../components/ui/button";
 import { LinkIcon, CheckIcon } from "../../../components/ui/icons";
 import { cn } from "../../../lib/utils";
@@ -6,12 +6,13 @@ import { useHaptic } from "../hooks/use-haptic";
 interface MobileCopyLinkButtonProps {
 	url: string;
 }
-export function MobileCopyLinkButton({ url }: MobileCopyLinkButtonProps) {
+export function MobileCopyLinkButton(props: MobileCopyLinkButtonProps) {
+	const [local] = splitProps(props, ["url"]);
 	const [copied, setCopied] = createSignal(false);
 	const { trigger: triggerHaptic } = useHaptic();
 	const handleCopy = async () => {
 		try {
-			await navigator.clipboard.writeText(url);
+			await navigator.clipboard.writeText(local.url);
 			triggerHaptic("medium");
 			setCopied(true);
 			setTimeout(() => setCopied(false), 2e3);

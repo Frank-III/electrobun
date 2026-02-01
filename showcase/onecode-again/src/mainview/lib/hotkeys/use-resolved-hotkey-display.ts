@@ -14,7 +14,8 @@ import type { ShortcutActionId } from "./types"
  * // Returns "⌘\" by default, or custom binding if set
  */
 export function useResolvedHotkeyDisplay(actionId: ShortcutActionId): string | null {
-  const config = customHotkeysAtom[0]
+  const configAccessor = customHotkeysAtom[0]
+  const config = configAccessor() ?? { version: 1, bindings: {} }
   const hotkey = getResolvedHotkey(actionId, config)
   if (!hotkey) return null
   return hotkeyToDisplay(hotkey)
@@ -31,14 +32,15 @@ export function useResolvedHotkeyDisplayWithAlt(actionId: ShortcutActionId): {
   primary: string | null
   alt: string | null
 } {
-  const config = customHotkeysAtom[0]
+  const configAccessor = customHotkeysAtom[0]
+  const config = configAccessor() ?? { version: 1, bindings: {} }
   const hotkey = getResolvedHotkey(actionId, config)
   const action = getShortcutAction(actionId)
 
   const primary = hotkey ? hotkeyToDisplay(hotkey) : null
 
   // Only show alt if not using custom binding
-  const hasCustomBinding = config.bindings[actionId] !== undefined
+  const hasCustomBinding = config.bindings?.[actionId] !== undefined
   const alt =
     action?.altKeys && !hasCustomBinding
       ? hotkeyToDisplay(keysToHotkeyString(action.altKeys))

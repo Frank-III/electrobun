@@ -17,12 +17,12 @@ interface ChangesHeaderProps {
 	onViewModeChange: (mode: ChangesViewMode) => void;
 	worktreePath: string;
 }
-export function ChangesHeader({ onRefresh, viewMode, onViewModeChange, worktreePath }: ChangesHeaderProps) {
+export function ChangesHeader(props: ChangesHeaderProps) {
 	const [isManualRefresh, setIsManualRefresh] = createSignal(false);
 	let timeoutRef: ReturnType<typeof setTimeout> | undefined;
 	const handleRefresh = () => {
 		setIsManualRefresh(true);
-		onRefresh();
+		props.onRefresh();
 		// Clear any existing timeout
 		if (timeoutRef) {
 			clearTimeout(timeoutRef);
@@ -40,14 +40,14 @@ export function ChangesHeader({ onRefresh, viewMode, onViewModeChange, worktreeP
 	});
 	const { baseBranch, setBaseBranch } = useChangesStore();
 	const branchDataQuery = useQuery(() => ({
-		queryKey: ["changes", "getBranches", worktreePath] as const,
-		queryFn: () => desktopRpc.changes.getBranches({ worktreePath }),
-		enabled: !!worktreePath,
+		queryKey: ["changes", "getBranches", props.worktreePath] as const,
+		queryFn: () => desktopRpc.changes.getBranches({ worktreePath: props.worktreePath }),
+		enabled: !!props.worktreePath,
 	}));
 	const branchData = () => branchDataQuery.data;
 	const isLoading = () => branchDataQuery.isLoading;
 	const { pr, isLoading: isPRLoading } = usePRStatus({
-		worktreePath,
+		worktreePath: props.worktreePath,
 		refetchInterval: 1e4,
 	});
 	const effectiveBaseBranch = () =>
@@ -95,7 +95,7 @@ export function ChangesHeader({ onRefresh, viewMode, onViewModeChange, worktreeP
 				</Show>
 			</div>
 			<div class="flex items-center shrink-0">
-				<ViewModeToggle viewMode={viewMode} onViewModeChange={onViewModeChange} />
+				<ViewModeToggle viewMode={props.viewMode} onViewModeChange={props.onViewModeChange} />
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isManualRefresh()} class="size-6 p-0">

@@ -2,6 +2,7 @@ import { cn } from "../../../lib/utils";
 import { useQuery } from "@tanstack/solid-query";
 import { desktopRpc } from "../../../lib/desktop-rpc";
 import { createEffect, createMemo, createSignal, onCleanup, Show, For } from "solid-js";
+import { debounce } from "@solid-primitives/scheduled";
 import { Portal, render } from "solid-js/web";
 import type { FileMentionOption } from "./agents-mentions-editor";
 import { MENTION_PREFIXES } from "./agents-mentions-editor";
@@ -399,7 +400,7 @@ function sortFilesByRelevance<T extends {
 	label: string;
 	path?: string;
 },>(files: T[], searchText: string): T[] {
-	if (!searchText) return files;
+	if (!searchText || typeof searchText !== "string") return files;
 	const searchLower = searchText.toLowerCase();
 	const searchWords = searchLower.split(/\s+/).filter(Boolean);
 	const isSingleWord = searchWords.length <= 1;
@@ -472,19 +473,25 @@ function renderTooltipContent(option: FileMentionOption) {
 	}
 	if (option.type === "skill" || option.type === "agent") {
 		return <div class="flex flex-col gap-1.5 w-full overflow-hidden">
-        {option.description && <p class="text-xs text-muted-foreground break-words">
-            {option.description}
-          </p>}
-        {option.model && <div class="text-xs text-muted-foreground">
-            Model: {option.model}
-          </div>}
-        {option.tools && option.tools.length > 0 && <div class="text-xs text-muted-foreground break-words">
-            Tools: {option.tools.join(", ")}
-          </div>}
-        <div class="text-[10px] text-muted-foreground/70 font-mono truncate w-full">
-          {option.path}
-        </div>
-      </div>;
+			<Show when={option.description}>
+				<p class="text-xs text-muted-foreground break-words">
+					{option.description}
+				</p>
+			</Show>
+			<Show when={option.model}>
+				<div class="text-xs text-muted-foreground">
+					Model: {option.model}
+				</div>
+			</Show>
+			<Show when={option.tools && option.tools.length > 0}>
+				<div class="text-xs text-muted-foreground break-words">
+					Tools: {option.tools.join(", ")}
+				</div>
+			</Show>
+			<div class="text-[10px] text-muted-foreground/70 font-mono truncate w-full">
+				{option.path}
+			</div>
+		</div>;
 	}
 	if (option.type === "tool") {
 		// Show full tool name (e.g., mcp__figma-local-mcp__get_figjam)
@@ -525,11 +532,10 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	const customAgents = () => customAgentsQuery.data ?? [];
 	const isFetchingAgents = () => customAgentsQuery.isFetching;
 	// Debounce search text (300ms to match canvas implementation)
+	const updateDebouncedSearch = debounce((text: string) => setDebouncedSearchText(text), 300);
 	createEffect(() => {
-		const timer = setTimeout(() => {
-			setDebouncedSearchText(searchText);
-		}, 300);
-		onCleanup(() => clearTimeout(timer));
+		updateDebouncedSearch(searchText);
+		onCleanup(() => updateDebouncedSearch.clear());
 	});
 	// For multi-word search, send only first word to API (server filters by that),
 	// then filter results on client by all words
@@ -835,18 +841,18 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	if (!isOpen) return null;
 	// Calculate dropdown dimensions (matching canvas style)
 	// Narrower dropdown when showing only categories (no changed files)
-	const hasChangedFiles = changedFileOptions.length > 0;
+	const hasChangedFiles = changedFileOptions().length > 0;
 	const isRootView = !showingFilesList && !showingSkillsList && !showingAgentsList && !showingToolsList && !hasOnlyFiles();
 	// Narrow dropdown for root view (categories only) and skills/agents/tools subpages
 	// Wide dropdown for files (showingFilesList or hasOnlyFiles)
-	const useNarrowWidth = isRootView && !hasChangedFiles && !debouncedSearchText || showingSkillsList || showingAgentsList || showingToolsList;
+	const useNarrowWidth = isRootView && !hasChangedFiles && !debouncedSearchText() || showingSkillsList || showingAgentsList || showingToolsList;
 	const dropdownWidth = useNarrowWidth ? 200 : 320;
 	const itemHeight = 28;
 	const headerHeight = 28;
 	// Only add header height when header is actually shown (in subpages or when searching)
-	const showsHeader = !isRootView || !!debouncedSearchText;
+	const showsHeader = !isRootView || !!debouncedSearchText();
 	const paddingHeight = 8;
-	const requestedHeight = Math.min(options.length * itemHeight + (showsHeader ? headerHeight : 0) + paddingHeight, 200);
+	const requestedHeight = Math.min(options().length * itemHeight + (showsHeader ? headerHeight : 0) + paddingHeight, 200);
 	const gap = 8;
 	// Decide placement like Radix Popover (auto-flip top/bottom)
 	const safeMargin = 10;

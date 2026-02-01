@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
+import { For } from "solid-js";
 import { useTheme } from "../../../lib/hooks/use-theme";
 import { fullThemeDataAtom } from "@/lib/atoms";
 import { Button } from "@/components/ui/button";
@@ -33,8 +34,10 @@ function getNextTerminalName(terminals: TerminalInstance[]): string {
 	const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
 	return `Terminal ${maxNumber + 1}`;
 }
-export function TerminalSection({ chatId, cwd, isExpanded = false, renderHeader, onTerminalBgChange }: TerminalSectionProps) {
+export function TerminalSection(props: TerminalSectionProps) {
 	const [store, setStore] = useTerminalStore();
+	const chatId = () => props.chatId;
+	const cwd = () => props.cwd;
 	const terminalCwds = () => store.cwdByPaneId;
 	// Theme detection for terminal background
 	const { resolvedTheme } = useTheme();
@@ -51,24 +54,24 @@ export function TerminalSection({ chatId, cwd, isExpanded = false, renderHeader,
 	});
 	// Notify parent about terminal background color
 	createEffect(() => {
-		onTerminalBgChange?.(terminalBg());
+		props.onTerminalBgChange?.(terminalBg());
 	});
-	const terminals = createMemo(() => store.terminalsByChatId[chatId] || []);
-	const activeTerminalId = createMemo(() => store.activeTerminalIdByChatId[chatId] ?? null);
+	const terminals = createMemo(() => store.terminalsByChatId[chatId()] || []);
+	const activeTerminalId = createMemo(() => store.activeTerminalIdByChatId[chatId()] ?? null);
 	const activeTerminal = createMemo(() => terminals().find((t) => t.id === activeTerminalId()) || null);
 	const killMutation = useMutation(() => ({
-		mutationFn: (input: { paneId: string }) => desktopRpc.terminal.kill.mutate(input),
+		mutationFn: (input: { paneId: string }) => desktopRpc.ghosttyTabs.close.mutate({ tabId: input.paneId }),
 	}));
 	const createTerminal = () => {
 		const currentTerminals = terminals();
 		const id = generateTerminalId();
-		const paneId = generatePaneId(chatId, id);
+		const paneId = generatePaneId(chatId(), id);
 		const name = getNextTerminalName(currentTerminals);
 		const newTerminal: TerminalInstance = { id, paneId, name, createdAt: Date.now() };
-		setStore("terminalsByChatId", chatId, [...currentTerminals, newTerminal]);
-		setStore("activeTerminalIdByChatId", chatId, id);
+		setStore("terminalsByChatId", chatId(), [...currentTerminals, newTerminal]);
+		setStore("activeTerminalIdByChatId", chatId(), id);
 	};
-	const selectTerminal = (id: string) => setStore("activeTerminalIdByChatId", chatId, id);
+	const selectTerminal = (id: string) => setStore("activeTerminalIdByChatId", chatId(), id);
 	const closeTerminal = (id: string) => {
 		const currentTerminals = terminals();
 		const currentActiveId = activeTerminalId();
@@ -76,14 +79,14 @@ export function TerminalSection({ chatId, cwd, isExpanded = false, renderHeader,
 		if (!terminal) return;
 		killMutation.mutate({ paneId: terminal.paneId });
 		const newTerminals = currentTerminals.filter((t) => t.id !== id);
-		setStore("terminalsByChatId", chatId, newTerminals);
+		setStore("terminalsByChatId", chatId(), newTerminals);
 		if (currentActiveId === id) {
-			setStore("activeTerminalIdByChatId", chatId, newTerminals[newTerminals.length - 1]?.id ?? null);
+			setStore("activeTerminalIdByChatId", chatId(), newTerminals[newTerminals.length - 1]?.id ?? null);
 		}
 	};
 	const renameTerminal = (id: string, name: string) => {
-		const current = store.terminalsByChatId[chatId] || [];
-		setStore("terminalsByChatId", chatId, current.map((t) => (t.id === id ? { ...t, name } : t)));
+		const current = store.terminalsByChatId[chatId()] || [];
+		setStore("terminalsByChatId", chatId(), current.map((t) => (t.id === id ? { ...t, name } : t)));
 	};
 	const closeOtherTerminals = (id: string) => {
 		const currentTerminals = terminals();
@@ -91,8 +94,8 @@ export function TerminalSection({ chatId, cwd, isExpanded = false, renderHeader,
 			if (terminal.id !== id) killMutation.mutate({ paneId: terminal.paneId });
 		});
 		const remainingTerminal = currentTerminals.find((t) => t.id === id);
-		setStore("terminalsByChatId", chatId, remainingTerminal ? [remainingTerminal] : []);
-		setStore("activeTerminalIdByChatId", chatId, id);
+		setStore("terminalsByChatId", chatId(), remainingTerminal ? [remainingTerminal] : []);
+		setStore("activeTerminalIdByChatId", chatId(), id);
 	};
 	const closeTerminalsToRight = (id: string) => {
 		const currentTerminals = terminals();
@@ -100,10 +103,10 @@ export function TerminalSection({ chatId, cwd, isExpanded = false, renderHeader,
 		if (index === -1) return;
 		currentTerminals.slice(index + 1).forEach((terminal) => killMutation.mutate({ paneId: terminal.paneId }));
 		const remainingTerminals = currentTerminals.slice(0, index + 1);
-		setStore("terminalsByChatId", chatId, remainingTerminals);
+		setStore("terminalsByChatId", chatId(), remainingTerminals);
 		const currentActiveId = activeTerminalId();
 		if (currentActiveId && !remainingTerminals.find((t) => t.id === currentActiveId)) {
-			setStore("activeTerminalIdByChatId", chatId, remainingTerminals[remainingTerminals.length - 1]?.id ?? null);
+			setStore("activeTerminalIdByChatId", chatId(), remainingTerminals[remainingTerminals.length - 1]?.id ?? null);
 		}
 	};
 	// Auto-create first terminal when section is rendered and no terminals exist
@@ -121,32 +124,40 @@ export function TerminalSection({ chatId, cwd, isExpanded = false, renderHeader,
 		onCleanup(() => clearTimeout(timer));
 	});
 	// Tabs component for header
-	const tabsHeader = () => terminals().length > 0 ? <TerminalTabs terminals={terminals()} activeTerminalId={activeTerminalId()} cwds={terminalCwds()} initialCwd={cwd} terminalBg={terminalBg()} onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} /> : null;
+	const tabsHeader = () => <Show when={terminals().length > 0}><TerminalTabs terminals={terminals()} activeTerminalId={activeTerminalId()} cwds={terminalCwds()} initialCwd={cwd()} terminalBg={terminalBg()} onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} /></Show>;
 	// Call renderHeader if provided (for widget card integration)
 	createEffect(() => {
-		renderHeader?.(tabsHeader());
+		props.renderHeader?.(tabsHeader());
 	});
 	// If renderHeader is provided, only render content (header is handled by parent)
-	if (renderHeader) {
+	if (props.renderHeader) {
 	return <div class="min-h-0 overflow-hidden" style={{
 			"background-color": terminalBg(),
 			height: "200px"
 		}}>
-	        <Show when={activeTerminal() && canRenderTerminal()} fallback={
-	            <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
-	              {!canRenderTerminal() ? "" : "No terminal open"}
-	            </div>
-	          }>
-	            <div class="h-full">
-	              <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} initialCwd={cwd} />
-	            </div>
-	          </Show>
+			<Show when={activeTerminal() && canRenderTerminal()} fallback={
+				<div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+					{!canRenderTerminal() ? "" : "No terminal open"}
+				</div>
+			}>
+				<div class="h-full relative">
+					<For each={terminals()}>{(terminal) => {
+						const isActive = () => terminal.id === activeTerminalId();
+						return (
+							<div class="absolute inset-0" classList={{ "opacity-0 pointer-events-none": !isActive(), "opacity-100": isActive() }}>
+								<Terminal paneId={terminal.paneId} cwd={cwd()} initialCwd={cwd()} isActive={isActive()} />
+							</div>
+						);
+					}}</For>
+				</div>
+			</Show>
 	      </div>;
 	}
+	const isExpanded = () => props.isExpanded ?? false;
 	// Standard render with tabs inside
 	return <div class="flex flex-col" style={{
-		"min-height": isExpanded ? "400px" : "200px",
-		height: isExpanded ? "100%" : undefined
+		"min-height": isExpanded() ? "400px" : "200px",
+		height: isExpanded() ? "100%" : undefined
 	}}>
       {	/* Tabs */}
 	      <div class="flex items-center gap-1 px-1 py-1 flex-shrink-0" style={{ "background-color": terminalBg() }}>
@@ -156,23 +167,24 @@ export function TerminalSection({ chatId, cwd, isExpanded = false, renderHeader,
       { /* Terminal Content */}
 	      <div class="flex-1 min-h-0 overflow-hidden" style={{
  "background-color": terminalBg(),
-		height: isExpanded ? "100%" : "200px"
+		height: isExpanded() ? "100%" : "200px"
 	}}>
-	        <Show when={activeTerminal() && canRenderTerminal()} fallback={
-	            <div class="flex items-center justify-center h-full text-muted-foreground text-sm">
-	              {!canRenderTerminal() ? "" : "No terminal open"}
-	            </div>
-	          }>
-	            <div class="h-full">
-	              <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} initialCwd={cwd} />
-	            </div>
-	          </Show>
-	      </div>
-	          }>
-	            <div class="h-full">
-	              <Terminal paneId={activeTerminal()!.paneId} cwd={cwd} initialCwd={cwd} />
-	            </div>
-	          </Show>
+		<Show when={activeTerminal() && canRenderTerminal()} fallback={
+			<div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+				{!canRenderTerminal() ? "" : "No terminal open"}
+			</div>
+		}>
+			<div class="h-full relative">
+				<For each={terminals()}>{(terminal) => {
+					const isActive = () => terminal.id === activeTerminalId();
+					return (
+						<div class="absolute inset-0" classList={{ "opacity-0 pointer-events-none": !isActive(), "opacity-100": isActive() }}>
+							<Terminal paneId={terminal.paneId} cwd={cwd()} initialCwd={cwd()} isActive={isActive()} />
+						</div>
+					);
+				}}</For>
+			</div>
+		</Show>
 	      </div>
     </div>;
 }

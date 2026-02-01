@@ -1,5 +1,5 @@
 import type { JSX } from "solid-js";
-import { createSignal } from "solid-js";
+import { createSignal, splitProps } from "solid-js";
 import { useTheme } from "../../../lib/hooks/use-theme";
 // import Image from "next/image" // Desktop doesn't use next/image
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "../../../components/ui/hover-card";
@@ -10,7 +10,8 @@ import { GitHubIcon } from "../../../icons";
 interface PreviewSetupHoverCardProps {
 	children: JSX.Element;
 }
-export function PreviewSetupHoverCard({ children }: PreviewSetupHoverCardProps) {
+export function PreviewSetupHoverCard(props: PreviewSetupHoverCardProps) {
+	const [local] = splitProps(props, ["children"]);
 	const { resolvedTheme } = useTheme();
 	const setSettingsDialogOpen = agentsSettingsDialogOpenAtom[1];
 	const setSettingsActiveTab = agentsSettingsDialogActiveTabAtom[1];
@@ -20,10 +21,10 @@ export function PreviewSetupHoverCard({ children }: PreviewSetupHoverCardProps) 
 		setSettingsDialogOpen(true);
 		setOpen(false);
 	};
-	return <HoverCard openDelay={300} open={open} onOpenChange={setOpen}>
-      <HoverCardTrigger asChild>
-        {children}
-      </HoverCardTrigger>
+	return <HoverCard openDelay={300} open={open()} onOpenChange={setOpen}>
+		<HoverCardTrigger asChild>
+			{local.children}
+		</HoverCardTrigger>
       <HoverCardContent class="w-[280px] p-0 overflow-hidden" align="end" side="bottom" sideOffset={8}>
         {	/* Image Section - styled like onboarding dialog */}
         <div class="bg-primary px-4 pt-8 flex items-start justify-center">

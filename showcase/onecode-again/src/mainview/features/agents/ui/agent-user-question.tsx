@@ -14,19 +14,20 @@ export interface AgentUserQuestionHandle {
 	getAnswers: () => Record<string, string>;
 }
 export function AgentUserQuestion(props: AgentUserQuestionProps) {
-	const { questions, toolUseId } = props.pendingQuestions;
+	const questions = () => props.pendingQuestions.questions;
+	const toolUseId = () => props.pendingQuestions.toolUseId;
 	const [currentQuestionIndex, setCurrentQuestionIndex] = createSignal(0);
 	const [answers, setAnswers] = createSignal<Record<string, string[]>>({});
 	const [focusedOptionIndex, setFocusedOptionIndex] = createSignal(0);
 	const [isVisible, setIsVisible] = createSignal(true);
 	const [isSubmitting, setIsSubmitting] = createSignal(false);
 	let prevIndex = currentQuestionIndex();
-	let prevToolUseId = toolUseId;
+	let prevToolUseId = toolUseId();
 	// Expose getAnswers method to parent via ref callback
 	const handle: AgentUserQuestionHandle = {
 		getAnswers: () => {
 			const formattedAnswers: Record<string, string> = {};
-			for (const question of questions) {
+			for (const question of questions()) {
 				const selected = answers()[question.question] || [];
 				if (selected.length > 0) {
 					formattedAnswers[question.question] = selected.join(", ");
@@ -38,12 +39,12 @@ export function AgentUserQuestion(props: AgentUserQuestionProps) {
 	props.ref?.(handle);
 	// Reset when toolUseId changes (new question set)
 	createEffect(() => {
-		if (prevToolUseId !== toolUseId) {
+		if (prevToolUseId !== toolUseId()) {
 			setIsSubmitting(false);
 			setCurrentQuestionIndex(0);
 			setAnswers({});
 			setFocusedOptionIndex(0);
-			prevToolUseId = toolUseId;
+			prevToolUseId = toolUseId();
 		}
 	});
 	// Animate on question change
@@ -58,19 +59,19 @@ export function AgentUserQuestion(props: AgentUserQuestionProps) {
 			onCleanup(() => clearTimeout(timer));
 		}
 	});
-	if (questions.length === 0) {
+	if (questions().length === 0) {
 		return null;
 	}
-	const currentQuestion = () => questions[currentQuestionIndex()];
+	const currentQuestion = () => questions()[currentQuestionIndex()];
 	const currentOptions = () => currentQuestion()?.options || [];
 	const isOptionSelected = (questionText: string, optionLabel: string) => {
 		return answers()[questionText]?.includes(optionLabel) || false;
 	};
 	// Handle option click - auto-advance for single-select questions
 	const handleOptionClick = (questionText: string, optionLabel: string, questionIndex: number) => {
-		const question = questions[questionIndex];
+		const question = questions()[questionIndex];
 		const allowMultiple = question?.multiSelect || false;
-		const isLastQuestion = questionIndex === questions.length - 1;
+		const isLastQuestion = questionIndex === questions().length - 1;
 		setAnswers((prev) => {
 			const currentAnswers = prev[questionText] || [];
 			if (allowMultiple) {
@@ -107,7 +108,7 @@ export function AgentUserQuestion(props: AgentUserQuestionProps) {
 		}
 	};
 	const handleNext = () => {
-		if (currentQuestionIndex() < questions.length - 1) {
+		if (currentQuestionIndex() < questions().length - 1) {
 			setCurrentQuestionIndex(currentQuestionIndex() + 1);
 			setFocusedOptionIndex(0);
 		}
@@ -116,17 +117,17 @@ export function AgentUserQuestion(props: AgentUserQuestionProps) {
 		if (isSubmitting()) return;
 		const currentAnswer = answers()[currentQuestion()?.question] || [];
 		if (currentAnswer.length === 0) return;
-		if (currentQuestionIndex() < questions.length - 1) {
+		if (currentQuestionIndex() < questions().length - 1) {
 			setCurrentQuestionIndex(currentQuestionIndex() + 1);
 			setFocusedOptionIndex(0);
 		} else {
 			// On the last question, validate ALL questions are answered before submit
-			const allAnswered = questions.every((q) => (answers()[q.question] || []).length > 0);
+			const allAnswered = questions().every((q) => (answers()[q.question] || []).length > 0);
 			if (allAnswered) {
 				setIsSubmitting(true);
 				// Convert answers to SDK format: { questionText: label } or { questionText: "label1, label2" } for multiSelect
 				const formattedAnswers: Record<string, string> = {};
-				for (const question of questions) {
+				for (const question of questions()) {
 					const selected = answers()[question.question] || [];
 					formattedAnswers[question.question] = selected.join(", ");
 				}
@@ -143,8 +144,8 @@ export function AgentUserQuestion(props: AgentUserQuestionProps) {
 		return String(index + 1);
 	};
 	const currentQuestionHasAnswer = () => (answers()[currentQuestion()?.question] || []).length > 0;
-	const allQuestionsAnswered = () => questions.every((q) => (answers()[q.question] || []).length > 0);
-	const isLastQuestion = () => currentQuestionIndex() === questions.length - 1;
+	const allQuestionsAnswered = () => questions().every((q) => (answers()[q.question] || []).length > 0);
+	const isLastQuestion = () => currentQuestionIndex() === questions().length - 1;
 	// Keyboard navigation
 	createEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
@@ -157,7 +158,7 @@ export function AgentUserQuestion(props: AgentUserQuestionProps) {
 				e.preventDefault();
 				if (focusedOptionIndex() < currentOptions().length - 1) {
 					setFocusedOptionIndex(focusedOptionIndex() + 1);
-				} else if (currentQuestionIndex() < questions.length - 1) {
+				} else if (currentQuestionIndex() < questions().length - 1) {
 					setCurrentQuestionIndex(currentQuestionIndex() + 1);
 					setFocusedOptionIndex(0);
 				}
@@ -166,7 +167,7 @@ export function AgentUserQuestion(props: AgentUserQuestionProps) {
 				if (focusedOptionIndex() > 0) {
 					setFocusedOptionIndex(focusedOptionIndex() - 1);
 				} else if (currentQuestionIndex() > 0) {
-					const prevQuestionOptions = questions[currentQuestionIndex() - 1]?.options || [];
+					const prevQuestionOptions = questions()[currentQuestionIndex() - 1]?.options || [];
 					setCurrentQuestionIndex(currentQuestionIndex() - 1);
 					setFocusedOptionIndex(prevQuestionOptions.length - 1);
 				}
@@ -203,15 +204,15 @@ export function AgentUserQuestion(props: AgentUserQuestionProps) {
         </div>
 
         { /* Navigation */}
-        <Show when={questions.length > 1}>
+        <Show when={questions().length > 1}>
           <div class="flex items-center gap-1">
             <button onClick={handlePrevious} disabled={currentQuestionIndex() === 0} class="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed outline-none">
               <ChevronUp class="w-4 h-4 text-muted-foreground" />
             </button>
             <span class="text-xs text-muted-foreground px-1">
-              {currentQuestionIndex() + 1} / {questions.length}
+              {currentQuestionIndex() + 1} / {questions().length}
             </span>
-            <button onClick={handleNext} disabled={currentQuestionIndex() === questions.length - 1} class="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed outline-none">
+            <button onClick={handleNext} disabled={currentQuestionIndex() === questions().length - 1} class="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed outline-none">
               <ChevronDown class="w-4 h-4 text-muted-foreground" />
             </button>
           </div>

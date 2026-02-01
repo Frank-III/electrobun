@@ -27,13 +27,16 @@ interface FileListProps {
 	/** Callback for discarding changes */
 	onDiscard?: (file: ChangedFile) => void;
 }
-export function FileList({ files, viewMode, selectedFile, selectedCommitHash, onFileSelect, onFileDoubleClick, showStats = true, showCheckbox = false, isStaged = false, onStage, onUnstage, isActioning, worktreePath, onDiscard }: FileListProps) {
-	if (files.length === 0) {
+export function FileList(props: FileListProps) {
+	const showStats = () => props.showStats ?? true;
+	const showCheckbox = () => props.showCheckbox ?? false;
+	const isStaged = () => props.isStaged ?? false;
+	if (props.files.length === 0) {
 		return null;
 	}
-	if (viewMode === "tree") {
-		return <FileListTree files={files} selectedFile={selectedFile} selectedCommitHash={selectedCommitHash} onFileSelect={onFileSelect} onFileDoubleClick={onFileDoubleClick} showStats={showStats} showCheckbox={showCheckbox} isStaged={isStaged} onStage={onStage} onUnstage={onUnstage} isActioning={isActioning} worktreePath={worktreePath} onDiscard={onDiscard} />;
+	if (props.viewMode === "tree") {
+		return <FileListTree files={props.files} selectedFile={props.selectedFile} selectedCommitHash={props.selectedCommitHash} onFileSelect={props.onFileSelect} onFileDoubleClick={props.onFileDoubleClick} showStats={showStats()} showCheckbox={showCheckbox()} isStaged={isStaged()} onStage={props.onStage} onUnstage={props.onUnstage} isActioning={props.isActioning} worktreePath={props.worktreePath} onDiscard={props.onDiscard} />;
 	}
 	// Grouped mode - group files by folder
-	return <FileListGrouped files={files} selectedFile={selectedFile} selectedCommitHash={selectedCommitHash} onFileSelect={onFileSelect} onFileDoubleClick={onFileDoubleClick} showStats={showStats} showCheckbox={showCheckbox} isStaged={isStaged} onStage={onStage} onUnstage={onUnstage} isActioning={isActioning} worktreePath={worktreePath} onDiscard={onDiscard} />;
+	return <FileListGrouped files={props.files} selectedFile={props.selectedFile} selectedCommitHash={props.selectedCommitHash} onFileSelect={props.onFileSelect} onFileDoubleClick={props.onFileDoubleClick} showStats={showStats()} showCheckbox={showCheckbox()} isStaged={isStaged()} onStage={props.onStage} onUnstage={props.onUnstage} isActioning={props.isActioning} worktreePath={props.worktreePath} onDiscard={props.onDiscard} />;
 }

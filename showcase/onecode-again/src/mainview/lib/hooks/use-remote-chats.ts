@@ -59,12 +59,11 @@ export function useUserTeams(enabled: boolean = true) {
  */
 export function useRemoteChats() {
   const teamId = selectedTeamIdAtom[0]
-  const currentTeamId = teamId()
 
   return useQuery(() => ({
-    queryKey: ["remote-chats", currentTeamId],
-    queryFn: () => remoteApi.getAgentChats(currentTeamId!),
-    enabled: !!currentTeamId,
+    queryKey: ["remote-chats", teamId()],
+    queryFn: () => remoteApi.getAgentChats(teamId()!),
+    enabled: !!teamId(),
     staleTime: 30 * 1000,       // Consider stale after 30s
     gcTime: 30 * 60 * 1000,     // Keep in cache 30 min
     refetchOnMount: true,       // Revalidate on mount
@@ -106,12 +105,11 @@ export function usePrefetchRemoteChat() {
  */
 export function useRemoteArchivedChats() {
   const teamId = selectedTeamIdAtom[0]
-  const currentTeamId = teamId()
 
   return useQuery(() => ({
-    queryKey: ["remote-archived-chats", currentTeamId],
-    queryFn: () => remoteApi.getArchivedChats(currentTeamId!),
-    enabled: !!currentTeamId,
+    queryKey: ["remote-archived-chats", teamId()],
+    queryFn: () => remoteApi.getArchivedChats(teamId()!),
+    enabled: !!teamId(),
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
   }))

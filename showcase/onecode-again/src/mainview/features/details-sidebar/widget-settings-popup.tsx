@@ -1,4 +1,4 @@
-import { createMemo, createSignal } from "solid-js";
+import { createMemo, createSignal, For } from "solid-js";
 import { GripVertical, Box, TerminalSquare, ListTodo } from "lucide-solid";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -22,9 +22,9 @@ function getWidgetIcon(widgetId: WidgetId) {
 		default: return Box;
 	}
 }
-export function WidgetSettingsPopup({ workspaceId, isRemoteChat = false }: WidgetSettingsPopupProps) {
-	const visibilityAtom = createMemo(() => widgetVisibilityAtomFamily(workspaceId));
-	const orderAtom = createMemo(() => widgetOrderAtomFamily(workspaceId));
+export function WidgetSettingsPopup(props: WidgetSettingsPopupProps) {
+	const visibilityAtom = createMemo(() => widgetVisibilityAtomFamily(props.workspaceId));
+	const orderAtom = createMemo(() => widgetOrderAtomFamily(props.workspaceId));
 	const [visibleWidgets, setVisibleWidgets] = visibilityAtom;
 	const [widgetOrder, setWidgetOrder] = orderAtom;
 	// Drag state
@@ -87,7 +87,8 @@ export function WidgetSettingsPopup({ workspaceId, isRemoteChat = false }: Widge
 	};
 	// Get widgets in current order, filtering out terminal for remote chats
 	const orderedWidgets = createMemo(() => {
-		const widgets = isRemoteChat ? WIDGET_REGISTRY.filter((w) => w.id !== "terminal") : WIDGET_REGISTRY;
+		const isRemote = props.isRemoteChat ?? false;
+		const widgets = isRemote ? WIDGET_REGISTRY.filter((w) => w.id !== "terminal") : WIDGET_REGISTRY;
 		return [...widgets].sort((a, b) => widgetOrder.indexOf(a.id) - widgetOrder.indexOf(b.id));
 	});
 	return <Popover>
@@ -96,24 +97,26 @@ export function WidgetSettingsPopup({ workspaceId, isRemoteChat = false }: Widge
           Edit widgets
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" class="w-56 p-2" sideOffset={8}>
-        <div class="space-y-1">
-          <div class="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-            Widgets
-          </div>
-          {orderedWidgets.map((widget) => {
-		const isVisible = visibleWidgets.includes(widget.id);
-		const Icon = getWidgetIcon(widget.id);
-		const isDragging = draggedWidget === widget.id;
-		const isDragOver = dragOverWidget === widget.id;
-		return <div key={widget.id} draggable onDragStart={(e) => handleDragStart(e, widget.id)} onDragOver={(e) => handleDragOver(e, widget.id)} onDragLeave={handleDragLeave} onDrop={(e) => handleDrop(e, widget.id)} onDragEnd={handleDragEnd} class={cn("flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted cursor-grab active:cursor-grabbing transition-colors", isDragging && "opacity-50", isDragOver && "bg-muted/80 ring-1 ring-primary/50")}>
-                <GripVertical class="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
-                <Checkbox checked={isVisible} onCheckedChange={() => toggleWidget(widget.id)} onClick={(e) => e.stopPropagation()} class="h-4 w-4" />
-                <Icon class="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <span class="text-sm flex-1">{widget.label}</span>
-              </div>;
-	})}
-        </div>
-      </PopoverContent>
-    </Popover>;
+		<PopoverContent align="end" class="w-56 p-2" sideOffset={8}>
+			<div class="space-y-1">
+				<div class="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+					Widgets
+				</div>
+				<For each={orderedWidgets}>
+					{(widget) => {
+						const isVisible = visibleWidgets.includes(widget.id);
+						const Icon = getWidgetIcon(widget.id);
+						const isDragging = draggedWidget === widget.id;
+						const isDragOver = dragOverWidget === widget.id;
+						return <div draggable onDragStart={(e) => handleDragStart(e, widget.id)} onDragOver={(e) => handleDragOver(e, widget.id)} onDragLeave={handleDragLeave} onDrop={(e) => handleDrop(e, widget.id)} onDragEnd={handleDragEnd} class={cn("flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted cursor-grab active:cursor-grabbing transition-colors", isDragging && "opacity-50", isDragOver && "bg-muted/80 ring-1 ring-primary/50")}>
+							<GripVertical class="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
+							<Checkbox checked={isVisible} onCheckedChange={() => toggleWidget(widget.id)} onClick={(e) => e.stopPropagation()} class="h-4 w-4" />
+							<Icon class="h-4 w-4 text-muted-foreground flex-shrink-0" />
+							<span class="text-sm flex-1">{widget.label}</span>
+						</div>;
+					}}
+				</For>
+			</div>
+		</PopoverContent>
+	</Popover>;
 }

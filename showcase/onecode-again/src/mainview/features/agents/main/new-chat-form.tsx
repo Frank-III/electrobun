@@ -1,6 +1,6 @@
 import type { JSX } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import { createSignal, createEffect, createMemo, onCleanup, Show } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup, Show, For } from "solid-js";
 import { AlignJustify, Plus, Zap } from "lucide-solid";
 import { Portal } from "solid-js/web";
 import { Button } from "../../../components/ui/button";
@@ -496,6 +496,8 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 		enabled: !!validatedProject()?.path,
 		staleTime: 3e4,
 	}));
+	// Accessor for default branch - reactive wrapper for JSX access
+	const defaultBranch = () => branchesQuery.data?.defaultBranch;
 	const fetchRemoteMutation = useMutation(() => ({
 		mutationFn: (input: { worktreePath: string }) => desktopRpc.changes.fetchRemote.mutate(input),
 	}));
@@ -592,14 +594,15 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	// Set default branch when project/branches change (only if no saved branch for this project)
 	createEffect(() => {
 		const project = validatedProject();
-		if (branchesQuery.data?.defaultBranch && project?.id && !selectedBranch()) {
+		const defBranch = defaultBranch();
+		if (defBranch && project?.id && !selectedBranch()) {
 			// Find the default branch in the branches list to get its type
 			// Prefer local over remote if both exist
 			const branchList = branches();
-			const defaultBranchObj = branchList.find((b) => b.name === branchesQuery.data!.defaultBranch && b.isDefault && b.type === "local") || branchList.find((b) => b.name === branchesQuery.data!.defaultBranch && b.isDefault && b.type === "remote");
+			const defaultBranchObj = branchList.find((b) => b.name === defBranch && b.isDefault && b.type === "local") || branchList.find((b) => b.name === defBranch && b.isDefault && b.type === "remote");
 			// Fallback to "local" if branch not found in list (shouldn't happen but prevents empty selector)
 			const branchType = defaultBranchObj?.type || "local";
-			setSelectedBranch(branchesQuery.data!.defaultBranch, branchType);
+			setSelectedBranch(defBranch, branchType);
 		}
 	});
 	// Auto-focus input when NewChatForm is shown (when clicking "New Chat")
@@ -1186,18 +1189,23 @@ type MessagePart = {
 		});
 	};
 	// Context items for images and pasted text files
-	const contextItems = createMemo(() => images().length > 0 || pastedTexts().length > 0 ? <div class="flex flex-wrap gap-[6px]">
-        {(() => {
-		// Build allImages array for gallery navigation
+	const contextItems = createMemo(() => {
 		const allImages = images().filter((img) => img.url && !img.isLoading).map((img) => ({
 			id: img.id,
 			filename: img.filename,
 			url: img.url
 		}));
-		return images().map((img, idx) => <AgentImageItem id={img.id} filename={img.filename} url={img.url} isLoading={img.isLoading} onRemove={() => removeImage(img.id)} allImages={allImages} imageIndex={idx} />);
-	})()}
-        {pastedTexts().map((pt) => <AgentPastedTextItem filePath={pt.filePath} filename={pt.filename} size={pt.size} preview={pt.preview} onRemove={() => removePastedText(pt.id)} />)}
-      </div> : null);
+		return <Show when={images().length > 0 || pastedTexts().length > 0}>
+			<div class="flex flex-wrap gap-[6px]">
+				<For each={images()}>{(img, idx) => 
+					<AgentImageItem id={img.id} filename={img.filename} url={img.url} isLoading={img.isLoading} onRemove={() => removeImage(img.id)} allImages={allImages} imageIndex={idx()} />
+				}</For>
+				<For each={pastedTexts()}>{(pt) => 
+					<AgentPastedTextItem filePath={pt.filePath} filename={pt.filename} size={pt.size} preview={pt.preview} onRemove={() => removePastedText(pt.id)} />
+				}</For>
+			</div>
+		</Show>;
+	});
 	// Handle container click to focus editor
 	const handleContainerClick = (e: MouseEvent) => {
 		if (e.target === e.currentTarget || !(e.target as HTMLElement).closest("button, [contenteditable]")) {
@@ -1208,27 +1216,34 @@ type MessagePart = {
       {	/* Header - Simple burger on mobile, AgentsHeaderControls on desktop */}
       <div class="flex-shrink-0 flex items-center justify-between bg-background p-1.5">
         <div class="flex-1 min-w-0 flex items-center gap-2">
-          {isMobileFullscreen ? <Button variant="ghost" size="icon" onClick={onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="All projects">
+          <Show when={isMobileFullscreen} fallback={<AgentsHeaderControls isSidebarOpen={sidebarOpen()} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} hasUnseenChanges={hasAnyUnseenChanges} />}>
+            <Button variant="ghost" size="icon" onClick={onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="All projects">
               <AlignJustify class="h-4 w-4" />
-            </Button> : <AgentsHeaderControls isSidebarOpen={sidebarOpen()} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} hasUnseenChanges={hasAnyUnseenChanges} />}
+            </Button>
+          </Show>
         </div>
       </div>
 
       <div class="flex flex-1 items-center justify-center overflow-y-auto relative">
         <div class="w-full max-w-2xl space-y-4 md:space-y-6 relative z-10 px-4">
           { /* Title - only show when project is selected */}
-          {validatedProject() && <div class="text-center">
+          <Show when={validatedProject()}>
+            <div class="text-center">
               <h1 class="text-2xl md:text-4xl font-medium tracking-tight">
                 What do you want to get done?
               </h1>
-            </div>}
+            </div>
+          </Show>
 
           { /* Input Area or Select Repo State */}
-          {!validatedProject() ? <div class="flex justify-center">
+          <Show when={validatedProject()} fallback={
+            <div class="flex justify-center">
               <button onClick={handleOpenFolder} disabled={openFolder.isPending} class="h-8 px-3 bg-primary text-primary-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-primary/90 active:scale-[0.97] shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] disabled:opacity-50 disabled:cursor-not-allowed">
-                {openFolder.isPending ? "Opening..." : "Select repo"}
+                <Show when={openFolder.isPending} fallback="Select repo">Opening...</Show>
               </button>
-            </div> : <div class="relative w-full" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+            </div>
+          }>
+            <div class="relative w-full" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
               <div class="relative w-full cursor-text" onClick={handleContainerClick}>
                 <PromptInput class={cn("border bg-input-background relative z-10 p-2 rounded-xl transition-[border-color,box-shadow] duration-150", isDragOver() && "ring-2 ring-primary/50 border-primary/50", isFocused() && !isDragOver() && "ring-2 ring-primary/50")} maxHeight={240} onSubmit={handleSend} contextItems={contextItems()}>
                   <PromptInputContextItems />
@@ -1250,7 +1265,7 @@ type MessagePart = {
 		}
 	}}>
                         <DropdownMenuTrigger class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70">
-                          {agentMode() === "plan" ? <PlanIcon class="h-3.5 w-3.5" /> : <AgentIcon class="h-3.5 w-3.5" />}
+                          <Show when={agentMode() === "plan"} fallback={<AgentIcon class="h-3.5 w-3.5" />}><PlanIcon class="h-3.5 w-3.5" /></Show>
                           <span>{agentMode() === "plan" ? "Plan" : "Agent"}</span>
                           <IconChevronDown class="h-3 w-3 shrink-0 opacity-50" />
                         </DropdownMenuTrigger>
@@ -1298,7 +1313,7 @@ type MessagePart = {
                               <AgentIcon class="w-4 h-4 text-muted-foreground" />
                               <span>Agent</span>
                             </div>
-                            {agentMode() !== "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
+                            <Show when={agentMode() !== "plan"}><CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" /></Show>
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => {
 		// Clear tooltip before closing dropdown (onMouseLeave won't fire)
@@ -1343,7 +1358,7 @@ type MessagePart = {
                               <PlanIcon class="w-4 h-4 text-muted-foreground" />
                               <span>Plan</span>
                             </div>
-                            {agentMode() === "plan" && <CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" />}
+                            <Show when={agentMode() === "plan"}><CheckIcon class="h-3.5 w-3.5 ml-auto shrink-0" /></Show>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                         <Show when={modeTooltip()?.visible}>
@@ -1364,31 +1379,8 @@ type MessagePart = {
                       </DropdownMenu>
 
                       {	/* Model selector - shows Ollama models when offline, Claude models when online */}
-                      {availableModels.isOffline && availableModels.hasOllama ? <DropdownMenu open={isModelDropdownOpen()} onOpenChange={setIsModelDropdownOpen}>
-                          <DropdownMenuTrigger asChild>
-                            <button class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 border border-border">
-                              <Zap class="h-4 w-4" />
-                              <span>{currentOllamaModel() || "Select model"}</span>
-                              <IconChevronDown class="h-3 w-3 shrink-0 opacity-50" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" class="w-[240px]">
-                            {availableModels.ollamaModels.map((model) => {
- const isSelected = model === currentOllamaModel();
-		const isRecommended = model === availableModels.recommendedModel;
-		return <DropdownMenuItem onClick={() => setSelectedOllamaModel(model)} class="gap-2 justify-between">
-                                  <div class="flex items-center gap-1.5">
-                                    <Zap class="h-4 w-4 text-muted-foreground shrink-0" />
-                                    <span>
-                                      {model}
-                                      {isRecommended && <span class="text-muted-foreground ml-1">(recommended)</span>}
-                                    </span>
-                                  </div>
-                                  {isSelected && <CheckIcon class="h-3.5 w-3.5 shrink-0" />}
-                                </DropdownMenuItem>;
-	})}
-                          </DropdownMenuContent>
-                        </DropdownMenu> : <DropdownMenu open={hasCustomClaudeConfig ? false : isModelDropdownOpen()} onOpenChange={(open) => {
+                      <Show when={availableModels.isOffline && availableModels.hasOllama} fallback={
+                        <DropdownMenu open={hasCustomClaudeConfig ? false : isModelDropdownOpen()} onOpenChange={(open) => {
 		if (!hasCustomClaudeConfig) {
 			setIsModelDropdownOpen(open);
 		}
@@ -1397,16 +1389,16 @@ type MessagePart = {
                             <button disabled={hasCustomClaudeConfig} class={cn("flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground transition-[background-color,color] duration-150 ease-out rounded-md outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", hasCustomClaudeConfig ? "opacity-70 cursor-not-allowed" : "hover:text-foreground hover:bg-muted/50")}>
                               <ClaudeCodeIcon class="h-3.5 w-3.5" />
                               <span>
-                                {hasCustomClaudeConfig ? "Custom Model" : <>
+                                <Show when={!hasCustomClaudeConfig} fallback="Custom Model">
                                     {selectedModel()?.name}{" "}
                                     <span class="text-muted-foreground">4.5</span>
-                                  </>}
+                                </Show>
                               </span>
                               <IconChevronDown class="h-3 w-3 shrink-0 opacity-50" />
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="start" class="w-[200px]">
-                            {availableModels.models.map((model) => {
+                            <For each={availableModels.models}>{(model) => {
 		const isSelected = selectedModel()?.id === model.id;
 		return <DropdownMenuItem onClick={() => {
 			setSelectedModel(model);
@@ -1419,11 +1411,38 @@ type MessagePart = {
                                       <span class="text-muted-foreground">4.5</span>
                                     </span>
                                   </div>
-                                  {isSelected && <CheckIcon class="h-3.5 w-3.5 shrink-0" />}
+                                  <Show when={isSelected}><CheckIcon class="h-3.5 w-3.5 shrink-0" /></Show>
                                 </DropdownMenuItem>;
-	})}
+	}}</For>
                           </DropdownMenuContent>
-                        </DropdownMenu>}
+                        </DropdownMenu>
+                      }>
+                        <DropdownMenu open={isModelDropdownOpen()} onOpenChange={setIsModelDropdownOpen}>
+                          <DropdownMenuTrigger asChild>
+                            <button class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 border border-border">
+                              <Zap class="h-4 w-4" />
+                              <span>{currentOllamaModel() || "Select model"}</span>
+                              <IconChevronDown class="h-3 w-3 shrink-0 opacity-50" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" class="w-[240px]">
+                            <For each={availableModels.ollamaModels}>{(model) => {
+ const isSelected = model === currentOllamaModel();
+		const isRecommended = model === availableModels.recommendedModel;
+		return <DropdownMenuItem onClick={() => setSelectedOllamaModel(model)} class="gap-2 justify-between">
+                                  <div class="flex items-center gap-1.5">
+                                    <Zap class="h-4 w-4 text-muted-foreground shrink-0" />
+                                    <span>
+                                      {model}
+                                      <Show when={isRecommended}><span class="text-muted-foreground ml-1">(recommended)</span></Show>
+                                    </span>
+                                  </div>
+                                  <Show when={isSelected}><CheckIcon class="h-3.5 w-3.5 shrink-0" /></Show>
+                                </DropdownMenuItem>;
+	}}</For>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </Show>
                     </div>
 
                     <div class="flex items-center gap-0.5 ml-auto flex-shrink-0">
@@ -1434,9 +1453,11 @@ type MessagePart = {
 		e.target.value = "";
 	}} />
                       {	/* Voice wave indicator or Attachment button */}
-                      {isVoiceRecording() ? <VoiceWaveIndicator isRecording={isVoiceRecording()} audioLevel={voiceAudioLevel()} /> : <Button variant="ghost" size="icon" class="h-7 w-7 rounded-sm outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" onClick={() => fileInputRef()?.click()} disabled={images().length >= 5}>
+                      <Show when={isVoiceRecording()} fallback={<Button variant="ghost" size="icon" class="h-7 w-7 rounded-sm outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" onClick={() => fileInputRef()?.click()} disabled={images().length >= 5}>
                           <AttachIcon class="h-4 w-4" />
-                        </Button>}
+                        </Button>}>
+                        <VoiceWaveIndicator isRecording={isVoiceRecording()} audioLevel={voiceAudioLevel()} />
+                      </Show>
                       <div class="ml-1">
                         <AgentSendButton isStreaming={false} isSubmitting={createChatMutation.isPending || isUploading()} disabled={Boolean(!hasContent() || !selectedProject() || isUploading())} onClick={handleSend} mode={agentMode()} hasContent={hasContent()} showVoiceInput={isVoiceAvailable()} isRecording={isVoiceRecording()} isTranscribing={isTranscribing()} onVoiceMouseDown={handleVoiceMouseDown} onVoiceMouseUp={handleVoiceMouseUp} onVoiceMouseLeave={handleVoiceMouseLeave} />
                       </div>
@@ -1449,10 +1470,11 @@ type MessagePart = {
                   <ProjectSelector />
 
                   { /* Work mode selector - between project and branch */}
-                  {validatedProject() && <WorkModeSelector value={workMode()} onChange={setWorkMode} disabled={createChatMutation.isPending} />}
+                  <Show when={validatedProject()}><WorkModeSelector value={workMode()} onChange={setWorkMode} disabled={createChatMutation.isPending} /></Show>
 
                   { /* Branch selector - only visible when worktree mode is selected */}
-                  {validatedProject() && workMode() === "worktree" && <Popover open={branchPopoverOpen()} onOpenChange={(open) => {
+                  <Show when={validatedProject() && workMode() === "worktree"}>
+                    <Popover open={branchPopoverOpen()} onOpenChange={(open) => {
  if (!open) {
 			setBranchSearch("");
 		}
@@ -1462,7 +1484,7 @@ type MessagePart = {
                         <button class="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70" disabled={branchesQuery.isLoading}>
                           <BranchIcon class="w-4 h-4" />
                           <span class="truncate max-w-[100px]">
-                            {selectedBranch() || branchesQuery.data?.defaultBranch || "main"}
+                            {selectedBranch() || defaultBranch() || "main"}
                           </span>
                           <IconChevronDown class="w-3 h-3 opacity-50" />
                         </button>
@@ -1484,15 +1506,18 @@ type MessagePart = {
                         </div>
 
                         {	/* Virtualized branch list */}
-                        {filteredBranches().length === 0 ? <div class="py-6 text-center text-sm text-muted-foreground">
+                        <Show when={filteredBranches().length > 0} fallback={
+                          <div class="py-6 text-center text-sm text-muted-foreground">
                             No branches found.
-                          </div> : <div ref={setBranchListRef} class="overflow-auto py-1 scrollbar-hide" style={{ height: `${Math.min(filteredBranches().length * 32 + 8, 300)}px` }}>
+                          </div>
+                        }>
+                          <div ref={setBranchListRef} class="overflow-auto py-1 scrollbar-hide" style={{ height: `${Math.min(filteredBranches().length * 32 + 8, 300)}px` }}>
                             <div style={{
  height: `${branchVirtualizer.getTotalSize()}px`,
 		width: "100%",
 		position: "relative"
 	}}>
-                              {branchVirtualizer.getVirtualItems().map((virtualItem) => {
+                              <For each={branchVirtualizer.getVirtualItems()}>{(virtualItem) => {
 		const branch = filteredBranches()[virtualItem.index];
 		const isSelected = selectedBranch() === branch.name && selectedBranchType() === branch.type || !selectedBranch() && branch.isDefault && branch.type === "local";
 		return <button onClick={() => {
@@ -1510,28 +1535,31 @@ type MessagePart = {
                                       <span class={cn("text-[10px] px-1.5 py-0.5 rounded shrink-0", branch.type === "local" ? "bg-blue-500/10 text-blue-500" : "bg-orange-500/10 text-orange-500")}>
                                         {branch.type}
                                       </span>
-                                      {branch.committedAt && <span class="text-xs text-muted-foreground/70 shrink-0">
+                                      <Show when={branch.committedAt}><span class="text-xs text-muted-foreground/70 shrink-0">
                                           {formatRelativeTime(branch.committedAt)}
-                                        </span>}
-                                      {branch.isDefault && <span class="text-[10px] text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded shrink-0">
+                                        </span></Show>
+                                      <Show when={branch.isDefault}><span class="text-[10px] text-muted-foreground/70 bg-muted px-1.5 py-0.5 rounded shrink-0">
                                           default
-                                        </span>}
-                                      {isSelected && <CheckIcon class="h-4 w-4 shrink-0 ml-auto" />}
+                                        </span></Show>
+                                      <Show when={isSelected}><CheckIcon class="h-4 w-4 shrink-0 ml-auto" /></Show>
                                     </button>;
-	})}
+	}}</For>
                             </div>
-                          </div>}
+                          </div>
+                        </Show>
                       </PopoverContent>
-                    </Popover>}
+                    </Popover>
+                  </Show>
 
                   {	/* Create Branch Dialog */}
-                  {validatedProject() && <CreateBranchDialog open={createBranchDialogOpen()} onOpenChange={setCreateBranchDialogOpen} projectPath={validatedProject()!.path} branches={branches()} defaultBranch={branchesQuery.data?.defaultBranch || "main"} onBranchCreated={(branchName) => {
+                  <Show when={validatedProject()}><CreateBranchDialog open={createBranchDialogOpen()} onOpenChange={setCreateBranchDialogOpen} projectPath={validatedProject()!.path} branches={branches()} defaultBranch={defaultBranch() || "main"} onBranchCreated={(branchName) => {
  setSelectedBranch(branchName, "local");
-	}} />}
+	}} /></Show>
                 </div>
 
                 {	/* Worktree config banner - absolute positioned to avoid layout shift */}
-                {showWorktreeBanner() && <div class="absolute left-0 right-0 top-full mt-2 ml-[5px] mr-[5px] p-3 pb-4 bg-muted/50 rounded-lg border border-border space-y-3">
+                <Show when={showWorktreeBanner()}>
+                  <div class="absolute left-0 right-0 top-full mt-2 ml-[5px] mr-[5px] p-3 pb-4 bg-muted/50 rounded-lg border border-border space-y-3">
                     <p class="text-sm text-muted-foreground">
                       Configure a worktree setup script to install dependencies or copy environment variables.
                     </p>
@@ -1558,7 +1586,8 @@ type MessagePart = {
                         Fill with AI
                       </Button>
                     </div>
-                  </div>}
+                  </div>
+                </Show>
 
                 {	/* File mention dropdown */}
                 { /* Desktop: use projectPath for local file search */}
@@ -1574,7 +1603,8 @@ type MessagePart = {
                 {	/* Slash command dropdown */}
                 <AgentsSlashCommand isOpen={showSlashDropdown()} onClose={handleCloseSlashTrigger} onSelect={handleSlashSelect} searchText={slashSearchText()} position={slashPosition()} projectPath={validatedProject()?.path} mode={agentMode()} disabledCommands={["clear"]} />
               </div>
-            </div>}
+            </div>
+          </Show>
         </div>
       </div>
     </div>;

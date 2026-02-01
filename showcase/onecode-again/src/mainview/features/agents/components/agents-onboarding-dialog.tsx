@@ -25,7 +25,7 @@ export function AgentsOnboardingDialog() {
 	createEffect(() => {
 		setMounted(true);
 		// Check if debug mode wants to reset onboarding
-		if (debugMode.enabled && debugMode.resetOnboarding) {
+		if (debugMode().enabled && debugMode().resetOnboarding) {
 			localStorage.removeItem(ONBOARDING_STORAGE_KEY);
 			// Reset the flag to prevent infinite loops
 			setDebugMode((prev) => ({

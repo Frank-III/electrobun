@@ -1,4 +1,4 @@
-import { createMemo } from "solid-js";
+import { createMemo, For } from "solid-js";
 import { KanbanColumn } from "./kanban-column";
 import type { KanbanCardData } from "./kanban-card";
 import type { SubChatStatus } from "../lib/derive-status";
@@ -47,7 +47,7 @@ const COLUMNS: {
 		title: "Done"
 	}
 ];
-export function KanbanBoard({ cards, isMultiSelectMode, onCardClick, onCheckboxClick, onTogglePin, onRename, onArchive, onCopyBranch, onExportChat, onCopyChat }: KanbanBoardProps) {
+export function KanbanBoard(props: KanbanBoardProps) {
 	// Group cards by status
 	const cardsByStatus = createMemo(() => {
 		const grouped: Record<SubChatStatus, KanbanCardData[]> = {
@@ -56,7 +56,7 @@ export function KanbanBoard({ cards, isMultiSelectMode, onCardClick, onCheckboxC
 			"needs-input": [],
 			done: []
 		};
-		for (const card of cards) {
+		for (const card of props.cards) {
 			grouped[card.status].push(card);
 		}
 		return grouped;
@@ -64,7 +64,7 @@ export function KanbanBoard({ cards, isMultiSelectMode, onCardClick, onCheckboxC
 	return <div class="h-full overflow-x-auto">
       {	/* Centered container with max-width */}
       <div class="flex gap-3 h-full px-4 py-2 mx-auto max-w-5xl min-w-min">
-        {COLUMNS.map((column) => <KanbanColumn key={column.status} title={column.title} status={column.status} cards={cardsByStatus[column.status]} isMultiSelectMode={isMultiSelectMode} onCardClick={onCardClick} onCheckboxClick={onCheckboxClick} onTogglePin={onTogglePin} onRename={onRename} onArchive={onArchive} onCopyBranch={onCopyBranch} onExportChat={onExportChat} onCopyChat={onCopyChat} />)}
+        <For each={COLUMNS}>{(column) => <KanbanColumn title={column.title} status={column.status} cards={cardsByStatus()[column.status]} isMultiSelectMode={props.isMultiSelectMode} onCardClick={props.onCardClick} onCheckboxClick={props.onCheckboxClick} onTogglePin={props.onTogglePin} onRename={props.onRename} onArchive={props.onArchive} onCopyBranch={props.onCopyBranch} onExportChat={props.onExportChat} onCopyChat={props.onCopyChat} />}</For>
       </div>
     </div>;
 }

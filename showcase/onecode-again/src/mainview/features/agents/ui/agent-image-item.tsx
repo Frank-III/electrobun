@@ -1,4 +1,4 @@
-import { createSignal, createEffect, Show, For, onCleanup } from "solid-js";
+import { createSignal, createEffect, Show, For, onCleanup, mergeProps, splitProps, Switch, Match } from "solid-js";
 import { Portal } from "solid-js/web";
 import { X, ImageOff, ChevronLeft, ChevronRight } from "lucide-solid";
 import { IconSpinner } from "../../../components/ui/icons";
@@ -19,25 +19,27 @@ interface AgentImageItemProps {
 	/** Index of this image in the group */
 	imageIndex?: number;
 }
-export function AgentImageItem({ id, filename, url, isLoading = false, onRemove, allImages, imageIndex = 0 }: AgentImageItemProps) {
+export function AgentImageItem(props: AgentImageItemProps) {
+	const merged = mergeProps({ isLoading: false, imageIndex: 0 }, props);
+	const [local] = splitProps(merged, ["id", "filename", "url", "isLoading", "onRemove", "allImages", "imageIndex"]);
 	const [isHovered, setIsHovered] = createSignal(false);
 	const [hasError, setHasError] = createSignal(false);
 	const [isFullscreen, setIsFullscreen] = createSignal(false);
-	const [currentIndex, setCurrentIndex] = createSignal(imageIndex);
+	const [currentIndex, setCurrentIndex] = createSignal(local.imageIndex);
 	// Use allImages if provided, otherwise create single-image array
-	const images = allImages || [{
-		id,
-		filename,
-		url
+	const images = local.allImages || [{
+		id: local.id,
+		filename: local.filename,
+		url: local.url
 	}];
 	const hasMultipleImages = images.length > 1;
 	const currentImage = images[currentIndex] || images[0];
 	const handleImageError = () => {
-		console.warn("[AgentImageItem] Failed to load image:", filename, url);
+		console.warn("[AgentImageItem] Failed to load image:", local.filename, local.url);
 		setHasError(true);
 	};
 	const openFullscreen = () => {
-		setCurrentIndex(imageIndex);
+		setCurrentIndex(local.imageIndex);
 		setIsFullscreen(true);
 	};
 	const closeFullscreen = () => {
@@ -74,26 +76,39 @@ export function AgentImageItem({ id, filename, url, isLoading = false, onRemove,
 		onCleanup(() => window.removeEventListener("keydown", handleKeyDown, true));
 	});
 	return <>
-      <div class="relative" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
-        {isLoading ? <div class="size-8 flex items-center justify-center bg-muted rounded">
-            <IconSpinner class="size-4 text-muted-foreground" />
-          </div> : hasError() ? <div class="size-8 flex items-center justify-center bg-muted/50 rounded border border-destructive/20" title="Failed to load image">
-            <ImageOff class="size-4 text-destructive/50" />
-          </div> : url ? <HoverCard openDelay={200}>
-            <HoverCardTrigger asChild>
-              <img src={url} alt={filename} class="size-8 object-cover rounded cursor-pointer" onClick={openFullscreen} onError={handleImageError} />
-            </HoverCardTrigger>
-            <HoverCardContent class="w-auto max-w-72 p-0" side="top">
-              <img src={url} alt={filename} class="max-w-72 max-h-72 w-auto h-auto object-contain rounded-[10px]" onError={handleImageError} />
-            </HoverCardContent>
-          </HoverCard> : <div class="size-8 bg-muted rounded flex items-center justify-center">
-            <IconSpinner class="size-4 text-muted-foreground" />
-          </div>}
+	      <div class="relative" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
+	        <Switch>
+	          <Match when={local.isLoading}>
+	            <div class="size-8 flex items-center justify-center bg-muted rounded">
+	              <IconSpinner class="size-4 text-muted-foreground" />
+	            </div>
+	          </Match>
+	          <Match when={hasError()}>
+	            <div class="size-8 flex items-center justify-center bg-muted/50 rounded border border-destructive/20" title="Failed to load image">
+	              <ImageOff class="size-4 text-destructive/50" />
+	            </div>
+	          </Match>
+	          <Match when={local.url}>
+	            <HoverCard openDelay={200}>
+	              <HoverCardTrigger asChild>
+	                <img src={local.url} alt={local.filename} class="size-8 object-cover rounded cursor-pointer" onClick={openFullscreen} onError={handleImageError} />
+	              </HoverCardTrigger>
+	              <HoverCardContent class="w-auto max-w-72 p-0" side="top">
+	                <img src={local.url} alt={local.filename} class="max-w-72 max-h-72 w-auto h-auto object-contain rounded-[10px]" onError={handleImageError} />
+	              </HoverCardContent>
+	            </HoverCard>
+	          </Match>
+	          <Match when={true}>
+	            <div class="size-8 bg-muted rounded flex items-center justify-center">
+	              <IconSpinner class="size-4 text-muted-foreground" />
+	            </div>
+	          </Match>
+	        </Switch>
 
-<Show when={onRemove}>
-          <button onClick={(e) => {
-	e.stopPropagation();
-	onRemove!();
+<Show when={local.onRemove}>
+	        <button onClick={(e) => {
+		e.stopPropagation();
+		local.onRemove?.();
 }} class={`absolute -top-1.5 -right-1.5 size-4 rounded-full bg-background border border-border
                        flex items-center justify-center transition-[opacity,transform] duration-150 ease-out active:scale-[0.97] z-10
                        text-muted-foreground hover:text-foreground

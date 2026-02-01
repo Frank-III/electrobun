@@ -1,4 +1,4 @@
-import { createSignal, Show, For } from "solid-js";
+import { createSignal, Show, For, splitProps } from "solid-js";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { IconSpinner, ExpandIcon, CollapseIcon, CheckIcon } from "../../../components/ui/icons";
 import { getToolStatus } from "./agent-tool-registry";
@@ -35,17 +35,18 @@ interface AgentPlanToolProps {
 	};
 	chatStatus?: string;
 }
-const StepStatusIcon = ({ status, isPending }: {
+const StepStatusIcon = (props: {
 	status: PlanStep["status"];
 	isPending?: boolean;
 }) => {
+	const [local] = splitProps(props, ["status", "isPending"]);
 	// During loading, show spinner for in_progress items
-	if (isPending && status === "in_progress") {
+	if (local.isPending && local.status === "in_progress") {
 		return <div class="w-3.5 h-3.5 rounded-full flex items-center justify-center flex-shrink-0" style={{ border: "0.5px solid hsl(var(--muted-foreground) / 0.3)" }}>
         <IconSpinner class="w-2.5 h-2.5" />
       </div>;
 	}
-	switch (status) {
+	switch (local.status) {
 		case "completed": return <div class="w-3.5 h-3.5 rounded-full bg-muted flex items-center justify-center flex-shrink-0" style={{ border: "0.5px solid hsl(var(--border))" }}>
           <CheckIcon class="w-2 h-2 text-muted-foreground" />
         </div>;
@@ -58,19 +59,21 @@ const StepStatusIcon = ({ status, isPending }: {
 		default: return <div class="w-3.5 h-3.5 rounded-full flex items-center justify-center flex-shrink-0" style={{ border: "0.5px solid hsl(var(--muted-foreground) / 0.3)" }} />;
 	}
 };
-const ComplexityBadge = ({ complexity }: {
+const ComplexityBadge = (props: {
 	complexity?: "low" | "medium" | "high";
 }) => {
-	if (!complexity) return null;
+	const [local] = splitProps(props, ["complexity"]);
+	if (!local.complexity) return null;
 	return <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-      {complexity}
+      {local.complexity}
     </span>;
 };
-export function AgentPlanTool({ part, chatStatus }: AgentPlanToolProps) {
+export function AgentPlanTool(props: AgentPlanToolProps) {
+	const [local] = splitProps(props, ["part", "chatStatus"]);
 	const [isExpanded, setIsExpanded] = createSignal(false);
-	const { isPending } = getToolStatus(part, chatStatus);
-	const plan = part.input?.plan;
-	const action = part.input?.action || "create";
+	const { isPending } = getToolStatus(local.part, local.chatStatus);
+	const plan = local.part.input?.plan;
+	const action = local.part.input?.action || "create";
 	if (!plan) {
 		return null;
 	}
@@ -107,11 +110,13 @@ export function AgentPlanTool({ part, chatStatus }: AgentPlanToolProps) {
       <div class="flex items-center justify-between px-2.5 py-2 cursor-pointer hover:bg-muted/50 transition-colors duration-150" onClick={() => setIsExpanded(!isExpanded)}>
         <div class="flex items-center gap-2 min-w-0 flex-1">
           <div class="flex flex-col min-w-0 flex-1">
-            {isPending ? <TextShimmer as="span" duration={1.2} class="text-xs font-medium">
+            <Show when={isPending} fallback={<span class="text-xs font-medium text-foreground truncate">
                 {getHeaderTitle()}
-              </TextShimmer> : <span class="text-xs font-medium text-foreground truncate">
+              </span>}>
+              <TextShimmer as="span" duration={1.2} class="text-xs font-medium">
                 {getHeaderTitle()}
-              </span>}
+              </TextShimmer>
+            </Show>
             <Show when={plan.summary && !isExpanded()}>
               <span class="text-[11px] text-muted-foreground/60 truncate">
                 {plan.summary}

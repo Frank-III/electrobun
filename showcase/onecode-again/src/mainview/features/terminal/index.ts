@@ -1,6 +1,5 @@
 export { Terminal } from "./terminal"
 export { TerminalSidebar } from "./terminal-sidebar"
-export { TerminalSearch } from "./TerminalSearch"
 export { TerminalStoreProvider, useTerminalStore } from "./terminal-store-context"
 export type { TerminalState, SetTerminalStore } from "./terminal-store"
-export type { TerminalProps, TerminalStreamEvent } from "./types"
+export type { TerminalProps } from "./types"

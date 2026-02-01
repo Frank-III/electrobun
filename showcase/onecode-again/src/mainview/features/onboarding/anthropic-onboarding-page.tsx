@@ -137,11 +137,9 @@ export function AnthropicOnboardingPage() {
                 disabled={isImporting()}
                 class={cn("w-full h-8 px-3 bg-primary text-primary-foreground rounded-lg text-sm font-medium transition-[background-color,transform] duration-150 hover:bg-primary/90 active:scale-[0.97] shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] dark:shadow-[0_0_0_0.5px_rgb(23,23,23),inset_0_0_0_1px_rgba(255,255,255,0.14)] flex items-center justify-center", isImporting() && "opacity-50 cursor-not-allowed")}
               >
-                {isImporting() ? (
+                <Show when={isImporting()} fallback="Use existing token">
                   <IconSpinner class="h-4 w-4" />
-                ) : (
-                  "Use existing token"
-                )}
+                </Show>
               </button>
             </div>
           </Show>

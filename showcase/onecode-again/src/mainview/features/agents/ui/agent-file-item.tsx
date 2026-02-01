@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, mergeProps, splitProps } from "solid-js";
 import { X, FileText, FileCode, FileJson } from "lucide-solid";
 import { IconSpinner } from "../../../components/ui/icons";
 interface AgentFileItemProps {
@@ -49,24 +49,28 @@ function getFileIcon(filename: string) {
 	}
 	return FileText;
 }
-export function AgentFileItem({ id, filename, url, size, isLoading = false, onRemove }: AgentFileItemProps) {
+export function AgentFileItem(props: AgentFileItemProps) {
+	const merged = mergeProps({ isLoading: false }, props);
+	const [local] = splitProps(merged, ["id", "filename", "url", "size", "isLoading", "onRemove"]);
 	const [isHovered, setIsHovered] = createSignal(false);
-	const Icon = getFileIcon(filename);
+	const Icon = getFileIcon(local.filename);
 	return <div class="relative flex items-center gap-1.5 px-2 py-1 bg-muted/50 rounded border border-border/50 max-w-[200px]" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
-      {isLoading ? <IconSpinner class="size-3.5 text-muted-foreground flex-shrink-0" /> : <Icon class="size-3.5 text-muted-foreground flex-shrink-0" />}
+	      <Show when={local.isLoading} fallback={<Icon class="size-3.5 text-muted-foreground flex-shrink-0" />}>
+	        <IconSpinner class="size-3.5 text-muted-foreground flex-shrink-0" />
+	      </Show>
 
       <div class="flex flex-col min-w-0">
-        <span class="text-xs text-foreground truncate" title={filename}>
-          {filename}
-        </span>
-        <Show when={size !== undefined}><span class="text-[10px] text-muted-foreground">
-            {formatFileSize(size)}
-          </span></Show>
-      </div>
+	        <span class="text-xs text-foreground truncate" title={local.filename}>
+	          {local.filename}
+	        </span>
+	        <Show when={local.size !== undefined}><span class="text-[10px] text-muted-foreground">
+	            {formatFileSize(local.size)}
+	          </span></Show>
+	      </div>
 
-      <Show when={onRemove}><button onClick={(e) => {
+	      <Show when={local.onRemove}><button onClick={(e) => {
 		e.stopPropagation();
-		onRemove();
+		local.onRemove?.();
 	}} class={`absolute -top-1.5 -right-1.5 size-4 rounded-full bg-background border border-border
                      flex items-center justify-center transition-[opacity,transform] duration-150 ease-out active:scale-[0.97] z-10
                      text-muted-foreground hover:text-foreground

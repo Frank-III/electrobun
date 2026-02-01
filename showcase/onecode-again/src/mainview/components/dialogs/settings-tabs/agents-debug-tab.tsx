@@ -352,16 +352,17 @@ export function AgentsDebugTab() {
     </div>;
 }
 // Helper component for info rows
-function InfoRow({ label, value, isLoading, status }: {
+interface InfoRowProps {
 	label: string;
 	value?: string;
 	isLoading?: boolean;
 	status?: "success" | "warning" | "error";
-}) {
+}
+function InfoRow(props: InfoRowProps) {
 	return <div class="flex items-center justify-between p-3">
-      <span class="text-sm text-muted-foreground">{label}</span>
-      <span class={`text-sm font-medium ${status === "success" ? "text-green-500" : status === "warning" ? "text-yellow-500" : status === "error" ? "text-red-500" : ""}`}>
-        {isLoading ? "..." : value ?? "-"}
+      <span class="text-sm text-muted-foreground">{props.label}</span>
+      <span class={`text-sm font-medium ${props.status === "success" ? "text-green-500" : props.status === "warning" ? "text-yellow-500" : props.status === "error" ? "text-red-500" : ""}`}>
+        {props.isLoading ? "..." : props.value ?? "-"}
       </span>
     </div>;
 }

@@ -1,4 +1,4 @@
-import { createSignal, createMemo } from "solid-js";
+import { createSignal, createMemo, For, Show, splitProps } from "solid-js";
 import { SearchIcon, IconSpinner, ExpandIcon, CollapseIcon, ExternalLinkIcon } from "../../../components/ui/icons";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { getToolStatus } from "./agent-tool-registry";
@@ -12,16 +12,17 @@ interface SearchResult {
 	title: string;
 	url: string;
 }
-export function AgentWebSearchTool({ part, chatStatus }: AgentWebSearchToolProps) {
+export function AgentWebSearchTool(props: AgentWebSearchToolProps) {
+	const [local] = splitProps(props, ["part", "chatStatus"]);
 	const [isExpanded, setIsExpanded] = createSignal(false);
-	const { isPending, isError, isInterrupted } = getToolStatus(part, chatStatus);
-	const query = part.input?.query || "";
+	const { isPending, isError, isInterrupted } = getToolStatus(local.part, local.chatStatus);
+	const query = local.part.input?.query || "";
 	const truncatedQuery = query.length > 40 ? query.slice(0, 37) + "..." : query;
 	// Parse results from output
 	const results = createMemo(() => {
-		if (!part.output?.results) return [];
+		if (!local.part.output?.results) return [];
 		// Results can be nested in content array
-		const rawResults = part.output.results;
+		const rawResults = local.part.output.results;
 		const allResults: SearchResult[] = [];
 		for (const result of rawResults) {
 			if (result.content && Array.isArray(result.content)) {
@@ -54,9 +55,11 @@ export function AgentWebSearchTool({ part, chatStatus }: AgentWebSearchToolProps
         <div class="flex items-center gap-1.5 text-xs truncate flex-1 min-w-0">
           <SearchIcon class="w-3 h-3 flex-shrink-0 text-muted-foreground" />
           
-          {isPending ? <TextShimmer as="span" duration={1.2} class="text-xs text-muted-foreground">
+          <Show when={isPending} fallback={<span class="text-xs text-muted-foreground">Searched</span>}>
+            <TextShimmer as="span" duration={1.2} class="text-xs text-muted-foreground">
               Searching
-            </TextShimmer> : <span class="text-xs text-muted-foreground">Searched</span>}
+            </TextShimmer>
+          </Show>
           
           <span class="truncate text-foreground">
             {truncatedQuery}
@@ -66,32 +69,40 @@ export function AgentWebSearchTool({ part, chatStatus }: AgentWebSearchToolProps
         { /* Status and expand button */}
         <div class="flex items-center gap-2 flex-shrink-0 ml-2">
           <div class="flex items-center gap-1.5 text-xs">
-            {isPending ? <IconSpinner class="w-3 h-3" /> : isError ? <span class="text-destructive">Failed</span> : <span class="text-muted-foreground">
-                {resultCount} {resultCount === 1 ? "result" : "results"}
-              </span>}
+            <Show when={isPending} fallback={<Show when={isError} fallback={<span class="text-muted-foreground">
+              {resultCount} {resultCount === 1 ? "result" : "results"}
+            </span>}>
+              <span class="text-destructive">Failed</span>
+            </Show>}>
+              <IconSpinner class="w-3 h-3" />
+            </Show>
           </div>
 
           { /* Expand/Collapse icon */}
-          {hasResults && !isPending && <div class="relative w-4 h-4">
+          <Show when={hasResults && !isPending}>
+            <div class="relative w-4 h-4">
               <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
               <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
-            </div>}
+            </div>
+          </Show>
         </div>
       </div>
 
       { /* Results list - expandable */}
-      {hasResults && isExpanded() && <div class="border-t border-border max-h-[200px] overflow-y-auto">
-          {results.map((result, idx) => <a key={idx} href={result.url} target="_blank" rel="noopener noreferrer" class="flex items-start gap-2 px-2.5 py-1.5 hover:bg-muted/50 transition-colors group">
-              <ExternalLinkIcon class="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground group-hover:text-foreground" />
-              <div class="min-w-0 flex-1">
-                <div class="text-xs text-foreground truncate">
-                  {result.title}
-                </div>
-                <div class="text-[10px] text-muted-foreground truncate">
-                  {result.url}
-                </div>
+      <Show when={hasResults && isExpanded()}>
+        <div class="border-t border-border max-h-[200px] overflow-y-auto">
+          <For each={results}>{(result) => <a href={result.url} target="_blank" rel="noopener noreferrer" class="flex items-start gap-2 px-2.5 py-1.5 hover:bg-muted/50 transition-colors group">
+            <ExternalLinkIcon class="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground group-hover:text-foreground" />
+            <div class="min-w-0 flex-1">
+              <div class="text-xs text-foreground truncate">
+                {result.title}
               </div>
-            </a>)}
-        </div>}
+              <div class="text-[10px] text-muted-foreground truncate">
+                {result.url}
+              </div>
+            </div>
+          </a>}</For>
+        </div>
+      </Show>
     </div>;
 }

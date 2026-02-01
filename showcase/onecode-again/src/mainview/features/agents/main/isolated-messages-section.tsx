@@ -1,4 +1,4 @@
-import type { JSX, Component } from "solid-js";
+import { For, type JSX, type Component } from "solid-js";
 import { userMessageIdsAtom, currentSubChatIdAtom } from "../stores/message-store";
 import { IsolatedMessageGroup } from "./isolated-message-group";
 // ============================================================================
@@ -66,6 +66,6 @@ export function IsolatedMessagesSection({ subChatId, chatId, isMobile, sandboxSe
 		return null;
 	}
 	return <>
-      {userMsgIds.map((userMsgId) => <IsolatedMessageGroup key={userMsgId} userMsgId={userMsgId} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} stickyTopClass={stickyTopClass} sandboxSetupError={sandboxSetupError} onRetrySetup={onRetrySetup} UserBubbleComponent={UserBubbleComponent} ToolCallComponent={ToolCallComponent} MessageGroupWrapper={MessageGroupWrapper} toolRegistry={toolRegistry} />)}
+      <For each={userMsgIds()}>{(userMsgId) => <IsolatedMessageGroup userMsgId={userMsgId} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} stickyTopClass={stickyTopClass} sandboxSetupError={sandboxSetupError} onRetrySetup={onRetrySetup} UserBubbleComponent={UserBubbleComponent} ToolCallComponent={ToolCallComponent} MessageGroupWrapper={MessageGroupWrapper} toolRegistry={toolRegistry} />}</For>
     </>;
 }

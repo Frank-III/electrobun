@@ -2,6 +2,7 @@ import { cn } from "../../../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/solid-query";
 import { desktopRpc } from "../../../lib/desktop-rpc";
 import { createEffect, createMemo, createSignal, onCleanup, For, Show } from "solid-js";
+import { debounce } from "@solid-primitives/scheduled";
 import { Portal } from "solid-js/web";
 import { IconSpinner } from "../../../components/ui/icons";
 import type { SlashCommandOption, SlashTriggerPayload } from "./types";
@@ -27,11 +28,10 @@ export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, posi
 	const [selectedIndex, setSelectedIndex] = createSignal(0);
 	const [debouncedSearchText, setDebouncedSearchText] = createSignal(searchText);
 	// Debounce search text (300ms to match file mention)
+	const updateDebouncedSearch = debounce((text: string) => setDebouncedSearchText(text), 300);
 	createEffect(() => {
-		const timer = setTimeout(() => {
-			setDebouncedSearchText(searchText);
-		}, 300);
-		onCleanup(() => clearTimeout(timer));
+		updateDebouncedSearch(searchText);
+		onCleanup(() => updateDebouncedSearch.clear());
 	});
 	// Fetch custom commands from filesystem
 	const fileCommandsQuery = useQuery(() => ({
@@ -92,7 +92,7 @@ export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, posi
 	};
 	// Combine builtin and repository commands, filtered by search
 	const options = createMemo(() => {
-		let builtinFiltered = filterBuiltinCommands(debouncedSearchText);
+		let builtinFiltered = filterBuiltinCommands(debouncedSearchText());
 		// Hide /plan when already in Plan mode, hide /agent when already in Agent mode
 		if (mode !== undefined) {
 			builtinFiltered = builtinFiltered.filter((cmd) => {
@@ -106,10 +106,11 @@ export function AgentsSlashCommand({ isOpen, onClose, onSelect, searchText, posi
 			builtinFiltered = builtinFiltered.filter((cmd) => !disabledCommands.includes(cmd.name));
 		}
 		// Filter custom commands by search
-		let customFiltered = customCommands;
-		if (debouncedSearchText) {
-			const query = debouncedSearchText.toLowerCase();
-			customFiltered = customCommands.filter((cmd) => cmd.name.toLowerCase().includes(query) || cmd.command.toLowerCase().includes(query));
+		const searchText = debouncedSearchText();
+		let customFiltered = customCommands();
+		if (searchText) {
+			const query = searchText.toLowerCase();
+			customFiltered = customFiltered.filter((cmd) => cmd.name.toLowerCase().includes(query) || cmd.command.toLowerCase().includes(query));
 		}
 		// Sort all commands by name length (shorter = closer match), then alphabetically for stability
 		return [...customFiltered, ...builtinFiltered].sort((a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name));

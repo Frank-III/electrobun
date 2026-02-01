@@ -22,27 +22,29 @@ const codeBlockTextSize = {
 	lg: "text-sm"
 };
 // Code block with copy button using Shiki
-function CodeBlock({ language, children, themeId, size = "md" }: {
+interface CodeBlockProps {
 	language?: string;
 	children: string;
 	themeId: string;
 	size?: "sm" | "md" | "lg";
-}) {
+}
+function CodeBlock(props: CodeBlockProps) {
+	const size = () => props.size ?? "md";
 	const [copied, setCopied] = createSignal(false);
 	const [highlightedHtml, setHighlightedHtml] = createSignal<string | null>(null);
 	const handleCopy = () => {
-		navigator.clipboard.writeText(children);
+		navigator.clipboard.writeText(props.children);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 2e3);
 	};
 	// Only use Shiki for known programming languages, not for plaintext/ASCII art
-	const shouldHighlight = language && language !== "plaintext" && language !== "text";
+	const shouldHighlight = props.language && props.language !== "plaintext" && props.language !== "text";
 	createEffect(() => {
 		if (!shouldHighlight) return;
 		let cancelled = false;
 		const highlight = async () => {
 			try {
-				const html = await highlightCode(children, language, themeId);
+				const html = await highlightCode(props.children, props.language!, props.themeId);
 				if (!cancelled) {
 					setHighlightedHtml(html);
 				}
@@ -57,7 +59,7 @@ function CodeBlock({ language, children, themeId, size = "md" }: {
 	});
 	// For plaintext/ASCII art, just escape and render directly (no Shiki)
 	// For code with syntax highlighting, use Shiki output when available
-	const htmlContent = shouldHighlight ? highlightedHtml ?? escapeHtml(children) : escapeHtml(children);
+	const htmlContent = () => shouldHighlight ? highlightedHtml() ?? escapeHtml(props.children) : escapeHtml(props.children);
 	return <div class="relative mt-2 mb-4 rounded-[10px] bg-muted/50 overflow-hidden">
       <button onClick={handleCopy} tabIndex={-1} class="absolute top-[6px] right-[6px] p-1 z-2" title={copied() ? "Copied!" : "Copy code"}>
         <div class="relative w-3.5 h-3.5">
@@ -68,7 +70,7 @@ function CodeBlock({ language, children, themeId, size = "md" }: {
       <pre class={cn(
 		"m-0 bg-transparent",
 		"text-foreground",
-		codeBlockTextSize[size],
+		codeBlockTextSize[size()],
 		"px-4 py-3",
 		"overflow-x-auto",
 		"whitespace-pre",
@@ -81,7 +83,7 @@ function CodeBlock({ language, children, themeId, size = "md" }: {
 		"line-height": "1.5",
 		"tab-size": "2"
 	}}>
-        <code innerHTML={htmlContent} />
+        <code innerHTML={htmlContent()} />
       </pre>
     </div>;
 }
@@ -208,42 +210,43 @@ function createCodeComponent(codeTheme: string, size: MarkdownSize, styles: type
 	};
 }
 export function ChatMarkdownRenderer(props: ChatMarkdownRendererProps) {
-	const { size = "md", isStreaming = false } = props;
+	const size = () => props.size ?? "md";
+	const isStreaming = () => props.isStreaming ?? false;
 	const codeTheme = useCodeTheme();
-	const styles = sizeStyles[size];
+	const styles = () => sizeStyles[size()];
 	// Process content - strip emojis
 	const processedContent = createMemo(() => stripEmojis(props.content));
 	// Memoize components object to prevent re-renders
 	// This is critical for Streamdown's block-level memoization to work
 	const components = createMemo(() => ({
-		h1: ({ children, ...props }: any) => <h1 class={styles.h1} {...props}>
+		h1: ({ children, ...props }: any) => <h1 class={styles().h1} {...props}>
           {children}
         </h1>,
-		h2: ({ children, ...props }: any) => <h2 class={styles.h2} {...props}>
+		h2: ({ children, ...props }: any) => <h2 class={styles().h2} {...props}>
           {children}
         </h2>,
-		h3: ({ children, ...props }: any) => <h3 class={styles.h3} {...props}>
+		h3: ({ children, ...props }: any) => <h3 class={styles().h3} {...props}>
           {children}
         </h3>,
-		h4: ({ children, ...props }: any) => <h4 class={styles.h4} {...props}>
+		h4: ({ children, ...props }: any) => <h4 class={styles().h4} {...props}>
           {children}
         </h4>,
-		h5: ({ children, ...props }: any) => <h5 class={styles.h5} {...props}>
+		h5: ({ children, ...props }: any) => <h5 class={styles().h5} {...props}>
           {children}
         </h5>,
-		h6: ({ children, ...props }: any) => <h6 class={styles.h6} {...props}>
+		h6: ({ children, ...props }: any) => <h6 class={styles().h6} {...props}>
           {children}
         </h6>,
-		p: ({ children, ...props }: any) => <p class={styles.p} {...props}>
+		p: ({ children, ...props }: any) => <p class={styles().p} {...props}>
           {children}
         </p>,
-		ul: ({ children, ...props }: any) => <ul class={styles.ul} {...props}>
+		ul: ({ children, ...props }: any) => <ul class={styles().ul} {...props}>
           {children}
         </ul>,
-		ol: ({ children, ...props }: any) => <ol class={styles.ol} {...props}>
+		ol: ({ children, ...props }: any) => <ol class={styles().ol} {...props}>
           {children}
         </ol>,
-		li: ({ children, ...props }: any) => <li class={styles.li} {...props}>
+		li: ({ children, ...props }: any) => <li class={styles().li} {...props}>
           {children}
         </li>,
 		a: ({ href, children, ...props }: any) => <a href={href} onClick={(e) => {
@@ -260,32 +263,32 @@ export function ChatMarkdownRenderer(props: ChatMarkdownRendererProps) {
 		em: ({ children, ...props }: any) => <em class="italic" {...props}>
           {children}
         </em>,
-		blockquote: ({ children, ...props }: any) => <blockquote class={styles.blockquote} {...props}>
+		blockquote: ({ children, ...props }: any) => <blockquote class={styles().blockquote} {...props}>
           {children}
         </blockquote>,
-		hr: ({ ...props }: any) => <hr class={styles.hr} {...props} />,
+		hr: ({ ...props }: any) => <hr class={styles().hr} {...props} />,
 		table: ({ children, ...props }: any) => <div class="overflow-x-auto my-3 rounded-lg border border-border overflow-hidden">
-          <table class={cn(styles.table, "border-collapse")} {...props}>
+          <table class={cn(styles().table, "border-collapse")} {...props}>
             {children}
           </table>
         </div>,
-		thead: ({ children, ...props }: any) => <thead class={styles.thead} {...props}>
+		thead: ({ children, ...props }: any) => <thead class={styles().thead} {...props}>
           {children}
         </thead>,
-		tbody: ({ children, ...props }: any) => <tbody class={styles.tbody} {...props}>
+		tbody: ({ children, ...props }: any) => <tbody class={styles().tbody} {...props}>
           {children}
         </tbody>,
-		tr: ({ children, ...props }: any) => <tr class={styles.tr} {...props}>
+		tr: ({ children, ...props }: any) => <tr class={styles().tr} {...props}>
           {children}
         </tr>,
-		th: ({ children, ...props }: any) => <th class={styles.th} {...props}>
+		th: ({ children, ...props }: any) => <th class={styles().th} {...props}>
           {children}
         </th>,
-		td: ({ children, ...props }: any) => <td class={styles.td} {...props}>
+		td: ({ children, ...props }: any) => <td class={styles().td} {...props}>
           {children}
         </td>,
 		pre: ({ children }: any) => <>{children}</>,
-		code: createCodeComponent(codeTheme, size, styles, isStreaming)
+		code: createCodeComponent(codeTheme, size(), styles(), isStreaming())
 	}));
 	return <div class={cn(
 		"prose prose-sm max-w-none dark:prose-invert prose-code:before:content-none prose-code:after:content-none",
@@ -310,7 +313,7 @@ export function ChatMarkdownRenderer(props: ChatMarkdownRendererProps) {
 		"[&_table+p]:mt-4 [&_table+ul]:mt-4 [&_table+ol]:mt-4",
 		props.class
 	)}>
-      <Streamdown mode="streaming" components={components()} remarkPlugins={[remarkGfm, remarkBreaks]} isAnimating={isStreaming} parseIncompleteMarkdown={isStreaming} controls={false}>
+      <Streamdown mode="streaming" components={components()} remarkPlugins={[remarkGfm, remarkBreaks]} isAnimating={isStreaming()} parseIncompleteMarkdown={isStreaming()} controls={false}>
         {processedContent()}
       </Streamdown>
     </div>;

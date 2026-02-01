@@ -1,6 +1,6 @@
 import type { JSX } from "solid-js";
 import { ListTree } from "lucide-solid";
-import { createMemo, createSignal, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { CollapseIcon, ExpandIcon, IconTextUndo, PlanIcon } from "../../../components/ui/icons";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { cn } from "../../../lib/utils";
@@ -396,9 +396,11 @@ export function AssistantMessageItem(props: AssistantMessageItemProps) {
 					const isOpStreaming = isPending || part.state === "input-streaming" && props.isStreaming && props.isLastMessage;
 					return <div class="flex items-center gap-1.5 px-2 py-0.5">
               <span class="text-xs text-muted-foreground">
-                {isOpStreaming ? <TextShimmer as="span" duration={1.2}>
+                <Show when={isOpStreaming} fallback={isWrite ? "Created plan" : "Updated plan"}>
+                  <TextShimmer as="span" duration={1.2}>
                     {isWrite ? "Creating plan..." : "Updating plan..."}
-                  </TextShimmer> : isWrite ? "Created plan" : "Updated plan"}
+                  </TextShimmer>
+                </Show>
               </span>
             </div>;
 				}
@@ -440,31 +442,31 @@ export function AssistantMessageItem(props: AssistantMessageItemProps) {
       <div class="flex flex-col gap-1.5">
         <Show when={shouldCollapse() && visibleStepsCount() > 0}>
           <CollapsibleSteps stepsCount={visibleStepsCount()}>
-            {(() => {
-		const grouped = groupExploringTools(stepParts(), nestedToolIds());
-		return grouped.map((part: any, idx: number) => {
-			if (part.type === "exploring-group") {
-				const isLast = idx === grouped.length - 1;
-				const isGroupStreaming = props.isStreaming && props.isLastMessage && isLast;
-				return <AgentExploringGroup parts={part.parts} chatStatus={props.status} isStreaming={isGroupStreaming} />;
-			}
-			return renderPart(part, idx, false);
-		});
-	})()}
+            <For each={groupExploringTools(stepParts(), nestedToolIds())}>
+              {(part: any, idx) => {
+                if (part.type === "exploring-group") {
+                  const grouped = groupExploringTools(stepParts(), nestedToolIds());
+                  const isLast = idx() === grouped.length - 1;
+                  const isGroupStreaming = props.isStreaming && props.isLastMessage && isLast;
+                  return <AgentExploringGroup parts={part.parts} chatStatus={props.status} isStreaming={isGroupStreaming} />;
+                }
+                return renderPart(part, idx(), false);
+              }}
+            </For>
           </CollapsibleSteps>
         </Show>
 
-        {(() => {
-		const grouped = groupExploringTools(finalParts(), nestedToolIds());
-		return grouped.map((part: any, idx: number) => {
-			if (part.type === "exploring-group") {
-				const isLast = idx === grouped.length - 1;
-				const isGroupStreaming = props.isStreaming && props.isLastMessage && isLast;
-				return <AgentExploringGroup parts={part.parts} chatStatus={props.status} isStreaming={isGroupStreaming} />;
-			}
-			return renderPart(part, shouldCollapse() ? collapseBeforeIndex() + idx : idx, shouldCollapse());
-		});
-	})()}
+        <For each={groupExploringTools(finalParts(), nestedToolIds())}>
+          {(part: any, idx) => {
+            if (part.type === "exploring-group") {
+              const grouped = groupExploringTools(finalParts(), nestedToolIds());
+              const isLast = idx() === grouped.length - 1;
+              const isGroupStreaming = props.isStreaming && props.isLastMessage && isLast;
+              return <AgentExploringGroup parts={part.parts} chatStatus={props.status} isStreaming={isGroupStreaming} />;
+            }
+            return renderPart(part, shouldCollapse() ? collapseBeforeIndex() + idx() : idx(), shouldCollapse());
+          }}
+        </For>
 
         {	/* Show plan card after finalParts if any plan operation was in collapsed steps */}
         <Show when={shouldCollapse() && lastCollapsedPlanOp()}>

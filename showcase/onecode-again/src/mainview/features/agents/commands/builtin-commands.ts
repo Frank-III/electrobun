@@ -135,7 +135,7 @@ export const BUILTIN_SLASH_COMMANDS: SlashCommandOption[] = [
 export function filterBuiltinCommands(
   searchText: string,
 ): SlashCommandOption[] {
-  if (!searchText) return BUILTIN_SLASH_COMMANDS
+  if (!searchText || typeof searchText !== "string") return BUILTIN_SLASH_COMMANDS
 
   const query = searchText.toLowerCase()
   return BUILTIN_SLASH_COMMANDS.filter(

@@ -20,10 +20,11 @@ function useIsNarrowScreen(): Accessor<boolean> {
 	return isNarrow;
 }
 // Status indicator dot
-function StatusDot({ status }: {
+interface StatusDotProps {
 	status: string;
-}) {
-	return <span class={cn("w-2 h-2 rounded-full flex-shrink-0", status === "connected" && "bg-foreground", status !== "connected" && "bg-muted-foreground/50", status === "pending" && "animate-pulse")} />;
+}
+function StatusDot(props: StatusDotProps) {
+	return <span class={cn("w-2 h-2 rounded-full flex-shrink-0", props.status === "connected" && "bg-foreground", props.status !== "connected" && "bg-muted-foreground/50", props.status === "pending" && "animate-pulse")} />;
 }
 // Get status text
 function getStatusText(status: string): string {
@@ -53,52 +54,52 @@ interface ServerRowProps {
 	onToggle: () => void;
 	onAuth?: () => void;
 }
-function ServerRow({ server, isExpanded, onToggle, onAuth }: ServerRowProps) {
-	const { tools, needsAuth } = server;
+function ServerRow(props: ServerRowProps) {
+	const { tools, needsAuth } = props.server;
 	const hasTools = tools.length > 0;
-	const isConnected = server.status === "connected";
+	const isConnected = props.server.status === "connected";
 	return <div>
-      <div role={hasTools ? "button" : undefined} tabIndex={hasTools ? 0 : undefined} onClick={hasTools ? onToggle : undefined} onKeyDown={hasTools ? (e) => {
+      <div role={hasTools ? "button" : undefined} tabIndex={hasTools ? 0 : undefined} onClick={hasTools ? props.onToggle : undefined} onKeyDown={hasTools ? (e) => {
 		if (e.key === "Enter" || e.key === " ") {
 			e.preventDefault();
-			onToggle();
+			props.onToggle();
 		}
 	} : undefined} class={cn("w-full flex items-center gap-3 p-3 text-left transition-colors", hasTools && "hover:bg-muted/50 cursor-pointer", !hasTools && "cursor-default")}>
         {	/* Expand chevron */}
-        <ChevronRight class={cn("h-3.5 w-3.5 text-muted-foreground transition-transform flex-shrink-0", isExpanded && "rotate-90", !hasTools && "opacity-0")} />
+        <ChevronRight class={cn("h-3.5 w-3.5 text-muted-foreground transition-transform flex-shrink-0", props.isExpanded && "rotate-90", !hasTools && "opacity-0")} />
 
         { /* Status dot */}
-        <StatusDot status={server.status} />
+        <StatusDot status={props.server.status} />
 
         { /* Server info */}
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium text-foreground truncate">
-              {server.name}
+              {props.server.name}
             </span>
-            <Show when={server.serverInfo?.version}>
+            <Show when={props.server.serverInfo?.version}>
           <span class="text-xs text-muted-foreground">
-                v{server.serverInfo!.version}
+                v{props.server.serverInfo!.version}
               </span>
         </Show>
           </div>
-          <Show when={server.error}>
+          <Show when={props.server.error}>
             <p class="text-xs text-muted-foreground truncate mt-0.5">
-              {server.error}
+              {props.server.error}
             </p>
           </Show>
         </div>
 
         { /* Status / tool count */}
         <span class="text-xs text-muted-foreground flex-shrink-0">
-          {isConnected ? hasTools ? `${tools.length} tool${tools.length !== 1 ? "s" : ""}` : "No tools" : getStatusText(server.status)}
+          {isConnected ? hasTools ? `${tools.length} tool${tools.length !== 1 ? "s" : ""}` : "No tools" : getStatusText(props.server.status)}
         </span>
 
         { /* Authenticate button */}
-        <Show when={needsAuth && onAuth}>
+        <Show when={needsAuth && props.onAuth}>
           <Button variant="secondary" size="sm" class="h-6 px-2 text-xs" onClick={(e: MouseEvent) => {
             e.stopPropagation();
-            onAuth!();
+            props.onAuth!();
           }}>
             {isConnected ? "Reconnect" : "Auth"}
           </Button>
@@ -106,7 +107,7 @@ function ServerRow({ server, isExpanded, onToggle, onAuth }: ServerRowProps) {
       </div>
 
       {	/* Expanded tools list */}
-      <Show when={isExpanded && hasTools}>
+      <Show when={props.isExpanded && hasTools}>
         <div class="overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
           <div class="pl-10 pr-3 pb-3 space-y-1">
             <For each={tools}>{(tool) => <div class="text-xs text-muted-foreground font-mono py-0.5">

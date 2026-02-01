@@ -1,5 +1,5 @@
 import type { JSX } from "solid-js";
-import { createContext, useContext } from "solid-js";
+import { createContext, useContext, Switch, Match } from "solid-js";
 import { Button } from "../../../components/ui/button";
 import { ResizableSidebar } from "../../../components/ui/resizable-sidebar";
 import { IconCloseSidebarRight } from "../../../components/ui/icons";
@@ -85,52 +85,55 @@ export function DiffSidebarRenderer(props: DiffSidebarRendererProps) {
 					: 1200;
 	const diffViewContent = (
 		<div ref={props.diffSidebarRef} class="flex flex-col h-full min-w-0 overflow-hidden">
-			{props.worktreePath ? (
-				<DiffSidebarHeader
-					worktreePath={props.worktreePath}
-					currentBranch={props.branchData?.current ?? ""}
-					diffStats={props.diffStats}
-					sidebarWidth={effectiveWidth}
-					pushCount={props.gitStatus?.pushCount ?? 0}
-					pullCount={props.gitStatus?.pullCount ?? 0}
-					hasUpstream={props.gitStatus?.hasUpstream ?? true}
-					isSyncStatusLoading={props.isGitStatusLoading}
-					aheadOfDefault={props.gitStatus?.ahead ?? 0}
-					behindDefault={props.gitStatus?.behind ?? 0}
-					onReview={props.handleReview}
-					isReviewing={props.isReviewing}
-					onCreatePr={props.handleCreatePr}
-					isCreatingPr={props.isCreatingPr}
-					onCreatePrWithAI={props.handleCreatePr}
-					isCreatingPrWithAI={props.isCreatingPr}
-					onMergePr={props.handleMergePr}
-					isMergingPr={props.mergePrMutation.isPending}
-					onClose={handleCloseDiff}
-					onRefresh={props.handleRefreshGitStatus}
-					hasPrNumber={props.hasPrNumber}
-					isPrOpen={props.isPrOpen}
-					hasMergeConflicts={props.hasMergeConflicts}
-					onFixConflicts={props.handleFixConflicts}
-					onExpandAll={props.handleExpandAll}
-					onCollapseAll={props.handleCollapseAll}
-					viewMode={props.diffMode}
-					onViewModeChange={props.setDiffMode}
-					viewedCount={viewedCount}
-					onMarkAllViewed={props.handleMarkAllViewed}
-					onMarkAllUnviewed={props.handleMarkAllUnviewed}
-					isDesktop={props.isDesktop}
-					isFullscreen={props.isFullscreen}
-					displayMode={props.diffDisplayMode}
-					onDisplayModeChange={props.setDiffDisplayMode}
-				/>
-			) : props.sandboxId ? (
-				<div class="flex items-center h-10 px-2 border-b border-border/50 bg-background flex-shrink-0">
-					<Button variant="ghost" size="sm" class="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10" onClick={handleCloseDiff}>
-						<IconCloseSidebarRight class="size-4 text-muted-foreground" />
-					</Button>
-					<span class="text-sm text-muted-foreground ml-2">Changes</span>
-				</div>
-			) : null}
+			<Switch>
+				<Match when={props.worktreePath}>
+					<DiffSidebarHeader
+						worktreePath={props.worktreePath!}
+						currentBranch={props.branchData?.current ?? ""}
+						diffStats={props.diffStats}
+						sidebarWidth={effectiveWidth}
+						pushCount={props.gitStatus?.pushCount ?? 0}
+						pullCount={props.gitStatus?.pullCount ?? 0}
+						hasUpstream={props.gitStatus?.hasUpstream ?? true}
+						isSyncStatusLoading={props.isGitStatusLoading}
+						aheadOfDefault={props.gitStatus?.ahead ?? 0}
+						behindDefault={props.gitStatus?.behind ?? 0}
+						onReview={props.handleReview}
+						isReviewing={props.isReviewing}
+						onCreatePr={props.handleCreatePr}
+						isCreatingPr={props.isCreatingPr}
+						onCreatePrWithAI={props.handleCreatePr}
+						isCreatingPrWithAI={props.isCreatingPr}
+						onMergePr={props.handleMergePr}
+						isMergingPr={props.mergePrMutation.isPending}
+						onClose={handleCloseDiff}
+						onRefresh={props.handleRefreshGitStatus}
+						hasPrNumber={props.hasPrNumber}
+						isPrOpen={props.isPrOpen}
+						hasMergeConflicts={props.hasMergeConflicts}
+						onFixConflicts={props.handleFixConflicts}
+						onExpandAll={props.handleExpandAll}
+						onCollapseAll={props.handleCollapseAll}
+						viewMode={props.diffMode}
+						onViewModeChange={props.setDiffMode}
+						viewedCount={viewedCount}
+						onMarkAllViewed={props.handleMarkAllViewed}
+						onMarkAllUnviewed={props.handleMarkAllUnviewed}
+						isDesktop={props.isDesktop}
+						isFullscreen={props.isFullscreen}
+						displayMode={props.diffDisplayMode}
+						onDisplayModeChange={props.setDiffDisplayMode}
+					/>
+				</Match>
+				<Match when={props.sandboxId}>
+					<div class="flex items-center h-10 px-2 border-b border-border/50 bg-background flex-shrink-0">
+						<Button variant="ghost" size="sm" class="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10" onClick={handleCloseDiff}>
+							<IconCloseSidebarRight class="size-4 text-muted-foreground" />
+						</Button>
+						<span class="text-sm text-muted-foreground ml-2">Changes</span>
+					</div>
+				</Match>
+			</Switch>
 			{props.children}
 		</div>
 	);

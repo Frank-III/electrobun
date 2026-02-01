@@ -1,4 +1,5 @@
-import { createEffect, createMemo, createSignal, Show, For } from "solid-js";
+import type { JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, Show, For, Switch, Match } from "solid-js";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/solid-query";
 import { desktopRpc } from "../../../lib/desktop-rpc";
 import { archivePopoverOpenAtom, archiveSearchQueryAtom, selectedAgentChatIdAtom, selectedChatIsRemoteAtom } from "../atoms";
@@ -13,21 +14,20 @@ function GitHubAvatar(props: {
 	gitOwner: string;
 	class?: string;
 }) {
-	const { gitOwner } = props;
-	const cls = props.class ?? "h-4 w-4";
+	const cls = () => props.class ?? "h-4 w-4";
 	const [isLoaded, setIsLoaded] = createSignal(false);
 	const [hasError, setHasError] = createSignal(false);
 	const handleLoad = () => setIsLoaded(true);
 	const handleError = () => setHasError(true);
 	if (hasError()) {
-		return <GitHubLogo class={cn(cls, "text-muted-foreground flex-shrink-0")} />;
+		return <GitHubLogo class={cn(cls(), "text-muted-foreground flex-shrink-0")} />;
 	}
-return <div class={cn(cls, "relative flex-shrink-0")}>
+return <div class={cn(cls(), "relative flex-shrink-0")}>
       { /* Placeholder background while loading */}
       <Show when={!isLoaded()}>
         <div class="absolute inset-0 rounded-sm bg-muted" />
       </Show>
-      <img src={`https://github.com/${gitOwner}.png?size=64`} alt={gitOwner} class={cn(cls, "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
+      <img src={`https://github.com/${props.gitOwner}.png?size=64`} alt={props.gitOwner} class={cn(cls(), "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
     </div>;
  }
 // Format relative time - moved outside component to avoid recreation
@@ -150,8 +150,8 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	const [open, setOpen] = archivePopoverOpenAtom;
 	const [searchQuery, setSearchQuery] = archiveSearchQueryAtom;
 	const [selectedIndex, setSelectedIndex] = createSignal(0);
-	const [searchInputRef, setSearchInputRef] = createSignal<HTMLInputElement>(null);
-	const [popoverContentRef, setPopoverContentRef] = createSignal<HTMLDivElement>(null);
+	const [searchInputRef, setSearchInputRef] = createSignal<HTMLInputElement | null>(null);
+	const [popoverContentRef, setPopoverContentRef] = createSignal<HTMLDivElement | null>(null);
 	const [chatItemRefs, setChatItemRefs] = createSignal<(HTMLDivElement | null)[]>([]);
 	const [selectedChatId, setSelectedChatId] = selectedAgentChatIdAtom;
 	const [selectedChatIsRemote, setSelectedChatIsRemote] = selectedChatIsRemoteAtom;
@@ -159,41 +159,41 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	const showWorkspaceIcon = showWorkspaceIconAtom[0];
 	const queryClient = useQueryClient();
 	// Local archived chats (always fetch)
-	const { data: localArchivedChats, isLoading: isLocalLoading } = useQuery(() => ({
+	const localArchivedQuery = useQuery(() => ({
 		queryKey: ["chats", "listArchived"] as const,
 		queryFn: () => desktopRpc.chats.listArchived.query({}),
 		enabled: open(),
 	}));
 	// Remote archived chats (always fetch)
-	const { data: remoteArchivedChats, isLoading: isRemoteLoading } = useRemoteArchivedChats();
+	const remoteArchivedQuery = useRemoteArchivedChats();
 	// Loading if either is loading
-	const isLoading = isLocalLoading() || isRemoteLoading();
+	const isLoading = () => localArchivedQuery.isLoading || remoteArchivedQuery.isLoading;
 	// Fetch all projects for git info (for local chats)
-	const { data: projects } = useQuery(() => ({
+	const projectsQuery = useQuery(() => ({
 		queryKey: ["projects", "list"] as const,
 		queryFn: () => desktopRpc.projects.list.query({}),
 	}));
 	// Collect chat IDs for file stats query (only local chats)
 	const archivedChatIds = createMemo(() => {
-		const list = localArchivedChats?.();
+		const list = localArchivedQuery.data;
 		if (!list) return [];
 		return list.map((chat) => chat.id);
 	});
 	// Fetch file stats for archived local chats
-	const { data: fileStatsData } = useQuery(() => ({
+	const fileStatsQuery = useQuery(() => ({
 		queryKey: ["chats", "getFileStats", archivedChatIds()] as const,
 		queryFn: () => desktopRpc.chats.getFileStats({ chatIds: archivedChatIds() }),
 		enabled: open() && archivedChatIds().length > 0,
 	}));
 	// Create map for quick project lookup by id
 	const projectsMap = createMemo(() => {
-		const proj = projects?.();
+		const proj = projectsQuery.data;
 		if (!proj) return new Map();
 		return new Map(proj.map((p) => [p.id, p]));
 	});
 	// Create map for quick file stats lookup by chat id
 	const fileStatsMap = createMemo(() => {
-		const data = fileStatsData?.();
+		const data = fileStatsQuery.data;
 		if (!data) return new Map<string, { additions: number; deletions: number }>();
 		return new Map(data.map((s) => [s.chatId, { additions: s.additions, deletions: s.deletions }]));
 	});
@@ -217,7 +217,7 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	// Normalize and merge archived chats from both sources
 	const normalizedChats = createMemo((): NormalizedArchivedChat[] => {
 		const merged: NormalizedArchivedChat[] = [];
-		const local = localArchivedChats?.();
+		const local = localArchivedQuery.data;
 		// Add local chats
 		if (local) {
 			for (const chat of local) {
@@ -236,8 +236,9 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 			}
 		}
 		// Add remote chats with prefixed IDs
-		if (remoteArchivedChats) {
-			for (const chat of remoteArchivedChats) {
+		const remoteChats = remoteArchivedQuery.data;
+		if (remoteChats) {
+			for (const chat of remoteChats) {
 				const meta = chat.meta;
 				const repository = meta?.repository;
 				const gitOwner = repository?.split("/")[0] ?? null;
@@ -261,9 +262,10 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	});
 	// Filter and sort archived chats (always newest first)
 	const filteredChats = createMemo(() => {
-		return normalizedChats.filter((chat) => {
+		const query = searchQuery();
+		return normalizedChats().filter((chat) => {
 			// Search filter by name only
-			if (searchQuery.trim() && !(chat.name ?? "").toLowerCase().includes(searchQuery.toLowerCase())) {
+			if (query.trim() && !(chat.name ?? "").toLowerCase().includes(query.toLowerCase())) {
 				return false;
 			}
 			return true;
@@ -286,22 +288,23 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	createEffect(() => {
 		if (open() && filteredChats().length > 0) {
 			// Find index of currently selected chat, default to 0 if not found
-			const currentIndex = filteredChats.findIndex((chat) => chat.id === selectedChatId);
+			const currentIndex = filteredChats().findIndex((chat) => chat.id === selectedChatId());
 			setSelectedIndex(currentIndex >= 0 ? currentIndex : 0);
 		}
 	});
 	// Keyboard navigation - memoized to prevent recreation
 	const handleKeyDown = (e: KeyboardEvent) => {
-		if (filteredChats.length === 0) return;
+		const chats = filteredChats();
+		if (chats.length === 0) return;
 		if (e.key === "ArrowDown") {
 			e.preventDefault();
-			setSelectedIndex((prev) => (prev + 1) % filteredChats.length);
+			setSelectedIndex((prev) => (prev + 1) % chats.length);
 		} else if (e.key === "ArrowUp") {
 			e.preventDefault();
-			setSelectedIndex((prev) => (prev - 1 + filteredChats.length) % filteredChats.length);
+			setSelectedIndex((prev) => (prev - 1 + chats.length) % chats.length);
 		} else if (e.key === "Enter") {
 			e.preventDefault();
-			const chat = filteredChats[selectedIndex];
+			const chat = chats[selectedIndex()];
 			if (chat) {
 				if (chat.isRemote) {
 					// Extract original ID from prefixed remote ID
@@ -380,32 +383,41 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	const handleSearchChange = (e: InputEvent & { currentTarget: HTMLInputElement }) => {
 		setSearchQuery(e.currentTarget.value);
 	};
-	return <Popover open={open} onOpenChange={setOpen}>
+	return <Popover open={open()} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent ref={popoverContentRef} side="right" align="end" sideOffset={8} forceDark={false} class="w-[250px] h-[400px] p-0 flex flex-col overflow-hidden" onKeyDown={handleKeyDown} tabIndex={-1}>
+      <PopoverContent ref={setPopoverContentRef} side="right" align="end" sideOffset={8} forceDark={false} class="w-[250px] h-[400px] p-0 flex flex-col overflow-hidden" onKeyDown={handleKeyDown} tabIndex={-1}>
         {	/* Search */}
         <div class="p-1 border-b">
           <div class="relative flex items-center gap-1.5 h-7 px-1.5 rounded-md bg-muted/50">
             <SearchIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <Input ref={searchInputRef} placeholder="Search..." value={searchQuery} onInput={handleSearchChange} class="h-auto p-0 border-0 bg-transparent text-sm placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0" />
+            <Input ref={setSearchInputRef} placeholder="Search..." value={searchQuery()} onInput={handleSearchChange} class="h-auto p-0 border-0 bg-transparent text-sm placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0" />
           </div>
         </div>
 
         { /* Archived Chats List */}
         <div class="flex-1 overflow-y-auto py-1">
-          {isLoading ? <div class="flex items-center justify-center p-8 text-muted-foreground text-sm">
-              Loading...
-            </div> : filteredChats.length === 0 ? <div class="flex flex-col items-center justify-center h-full text-center">
-              <ArchiveIcon class="h-6 w-6 mb-2 text-muted-foreground opacity-40" />
-              <p class="text-xs text-muted-foreground opacity-40 pb-10">
-                No archived agents
-              </p>
-            </div> : filteredChats.map((chat, index) => {
- // For remote chats, compare without prefix
-		const chatOriginalId = chat.isRemote ? chat.id.replace(/^remote_/, "") : chat.id;
-		const isCurrentChat = selectedChatId === chatOriginalId && selectedChatIsRemote === chat.isRemote;
-		return <ArchiveChatItem key={chat.id} chat={chat} index={index} isSelected={index === selectedIndex} isCurrentChat={isCurrentChat} showIcon={showWorkspaceIcon} projectsMap={projectsMap} stats={fileStatsMap.get(chat.id)} onSelect={handleSelectChat} onRestore={handleRestoreChat} setRef={handleSetRef} />;
-	})}
+          <Switch>
+            <Match when={isLoading()}>
+              <div class="flex items-center justify-center p-8 text-muted-foreground text-sm">
+                Loading...
+              </div>
+            </Match>
+            <Match when={filteredChats().length === 0}>
+              <div class="flex flex-col items-center justify-center h-full text-center">
+                <ArchiveIcon class="h-6 w-6 mb-2 text-muted-foreground opacity-40" />
+                <p class="text-xs text-muted-foreground opacity-40 pb-10">
+                  No archived agents
+                </p>
+              </div>
+            </Match>
+            <Match when={filteredChats().length > 0}>
+              <For each={filteredChats()}>{(chat, index) => {
+                const chatOriginalId = chat.isRemote ? chat.id.replace(/^remote_/, "") : chat.id;
+                const isCurrentChat = () => selectedChatId() === chatOriginalId && selectedChatIsRemote() === chat.isRemote;
+                return <ArchiveChatItem chat={chat} index={index()} isSelected={index() === selectedIndex()} isCurrentChat={isCurrentChat()} showIcon={showWorkspaceIcon()} projectsMap={projectsMap()} stats={fileStatsMap().get(chat.id)} onSelect={handleSelectChat} onRestore={handleRestoreChat} setRef={handleSetRef} />;
+              }}</For>
+            </Match>
+          </Switch>
         </div>
       </PopoverContent>
     </Popover>;

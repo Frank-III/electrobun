@@ -1,5 +1,6 @@
 import { cn } from "../../../lib/utils";
-import { createEffect, createSignal, onCleanup } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { debounce } from "@solid-primitives/scheduled";
 import { createFileIconElement } from "./agents-file-mention";
 // Threshold for skipping expensive trigger detection (characters)
 // Should be >= MAX_PASTE_LENGTH from paste-text.ts to avoid processing large pasted content
@@ -480,7 +481,6 @@ interface UndoState {
 	const [redoStack, setRedoStack] = createSignal<UndoState[]>([]);
 	const [isUndoRedo, setIsUndoRedo] = createSignal(false);
 	const [lastSavedHtml, setLastSavedHtml] = createSignal<string>("");
-	const [debounceTimer, setDebounceTimer] = createSignal<ReturnType<typeof setTimeout> | null>(null);
 	// Get current editor state (html + cursor position)
 	const getCurrentState = (): UndoState | null => {
 		if (!editorRef) return null;
@@ -537,23 +537,10 @@ interface UndoState {
 		}
 	};
 	// Debounced save for typing - saves state after 500ms of no typing
-	const debouncedSaveUndoState = () => {
-		const timer = debounceTimer();
-		if (timer) {
-			clearTimeout(timer);
-		}
-		setDebounceTimer(setTimeout(() => {
-			saveUndoState();
-			setDebounceTimer(null);
-		}, 500));
-	};
+	const debouncedSaveUndoState = debounce(() => saveUndoState(), 500);
 	// Immediate save (for paste, mentions) - also cancels any pending debounce
 	const immediateSaveUndoState = () => {
-		const timer = debounceTimer();
-		if (timer) {
-			clearTimeout(timer);
-			setDebounceTimer(null);
-		}
+		debouncedSaveUndoState.clear();
 		saveUndoState();
 	};
 	// Restore cursor position after undo/redo
@@ -613,10 +600,7 @@ interface UndoState {
 	// Cleanup debounce timer on unmount
 	createEffect(() => {
 		onCleanup(() => {
-			const timer = debounceTimer();
-			if (timer) {
-				clearTimeout(timer);
-			}
+			debouncedSaveUndoState.clear();
 		});
 	});
 	// Resolve mention from id for rendering
@@ -1174,9 +1158,11 @@ interface UndoState {
 	props.ref?.(handle);
 
 	return <div class="relative">
-          {!hasContent() && props.placeholder && <div class="pointer-events-none absolute left-1 top-1 text-sm text-muted-foreground/60 whitespace-pre-wrap">
-              {props.placeholder}
-            </div>}
+			<Show when={!hasContent() && props.placeholder}>
+				<div class="pointer-events-none absolute left-1 top-1 text-sm text-muted-foreground/60 whitespace-pre-wrap">
+					{props.placeholder}
+				</div>
+			</Show>
           <div ref={el => editorRef = el} contentEditable={!props.disabled} spellcheck={false} onInput={handleInput} onKeyDown={(e: KeyboardEvent) => handleKeyDown(e)} onPaste={(e: ClipboardEvent) => {
 		// Save state for undo before paste (immediate, not debounced)
 		immediateSaveUndoState();

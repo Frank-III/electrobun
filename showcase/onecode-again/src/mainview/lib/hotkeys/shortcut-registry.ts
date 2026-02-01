@@ -227,7 +227,7 @@ export function getResolvedHotkey(
   actionId: ShortcutActionId,
   config: CustomHotkeysConfig
 ): string | null {
-  const customHotkey = config.bindings[actionId]
+  const customHotkey = config?.bindings?.[actionId]
 
   // If explicitly set (including to a custom value), use it
   if (customHotkey !== undefined) {
@@ -260,7 +260,7 @@ export function isCustomHotkey(
   actionId: ShortcutActionId,
   config: CustomHotkeysConfig
 ): boolean {
-  return config.bindings[actionId] !== undefined
+  return config?.bindings?.[actionId] !== undefined
 }
 
 /**

@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo } from "solid-js";
+import { createSignal, createEffect, createMemo, For, Show } from "solid-js";
 import { toast } from "solid-sonner";
 import { GitBranch, ChevronDown, Check } from "lucide-solid";
 import { Dialog, CanvasDialogContent, CanvasDialogHeader, CanvasDialogBody, CanvasDialogFooter, DialogTitle } from "../../../components/ui/dialog";
@@ -121,19 +121,25 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
                 <Command>
                   <CommandInput placeholder="Search branches..." value={baseBranchSearch()} onValueChange={setBaseBranchSearch} />
                   <CommandList class="max-h-[200px]">
-                    {filteredBaseBranches().length === 0 ? <CommandEmpty>No branches found.</CommandEmpty> : <CommandGroup>
-                        {filteredBaseBranches().map((branch) => <CommandItem key={branch.name} value={branch.name} onSelect={() => {
- setBaseBranch(branch.name);
-		setBaseBranchOpen(false);
-	}} class="gap-2 cursor-pointer">
-                            <GitBranch class="h-4 w-4 text-muted-foreground shrink-0" />
-                            <span class="truncate flex-1">{branch.name}</span>
-                            {branch.committedAt && <span class="text-xs text-muted-foreground/70 shrink-0">
-                                {formatTimeAgo(branch.committedAt)}
-                              </span>}
-                            {baseBranch() === branch.name && <Check class="h-4 w-4 shrink-0" />}
-                          </CommandItem>)}
-                      </CommandGroup>}
+                    <Show when={filteredBaseBranches().length === 0} fallback={<CommandGroup>
+                      <For each={filteredBaseBranches()}>{(branch) => <CommandItem value={branch.name} onSelect={() => {
+                        setBaseBranch(branch.name);
+                        setBaseBranchOpen(false);
+                      }} class="gap-2 cursor-pointer">
+                        <GitBranch class="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span class="truncate flex-1">{branch.name}</span>
+                        <Show when={branch.committedAt}>
+                          <span class="text-xs text-muted-foreground/70 shrink-0">
+                            {formatTimeAgo(branch.committedAt)}
+                          </span>
+                        </Show>
+                        <Show when={baseBranch() === branch.name}>
+                          <Check class="h-4 w-4 shrink-0" />
+                        </Show>
+                      </CommandItem>}</For>
+                    </CommandGroup>}>
+                      <CommandEmpty>No branches found.</CommandEmpty>
+                    </Show>
                   </CommandList>
                 </Command>
               </PopoverPrimitive.Content>
@@ -146,10 +152,12 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
             Cancel
           </Button>
           <Button type="button" onClick={(e) => handleSubmit(e)} disabled={!branchName().trim() || createBranchMutation.isPending} class="transition-transform duration-150 active:scale-[0.97] rounded-md">
-            {createBranchMutation.isPending ? <>
+            <Show when={createBranchMutation.isPending} fallback="Create Branch">
+              <>
                 <IconSpinner class="w-4 h-4 mr-2" />
                 Creating...
-              </> : "Create Branch"}
+              </>
+            </Show>
           </Button>
         </CanvasDialogFooter>
       </CanvasDialogContent>

@@ -1,5 +1,5 @@
 import type { JSX } from "solid-js";
-import { createMemo } from "solid-js";
+import { createMemo, For, Show } from "solid-js";
 import { getFileIconByExtension } from "./agents-file-mention";
 import { FilesIcon, SkillIcon, CustomAgentIcon, OriginalMCPIcon } from "../../../components/ui/icons";
 import { MENTION_PREFIXES } from "./agents-mentions-editor";
@@ -255,14 +255,14 @@ function MentionChip({ mention }: {
 function renderTextWithUltrathink(text: string): JSX.Element {
 	const parts = text.split(/(ultrathink)/gi);
 	if (parts.length === 1) return text;
-	return parts.map((part, index) => {
+	return <For each={parts}>{(part, index) => {
 		if (part.toLowerCase() === "ultrathink") {
-			return <span key={index} class="chroma-text chroma-text-animate">
+			return <span class="chroma-text chroma-text-animate">
           {part}
         </span>;
 		}
 		return part;
-	});
+	}}</For>;
 }
 /**
 * Hook to render text with file/folder mentions and ultrathink highlighting
@@ -394,7 +394,9 @@ export function TextMentionBlock({ mention }: {
         <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/50 cursor-default min-w-[120px] max-w-[200px]">
           {	/* Icon container */}
           <div class="flex items-center justify-center size-8 rounded-md bg-muted shrink-0">
-            {mention.type === "quote" || mention.type === "pasted" ? <TextSelectIcon class="size-4 text-muted-foreground" /> : <CodeSelectIcon class="size-4 text-muted-foreground" />}
+            <Show when={mention.type === "quote" || mention.type === "pasted"} fallback={<CodeSelectIcon class="size-4 text-muted-foreground" />}>
+              <TextSelectIcon class="size-4 text-muted-foreground" />
+            </Show>
           </div>
 
           { /* Text content */}
@@ -411,7 +413,9 @@ export function TextMentionBlock({ mention }: {
       <HoverCardContent side="top" align="start" class="w-80 max-h-48 overflow-y-auto">
         <div class="flex flex-col gap-1">
           <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-            {mention.type === "quote" || mention.type === "pasted" ? <TextSelectIcon class="size-3" /> : <CodeSelectIcon class="size-3" />}
+            <Show when={mention.type === "quote" || mention.type === "pasted"} fallback={<CodeSelectIcon class="size-3" />}>
+              <TextSelectIcon class="size-3" />
+            </Show>
             <span>
               {mention.type === "quote" ? "Selected text" : mention.type === "pasted" ? `Pasted text · ${formatSize(mention.size || 0)}` : `${mention.path}${mention.lineNumber ? `:${mention.lineNumber}` : ""}`}
             </span>
@@ -431,7 +435,7 @@ export function TextMentionBlocks({ mentions }: {
 }) {
 	const textMentions = mentions.filter((m) => m.type === "quote" || m.type === "diff" || m.type === "pasted");
 	if (textMentions.length === 0) return null;
-	return <div class="flex flex-wrap gap-1.5">
-      {textMentions.map((mention, idx) => <TextMentionBlock key={idx} mention={mention} />)}
+  return <div class="flex flex-wrap gap-1.5">
+      <For each={textMentions}>{(mention) => <TextMentionBlock mention={mention} />}</For>
     </div>;
 }

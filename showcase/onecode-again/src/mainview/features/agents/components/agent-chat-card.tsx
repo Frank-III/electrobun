@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { cn } from "../../../lib/utils";
 import { GitHubLogo, IconSpinner, PlanIcon, AgentIcon } from "../../../components/ui/canvas-icons";
 import { agentsUnseenChangesAtom, lastChatModesAtom } from "../atoms";
@@ -17,7 +17,9 @@ function GitHubAvatar(props: {
 	}
 	return <div class={cn(cls, "relative flex-shrink-0")}>
       {	/* Placeholder background while loading */}
-      {!isLoaded() && <div class="absolute inset-0 rounded-sm bg-muted" />}
+      <Show when={!isLoaded()}>
+        <div class="absolute inset-0 rounded-sm bg-muted" />
+      </Show>
       <img src={`https://github.com/${props.gitOwner}.png?size=64`} alt={props.gitOwner} class={cn(cls, "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
     </div>;
  }
@@ -59,7 +61,13 @@ function ChatIconWithBadge({ isLoading, hasUnseenChanges, lastMode, isSelected =
       {renderMainIcon()}
       {	/* Badge in bottom-right corner */}
       <div class={cn("absolute -bottom-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center", isSelected ? "bg-primary" : "bg-background")}>
-        {isLoading ? <IconSpinner class={cn("w-2.5 h-2.5", isSelected ? "text-primary-foreground" : "text-muted-foreground")} /> : hasUnseenChanges ? <div class="w-2 h-2 rounded-full bg-[#307BD0]" /> : lastMode === "plan" ? <PlanIcon class={cn("w-2.5 h-2.5", isSelected ? "text-primary-foreground" : "text-muted-foreground")} /> : <AgentIcon class={cn("w-2.5 h-2.5", isSelected ? "text-primary-foreground" : "text-muted-foreground")} />}
+        <Show when={isLoading} fallback={<Show when={hasUnseenChanges} fallback={<Show when={lastMode === "plan"} fallback={<AgentIcon class={cn("w-2.5 h-2.5", isSelected ? "text-primary-foreground" : "text-muted-foreground")} />}>
+          <PlanIcon class={cn("w-2.5 h-2.5", isSelected ? "text-primary-foreground" : "text-muted-foreground")} />
+        </Show>}>
+          <div class="w-2 h-2 rounded-full bg-[#307BD0]" />
+        </Show>}>
+          <IconSpinner class={cn("w-2.5 h-2.5", isSelected ? "text-primary-foreground" : "text-muted-foreground")} />
+        </Show>
       </div>
     </div>;
  }

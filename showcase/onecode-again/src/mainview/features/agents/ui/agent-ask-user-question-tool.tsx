@@ -1,3 +1,4 @@
+import { splitProps, For } from "solid-js";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { QuestionIcon } from "../../../components/ui/icons";
 import { QUESTIONS_SKIPPED_MESSAGE, QUESTIONS_TIMED_OUT_MESSAGE, askUserQuestionResultsAtom, pendingUserQuestionsAtom } from "../atoms";
@@ -23,19 +24,20 @@ interface AgentAskUserQuestionToolProps {
 	isStreaming?: boolean;
 	toolCallId?: string;
 }
-export function AgentAskUserQuestionTool({ input, result, errorText, state, isError, isStreaming, toolCallId }: AgentAskUserQuestionToolProps) {
-	const questions = input?.questions ?? [];
+export function AgentAskUserQuestionTool(props: AgentAskUserQuestionToolProps) {
+	const [local] = splitProps(props, ["input", "result", "errorText", "state", "isError", "isStreaming", "toolCallId"]);
+	const questions = local.input?.questions ?? [];
 	const questionCount = questions.length;
 	// Get real-time results from atom (for immediate updates before DB sync)
 	const resultsMap = askUserQuestionResultsAtom[0];
-	const realtimeResult = toolCallId ? resultsMap.get(toolCallId) : undefined;
+	const realtimeResult = local.toolCallId ? resultsMap.get(local.toolCallId) : undefined;
 	// Check if the question dialog is currently shown for this tool
 	const pendingQuestionsMap = pendingUserQuestionsAtom[0];
-	const isDialogShown = toolCallId ? Array.from(pendingQuestionsMap.values()).some((q) => q.toolUseId === toolCallId) : false;
+	const isDialogShown = local.toolCallId ? Array.from(pendingQuestionsMap.values()).some((q) => q.toolUseId === local.toolCallId) : false;
 	// Use realtime result if available, otherwise fall back to prop
-	const effectiveResult = realtimeResult ?? result;
+	const effectiveResult = realtimeResult ?? local.result;
 	// For errors, SDK stores errorText separately - use it to detect skip/timeout
-	const effectiveErrorText = errorText || (typeof effectiveResult === "string" ? effectiveResult : undefined);
+	const effectiveErrorText = local.errorText || (typeof effectiveResult === "string" ? effectiveResult : undefined);
 	// Extract answers for display
 	const answers = effectiveResult && typeof effectiveResult === "object" && "answers" in effectiveResult ? (effectiveResult as {
 		answers?: Record<string, string>;
@@ -43,11 +45,11 @@ export function AgentAskUserQuestionTool({ input, result, errorText, state, isEr
 	// Determine status
 	const isSkipped = effectiveErrorText === QUESTIONS_SKIPPED_MESSAGE;
 	const isTimedOut = effectiveErrorText === QUESTIONS_TIMED_OUT_MESSAGE;
-	const isCompleted = state === "result" && answers && !isSkipped && !isTimedOut && !isError;
+	const isCompleted = local.state === "result" && answers && !isSkipped && !isTimedOut && !local.isError;
 	// Show loading state if:
 	// 1. No questions yet (still streaming input)
 	// 2. Streaming but dialog not yet shown (waiting for ask-user-question chunk)
-	if (state === "call" && (questionCount === 0 || isStreaming && !isDialogShown)) {
+	if (local.state === "call" && (questionCount === 0 || local.isStreaming && !isDialogShown)) {
 		return <div class="flex items-center gap-2 py-1 px-2 text-xs text-muted-foreground">
         <TextShimmer class="text-xs" duration={1.5}>
           Asking question...
@@ -55,7 +57,7 @@ export function AgentAskUserQuestionTool({ input, result, errorText, state, isEr
       </div>;
 	}
 	// Show skipped/timed out state
-	if (state === "result" && (isSkipped || isTimedOut)) {
+	if (local.state === "result" && (isSkipped || isTimedOut)) {
 		const firstQuestion = questions[0]?.header || questions[0]?.question;
 		return <div class="flex items-center gap-2 py-1 px-2 text-xs text-muted-foreground">
         <span>{firstQuestion || "Question"}</span>
@@ -64,7 +66,7 @@ export function AgentAskUserQuestionTool({ input, result, errorText, state, isEr
       </div>;
 	}
 	// Show error state
-	if (state === "result" && isError) {
+	if (local.state === "result" && local.isError) {
 		return <div class="flex items-center gap-2 py-1 px-2 text-xs text-muted-foreground">
         <span>Question</span>
         <span class="text-muted-foreground/50">•</span>
@@ -89,10 +91,14 @@ export function AgentAskUserQuestionTool({ input, result, errorText, state, isEr
         </div>
         { /* Content */}
         <div class="flex flex-col gap-2 p-2.5 text-xs">
-          {entries.map(([question, answer], idx) => <div key={idx} class="flex flex-col gap-0.5">
-              <span class="font-medium text-foreground">{question}</span>
-              <span class="text-muted-foreground">{answer}</span>
-            </div>)}
+          <For each={entries}>
+            {([question, answer]) => (
+              <div class="flex flex-col gap-0.5">
+                <span class="font-medium text-foreground">{question}</span>
+                <span class="text-muted-foreground">{answer}</span>
+              </div>
+            )}
+          </For>
         </div>
       </div>;
  }
@@ -100,7 +106,7 @@ export function AgentAskUserQuestionTool({ input, result, errorText, state, isEr
 	const firstQuestion = questions[0]?.header || questions[0]?.question;
 	// If streaming THIS message, show "Waiting for response..."
 	// isStreaming is true only when global streaming is active AND this is the last message
-	if (isStreaming) {
+	if (local.isStreaming) {
 		return <div class="flex items-center gap-2 py-1 px-2 text-xs text-muted-foreground">
         <span>{firstQuestion || "Question"}</span>
         <span class="text-muted-foreground/50">•</span>
@@ -111,7 +117,7 @@ export function AgentAskUserQuestionTool({ input, result, errorText, state, isEr
 	// show "Submitting..." (user just answered, waiting for sync)
 	// Note: realtimeResult is set immediately when user answers via ask-user-question-result chunk
 	// If there's no realtimeResult and no answers, the stream was interrupted without an answer
-	if (state === "result" && realtimeResult && !answers && !isError && !isSkipped && !isTimedOut) {
+	if (local.state === "result" && realtimeResult && !answers && !local.isError && !isSkipped && !isTimedOut) {
 		return <div class="flex items-center gap-2 py-1 px-2 text-xs text-muted-foreground">
         <span>{firstQuestion || "Question"}</span>
         <span class="text-muted-foreground/50">•</span>

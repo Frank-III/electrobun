@@ -1,4 +1,4 @@
-import { createMemo, createEffect, createSignal, onCleanup, For } from "solid-js";
+import { createMemo, createEffect, createSignal, onCleanup, For, Show } from "solid-js";
 import { cn } from "../../../lib/utils";
 import { MemoizedMarkdown } from "../../../components/chat-markdown-renderer";
 import { messageAtomFamily, isMessageStreamingAtomFamily } from "../stores/message-store";
@@ -113,7 +113,7 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentM
 			parent.normalize();
 		}
 	});
-	if (!searchText) return;
+	if (!searchText || typeof searchText !== "string") return;
 	const lowerSearch = searchText.toLowerCase();
 	const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
 	const textNodes: Text[] = [];
@@ -167,15 +167,15 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentM
 		}
 	}
 }
-export function IsolatedTextPart({ messageId, partIndex, isFinalText, visibleStepsCount }: IsolatedTextPartProps) {
+export function IsolatedTextPart(props: IsolatedTextPartProps) {
 	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
 	// Subscribe to ONLY this text part (Solid accessor)
-	const text = useTextPart(messageId, partIndex);
+	const text = useTextPart(props.messageId, props.partIndex);
 	// Use per-message streaming atom instead of global isStreamingAtom
 	// This prevents re-renders of old messages when streaming status changes
-	const isTextStreaming = isMessageStreamingAtomFamily(messageId)[0];
+	const isTextStreaming = isMessageStreamingAtomFamily(props.messageId)[0];
 	// Get search highlights for this text part
-	const highlights = useSearchHighlight(messageId, partIndex, "text");
+	const highlights = useSearchHighlight(props.messageId, props.partIndex, "text");
 	// Get search query from context
 	const searchQuery = useSearchQuery();
 	// Find current highlight (the one marked as current)
@@ -205,12 +205,14 @@ export function IsolatedTextPart({ messageId, partIndex, isFinalText, visibleSte
 		});
 	});
 	if (!text()?.trim()) return null;
-	return <div class={cn("text-foreground px-2", isFinalText && visibleStepsCount > 0 && "pt-3 border-t border-border/50")} data-message-id={messageId} data-part-index={partIndex} data-part-type="text">
-      {isFinalText && visibleStepsCount > 0 && <div class="text-[12px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-1">
+	return <div class={cn("text-foreground px-2", props.isFinalText && props.visibleStepsCount > 0 && "pt-3 border-t border-border/50")} data-message-id={props.messageId} data-part-index={props.partIndex} data-part-type="text">
+      <Show when={props.isFinalText && props.visibleStepsCount > 0}>
+        <div class="text-[12px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-1">
           Response
-        </div>}
+        </div>
+      </Show>
       <div ref={setContentRef}>
-        <MemoizedMarkdown content={text()} id={`${messageId}-${partIndex}`} size="sm" />
+        <MemoizedMarkdown content={text()} id={`${props.messageId}-${props.partIndex}`} size="sm" />
       </div>
     </div>;
 }
@@ -230,9 +232,10 @@ interface IsolatedTextPartsProps {
 function areListPropsEqual(prev: IsolatedTextPartsProps, next: IsolatedTextPartsProps): boolean {
 	return prev.messageId === next.messageId && prev.finalTextIndex === next.finalTextIndex && prev.visibleStepsCount === next.visibleStepsCount && prev.showOnlyFinalText === next.showOnlyFinalText;
 }
-export function IsolatedTextPartsList({ messageId, finalTextIndex, visibleStepsCount, showOnlyFinalText = false }: IsolatedTextPartsProps) {
+export function IsolatedTextPartsList(props: IsolatedTextPartsProps) {
+	const showOnlyFinalText = () => props.showOnlyFinalText ?? false;
 	// Subscribe to message just to get parts structure (not content)
-	const message = messageAtomFamily(messageId)[0];
+	const message = messageAtomFamily(props.messageId)[0];
 	// Find indices of text parts that should be rendered
 	// This is a stable calculation - only changes when parts array structure changes
 	const textPartIndices = createMemo(() => {
@@ -242,12 +245,12 @@ export function IsolatedTextPartsList({ messageId, finalTextIndex, visibleStepsC
 			const part = parts[i];
 			if (part.type === "text" && part.text?.trim()) {
 				// Apply filtering based on finalTextIndex
-				if (showOnlyFinalText) {
-					if (finalTextIndex !== -1 && i >= finalTextIndex) {
+				if (showOnlyFinalText()) {
+					if (props.finalTextIndex !== -1 && i >= props.finalTextIndex) {
 						indices.push(i);
 					}
 				} else {
-					if (finalTextIndex === -1 || i < finalTextIndex) {
+					if (props.finalTextIndex === -1 || i < props.finalTextIndex) {
 						indices.push(i);
 					}
 				}
@@ -257,7 +260,7 @@ export function IsolatedTextPartsList({ messageId, finalTextIndex, visibleStepsC
 	});
 	return <>
       <For each={textPartIndices()}>
-        {(partIndex) => <IsolatedTextPart messageId={messageId} partIndex={partIndex} isFinalText={showOnlyFinalText && finalTextIndex !== -1 && partIndex === finalTextIndex} visibleStepsCount={visibleStepsCount} />}
+        {(partIndex) => <IsolatedTextPart messageId={props.messageId} partIndex={partIndex} isFinalText={showOnlyFinalText() && props.finalTextIndex !== -1 && partIndex === props.finalTextIndex} visibleStepsCount={props.visibleStepsCount} />}
       </For>
     </>;
 }

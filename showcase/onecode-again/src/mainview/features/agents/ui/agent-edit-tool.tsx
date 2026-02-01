@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, onCleanup, Show, For } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup, Show, For, Switch, Match } from "solid-js";
 import { useCodeTheme } from "../../../lib/hooks/use-code-theme";
 import { highlightCode } from "../../../lib/themes/shiki-theme-loader";
 import { IconSpinner, ExpandIcon, CollapseIcon } from "../../../components/ui/icons";
@@ -144,9 +144,13 @@ function DiffLineRow({ line, highlightedHtml }: {
 	highlightedHtml: string | undefined;
 }) {
 	return <div class={cn("px-2.5 py-0.5", line.type === "removed" && "bg-red-500/10 dark:bg-red-500/15 border-l-2 border-red-500/50", line.type === "added" && "bg-green-500/10 dark:bg-green-500/15 border-l-2 border-green-500/50", line.type === "context" && "border-l-2 border-transparent")}>
-        {highlightedHtml ? <span class="whitespace-pre-wrap break-all [&_.shiki]:bg-transparent [&_pre]:bg-transparent [&_code]:bg-transparent" dangerouslySetInnerHTML={{ __html: highlightedHtml }} /> : <span class={cn("whitespace-pre-wrap break-all", line.type === "removed" && "text-red-700 dark:text-red-300", line.type === "added" && "text-green-700 dark:text-green-300", line.type === "context" && "text-muted-foreground")}>
+        <Show when={highlightedHtml} fallback={
+          <span class={cn("whitespace-pre-wrap break-all", line.type === "removed" && "text-red-700 dark:text-red-300", line.type === "added" && "text-green-700 dark:text-green-300", line.type === "context" && "text-muted-foreground")}>
             {line.content || " "}
-          </span>}
+          </span>
+        }>
+          <span class="whitespace-pre-wrap break-all [&_.shiki]:bg-transparent [&_pre]:bg-transparent [&_code]:bg-transparent" innerHTML={highlightedHtml} />
+        </Show>
       </div>;
 }
 export function AgentEditTool({ part, messageId, partIndex, chatStatus }: AgentEditToolProps) {
@@ -381,9 +385,11 @@ export function AgentEditTool({ part, messageId, partIndex, chatStatus }: AgentE
 		}
 		return <div class="flex items-center gap-1.5 px-2 py-0.5">
         <span class="text-xs text-muted-foreground">
-          {isPending ? <TextShimmer as="span" duration={1.2}>
+          <Show when={isPending} fallback={headerAction}>
+            <TextShimmer as="span" duration={1.2}>
               {headerAction}
-            </TextShimmer> : headerAction}
+            </TextShimmer>
+          </Show>
         </span>
       </div>;
 	}
@@ -397,9 +403,11 @@ export function AgentEditTool({ part, messageId, partIndex, chatStatus }: AgentE
           { /* Filename with shimmer during progress */}
           <Tooltip>
             <TooltipTrigger asChild>
-              {isPending || isInputStreaming ? <TextShimmer as="span" duration={1.2} class="truncate">
+              <Show when={isPending || isInputStreaming} fallback={<span class="truncate text-foreground">{filename}</span>}>
+                <TextShimmer as="span" duration={1.2} class="truncate">
                   {filename}
-                </TextShimmer> : <span class="truncate text-foreground">{filename}</span>}
+                </TextShimmer>
+              </Show>
             </TooltipTrigger>
             <TooltipContent side="top" class="px-2 py-1.5 max-w-none flex items-center justify-center">
               <span class="font-mono text-[10px] text-muted-foreground whitespace-nowrap leading-none">
@@ -413,16 +421,23 @@ export function AgentEditTool({ part, messageId, partIndex, chatStatus }: AgentE
         <div class="flex items-center gap-2 flex-shrink-0 ml-2">
           { /* Diff stats or spinner */}
           <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-            {isPending || isInputStreaming ? <IconSpinner class="w-3 h-3" /> : diffStats ? <>
-                <span class="text-green-600 dark:text-green-400">
-                  +{diffStats.addedLines}
-                </span>
-                <Show when={diffStats?.removedLines && diffStats.removedLines > 0}>
-                      <span class="text-red-600 dark:text-red-400">
-                        -{diffStats!.removedLines}
-                      </span>
-                    </Show>
-              </> : null}
+            <Switch>
+              <Match when={isPending || isInputStreaming}>
+                <IconSpinner class="w-3 h-3" />
+              </Match>
+              <Match when={diffStats}>
+                <>
+                  <span class="text-green-600 dark:text-green-400">
+                    +{diffStats!.addedLines}
+                  </span>
+                  <Show when={diffStats?.removedLines && diffStats.removedLines > 0}>
+                    <span class="text-red-600 dark:text-red-400">
+                      -{diffStats!.removedLines}
+                    </span>
+                  </Show>
+                </>
+              </Match>
+            </Switch>
           </div>
 
           { /* Expand/Collapse button - show when has visible content and not streaming */}

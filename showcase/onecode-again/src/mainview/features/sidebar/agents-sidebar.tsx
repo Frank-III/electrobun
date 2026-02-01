@@ -821,7 +821,7 @@ function SidebarHeader(props: SidebarHeaderProps) {
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent class="w-36" sideOffset={6} alignOffset={-4}>
                         <DropdownMenuItem onSelect={() => {
- window.open("https://discord.gg/8ektTZGnj4", "_blank");
+	desktopRpc.window.openExternal.mutate({ url: "https://discord.gg/8ektTZGnj4" });
 		setIsDropdownOpen(false);
 	}} class="gap-2">
                           <DiscordIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -871,7 +871,7 @@ function SidebarHeader(props: SidebarHeaderProps) {
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent class="w-36" sideOffset={6} alignOffset={-4}>
                         <DropdownMenuItem onSelect={() => {
- window.open("https://discord.gg/8ektTZGnj4", "_blank");
+	desktopRpc.window.openExternal.mutate({ url: "https://discord.gg/8ektTZGnj4" });
 		setIsDropdownOpen(false);
 	}} class="gap-2">
                           <DiscordIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -1494,7 +1494,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 		}
 	};
 	// Get clerk username
-	const clerkUsername = clerkUser?.username;
+	const clerkUsername = clerkUser()?.username;
 	// Filter and separate pinned/unpinned agents
 	const agentFilters = createMemo(() => {
 		const chats = agentChats();
@@ -1657,7 +1657,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 		setSelectedChatId(null);
 		setSelectedDraftId(draftId);
 		setShowNewChatForm(false);
-		if (isMobileFullscreen && onChatSelect) {
+		if (isMobileFullscreen() && onChatSelect) {
 			onChatSelect();
 		}
 	};
@@ -1725,7 +1725,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 		setSelectedDraftId(null);
 		setShowNewChatForm(true);
 		// On mobile, switch to chat mode to show NewChatForm
-		if (isMobileFullscreen && onChatSelect) {
+		if (isMobileFullscreen() && onChatSelect) {
 			onChatSelect();
 		}
 	};
@@ -1784,7 +1784,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 		setChatSourceMode(isRemote ? "sandbox" : "local");
 		setShowNewChatForm(false);
 		// On mobile, notify parent to switch to chat mode
-		if (isMobileFullscreen && onChatSelect) {
+		if (isMobileFullscreen() && onChatSelect) {
 			onChatSelect();
 		}
 	};
@@ -2137,9 +2137,9 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 		}
 	};
 	// Mobile fullscreen mode - render without ResizableSidebar wrapper
-	const sidebarContent = <div class={cn("group/sidebar flex flex-col gap-0 overflow-hidden select-none", isMobileFullscreen ? "h-full w-full bg-background" : "h-full bg-tl-background")} onMouseEnter={handleSidebarMouseEnter} onMouseLeave={handleSidebarMouseLeave} data-mobile-fullscreen={isMobileFullscreen || undefined} data-sidebar-content>
+	const sidebarContent = <div class={cn("group/sidebar flex flex-col gap-0 overflow-hidden select-none", isMobileFullscreen() ? "h-full w-full bg-background" : "h-full bg-tl-background")} onMouseEnter={handleSidebarMouseEnter} onMouseLeave={handleSidebarMouseLeave} data-mobile-fullscreen={isMobileFullscreen() || undefined} data-sidebar-content>
       {	/* Header area - isolated component to prevent re-renders when dropdown opens */}
-      <SidebarHeader isDesktop={isDesktop()} isFullscreen={isFullscreen()} isMobileFullscreen={isMobileFullscreen} userId={userId} desktopUser={desktopUser} onSignOut={onSignOut} onToggleSidebar={onToggleSidebar ? () => onToggleSidebar() : undefined} setSettingsDialogOpen={setSettingsDialogOpen} setSettingsActiveTab={setSettingsActiveTab} setShowAuthDialog={setShowAuthDialog} handleSidebarMouseEnter={handleSidebarMouseEnter} handleSidebarMouseLeave={handleSidebarMouseLeave} closeButtonRef={setCloseButtonRef} />
+      <SidebarHeader isDesktop={isDesktop()} isFullscreen={isFullscreen()} isMobileFullscreen={isMobileFullscreen()} userId={userId()} desktopUser={desktopUser()} onSignOut={onSignOut} onToggleSidebar={local.onToggleSidebar ? onToggleSidebar : undefined} setSettingsDialogOpen={setSettingsDialogOpen} setSettingsActiveTab={setSettingsActiveTab} setShowAuthDialog={setShowAuthDialog} handleSidebarMouseEnter={handleSidebarMouseEnter} handleSidebarMouseLeave={handleSidebarMouseLeave} closeButtonRef={setCloseButtonRef} />
 
       { /* Search and New Workspace */}
       <div class="px-2 pb-3 flex-shrink-0">
@@ -2187,12 +2187,12 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
           }
           return;
           }
-          }} class={cn("w-full rounded-lg text-sm bg-muted border border-input placeholder:text-muted-foreground/40", isMobileFullscreen ? "h-10" : "h-7")} />
+          }} class={cn("w-full rounded-lg text-sm bg-muted border border-input placeholder:text-muted-foreground/40", isMobileFullscreen() ? "h-10" : "h-7")} />
           </div>
           {	/* New Workspace Button */}
           <Tooltip delayDuration={500}>
             <TooltipTrigger asChild>
-              <ButtonCustom onClick={handleNewAgent} variant="outline" size="sm" class={cn("px-2 w-full hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground rounded-lg gap-1.5", isMobileFullscreen ? "h-10" : "h-7")}>
+              <ButtonCustom onClick={handleNewAgent} variant="outline" size="sm" class={cn("px-2 w-full hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground rounded-lg gap-1.5", isMobileFullscreen() ? "h-10" : "h-7")}>
                 <span class="text-sm font-medium">New Workspace</span>
               </ButtonCustom>
             </TooltipTrigger>
@@ -2215,18 +2215,18 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
                 </h3>
               </div>
               <div class="list-none p-0 m-0">
-                <For each={drafts()}>{(draft) => <DraftItem draftId={draft.id} draftText={draft.text} draftUpdatedAt={draft.updatedAt} projectGitOwner={draft.project?.gitOwner} projectGitProvider={draft.project?.gitProvider} projectGitRepo={draft.project?.gitRepo} projectName={draft.project?.name} isSelected={selectedDraftId() === draft.id && !selectedChatId()} isMultiSelectMode={isMultiSelectMode()} isMobileFullscreen={isMobileFullscreen} showIcon={showWorkspaceIcon()} onSelect={handleDraftSelect} onDelete={handleDeleteDraft} formatTime={formatTime} />}</For>
+                <For each={drafts()}>{(draft) => <DraftItem draftId={draft.id} draftText={draft.text} draftUpdatedAt={draft.updatedAt} projectGitOwner={draft.project?.gitOwner} projectGitProvider={draft.project?.gitProvider} projectGitRepo={draft.project?.gitRepo} projectName={draft.project?.name} isSelected={selectedDraftId() === draft.id && !selectedChatId()} isMultiSelectMode={isMultiSelectMode()} isMobileFullscreen={isMobileFullscreen()} showIcon={showWorkspaceIcon()} onSelect={handleDraftSelect} onDelete={handleDeleteDraft} formatTime={formatTime} />}</For>
               </div>
             </div></Show>
 
           { /* Chats Section */}
-          {filteredChats().length > 0 ? <div class={cn("mb-4", isMultiSelectMode() ? "px-0" : "-mx-1")}>
+          <Show when={filteredChats().length > 0}><div class={cn("mb-4", isMultiSelectMode() ? "px-0" : "-mx-1")}>
               { /* Pinned section */}
-              <ChatListSection title="Pinned workspaces" chats={pinnedAgents()} selectedChatId={selectedChatId()} selectedChatIsRemote={selectedChatIsRemote()} focusedChatIndex={focusedChatIndex()} loadingChatIds={loadingChatIds()} unseenChanges={unseenChanges()} workspacePendingPlans={workspacePendingPlans()} workspacePendingQuestions={workspacePendingQuestions()} isMultiSelectMode={isMultiSelectMode()} selectedChatIds={selectedChatIds()} isMobileFullscreen={isMobileFullscreen} isDesktop={isDesktop()} pinnedChatIds={pinnedChatIds()} projectsMap={projectsMap()} workspaceFileStats={workspaceFileStats()} filteredChats={filteredChats()} canShowPinOption={canShowPinOption()} areAllSelectedPinned={areAllSelectedPinned()} showIcon={showWorkspaceIcon()} onChatClick={handleChatClick} onCheckboxClick={handleCheckboxClick} onMouseEnter={handleAgentMouseEnter} onMouseLeave={handleAgentMouseLeave} onArchive={handleArchiveSingle} onTogglePin={handleTogglePin} onRenameClick={handleRenameClick} onCopyBranch={handleCopyBranch} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={handleArchiveOthers} onOpenLocally={handleOpenLocally} onBulkPin={handleBulkPin} onBulkUnpin={handleBulkUnpin} onBulkArchive={handleBulkArchive} archivePending={archiveChatMutation.isPending || archiveRemoteChatMutation.isPending} archiveBatchPending={archiveChatsBatchMutation.isPending || archiveRemoteChatsBatchMutation.isPending} nameRefCallback={nameRefCallback} formatTime={formatTime} justCreatedIds={justCreatedIds()} />
+              <ChatListSection title="Pinned workspaces" chats={pinnedAgents()} selectedChatId={selectedChatId()} selectedChatIsRemote={selectedChatIsRemote()} focusedChatIndex={focusedChatIndex()} loadingChatIds={loadingChatIds()} unseenChanges={unseenChanges()} workspacePendingPlans={workspacePendingPlans()} workspacePendingQuestions={workspacePendingQuestions()} isMultiSelectMode={isMultiSelectMode()} selectedChatIds={selectedChatIds()} isMobileFullscreen={isMobileFullscreen()} isDesktop={isDesktop()} pinnedChatIds={pinnedChatIds()} projectsMap={projectsMap()} workspaceFileStats={workspaceFileStats()} filteredChats={filteredChats()} canShowPinOption={canShowPinOption()} areAllSelectedPinned={areAllSelectedPinned()} showIcon={showWorkspaceIcon()} onChatClick={handleChatClick} onCheckboxClick={handleCheckboxClick} onMouseEnter={handleAgentMouseEnter} onMouseLeave={handleAgentMouseLeave} onArchive={handleArchiveSingle} onTogglePin={handleTogglePin} onRenameClick={handleRenameClick} onCopyBranch={handleCopyBranch} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={handleArchiveOthers} onOpenLocally={handleOpenLocally} onBulkPin={handleBulkPin} onBulkUnpin={handleBulkUnpin} onBulkArchive={handleBulkArchive} archivePending={archiveChatMutation.isPending || archiveRemoteChatMutation.isPending} archiveBatchPending={archiveChatsBatchMutation.isPending || archiveRemoteChatsBatchMutation.isPending} nameRefCallback={nameRefCallback} formatTime={formatTime} justCreatedIds={justCreatedIds()} />
 
               { /* Unpinned section */}
-              <ChatListSection title={pinnedAgents().length > 0 ? "Recent workspaces" : "Workspaces"} chats={unpinnedAgents()} selectedChatId={selectedChatId()} selectedChatIsRemote={selectedChatIsRemote()} focusedChatIndex={focusedChatIndex()} loadingChatIds={loadingChatIds()} unseenChanges={unseenChanges()} workspacePendingPlans={workspacePendingPlans()} workspacePendingQuestions={workspacePendingQuestions()} isMultiSelectMode={isMultiSelectMode()} selectedChatIds={selectedChatIds()} isMobileFullscreen={isMobileFullscreen} isDesktop={isDesktop()} pinnedChatIds={pinnedChatIds()} projectsMap={projectsMap()} workspaceFileStats={workspaceFileStats()} filteredChats={filteredChats()} canShowPinOption={canShowPinOption()} areAllSelectedPinned={areAllSelectedPinned()} showIcon={showWorkspaceIcon()} onChatClick={handleChatClick} onCheckboxClick={handleCheckboxClick} onMouseEnter={handleAgentMouseEnter} onMouseLeave={handleAgentMouseLeave} onArchive={handleArchiveSingle} onTogglePin={handleTogglePin} onRenameClick={handleRenameClick} onCopyBranch={handleCopyBranch} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={handleArchiveOthers} onOpenLocally={handleOpenLocally} onBulkPin={handleBulkPin} onBulkUnpin={handleBulkUnpin} onBulkArchive={handleBulkArchive} archivePending={archiveChatMutation.isPending || archiveRemoteChatMutation.isPending} archiveBatchPending={archiveChatsBatchMutation.isPending || archiveRemoteChatsBatchMutation.isPending} nameRefCallback={nameRefCallback} formatTime={formatTime} justCreatedIds={justCreatedIds()} />
-            </div> : null}
+              <ChatListSection title={pinnedAgents().length > 0 ? "Recent workspaces" : "Workspaces"} chats={unpinnedAgents()} selectedChatId={selectedChatId()} selectedChatIsRemote={selectedChatIsRemote()} focusedChatIndex={focusedChatIndex()} loadingChatIds={loadingChatIds()} unseenChanges={unseenChanges()} workspacePendingPlans={workspacePendingPlans()} workspacePendingQuestions={workspacePendingQuestions()} isMultiSelectMode={isMultiSelectMode()} selectedChatIds={selectedChatIds()} isMobileFullscreen={isMobileFullscreen()} isDesktop={isDesktop()} pinnedChatIds={pinnedChatIds()} projectsMap={projectsMap()} workspaceFileStats={workspaceFileStats()} filteredChats={filteredChats()} canShowPinOption={canShowPinOption()} areAllSelectedPinned={areAllSelectedPinned()} showIcon={showWorkspaceIcon()} onChatClick={handleChatClick} onCheckboxClick={handleCheckboxClick} onMouseEnter={handleAgentMouseEnter} onMouseLeave={handleAgentMouseLeave} onArchive={handleArchiveSingle} onTogglePin={handleTogglePin} onRenameClick={handleRenameClick} onCopyBranch={handleCopyBranch} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={handleArchiveOthers} onOpenLocally={handleOpenLocally} onBulkPin={handleBulkPin} onBulkUnpin={handleBulkUnpin} onBulkArchive={handleBulkArchive} archivePending={archiveChatMutation.isPending || archiveRemoteChatMutation.isPending} archiveBatchPending={archiveChatsBatchMutation.isPending || archiveRemoteChatsBatchMutation.isPending} nameRefCallback={nameRefCallback} formatTime={formatTime} justCreatedIds={justCreatedIds()} />
+            </div></Show>
         </div>
 
         { /* Top gradient fade (appears when scrolled down) */}
@@ -2257,7 +2257,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
                 </Tooltip>
 
                 {	/* Help Button - isolated component to prevent sidebar re-renders */}
-                <HelpSection isMobile={isMobileFullscreen} />
+                <HelpSection isMobile={isMobileFullscreen()} />
 
                 { /* Kanban View Button - isolated component */}
                 <KanbanButton />
@@ -2270,7 +2270,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
             </div>
 
             { /* Feedback Button */}
-            <ButtonCustom onClick={() => window.open(FEEDBACK_URL, "_blank")} variant="outline" size="sm" class={cn("px-2 w-full hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground rounded-lg gap-1.5", isMobileFullscreen ? "h-10" : "h-7")}>
+											<ButtonCustom onClick={() => desktopRpc.window.openExternal.mutate({ url: FEEDBACK_URL })} variant="outline" size="sm" class={cn("px-2 w-full hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground rounded-lg gap-1.5", isMobileFullscreen() ? "h-10" : "h-7")}>
               <span class="text-sm font-medium">Feedback</span>
             </ButtonCustom>
           </Motion.div>
