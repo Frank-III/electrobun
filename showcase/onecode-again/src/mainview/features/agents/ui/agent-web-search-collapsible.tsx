@@ -46,7 +46,7 @@ export function AgentWebSearchCollapsible(props: AgentWebSearchCollapsibleProps)
 	const hasResults = resultCount > 0;
 	return <div>
         {	/* Header - clickable to toggle */}
-        <div onClick={() => hasResults && !isPending && setIsExpanded(!isExpanded)} class={cn("group flex items-start gap-1.5 py-0.5 px-2", hasResults && !isPending && "cursor-pointer")}>
+        <div onClick={() => hasResults && !isPending && setIsExpanded((prev) => !prev)} class={cn("group flex items-start gap-1.5 py-0.5 px-2", hasResults && !isPending && "cursor-pointer")}>
           <div class="flex-1 min-w-0 flex items-center gap-1">
             <div class="text-xs flex items-center gap-1.5 min-w-0">
               <span class="font-medium whitespace-nowrap flex-shrink-0 text-muted-foreground">

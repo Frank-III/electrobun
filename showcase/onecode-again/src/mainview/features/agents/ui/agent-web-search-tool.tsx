@@ -51,7 +51,7 @@ export function AgentWebSearchTool(props: AgentWebSearchToolProps) {
 	}
 	return <div class="rounded-lg border border-border bg-muted/30 overflow-hidden mx-2">
       {	/* Header - clickable to toggle expand */}
-      <div onClick={() => hasResults && !isPending && setIsExpanded(!isExpanded)} class={cn("flex items-center justify-between px-2.5 h-7", hasResults && !isPending && "cursor-pointer hover:bg-muted/50 transition-colors duration-150")}>
+      <div onClick={() => hasResults && !isPending && setIsExpanded((prev) => !prev)} class={cn("flex items-center justify-between px-2.5 h-7", hasResults && !isPending && "cursor-pointer hover:bg-muted/50 transition-colors duration-150")}>
         <div class="flex items-center gap-1.5 text-xs truncate flex-1 min-w-0">
           <SearchIcon class="w-3 h-3 flex-shrink-0 text-muted-foreground" />
           

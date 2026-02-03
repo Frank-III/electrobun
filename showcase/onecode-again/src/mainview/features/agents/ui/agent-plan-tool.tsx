@@ -107,7 +107,7 @@ export function AgentPlanTool(props: AgentPlanToolProps) {
 	};
 	return <div class="rounded-lg border border-border bg-muted/30 overflow-hidden mx-2">
       {	/* Header - click anywhere to expand/collapse */}
-      <div class="flex items-center justify-between px-2.5 py-2 cursor-pointer hover:bg-muted/50 transition-colors duration-150" onClick={() => setIsExpanded(!isExpanded)}>
+      <div class="flex items-center justify-between px-2.5 py-2 cursor-pointer hover:bg-muted/50 transition-colors duration-150" onClick={() => setIsExpanded((prev) => !prev)}>
         <div class="flex items-center gap-2 min-w-0 flex-1">
           <div class="flex flex-col min-w-0 flex-1">
             <Show when={isPending} fallback={<span class="text-xs font-medium text-foreground truncate">

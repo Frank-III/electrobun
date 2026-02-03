@@ -75,7 +75,7 @@ export function AgentTaskTool(props: AgentTaskToolProps) {
 	}
 	return <div>
       {	/* Header - clickable to toggle, same style as AgentExploringGroup */}
-      <div onClick={() => setIsExpanded(!isExpanded)} class="group flex items-start gap-1.5 py-0.5 px-2 cursor-pointer">
+      <div onClick={() => setIsExpanded((prev) => !prev)} class="group flex items-start gap-1.5 py-0.5 px-2 cursor-pointer">
         <div class="flex-1 min-w-0 flex items-center gap-1">
           <div class="text-xs flex items-center gap-1.5 min-w-0">
             { /* Title with shimmer effect when running */}

@@ -73,7 +73,7 @@ function CollapsibleSteps(props: CollapsibleStepsProps) {
 	return (
 		<Show when={(stepsCount()) > 0} fallback={null}>
 			<div class="mb-2" data-collapsible-steps="true">
-      <div class="flex items-center justify-between rounded-md py-0.5 px-2 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setIsExpanded(!isExpanded)}>
+      <div class="flex items-center justify-between rounded-md py-0.5 px-2 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setIsExpanded((prev) => !prev)}>
         <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
           <ListTree class="w-3.5 h-3.5 flex-shrink-0" />
           <span class="font-medium whitespace-nowrap">
@@ -82,7 +82,7 @@ function CollapsibleSteps(props: CollapsibleStepsProps) {
         </div>
         <button class="p-1 rounded-md hover:bg-accent transition-[background-color,transform] duration-150 ease-out active:scale-95" onClick={(e) => {
 		e.stopPropagation();
-		setIsExpanded(!isExpanded);
+		setIsExpanded((prev) => !prev);
 	}}>
           <div class="relative w-4 h-4">
             <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />

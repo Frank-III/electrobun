@@ -636,7 +636,7 @@ function CollapsibleSteps({ stepsCount, children, defaultExpanded = false }: Col
 	if (stepsCount === 0) return null;
 	return <div class="mb-2" data-collapsible-steps="true">
       {	/* Header row - styled like AgentToolCall with expand icon on right */}
-      <div class="flex items-center justify-between rounded-md py-0.5 px-2 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setIsExpanded(!isExpanded)}>
+      <div class="flex items-center justify-between rounded-md py-0.5 px-2 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setIsExpanded((prev) => !prev)}>
         <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
           <ListTree class="w-3.5 h-3.5 flex-shrink-0" />
           <span class="font-medium whitespace-nowrap">
@@ -645,7 +645,7 @@ function CollapsibleSteps({ stepsCount, children, defaultExpanded = false }: Col
         </div>
         <button class="p-1 rounded-md hover:bg-accent transition-[background-color,transform] duration-150 ease-out active:scale-95" onClick={(e) => {
  e.stopPropagation();
-		setIsExpanded(!isExpanded);
+		setIsExpanded((prev) => !prev);
 	}}>
           <div class="relative w-4 h-4">
             <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
@@ -4319,7 +4319,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 				e.preventDefault();
 				e.stopPropagation();
 				// Toggle diff sidebar
-				setIsDiffSidebarOpen(!isDiffSidebarOpen);
+				setIsDiffSidebarOpen(!isDiffSidebarOpen());
 			}
 		};
 		window.addEventListener("keydown", handleKeyDown, true);

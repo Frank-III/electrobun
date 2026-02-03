@@ -133,10 +133,10 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
 		hasQueueCardAbove() ? "rounded-none" : "rounded-t-xl"
 	)}>
       {	/* Header - at top */}
-      <div role="button" tabIndex={0} onClick={() => setIsExpanded(!isExpanded)} onKeyDown={(e) => {
+      <div role="button" tabIndex={0} onClick={() => setIsExpanded((prev) => !prev)} onKeyDown={(e) => {
  if (e.key === "Enter" || e.key === " ") {
 			e.preventDefault();
-			setIsExpanded(!isExpanded);
+			setIsExpanded((prev) => !prev);
 		}
 	}} aria-expanded={isExpanded()} aria-label={`${isExpanded() ? "Collapse" : "Expand"} status details`} class="flex items-center justify-between pr-1 pl-3 h-8 cursor-pointer hover:bg-muted/50 transition-colors duration-150 focus:outline-none rounded-sm">
         <div class="flex items-center gap-2 text-xs flex-1 min-w-0">

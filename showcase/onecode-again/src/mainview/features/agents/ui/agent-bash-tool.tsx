@@ -91,7 +91,7 @@ export function AgentBashTool(props: AgentBashToolProps) {
 	}
 	return <div data-message-id={local.messageId} data-part-index={local.partIndex} data-part-type="tool-Bash" class="rounded-lg border border-border bg-muted/30 overflow-hidden mx-2">
       {	/* Header - clickable to expand, fixed height to prevent layout shift */}
-      <div onClick={() => hasMoreOutput && !isPending && setIsOutputExpanded(!isOutputExpanded)} class={cn("flex items-center justify-between pl-2.5 pr-0.5 h-7", hasMoreOutput && !isPending && "cursor-pointer hover:bg-muted/50 transition-colors duration-150")}>
+      <div onClick={() => hasMoreOutput && !isPending && setIsOutputExpanded((prev) => !prev)} class={cn("flex items-center justify-between pl-2.5 pr-0.5 h-7", hasMoreOutput && !isPending && "cursor-pointer hover:bg-muted/50 transition-colors duration-150")}>
         <span class="text-xs text-muted-foreground truncate flex-1 min-w-0">
           {isPending ? "Running command: " : "Ran command: "}
           {commandSummary}
@@ -121,7 +121,7 @@ export function AgentBashTool(props: AgentBashToolProps) {
           <div class="w-6 h-6 flex items-center justify-center">
             <Show when={!isPending && hasOutput && hasMoreOutput}><button onClick={(e) => {
  e.stopPropagation();
- 		setIsOutputExpanded(!isOutputExpanded);
+		setIsOutputExpanded((prev) => !prev);
  	}} class="p-1 rounded-md hover:bg-accent transition-[background-color,transform] duration-150 ease-out active:scale-95">
                 <Show when={isOutputExpanded()} fallback={<ExpandIcon class="w-4 h-4 text-muted-foreground" />}>
                   <CollapseIcon class="w-4 h-4 text-muted-foreground" />
