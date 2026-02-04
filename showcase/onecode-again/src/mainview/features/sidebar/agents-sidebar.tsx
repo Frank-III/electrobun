@@ -2,6 +2,8 @@ import { createEffect, createMemo, createSignal, on, onCleanup, For, Show, merge
 import { Portal } from "solid-js/web";
 import { Motion, Presence } from "solid-motionone";
 import { ReactiveSet } from "@solid-primitives/set";
+import { createResizeObserver } from "@solid-primitives/resize-observer";
+import { createShortcut } from "@solid-primitives/keyboard";
 import { Button as ButtonCustom } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
 import { autoAdvanceTargetAtom, createTeamDialogOpenAtom, agentsSettingsDialogActiveTabAtom, agentsSettingsDialogOpenAtom, agentsHelpPopoverOpenAtom, selectedAgentChatIdsAtom, isAgentMultiSelectModeAtom, toggleAgentChatSelectionAtom, selectAllAgentChatsAtom, clearAgentChatSelectionAtom, selectedAgentChatsCountAtom, isDesktopAtom, isFullscreenAtom, showOfflineModeFeaturesAtom, chatSourceModeAtom, selectedTeamIdAtom, type ChatSourceMode, showWorkspaceIconAtom, betaKanbanEnabledAtom } from "../../lib/atoms";
@@ -2009,43 +2011,34 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 		}
 	};
 	// Check if scroll is needed and show/hide gradients via DOM manipulation
-	createEffect(() => {
+	const checkScroll = () => {
 		const container = scrollContainerRef();
 		if (!container) return;
-		const checkScroll = () => {
-			const needsScroll = container.scrollHeight > container.clientHeight;
-			const bottom = bottomGradientRef();
-			const top = topGradientRef();
-			if (needsScroll) {
-				if (bottom) bottom.style.opacity = "1";
-				if (top) top.style.opacity = "0";
-			} else {
-				if (bottom) bottom.style.opacity = "0";
-				if (top) top.style.opacity = "0";
-			}
-		};
-		checkScroll();
-		// Re-check when content might change
-		const resizeObserver = new ResizeObserver(checkScroll);
-		resizeObserver.observe(container);
-		onCleanup(() => resizeObserver.disconnect());
-	}, [filteredChats]);
-	// Direct listener for Cmd+K to focus search input
+		const needsScroll = container.scrollHeight > container.clientHeight;
+		const bottom = bottomGradientRef();
+		const top = topGradientRef();
+		if (needsScroll) {
+			if (bottom) bottom.style.opacity = "1";
+			if (top) top.style.opacity = "0";
+		} else {
+			if (bottom) bottom.style.opacity = "0";
+			if (top) top.style.opacity = "0";
+		}
+	};
+	// Use solid-primitives resize observer for automatic cleanup
+	createResizeObserver(scrollContainerRef, checkScroll);
+	// Initial check on mount
 	createEffect(() => {
-		const handleSearchHotkey = (e: KeyboardEvent) => {
-			// Check for Cmd+K or Ctrl+K (only for search functionality)
-			if ((e.metaKey || e.ctrlKey) && e.code === "KeyK" && !e.shiftKey && !e.altKey) {
-				e.preventDefault();
-				e.stopPropagation();
-				// Focus search input
-				searchInputRef()?.focus();
-				searchInputRef()?.select();
-			}
-		};
-		window.addEventListener("keydown", handleSearchHotkey, true);
-		onCleanup(() => {
-			window.removeEventListener("keydown", handleSearchHotkey, true);
-		});
+		checkScroll();
+	});
+	// Direct shortcut for Cmd+K to focus search input (uses solid-primitives/keyboard)
+	createShortcut(["Meta", "K"], () => {
+		searchInputRef()?.focus();
+		searchInputRef()?.select();
+	});
+	createShortcut(["Control", "K"], () => {
+		searchInputRef()?.focus();
+		searchInputRef()?.select();
 	});
 	// Multi-select hotkeys
 	// X to toggle selection of hovered or focused chat
