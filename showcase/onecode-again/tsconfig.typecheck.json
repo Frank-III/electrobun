@@ -1,7 +1,13 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@/*": ["src/mainview/*"],
+      "@bun/*": ["src/bun/*"],
+      "electrobun": ["src/types/electrobun.d.ts"],
+      "electrobun/*": ["src/types/electrobun.d.ts"]
+    }
   },
   "exclude": ["node_modules", "src/bun/legacy", "scripts/migrate-react.ts"]
 }

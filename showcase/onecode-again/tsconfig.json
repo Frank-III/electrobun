@@ -8,9 +8,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/mainview/*"],
-      "@bun/*": ["src/bun/*"],
-      "electrobun": ["src/types/electrobun.d.ts"],
-      "electrobun/*": ["src/types/electrobun.d.ts"]
+      "@bun/*": ["src/bun/*"]
     },
     "resolveJsonModule": true,
     "isolatedModules": true,
