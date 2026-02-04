@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show, Switch, Match, mergeProps, onCleanup, splitProps } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, Show, Switch, Match, mergeProps, onCleanup, splitProps, untrack } from "solid-js";
 import { ReactiveSet } from "@solid-primitives/set";
 import { Portal } from "solid-js/web";
 import { Button } from "../../components/ui/button";
@@ -673,10 +673,12 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 		archiveAgentDialogOpen,
 		renameDialogOpen
 	]);
-	// Clear selection when parent chat changes
-	createEffect(() => {
-		clearSubChatSelection();
-	});
+	// Clear selection when parent chat changes (only on change, not initial mount)
+	createEffect(on(
+		() => parentChatId,
+		() => untrack(() => clearSubChatSelection()),
+		{ defer: true }
+	));
 	// Drafts cache - uses event-based sync instead of polling
 	const draftsCache = useSubChatDraftsCache();
 	// Get draft for a sub-chat

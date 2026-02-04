@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, For, Show, mergeProps, splitProps, untrack, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, on, onCleanup, For, Show, mergeProps, splitProps, untrack, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Motion, Presence } from "solid-motionone";
 import { ReactiveSet } from "@solid-primitives/set";
@@ -2112,10 +2112,12 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 		window.addEventListener("keydown", handleArchiveHotkey);
 		onCleanup(() => window.removeEventListener("keydown", handleArchiveHotkey));
 	});
-	// Clear selection when project changes
-	createEffect(() => {
-		clearChatSelection();
-	});
+	// Clear selection when project changes (only on change, not initial mount)
+	createEffect(on(
+		() => selectedProject()?.id,
+		() => untrack(() => clearChatSelection()),
+		{ defer: true }
+	));
 	// Handle scroll for gradients - use DOM manipulation to avoid re-renders
 	const handleAgentsScroll = (e: Event & { currentTarget: HTMLDivElement }) => {
 		const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
