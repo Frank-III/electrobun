@@ -1,6 +1,6 @@
 import { Provider as StateProvider } from "./lib/state/store";
 import { ColorModeProvider, ColorModeScript, useColorMode } from "@kobalte/core";
-import { createEffect, createMemo, createSignal, onCleanup, Switch, Match } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, Switch, Match, untrack } from "solid-js";
 import "./lib/electrobun-rpc";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -69,7 +69,7 @@ function AppContent() {
 	// automatically set it to "claude-subscription" (legacy users before billing method was added)
 	createEffect(() => {
 		if (!billingMethod() && anthropicOnboardingCompleted()) {
-			setBillingMethod("claude-subscription");
+			untrack(() => setBillingMethod("claude-subscription"));
 		}
 	});
 	// Auto-skip onboarding if user has existing CLI config (API key or proxy)
@@ -78,8 +78,10 @@ function AppContent() {
 		const cfg = cliConfig();
 		if (cfg?.hasConfig && !billingMethod()) {
 			console.log("[App] Detected existing CLI config, auto-completing onboarding");
-			setBillingMethod("api-key");
-			setApiKeyOnboardingCompleted(true);
+			untrack(() => {
+				setBillingMethod("api-key");
+				setApiKeyOnboardingCompleted(true);
+			});
 		}
 	});
 	// Fetch projects to validate selectedProject exists (Electrobun RPC + Solid Query)

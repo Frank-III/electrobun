@@ -1370,7 +1370,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 		if (prevSubChatIdRef() !== subChatId) {
 			setHasTriggeredRenameRef(false);
 			setHasTriggeredAutoGenerateRef(false);
-			setPrevSubChatIdRef(subChatId);
+			untrack(() => setPrevSubChatIdRef(subChatId));
 		}
 		setChatRef(chat);
 	});
@@ -1409,7 +1409,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 			clearAll();
 			clearTextContexts();
 		}
-		setPrevSubChatIdForDraftRef(subChatId);
+		untrack(() => setPrevSubChatIdForDraftRef(subChatId));
 	});
 	// Use subChatId as stable key to prevent HMR-induced duplicate resume requests
 	// resume: !!streamId to reconnect to active streams (background streaming support)
@@ -1538,33 +1538,36 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	// Watch for pending PR message and send it
 	const [pendingPrMessage, setPendingPrMessage] = pendingPrMessageAtom;
 	createEffect(() => {
-		if (pendingPrMessage() && !isStreaming()) {
+		const msg = pendingPrMessage();
+		if (msg && !isStreaming()) {
 			// Clear the pending message immediately to prevent double-sending
-			setPendingPrMessage(null);
+			// Use untrack to avoid re-triggering this effect
+			untrack(() => setPendingPrMessage(null));
 			// Send the message to Claude
 			sendMessage({
 				role: "user",
 				parts: [{
 					type: "text",
-					text: pendingPrMessage() ?? ""
+					text: msg
 				}]
 			});
 			// Reset creating PR state after message is sent
-			setIsCreatingPr(false);
+			untrack(() => setIsCreatingPr(false));
 		}
 	});
 	// Watch for pending Review message and send it
 	const [pendingReviewMessage, setPendingReviewMessage] = pendingReviewMessageAtom;
 	createEffect(() => {
-		if (pendingReviewMessage() && !isStreaming()) {
+		const msg = pendingReviewMessage();
+		if (msg && !isStreaming()) {
 			// Clear the pending message immediately to prevent double-sending
-			setPendingReviewMessage(null);
+			untrack(() => setPendingReviewMessage(null));
 			// Send the message to Claude
 			sendMessage({
 				role: "user",
 				parts: [{
 					type: "text",
-					text: pendingReviewMessage() ?? ""
+					text: msg
 				}]
 			});
 		}
@@ -1572,15 +1575,16 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	// Watch for pending conflict resolution message and send it
 	const [pendingConflictMessage, setPendingConflictMessage] = pendingConflictResolutionMessageAtom;
 	createEffect(() => {
-		if (pendingConflictMessage() && !isStreaming()) {
+		const msg = pendingConflictMessage();
+		if (msg && !isStreaming()) {
 			// Clear the pending message immediately to prevent double-sending
-			setPendingConflictMessage(null);
+			untrack(() => setPendingConflictMessage(null));
 			// Send the message to Claude
 			sendMessage({
 				role: "user",
 				parts: [{
 					type: "text",
-					text: pendingConflictMessage() ?? ""
+					text: msg
 				}]
 			});
 		}
@@ -1623,7 +1627,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	// This effect runs when isStreaming transitions from true to false
 	createEffect(() => {
 		const wasStreaming = prevIsStreamingRef();
-		setPrevIsStreamingRef(isStreaming());
+		untrack(() => setPrevIsStreamingRef(isStreaming()));
 		// Detect streaming stop transition
 		if (wasStreaming && !isStreaming()) {
 			// Mark that we recently stopped streaming
@@ -1911,6 +1915,8 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	createEffect(() => {
 		// Only check after streaming ends
 		if (isStreaming()) return;
+		// Capture current value before checking messages
+		const currentDetectedPrUrl = detectedPrUrlRef();
 		// Look through messages for PR URLs
 		for (const msg of messages()) {
 			if (msg.role !== "assistant") continue;
@@ -1918,11 +1924,11 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 			const textContent = msg.parts?.filter((p: any) => p.type === "text").map((p: any) => p.text).join(" ") || "";
 			// Match GitHub PR URL pattern
 			const prUrlMatch = textContent.match(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)/);
-			if (prUrlMatch && prUrlMatch[0] !== detectedPrUrlRef()) {
+			if (prUrlMatch && prUrlMatch[0] !== currentDetectedPrUrl) {
 				const prUrl = prUrlMatch[0];
 				const prNumber = parseInt(prUrlMatch[1], 10);
 				// Store to prevent duplicate calls
-				setDetectedPrUrlRef(prUrl);
+				untrack(() => setDetectedPrUrlRef(prUrl));
 				// Update database
 				desktopRpc.chats.updatePrInfo.mutate({
 					chatId: parentChatId,
@@ -1951,8 +1957,9 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 			}
 		}
 		// Trigger refetch if count increased (new Edit completed)
-		if (completedPlanEdits > lastPlanEditCountRef()) {
-			setLastPlanEditCountRef(completedPlanEdits);
+		const lastCount = lastPlanEditCountRef();
+		if (completedPlanEdits > lastCount) {
+			untrack(() => setLastPlanEditCountRef(completedPlanEdits));
 			triggerPlanEditRefetch((prev: number) => prev + 1);
 		}
 	});
@@ -2072,15 +2079,17 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	// Also trigger auto-rename for initial sub-chat with pre-populated message
 	// IMPORTANT: Skip if there's an active streamId (prevents double-generation on resume)
 	createEffect(() => {
-		if (messages().length === 1 && status() === "ready" && !streamId && !hasTriggeredAutoGenerateRef()) {
-			setHasTriggeredAutoGenerateRef(true);
+		const hasAutoGenerated = hasTriggeredAutoGenerateRef();
+		const hasRenamedRef = hasTriggeredRenameRef();
+		if (messages().length === 1 && status() === "ready" && !streamId && !hasAutoGenerated) {
+			untrack(() => setHasTriggeredAutoGenerateRef(true));
 			// Trigger rename for pre-populated initial message (from createAgentChat)
-			if (!hasTriggeredRenameRef() && isFirstSubChat) {
+			if (!hasRenamedRef && isFirstSubChat) {
 				const firstMsg = messages()[0];
 				if (firstMsg?.role === "user") {
 					const textPart = firstMsg.parts?.find((p: any) => p.type === "text");
 		if (textPart && "text" in textPart) {
-			setHasTriggeredRenameRef(true);
+			untrack(() => setHasTriggeredRenameRef(true));
 			onAutoRename(textPart.text ?? "", subChatId);
 		}
 				}
@@ -2101,17 +2110,22 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 		const container = chatContainerRef();
 		if (!container) return;
 		// With keep-alive, only initialize once per tab mount
-		if (hasInitializedRef()) return;
-		setHasInitializedRef(true);
-		// Reset on sub-chat change
-		setScrollInitializedRef(false);
-		setIsInitializingScrollRef(true);
+		const hasInitialized = hasInitializedRef();
+		if (hasInitialized) return;
+		untrack(() => {
+			setHasInitializedRef(true);
+			// Reset on sub-chat change
+			setScrollInitializedRef(false);
+			setIsInitializingScrollRef(true);
+		});
 		// IMMEDIATE scroll to bottom - no waiting
 		container.scrollTop = container.scrollHeight;
-		setShouldAutoScrollRef(true);
-		// Mark as initialized IMMEDIATELY
-		setScrollInitializedRef(true);
-		setIsInitializingScrollRef(false);
+		untrack(() => {
+			setShouldAutoScrollRef(true);
+			// Mark as initialized IMMEDIATELY
+			setScrollInitializedRef(true);
+			setIsInitializingScrollRef(false);
+		});
 		// MutationObserver for async content (images, code blocks loading after initial render)
 		const observer = new MutationObserver((mutations) => {
 			// Skip if not active (keep-alive: don't scroll hidden tabs)
@@ -2668,7 +2682,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 		if (!container) return;
 		// Increment lock to cancel any pending scroll operations
 		const currentLock = searchScrollLockRef() + 1;
-		setSearchScrollLockRef(currentLock);
+		untrack(() => setSearchScrollLockRef(currentLock));
 		// Use double requestAnimationFrame + small delay to ensure DOM has updated with new highlights
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
@@ -2842,7 +2856,7 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 			if (!currentPlanPath()) {
 				setIsPlanSidebarOpen(false);
 			}
-			setPrevSubChatIdRef(activeSubChatIdForPlan());
+			untrack(() => setPrevSubChatIdRef(activeSubChatIdForPlan()));
 		}
 	});
 	const [, setPendingBuildPlanSubChatId] = pendingBuildPlanSubChatIdAtom;
@@ -3670,16 +3684,17 @@ export function ChatView({ chatId, isSidebarOpen, onToggleSidebar, selectedTeamN
 		// Skip if no files tracked yet (initial state)
 		if (totalSubChatFileCount() === 0) return;
 		const now = Date.now();
-		const timeSinceLastFetch = now - lastDiffFetchTimeRef();
+		const lastFetchTime = lastDiffFetchTimeRef();
+		const timeSinceLastFetch = now - lastFetchTime;
 		if (timeSinceLastFetch >= DIFF_THROTTLE_MS) {
 			// Enough time passed, fetch immediately
-			setLastDiffFetchTimeRef(now);
+			untrack(() => setLastDiffFetchTimeRef(now));
 			fetchDiffStats();
 		} else {
 			// Schedule fetch for when throttle window ends
 			const delay = DIFF_THROTTLE_MS - timeSinceLastFetch;
 			const timer = setTimeout(() => {
-				setLastDiffFetchTimeRef(Date.now());
+				untrack(() => setLastDiffFetchTimeRef(Date.now()));
 				fetchDiffStats();
 			}, delay);
 			onCleanup(() => clearTimeout(timer));

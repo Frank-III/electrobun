@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, For, Show, mergeProps, splitProps, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, For, Show, mergeProps, splitProps, untrack, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Motion, Presence } from "solid-motionone";
 import { ReactiveSet } from "@solid-primitives/set";
@@ -1345,15 +1345,16 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 	createEffect(() => {
 		// Skip on initial mount (prevProjectIdRef is undefined)
 		const prevId = prevProjectIdRef();
+		const currentProjectId = selectedProject()?.id ?? null;
 		if (prevId === undefined) {
-			setPrevProjectIdRef(selectedProject()?.id ?? null);
+			untrack(() => setPrevProjectIdRef(currentProjectId));
 			return;
 		}
 		// Only reset if project actually changed from a real value (not from null/initial load)
-		if (prevId !== null && prevId !== selectedProject()?.id && selectedChatId()) {
+		if (prevId !== null && prevId !== currentProjectId && selectedChatId()) {
 			setSelectedChatId(null);
 		}
-		setPrevProjectIdRef(selectedProject()?.id ?? null);
+		untrack(() => setPrevProjectIdRef(currentProjectId));
 	});
 	// Load pinned IDs from localStorage when project changes
 	createEffect(() => {
@@ -1371,13 +1372,15 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 	// Save pinned IDs to localStorage when they change
 	const [prevPinnedRef, setPrevPinnedRef] = createSignal<Set<string>>(new Set());
 	createEffect(() => {
-		if (!selectedProject()?.id) return;
+		const projectId = selectedProject()?.id;
+		if (!projectId) return;
 		// Only save if pinnedChatIds actually changed (avoid saving on load)
 		const prev = prevPinnedRef();
-		if ((pinnedChatIds() !== prev && pinnedChatIds().size > 0) || prev.size > 0) {
-			localStorage.setItem(`agent-pinned-chats-${selectedProject()!.id}`, JSON.stringify([...pinnedChatIds()]));
+		const current = pinnedChatIds();
+		if ((current !== prev && current.size > 0) || prev.size > 0) {
+			localStorage.setItem(`agent-pinned-chats-${projectId}`, JSON.stringify([...current]));
 		}
-		setPrevPinnedRef(pinnedChatIds());
+		untrack(() => setPrevPinnedRef(current));
 	});
 	// Rename mutation
 	const renameChatMutation = useMutation(() => ({
