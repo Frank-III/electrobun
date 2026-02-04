@@ -12,7 +12,7 @@ import { createRpcChat } from "../lib/rpc-chat";
 import type { RpcChat, RpcChatTransport } from "../lib/rpc-chat";
 import { useChatSolid } from "../hooks/use-chat-solid";
 import type { DiffViewMode } from "../ui/agent-diff-view";
-import { batch, createContext, createMemo, createSignal, createEffect, For, Index, Match, onCleanup, Show, Switch, useContext, mergeProps, splitProps, untrack, type Accessor } from "solid-js";
+import { batch, createContext, createMemo, createSignal, createEffect, For, Index, Match, on, onCleanup, Show, Switch, useContext, mergeProps, splitProps, untrack, type Accessor } from "solid-js";
 import { ReactiveSet } from "@solid-primitives/set";
 import { ArrowDown, ChevronDown, GitFork, ListTree, TerminalSquare } from "lucide-solid";
 import { Motion, Presence } from "solid-motionone";
@@ -510,7 +510,7 @@ function ScrollToBottomButton({ containerRef, onScrollToBottom, hasStackedCards 
 	const [isVisible, setIsVisible] = createSignal(false);
 	// Keep isActive in ref for scroll event handler
 	const [isActiveRef, setIsActiveRef] = createSignal(isActive);
-	createEffect(() => setIsActiveRef(isActive));
+	createEffect(on(() => isActive, (val) => setIsActiveRef(val)));
 	createEffect(() => {
 		// Skip scroll monitoring for inactive tabs (keep-alive)
 		if (!isActive) return;
@@ -1124,7 +1124,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	const [hasTriggeredAutoGenerateRef, setHasTriggeredAutoGenerateRef] = createSignal(false);
 	// Keep isActive in ref for use in callbacks (avoid stale closures)
 	const [isActiveRef, setIsActiveRef] = createSignal(isActive);
-	createEffect(() => setIsActiveRef(isActive));
+	createEffect(on(() => isActive, (val) => setIsActiveRef(val)));
 	// Scroll management state (like canvas chat)
 	// Using only ref to avoid re-renders on scroll
 	const [shouldAutoScrollRef, setShouldAutoScrollRef] = createSignal(true);
@@ -1244,7 +1244,7 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	// Handler for renaming sub-chat
 	// Using ref for mutation to avoid callback recreation
 	const [renameSubChatMutationRef, setRenameSubChatMutationRef] = createSignal(renameSubChatMutation);
-	createEffect(() => setRenameSubChatMutationRef(renameSubChatMutation));
+	createEffect(on(() => renameSubChatMutation, (val) => setRenameSubChatMutationRef(val)));
 	const handleRenameSubChat = async (newName: string) => {
 		const previousName = subChatName();
 		// Optimistic update in store
@@ -1421,13 +1421,13 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	});
 	// Refs for sendMessage/stop to keep callbacks stable across renders
 	const [sendMessageRef, setSendMessageRef] = createSignal(sendMessage);
-	createEffect(() => setSendMessageRef(() => sendMessage));
+	createEffect(on(() => sendMessage, (val) => setSendMessageRef(() => val)));
 	const [stopRef, setStopRef] = createSignal(stop);
-	createEffect(() => setStopRef(() => stop));
+	createEffect(on(() => stop, (val) => setStopRef(() => val)));
 	const isStreaming = () => status() === "streaming" || status() === "submitted";
 	// Ref for isStreaming to use in callbacks/effects that need fresh value
 	const [isStreamingRef, setIsStreamingRef] = createSignal(isStreaming());
-	createEffect(() => setIsStreamingRef(isStreaming()));
+	createEffect(on(isStreaming, (val) => setIsStreamingRef(val)));
 	// Track compacting status from SDK
 	const compactingSubChats = compactingSubChatsAtom[0];
 	const isCompacting = createMemo(() => compactingSubChats().has(subChatId));
@@ -2197,13 +2197,13 @@ function ChatViewInner({ chat, subChatId, parentChatId, isFirstSubChat, onAutoRe
 	});
 	// Refs for handleSend to avoid recreating callback on every messages change
 	const [messagesLengthRef, setMessagesLengthRef] = createSignal(messages().length);
-	createEffect(() => setMessagesLengthRef(messages().length));
+	createEffect(on(() => messages().length, (val) => setMessagesLengthRef(val)));
 	const [subChatModeRef, setSubChatModeRef] = createSignal<AgentMode>(subChatMode());
-	createEffect(() => setSubChatModeRef(subChatMode()));
+	createEffect(on(subChatMode, (val) => setSubChatModeRef(val)));
 	const [imagesRef, setImagesRef] = createSignal(images());
-	createEffect(() => setImagesRef(images()));
+	createEffect(on(images, (val) => setImagesRef(val)));
 	const [filesRef, setFilesRef] = createSignal(files());
-	createEffect(() => setFilesRef(files()));
+	createEffect(on(files, (val) => setFilesRef(val)));
 	const handleSend = async () => {
 		// Block sending while sandbox is still being set up
 		if (sandboxSetupStatus !== "ready") {
