@@ -228,12 +228,12 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	const filteredSubChats = createMemo(() => {
 		return [...pinnedChats(), ...unpinnedChats()];
 	});
-	// Reset focused index when search query changes
-	createEffect(() => {
-		searchQuery();
-		filteredSubChats();
-		setFocusedChatIndex(-1);
-	});
+	// Reset focused index when search query or filtered chats change
+	createEffect(on(
+		() => [searchQuery(), filteredSubChats().length],
+		() => setFocusedChatIndex(-1),
+		{ defer: true }
+	));
 	// Scroll focused item into view
 	createEffect(() => {
 		const container = scrollContainerRef as HTMLDivElement | undefined;
@@ -503,9 +503,11 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 		return bT - aT;
 	}));
 	// Update gradients when filtered chats change or on resize
-	createEffect(() => {
-		updateScrollGradients();
-	});
+	createEffect(on(
+		() => sortedSubChats().length,
+		() => updateScrollGradients(),
+		{ defer: false }
+	));
 	// Update gradients on window resize
 	createEffect(() => {
 		const handleResize = () => updateScrollGradients();

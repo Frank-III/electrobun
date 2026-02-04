@@ -1664,10 +1664,12 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 			onChatSelect();
 		}
 	};
-	// Reset focused index when search query changes
-	createEffect(() => {
-		setFocusedChatIndex(-1);
-	});
+	// Reset focused index when search query or filtered chats change
+	createEffect(on(
+		() => [searchQuery(), filteredChats().length],
+		() => setFocusedChatIndex(-1),
+		{ defer: true }
+	));
 	// Scroll focused item into view
 	createEffect(() => {
 		if (focusedChatIndex() >= 0 && filteredChats().length > 0) {
