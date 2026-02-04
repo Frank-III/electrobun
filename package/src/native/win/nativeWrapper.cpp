@@ -1,3 +1,6 @@
+#include <winsock2.h>   // Must come before Windows.h
+#include <ws2tcpip.h>
+#include <winhttp.h>
 #include <Windows.h>
 #include <windowsx.h>  // For GET_X_LPARAM and GET_Y_LPARAM
 #include <string>
@@ -49,6 +52,9 @@
 #include "../shared/ffi_helpers.h"
 #include "../shared/json_menu_parser.h"
 #include "../shared/download_event.h"
+#include "../shared/app_paths.h"
+#include "../shared/accelerator_parser.h"
+#include "../shared/chromium_flags.h"
 
 using namespace electrobun;
 
@@ -337,6 +343,7 @@ extern "C" __declspec(dllexport) void asar_close(void* archive) {
 #include "include/cef_permission_handler.h"
 #include "include/cef_dialog_handler.h"
 #include "include/cef_download_handler.h"
+#include "include/cef_task.h"
 #include "include/wrapper/cef_helpers.h"
 
 // Restore macro definitions
@@ -352,6 +359,8 @@ extern "C" __declspec(dllexport) void asar_close(void* archive) {
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "dcomp.lib")
 #pragma comment(lib, "d2d1.lib")
+#pragma comment(lib, "winhttp.lib")
+#pragma comment(lib, "ws2_32.lib")
 
 
 using namespace Microsoft::WRL;
@@ -361,6 +370,7 @@ using namespace Microsoft::WRL;
 #define ELECTROBUN_EXPORT __declspec(dllexport)
 #define WM_EXECUTE_SYNC_BLOCK (WM_USER + 1)
 #define WM_EXECUTE_ASYNC_BLOCK (WM_USER + 2)
+#define WM_DEVTOOLS_CREATE (WM_USER + 3)
 
 // Forward declarations
 class AbstractView;
@@ -449,6 +459,10 @@ static std::unique_ptr<StatusItemTarget> g_appMenuTarget = nullptr;
 static std::map<UINT, std::string> g_menuItemActions;
 static UINT g_nextMenuId = WM_USER + 1000;  // Start menu IDs from a safe range
 
+// Accelerator table management for menu keyboard shortcuts
+static std::vector<ACCEL> g_menuAccelerators;
+static HACCEL g_hAccelTable = NULL;
+
 // Global state for custom window dragging
 static BOOL g_isMovingWindow = FALSE;
 static HWND g_targetWindow = NULL;
@@ -458,9 +472,46 @@ static POINT g_initialWindowPos = {};
 // WebView positioning constants
 static const int OFFSCREEN_OFFSET = -20000;
 
+// Remote DevTools port
+static int g_remoteDebugPort = 9222;
+
+static bool IsPortAvailable(int port) {
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        return false;
+    }
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock == INVALID_SOCKET) {
+        WSACleanup();
+        return false;
+    }
+    int opt = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+
+    sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons((u_short)port);
+
+    int result = bind(sock, (struct sockaddr*)&addr, sizeof(addr));
+    closesocket(sock);
+    WSACleanup();
+    return result == 0;
+}
+
+static int FindAvailableRemoteDebugPort(int startPort, int endPort) {
+    for (int port = startPort; port <= endPort; ++port) {
+        if (IsPortAvailable(port)) {
+            return port;
+        }
+    }
+    return 0;
+}
+
 // CEF global variables
 static bool g_cef_initialized = false;
 static CefRefPtr<CefApp> g_cef_app;
+static std::vector<electrobun::ChromiumFlag> g_userChromiumFlags;
 static HANDLE g_job_object = nullptr;  // Job object to track all child processes
 
 // Simple CEF App class for minimal implementation
@@ -474,6 +525,13 @@ public:
         // Disable features for minimal implementation
         command_line->AppendSwitch("disable-web-security");
         command_line->AppendSwitch("disable-features=VizDisplayCompositor");
+
+        // Allow DevTools frontend (served over http) to connect to local ws://127.0.0.1
+        command_line->AppendSwitchWithValue("remote-allow-origins", "*");
+        command_line->AppendSwitch("allow-insecure-localhost");
+
+        // Apply user-defined chromium flags from build.json
+        electrobun::applyChromiumFlags(g_userChromiumFlags, command_line);
     }
 
     void OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) override {
@@ -552,6 +610,98 @@ public:
 private:
     IMPLEMENT_REFCOUNTING(ElectrobunLifeSpanHandler);
 };
+
+// Forward declaration for DevTools callback
+class ElectrobunCefClient;
+typedef void (*RemoteDevToolsClosedCallback)(void* ctx, int target_id);
+void RemoteDevToolsClosed(void* ctx, int target_id);
+
+// Lightweight CefClient for the DevTools browser window
+class RemoteDevToolsClient : public CefClient, public CefLifeSpanHandler {
+public:
+    RemoteDevToolsClient(RemoteDevToolsClosedCallback callback, void* ctx, int target_id)
+        : callback_(callback), ctx_(ctx), target_id_(target_id) {}
+
+    CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override {
+        return this;
+    }
+
+    void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
+        if (callback_) {
+            callback_(ctx_, target_id_);
+        }
+    }
+
+private:
+    RemoteDevToolsClosedCallback callback_ = nullptr;
+    void* ctx_ = nullptr;
+    int target_id_ = 0;
+    IMPLEMENT_REFCOUNTING(RemoteDevToolsClient);
+};
+
+// DevTools window class and WndProc
+struct DevToolsWindowContext {
+    RemoteDevToolsClosedCallback close_callback = nullptr;
+    void* ctx = nullptr;
+    int target_id = 0;
+    CefRefPtr<CefBrowser> browser;
+};
+
+static std::once_flag g_devtoolsClassRegistered;
+static const char* DEVTOOLS_WINDOW_CLASS = "ElectrobunDevToolsClass";
+
+static LRESULT CALLBACK DevToolsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    DevToolsWindowContext* dtCtx = nullptr;
+
+    if (msg == WM_NCCREATE) {
+        CREATESTRUCTA* cs = (CREATESTRUCTA*)lParam;
+        dtCtx = (DevToolsWindowContext*)cs->lpCreateParams;
+        SetWindowLongPtrA(hwnd, GWLP_USERDATA, (LONG_PTR)dtCtx);
+    } else {
+        dtCtx = (DevToolsWindowContext*)GetWindowLongPtrA(hwnd, GWLP_USERDATA);
+    }
+
+    switch (msg) {
+        case WM_CLOSE:
+            // Hide the window instead of destroying it to avoid CEF teardown issues
+            ShowWindow(hwnd, SW_HIDE);
+            if (dtCtx && dtCtx->close_callback) {
+                dtCtx->close_callback(dtCtx->ctx, dtCtx->target_id);
+            }
+            return 0;
+
+        case WM_SIZE:
+            if (dtCtx && dtCtx->browser) {
+                HWND browserHwnd = dtCtx->browser->GetHost()->GetWindowHandle();
+                if (browserHwnd) {
+                    RECT rect;
+                    GetClientRect(hwnd, &rect);
+                    SetWindowPos(browserHwnd, nullptr, 0, 0,
+                                 rect.right - rect.left, rect.bottom - rect.top,
+                                 SWP_NOZORDER);
+                }
+            }
+            break;
+
+        case WM_DESTROY:
+            return 0;
+    }
+
+    return DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
+static void EnsureDevToolsWindowClassRegistered() {
+    std::call_once(g_devtoolsClassRegistered, []() {
+        WNDCLASSA wc = {};
+        wc.lpfnWndProc = DevToolsWndProc;
+        wc.hInstance = GetModuleHandle(NULL);
+        wc.lpszClassName = DEVTOOLS_WINDOW_CLASS;
+        wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+        wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+        wc.style = CS_HREDRAW | CS_VREDRAW;
+        RegisterClassA(&wc);
+    });
+}
 
 // Forward declarations for functions defined later in the file
 std::string loadViewsFile(const std::string& path);
@@ -854,23 +1004,13 @@ public:
         model->AddItem(26501, "Inspect Element");
     }
     
+    // Defined out-of-line after ElectrobunCefClient (needs full class definition)
     bool OnContextMenuCommand(CefRefPtr<CefBrowser> browser,
                             CefRefPtr<CefFrame> frame,
                             CefRefPtr<CefContextMenuParams> params,
                             int command_id,
-                            EventFlags event_flags) override {
-        if (command_id == 26501) {
-            // Show devtools
-            CefWindowInfo windowInfo;
-            CefBrowserSettings settings;
-            CefPoint point(params->GetXCoord(), params->GetYCoord());
-            
-            browser->GetHost()->ShowDevTools(windowInfo, nullptr, settings, point);
-            return true;
-        }
-        return false;
-    }
-    
+                            EventFlags event_flags) override;
+
 private:
     IMPLEMENT_REFCOUNTING(ElectrobunContextMenuHandler);
 };
@@ -1064,6 +1204,8 @@ public:
                       const CefString& title,
                       const CefString& default_file_path,
                       const std::vector<CefString>& accept_filters,
+                      const std::vector<CefString>& accept_extensions,
+                      const std::vector<CefString>& accept_descriptions,
                       CefRefPtr<CefFileDialogCallback> callback) override {
         
         printf("CEF Windows: File dialog requested - mode: %d\n", static_cast<int>(mode));
@@ -1516,8 +1658,24 @@ private:
     IMPLEMENT_REFCOUNTING(ElectrobunRenderHandler);
 };
 
+// Forward declaration
+void handleApplicationMenuSelection(UINT menuId);
+
+// CEF Keyboard Handler for menu accelerators
+class ElectrobunKeyboardHandler : public CefKeyboardHandler {
+public:
+    // Defined out-of-line after ElectrobunCefClient (needs full class definition)
+    bool OnPreKeyEvent(CefRefPtr<CefBrowser> browser,
+                      const CefKeyEvent& event,
+                      CefEventHandle os_event,
+                      bool* is_keyboard_shortcut) override;
+
+private:
+    IMPLEMENT_REFCOUNTING(ElectrobunKeyboardHandler);
+};
+
 // CEF Client class with load and life span handlers
-class ElectrobunCefClient : public CefClient {
+class ElectrobunCefClient : public CefClient, public CefDisplayHandler {
 public:
     WebviewEventHandler webview_event_handler_ = nullptr;
 
@@ -1538,6 +1696,7 @@ public:
         m_permissionHandler = new ElectrobunPermissionHandler();
         m_dialogHandler = new ElectrobunDialogHandler();
         m_downloadHandler = new ElectrobunDownloadHandler();
+        m_keyboardHandler = new ElectrobunKeyboardHandler();
         m_renderHandler = nullptr; // Created only when OSR is enabled
     }
 
@@ -1614,6 +1773,14 @@ public:
         return m_renderHandler;
     }
 
+    CefRefPtr<CefKeyboardHandler> GetKeyboardHandler() override {
+        return m_keyboardHandler;
+    }
+
+    CefRefPtr<CefDisplayHandler> GetDisplayHandler() override {
+        return this;
+    }
+
     bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
                                  CefRefPtr<CefFrame> frame,
                                  CefProcessId source_process,
@@ -1661,6 +1828,255 @@ public:
         }
     }
 
+    // Track page title for DevTools target matching
+    void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override {
+        if (browser && browser->GetMainFrame()) {
+            last_title_ = title.ToString();
+        }
+    }
+
+    // Open remote DevTools frontend for a specific browser (including OOPIFs)
+    void OpenRemoteDevToolsFrontend(CefRefPtr<CefBrowser> browser) {
+        if (!browser || !browser->GetHost()) return;
+
+        int target_id = browser->GetIdentifier();
+
+        // If already open, bring to front
+        auto it = devtools_hosts_.find(target_id);
+        if (it != devtools_hosts_.end() && it->second.is_open && it->second.window) {
+            ShowWindow(it->second.window, SW_SHOW);
+            SetForegroundWindow(it->second.window);
+            return;
+        }
+
+        // Get the browser's URL and title for matching against /json targets
+        std::string targetUrl;
+        if (browser->GetMainFrame()) {
+            targetUrl = browser->GetMainFrame()->GetURL().ToString();
+        }
+        std::string targetTitle = last_title_;
+        int port = g_remoteDebugPort;
+
+        // Keep ref to self for the background thread
+        CefRefPtr<ElectrobunCefClient> self(this);
+
+        // Fetch /json on a background thread
+        std::thread([self, target_id, targetUrl, targetTitle, port]() {
+            // WinHTTP synchronous GET to http://127.0.0.1:{port}/json
+            HINTERNET hSession = WinHttpOpen(L"Electrobun/DevTools",
+                                              WINHTTP_ACCESS_TYPE_NO_PROXY,
+                                              WINHTTP_NO_PROXY_NAME,
+                                              WINHTTP_NO_PROXY_BYPASS, 0);
+            if (!hSession) return;
+
+            wchar_t hostStr[64];
+            swprintf_s(hostStr, L"127.0.0.1");
+            HINTERNET hConnect = WinHttpConnect(hSession, hostStr, (INTERNET_PORT)port, 0);
+            if (!hConnect) { WinHttpCloseHandle(hSession); return; }
+
+            HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", L"/json",
+                                                     nullptr, WINHTTP_NO_REFERER,
+                                                     WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+            if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return; }
+
+            BOOL bResults = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                                                WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
+            if (!bResults) { WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return; }
+
+            bResults = WinHttpReceiveResponse(hRequest, nullptr);
+            if (!bResults) { WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return; }
+
+            // Read full response body
+            std::string jsonBody;
+            DWORD dwSize = 0;
+            DWORD dwDownloaded = 0;
+            do {
+                dwSize = 0;
+                WinHttpQueryDataAvailable(hRequest, &dwSize);
+                if (dwSize == 0) break;
+
+                std::vector<char> buf(dwSize + 1, 0);
+                WinHttpReadData(hRequest, buf.data(), dwSize, &dwDownloaded);
+                jsonBody.append(buf.data(), dwDownloaded);
+            } while (dwSize > 0);
+
+            WinHttpCloseHandle(hRequest);
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+
+            if (jsonBody.empty()) return;
+
+            // Simple JSON parsing for the /json array response.
+            // Each target object has "url", "title", "webSocketDebuggerUrl" fields.
+            // Find the target matching our browser's URL or title.
+
+            // Parse JSON array - find objects and extract fields
+            struct JsonTarget {
+                std::string url;
+                std::string title;
+                std::string wsUrl;
+            };
+            std::vector<JsonTarget> targets;
+
+            // Simple parser: split by objects in the array
+            size_t pos = 0;
+            while ((pos = jsonBody.find('{', pos)) != std::string::npos) {
+                size_t end = jsonBody.find('}', pos);
+                if (end == std::string::npos) break;
+
+                std::string obj = jsonBody.substr(pos, end - pos + 1);
+                JsonTarget t;
+
+                // Extract "url" field
+                auto extractField = [&obj](const std::string& fieldName) -> std::string {
+                    std::string key = "\"" + fieldName + "\"";
+                    size_t kp = obj.find(key);
+                    if (kp == std::string::npos) return "";
+                    size_t colon = obj.find(':', kp + key.length());
+                    if (colon == std::string::npos) return "";
+                    size_t qStart = obj.find('"', colon + 1);
+                    if (qStart == std::string::npos) return "";
+                    size_t qEnd = obj.find('"', qStart + 1);
+                    if (qEnd == std::string::npos) return "";
+                    return obj.substr(qStart + 1, qEnd - qStart - 1);
+                };
+
+                t.url = extractField("url");
+                t.title = extractField("title");
+                t.wsUrl = extractField("webSocketDebuggerUrl");
+                targets.push_back(t);
+
+                pos = end + 1;
+            }
+
+            if (targets.empty()) return;
+
+            // Match target by URL and/or title
+            const JsonTarget* selected = nullptr;
+            for (const auto& t : targets) {
+                bool urlMatch = !targetUrl.empty() && t.url == targetUrl;
+                bool titleMatch = !targetTitle.empty() && t.title == targetTitle;
+
+                if ((!targetUrl.empty() && !targetTitle.empty() && urlMatch && titleMatch) ||
+                    (!targetUrl.empty() && urlMatch) ||
+                    (!targetTitle.empty() && titleMatch)) {
+                    selected = &t;
+                    break;
+                }
+            }
+            if (!selected) {
+                selected = &targets[0];
+            }
+
+            if (selected->wsUrl.empty()) return;
+
+            // Build the DevTools frontend URL
+            // Strip ws:// prefix from the WebSocket URL
+            std::string wsParam = selected->wsUrl;
+            if (wsParam.substr(0, 5) == "ws://") {
+                wsParam = wsParam.substr(5);
+            }
+
+            std::string baseUrl = "http://127.0.0.1:" + std::to_string(port);
+            std::string finalUrl = baseUrl + "/devtools/inspector.html?ws=" + wsParam + "&dockSide=undocked";
+
+            // Post back to the UI thread via CefPostTask
+            class CreateDevToolsTask : public CefTask {
+            public:
+                CreateDevToolsTask(CefRefPtr<ElectrobunCefClient> client, int tid, const std::string& url)
+                    : client_(client), target_id_(tid), url_(url) {}
+                void Execute() override {
+                    client_->CreateRemoteDevToolsWindow(target_id_, url_);
+                }
+            private:
+                CefRefPtr<ElectrobunCefClient> client_;
+                int target_id_;
+                std::string url_;
+                IMPLEMENT_REFCOUNTING(CreateDevToolsTask);
+            };
+            CefPostTask(TID_UI, new CreateDevToolsTask(self, target_id, finalUrl));
+
+        }).detach();
+    }
+
+    // Create or reuse a DevTools window for a specific target
+    void CreateRemoteDevToolsWindow(int target_id, const std::string& url) {
+        EnsureDevToolsWindowClassRegistered();
+
+        DevToolsHost& host = devtools_hosts_[target_id];
+
+        if (!host.window) {
+            host.dt_ctx = new DevToolsWindowContext();
+            host.dt_ctx->close_callback = RemoteDevToolsClosed;
+            host.dt_ctx->ctx = this;
+            host.dt_ctx->target_id = target_id;
+
+            host.window = CreateWindowExA(
+                0,
+                DEVTOOLS_WINDOW_CLASS,
+                "DevTools",
+                WS_OVERLAPPEDWINDOW,
+                CW_USEDEFAULT, CW_USEDEFAULT, 1100, 800,
+                nullptr,  // No parent - standalone window
+                nullptr,
+                GetModuleHandle(NULL),
+                host.dt_ctx);
+        }
+
+        ShowWindow(host.window, SW_SHOW);
+        SetForegroundWindow(host.window);
+        host.is_open = true;
+
+        if (!host.client) {
+            host.client = new RemoteDevToolsClient(RemoteDevToolsClosed, this, target_id);
+        }
+
+        if (host.browser) {
+            // Reuse existing DevTools browser, just navigate to the new URL
+            host.browser->GetMainFrame()->LoadURL(CefString(url));
+            return;
+        }
+
+        // Create a new CEF browser inside the DevTools window
+        RECT rect;
+        GetClientRect(host.window, &rect);
+        CefRect cefRect(0, 0, rect.right - rect.left, rect.bottom - rect.top);
+
+        CefWindowInfo windowInfo;
+        windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
+        windowInfo.SetAsChild((CefWindowHandle)host.window, cefRect);
+
+        CefBrowserSettings settings;
+        host.browser = CefBrowserHost::CreateBrowserSync(
+            windowInfo,
+            host.client,
+            CefString(url),
+            settings,
+            nullptr,
+            nullptr);
+
+        // Store the browser on the window context for WM_SIZE handling
+        if (host.dt_ctx) {
+            host.dt_ctx->browser = host.browser;
+        }
+
+        host.is_open = true;
+    }
+
+    void OnRemoteDevToolsClosed(int target_id) {
+        auto it = devtools_hosts_.find(target_id);
+        if (it == devtools_hosts_.end()) return;
+        it->second.is_open = false;
+        if (it->second.window) {
+            ShowWindow(it->second.window, SW_HIDE);
+        }
+    }
+
+    bool IsDevToolsOpen(int target_id) {
+        auto it = devtools_hosts_.find(target_id);
+        return it != devtools_hosts_.end() && it->second.is_open;
+    }
+
 private:
     uint32_t webview_id_;
     HandlePostMessage bun_bridge_handler_;
@@ -1675,10 +2091,98 @@ private:
     CefRefPtr<ElectrobunPermissionHandler> m_permissionHandler;
     CefRefPtr<ElectrobunDialogHandler> m_dialogHandler;
     CefRefPtr<ElectrobunDownloadHandler> m_downloadHandler;
+    CefRefPtr<ElectrobunKeyboardHandler> m_keyboardHandler;
     CefRefPtr<ElectrobunRenderHandler> m_renderHandler;
     bool osr_enabled_;
+
+    // Remote DevTools state - tracked per CefBrowser (by identifier)
+    struct DevToolsHost {
+        HWND window = nullptr;
+        CefRefPtr<CefBrowser> browser;
+        CefRefPtr<RemoteDevToolsClient> client;
+        DevToolsWindowContext* dt_ctx = nullptr;
+        bool is_open = false;
+    };
+    std::map<int, DevToolsHost> devtools_hosts_;
+    std::string last_title_;
+
     IMPLEMENT_REFCOUNTING(ElectrobunCefClient);
 };
+
+// Free function callback for RemoteDevToolsClient -> ElectrobunCefClient
+void RemoteDevToolsClosed(void* ctx, int target_id) {
+    if (!ctx) return;
+    static_cast<ElectrobunCefClient*>(ctx)->OnRemoteDevToolsClosed(target_id);
+}
+
+// Out-of-line definitions for handlers that need ElectrobunCefClient to be fully defined
+
+bool ElectrobunContextMenuHandler::OnContextMenuCommand(
+    CefRefPtr<CefBrowser> browser,
+    CefRefPtr<CefFrame> frame,
+    CefRefPtr<CefContextMenuParams> params,
+    int command_id,
+    EventFlags event_flags) {
+    if (command_id == 26501) {
+        // Open remote DevTools via the owning ElectrobunCefClient
+        CefRefPtr<CefClient> client = browser->GetHost()->GetClient();
+        ElectrobunCefClient* ebClient = static_cast<ElectrobunCefClient*>(client.get());
+        if (ebClient) {
+            ebClient->OpenRemoteDevToolsFrontend(browser);
+        }
+        return true;
+    }
+    return false;
+}
+
+bool ElectrobunKeyboardHandler::OnPreKeyEvent(
+    CefRefPtr<CefBrowser> browser,
+    const CefKeyEvent& event,
+    CefEventHandle os_event,
+    bool* is_keyboard_shortcut) {
+    // Only handle key down events
+    if (event.type != KEYEVENT_RAWKEYDOWN) {
+        return false;
+    }
+
+    // F12 or Ctrl+Shift+I -> open DevTools
+    bool isF12 = (event.windows_key_code == 123);
+    bool isCtrlShiftI = (event.windows_key_code == 'I' &&
+                         (event.modifiers & EVENTFLAG_CONTROL_DOWN) &&
+                         (event.modifiers & EVENTFLAG_SHIFT_DOWN));
+    if (isF12 || isCtrlShiftI) {
+        CefRefPtr<CefClient> client = browser->GetHost()->GetClient();
+        ElectrobunCefClient* ebClient = static_cast<ElectrobunCefClient*>(client.get());
+        if (ebClient) {
+            ebClient->OpenRemoteDevToolsFrontend(browser);
+        }
+        return true;
+    }
+
+    // Check if we have accelerator entries
+    if (g_menuAccelerators.empty()) {
+        return false;
+    }
+
+    // Build the current modifier state from CEF event
+    BYTE modifiers = FVIRTKEY;
+    if (event.modifiers & EVENTFLAG_CONTROL_DOWN) modifiers |= FCONTROL;
+    if (event.modifiers & EVENTFLAG_ALT_DOWN) modifiers |= FALT;
+    if (event.modifiers & EVENTFLAG_SHIFT_DOWN) modifiers |= FSHIFT;
+
+    // Check if this key combination matches any accelerator
+    WORD vkCode = (WORD)event.windows_key_code;
+
+    for (const auto& accel : g_menuAccelerators) {
+        if (accel.key == vkCode && accel.fVirt == modifiers) {
+            // Found a match! Trigger the menu command directly
+            handleApplicationMenuSelection(accel.cmd);
+            return true;  // Prevent CEF from processing this key
+        }
+    }
+
+    return false;
+}
 
 // ElectrobunRenderHandler::OnPaint implementation
 void ElectrobunRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
@@ -2310,6 +2814,11 @@ public:
     // Find in page methods
     virtual void findInPage(const char* searchText, bool forward, bool matchCase) = 0;
     virtual void stopFindInPage() = 0;
+
+    // Developer tools methods
+    virtual void openDevTools() = 0;
+    virtual void closeDevTools() = 0;
+    virtual void toggleDevTools() = 0;
 };
 
 // Helper function to check navigation rules
@@ -2680,6 +3189,23 @@ public:
 
         // Clear selection to remove find highlighting
         webview->ExecuteScript(L"window.getSelection().removeAllRanges();", nullptr);
+    }
+
+    void openDevTools() override {
+        if (!webview) return;
+        webview->OpenDevToolsWindow();
+    }
+
+    void closeDevTools() override {
+        if (!webview) return;
+        // WebView2 doesn't expose a CloseDevToolsWindow API.
+        // The DevTools window is user-managed; opening it again is a no-op if already open.
+    }
+
+    void toggleDevTools() override {
+        if (!webview) return;
+        // WebView2 handles toggle behavior internally - opening when already open is a no-op
+        webview->OpenDevToolsWindow();
     }
 };
 
@@ -3092,6 +3618,27 @@ public:
         CefRefPtr<CefBrowserHost> host = browser->GetHost();
         if (host) {
             host->StopFinding(true); // true = clear selection
+        }
+    }
+
+    void openDevTools() override {
+        if (!browser || !client) return;
+        client->OpenRemoteDevToolsFrontend(browser);
+    }
+
+    void closeDevTools() override {
+        if (!browser || !client) return;
+        int target_id = browser->GetIdentifier();
+        client->OnRemoteDevToolsClosed(target_id);
+    }
+
+    void toggleDevTools() override {
+        if (!browser || !client) return;
+        int target_id = browser->GetIdentifier();
+        if (client->IsDevToolsOpen(target_id)) {
+            client->OnRemoteDevToolsClosed(target_id);
+        } else {
+            client->OpenRemoteDevToolsFrontend(browser);
         }
     }
 };
@@ -3596,6 +4143,17 @@ void handleApplicationMenuSelection(UINT menuId) {
                 if (focusedWindow) {
                     SendMessage(focusedWindow, WM_UNDO, 0, 0);
                 }
+            } else if (action == "__redo__") {
+                // Windows doesn't have a standard WM_REDO message
+                // Use Ctrl+Y keypress simulation or application-specific handling
+                HWND focusedWindow = GetFocus();
+                if (focusedWindow) {
+                    // Try sending Ctrl+Y keystroke
+                    keybd_event(VK_CONTROL, 0, 0, 0);
+                    keybd_event('Y', 0, 0, 0);
+                    keybd_event('Y', 0, KEYEVENTF_KEYUP, 0);
+                    keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
+                }
             } else if (action == "__cut__") {
                 HWND focusedWindow = GetFocus();
                 if (focusedWindow) {
@@ -3611,6 +4169,39 @@ void handleApplicationMenuSelection(UINT menuId) {
                 if (focusedWindow) {
                     SendMessage(focusedWindow, WM_PASTE, 0, 0);
                 }
+            } else if (action == "__pasteAndMatchStyle__") {
+                // Paste as plain text: get clipboard text and paste it without formatting
+                HWND focusedWindow = GetFocus();
+                if (focusedWindow && OpenClipboard(NULL)) {
+                    HANDLE hData = GetClipboardData(CF_UNICODETEXT);
+                    if (hData) {
+                        wchar_t* pszText = static_cast<wchar_t*>(GlobalLock(hData));
+                        if (pszText) {
+                            // Clear clipboard and set as plain text
+                            std::wstring text(pszText);
+                            GlobalUnlock(hData);
+                            EmptyClipboard();
+
+                            HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (text.length() + 1) * sizeof(wchar_t));
+                            if (hMem) {
+                                wchar_t* pMem = static_cast<wchar_t*>(GlobalLock(hMem));
+                                if (pMem) {
+                                    wcscpy(pMem, text.c_str());
+                                    GlobalUnlock(hMem);
+                                    SetClipboardData(CF_UNICODETEXT, hMem);
+                                }
+                            }
+                        }
+                    }
+                    CloseClipboard();
+                    // Now paste the plain text
+                    SendMessage(focusedWindow, WM_PASTE, 0, 0);
+                }
+            } else if (action == "__delete__") {
+                HWND focusedWindow = GetFocus();
+                if (focusedWindow) {
+                    SendMessage(focusedWindow, WM_CLEAR, 0, 0);
+                }
             } else if (action == "__selectAll__") {
                 HWND focusedWindow = GetFocus();
                 if (focusedWindow) {
@@ -3620,6 +4211,30 @@ void handleApplicationMenuSelection(UINT menuId) {
                 HWND activeWindow = GetActiveWindow();
                 if (activeWindow) {
                     ShowWindow(activeWindow, SW_MINIMIZE);
+                }
+            } else if (action == "__toggleFullScreen__") {
+                HWND activeWindow = GetActiveWindow();
+                if (activeWindow) {
+                    // Toggle between maximized and normal state
+                    WINDOWPLACEMENT wp = { sizeof(WINDOWPLACEMENT) };
+                    GetWindowPlacement(activeWindow, &wp);
+                    if (wp.showCmd == SW_MAXIMIZE) {
+                        ShowWindow(activeWindow, SW_RESTORE);
+                    } else {
+                        ShowWindow(activeWindow, SW_MAXIMIZE);
+                    }
+                }
+            } else if (action == "__zoom__") {
+                HWND activeWindow = GetActiveWindow();
+                if (activeWindow) {
+                    // Zoom toggles between maximized and normal (same as toggleFullScreen on Windows)
+                    WINDOWPLACEMENT wp = { sizeof(WINDOWPLACEMENT) };
+                    GetWindowPlacement(activeWindow, &wp);
+                    if (wp.showCmd == SW_MAXIMIZE) {
+                        ShowWindow(activeWindow, SW_RESTORE);
+                    } else {
+                        ShowWindow(activeWindow, SW_MAXIMIZE);
+                    }
                 }
             } else if (action == "__close__") {
                 HWND activeWindow = GetActiveWindow();
@@ -4028,7 +4643,121 @@ SimpleJsonValue parseJson(const std::string& json) {
     return parseJsonValue(json, pos);
 }
 
+// Helper to parse virtual key code from key string for menu accelerators
+static UINT getMenuVirtualKeyCode(const std::string& key) {
+    std::string lowerKey = key;
+    std::transform(lowerKey.begin(), lowerKey.end(), lowerKey.begin(), ::tolower);
 
+    // Letters
+    if (lowerKey.length() == 1 && lowerKey[0] >= 'a' && lowerKey[0] <= 'z') {
+        return 'A' + (lowerKey[0] - 'a');
+    }
+    // Numbers
+    if (lowerKey.length() == 1 && lowerKey[0] >= '0' && lowerKey[0] <= '9') {
+        return '0' + (lowerKey[0] - '0');
+    }
+    // Function keys
+    if (lowerKey[0] == 'f' && lowerKey.length() >= 2) {
+        try {
+            int fNum = std::stoi(lowerKey.substr(1));
+            if (fNum >= 1 && fNum <= 24) return VK_F1 + (fNum - 1);
+        } catch (...) {}
+    }
+    // Special keys
+    if (lowerKey == "space" || lowerKey == " ") return VK_SPACE;
+    if (lowerKey == "return" || lowerKey == "enter") return VK_RETURN;
+    if (lowerKey == "tab") return VK_TAB;
+    if (lowerKey == "escape" || lowerKey == "esc") return VK_ESCAPE;
+    if (lowerKey == "backspace") return VK_BACK;
+    if (lowerKey == "delete" || lowerKey == "del") return VK_DELETE;
+    if (lowerKey == "insert") return VK_INSERT;
+    if (lowerKey == "up") return VK_UP;
+    if (lowerKey == "down") return VK_DOWN;
+    if (lowerKey == "left") return VK_LEFT;
+    if (lowerKey == "right") return VK_RIGHT;
+    if (lowerKey == "home") return VK_HOME;
+    if (lowerKey == "end") return VK_END;
+    if (lowerKey == "pageup") return VK_PRIOR;
+    if (lowerKey == "pagedown") return VK_NEXT;
+    // Symbols
+    if (lowerKey == "plus") return VK_OEM_PLUS;
+    if (lowerKey == "minus") return VK_OEM_MINUS;
+    if (lowerKey == "-") return VK_OEM_MINUS;
+    if (lowerKey == "=" || lowerKey == "+") return VK_OEM_PLUS;
+    if (lowerKey == "[") return VK_OEM_4;
+    if (lowerKey == "]") return VK_OEM_6;
+    if (lowerKey == "\\") return VK_OEM_5;
+    if (lowerKey == ";") return VK_OEM_1;
+    if (lowerKey == "'") return VK_OEM_7;
+    if (lowerKey == ",") return VK_OEM_COMMA;
+    if (lowerKey == ".") return VK_OEM_PERIOD;
+    if (lowerKey == "/") return VK_OEM_2;
+    if (lowerKey == "`") return VK_OEM_3;
+
+    return 0;
+}
+
+// Parse modifiers from accelerator string for menu accelerators using the
+// shared cross-platform parser. Returns FCONTROL, FALT, FSHIFT flags.
+static BYTE parseMenuModifiers(const std::string& accelerator, std::string& outKey) {
+    auto parts = electrobun::parseAccelerator(accelerator);
+    outKey = parts.key;
+
+    BYTE modifiers = FVIRTKEY;
+    if (parts.commandOrControl || parts.command || parts.control) modifiers |= FCONTROL;
+    if (parts.alt)                                                modifiers |= FALT;
+    if (parts.shift)                                              modifiers |= FSHIFT;
+    return modifiers;
+}
+
+// Build display string for accelerator (e.g., "Ctrl+S", "Ctrl+Shift+N")
+static std::string buildAcceleratorDisplayString(const std::string& accelerator) {
+    std::string keyPart;
+    BYTE modifiers = parseMenuModifiers(accelerator, keyPart);
+
+    std::string display;
+    if (modifiers & FCONTROL) {
+        display += "Ctrl+";
+    }
+    if (modifiers & FALT) {
+        display += "Alt+";
+    }
+    if (modifiers & FSHIFT) {
+        display += "Shift+";
+    }
+
+    // Capitalize the key for display
+    std::string upperKey = keyPart;
+    if (!upperKey.empty()) {
+        upperKey[0] = toupper(upperKey[0]);
+    }
+
+    // Handle special key display names
+    std::string lowerKey = keyPart;
+    std::transform(lowerKey.begin(), lowerKey.end(), lowerKey.begin(), ::tolower);
+    if (lowerKey == "return" || lowerKey == "enter") {
+        upperKey = "Enter";
+    } else if (lowerKey == "escape" || lowerKey == "esc") {
+        upperKey = "Esc";
+    } else if (lowerKey == "delete" || lowerKey == "del") {
+        upperKey = "Del";
+    } else if (lowerKey == "backspace") {
+        upperKey = "Backspace";
+    } else if (lowerKey == "space") {
+        upperKey = "Space";
+    } else if (lowerKey == "pageup") {
+        upperKey = "PgUp";
+    } else if (lowerKey == "pagedown") {
+        upperKey = "PgDn";
+    } else if (lowerKey == "plus") {
+        upperKey = "+";
+    } else if (lowerKey == "minus") {
+        upperKey = "-";
+    }
+
+    display += upperKey;
+    return display;
+}
 
 // Function to create Windows menu from JSON config (equivalent to createMenuFromConfig)
 HMENU createMenuFromConfig(const SimpleJsonValue& menuConfig, NSStatusItem* statusItem) {
@@ -4071,12 +4800,12 @@ HMENU createMenuFromConfig(const SimpleJsonValue& menuConfig, NSStatusItem* stat
         std::string action = getString("action");
         std::string role = getString("role");
         std::string accelerator = getString("accelerator");
-        
+
         bool enabled = getBool("enabled", true);
         bool checked = getBool("checked", false);
         bool hidden = getBool("hidden", false);
         std::string tooltip = getString("tooltip");
-        
+
         if (hidden) {
             continue;
         } else if (type == "divider") {
@@ -4084,36 +4813,74 @@ HMENU createMenuFromConfig(const SimpleJsonValue& menuConfig, NSStatusItem* stat
         } else {
             UINT flags = MF_STRING;
             if (!enabled) flags |= MF_GRAYED;
-            
+
             UINT menuId = g_nextMenuId++;
-            
+
             // Store the action for this menu ID
             if (!action.empty()) {
                 g_menuItemActions[menuId] = action;
             }
-            
+
             // Handle system roles (similar to macOS implementation)
             if (!role.empty()) {
                 if (role == "quit") {
                     // For quit, we'll handle it specially in the menu callback
                     g_menuItemActions[menuId] = "__quit__";
                 }
-                // TODO: fill in other roles
+
+                // Set default accelerators for common roles if not specified
+                if (accelerator.empty()) {
+                    if (role == "undo") {
+                        accelerator = "z";
+                    } else if (role == "redo") {
+                        accelerator = "y";
+                    } else if (role == "cut") {
+                        accelerator = "x";
+                    } else if (role == "copy") {
+                        accelerator = "c";
+                    } else if (role == "paste") {
+                        accelerator = "v";
+                    } else if (role == "selectAll") {
+                        accelerator = "a";
+                    }
+                }
             }
-            
+
+            // Build the label with accelerator display for context menus
+            // On Windows, context menus use mnemonic keys (just the letter, not Ctrl+Letter)
+            std::string displayLabel = label;
+            if (!accelerator.empty()) {
+                // For context menus, display just the letter (mnemonic key)
+                // The user presses just the letter while the menu is open
+                if (accelerator.length() == 1 && isalpha(accelerator[0])) {
+                    displayLabel += "\t" + std::string(1, (char)toupper(accelerator[0]));
+                } else {
+                    // For complex accelerators, extract just the key part
+                    std::string accelDisplay = buildAcceleratorDisplayString(accelerator);
+                    // Remove "Ctrl+" prefix for context menus since they use mnemonics
+                    size_t ctrlPos = accelDisplay.find("Ctrl+");
+                    if (ctrlPos != std::string::npos) {
+                        accelDisplay = accelDisplay.substr(ctrlPos + 5); // Skip "Ctrl+"
+                    }
+                    if (!accelDisplay.empty()) {
+                        displayLabel += "\t" + accelDisplay;
+                    }
+                }
+            }
+
             // Append the menu item
-            AppendMenuA(menu, flags, menuId, label.c_str());
+            AppendMenuA(menu, flags, menuId, displayLabel.c_str());
 
             if (checked) {
                 CheckMenuItem(menu, menuId, MF_BYCOMMAND | MF_CHECKED);
             }
-            
+
             // Handle submenus
             auto submenuIt = itemData.find("submenu");
             if (submenuIt != itemData.end() && submenuIt->second.type == SimpleJsonValue::ARRAY) {
                 HMENU submenu = createMenuFromConfig(submenuIt->second, statusItem);
                 if (submenu) {
-                    ModifyMenuA(menu, menuId, MF_BYCOMMAND | MF_POPUP, (UINT_PTR)submenu, label.c_str());
+                    ModifyMenuA(menu, menuId, MF_BYCOMMAND | MF_POPUP, (UINT_PTR)submenu, displayLabel.c_str());
                 }
             }
         }
@@ -4127,7 +4894,7 @@ void handleMenuItemSelection(UINT menuId, NSStatusItem* statusItem) {
     auto it = g_menuItemActions.find(menuId);
     if (it != g_menuItemActions.end()) {
         const std::string& action = it->second;
-        
+
         if (statusItem && statusItem->handler) {
             if (action == "__quit__") {
                 // Handle quit specially
@@ -4139,45 +4906,76 @@ void handleMenuItemSelection(UINT menuId, NSStatusItem* statusItem) {
     }
 }
 
+// Rebuild the accelerator table from collected accelerators
+static void rebuildAcceleratorTable() {
+    if (g_hAccelTable) {
+        DestroyAcceleratorTable(g_hAccelTable);
+        g_hAccelTable = NULL;
+    }
 
+    if (!g_menuAccelerators.empty()) {
+        g_hAccelTable = CreateAcceleratorTableA(g_menuAccelerators.data(), (int)g_menuAccelerators.size());
+        if (g_hAccelTable) {
+            // ::log("Created accelerator table with " + std::to_string(g_menuAccelerators.size()) + " entries");
+        }
+    }
+}
+
+// Clear all menu accelerators (call before rebuilding menu)
+static void clearMenuAccelerators() {
+    g_menuAccelerators.clear();
+    if (g_hAccelTable) {
+        DestroyAcceleratorTable(g_hAccelTable);
+        g_hAccelTable = NULL;
+    }
+}
 
 // Function to set accelerator keys for menu items
-void setMenuItemAccelerator(HMENU menu, UINT menuId, const std::string& accelerator, UINT modifierMask = 0) {
-    if (accelerator.empty()) return;
-    
-    UINT key = 0;
-    UINT modifiers = 0;
-    
-    // Parse simple accelerators like "Ctrl+C", "Ctrl+V", etc.
-    if (accelerator.length() == 1) {
-        key = VkKeyScan(accelerator[0]) & 0xFF;
-        modifiers = FCONTROL;
-    } else if (accelerator.find("Ctrl+") == 0 && accelerator.length() == 6) {
-        char keyChar = accelerator[5];
-        key = VkKeyScan(keyChar) & 0xFF;
-        modifiers = FCONTROL;
-    } else if (accelerator.find("Alt+") == 0 && accelerator.length() == 5) {
-        char keyChar = accelerator[4];
-        key = VkKeyScan(keyChar) & 0xFF;
-        modifiers = FALT;
-    } else if (accelerator.find("Shift+") == 0 && accelerator.length() == 7) {
-        char keyChar = accelerator[6];
-        key = VkKeyScan(keyChar) & 0xFF;
-        modifiers = FSHIFT;
+// Returns the display string to append to the menu label
+std::string setMenuItemAccelerator(HMENU menu, UINT menuId, const std::string& accelerator, UINT modifierMask = 0) {
+    if (accelerator.empty()) return "";
+
+    std::string keyPart;
+    BYTE modifiers;
+    UINT vkCode;
+
+    // Check if this is a simple single-letter accelerator (for role defaults)
+    if (accelerator.length() == 1 && isalpha(accelerator[0])) {
+        // Single letter with Ctrl modifier (from role defaults)
+        vkCode = toupper(accelerator[0]);
+        modifiers = FVIRTKEY | FCONTROL;
+        keyPart = accelerator;
+    } else {
+        // Parse the full accelerator string
+        modifiers = parseMenuModifiers(accelerator, keyPart);
+        vkCode = getMenuVirtualKeyCode(keyPart);
     }
-    
+
+    // Apply modifierMask override if specified
     if (modifierMask > 0) {
-        modifiers = 0;
+        modifiers = FVIRTKEY;
         if (modifierMask & 1) modifiers |= FCONTROL;
         if (modifierMask & 2) modifiers |= FSHIFT;
         if (modifierMask & 4) modifiers |= FALT;
     }
-    
-    if (key > 0) {
-        // char logMsg[256];
-        // sprintf_s(logMsg, "Setting accelerator for menu item %u: key=%u, modifiers=%u", menuId, key, modifiers);
-        // ::log(logMsg);
+
+    if (vkCode == 0) {
+        // ::log("Failed to parse accelerator key: " + accelerator);
+        return "";
     }
+
+    // Add to accelerator table
+    ACCEL accel;
+    accel.fVirt = modifiers;
+    accel.key = (WORD)vkCode;
+    accel.cmd = (WORD)menuId;
+    g_menuAccelerators.push_back(accel);
+
+    // Build and return the display string
+    if (accelerator.length() == 1 && isalpha(accelerator[0])) {
+        return "Ctrl+" + std::string(1, (char)toupper(accelerator[0]));
+    }
+    return buildAcceleratorDisplayString(accelerator);
 }
 
 // Enhanced createMenuFromConfig for application menu
@@ -4290,14 +5088,24 @@ HMENU createApplicationMenuFromConfig(const SimpleJsonValue& menuConfig, StatusI
                             g_menuItemActions[menuId] = "__copy__";
                         } else if (subRole == "paste") {
                             g_menuItemActions[menuId] = "__paste__";
+                        } else if (subRole == "pasteAndMatchStyle") {
+                            g_menuItemActions[menuId] = "__pasteAndMatchStyle__";
+                        } else if (subRole == "delete") {
+                            g_menuItemActions[menuId] = "__delete__";
                         } else if (subRole == "selectAll") {
                             g_menuItemActions[menuId] = "__selectAll__";
                         } else if (subRole == "minimize") {
                             g_menuItemActions[menuId] = "__minimize__";
+                        } else if (subRole == "toggleFullScreen" || subRole == "togglefullscreen") {
+                            g_menuItemActions[menuId] = "__toggleFullScreen__";
+                        } else if (subRole == "zoom") {
+                            g_menuItemActions[menuId] = "__zoom__";
                         } else if (subRole == "close") {
                             g_menuItemActions[menuId] = "__close__";
                         }
-                        
+                        // Note: The following roles are macOS-only and not implemented on Windows:
+                        // hide, hideOthers, showAll, startSpeaking, stopSpeaking, bringAllToFront
+
                         // Set default accelerators for common roles if not specified
                         if (subAccelerator.empty()) {
                             if (subRole == "undo") {
@@ -4308,24 +5116,32 @@ HMENU createApplicationMenuFromConfig(const SimpleJsonValue& menuConfig, StatusI
                                 subAccelerator = "x";
                             } else if (subRole == "copy") {
                                 subAccelerator = "c";
-                            } else if (subRole == "paste") {
+                            } else if (subRole == "paste" || subRole == "pasteAndMatchStyle") {
                                 subAccelerator = "v";
+                            } else if (subRole == "delete") {
+                                subAccelerator = "Delete";
                             } else if (subRole == "selectAll") {
                                 subAccelerator = "a";
+                            } else if (subRole == "toggleFullScreen" || subRole == "togglefullscreen") {
+                                subAccelerator = "F11";
                             }
                         }
                     }
                     
+                    // Build the label with accelerator display
+                    std::string displayLabel = subLabel;
+                    if (!subAccelerator.empty()) {
+                        std::string accelDisplay = setMenuItemAccelerator(popupMenu, menuId, subAccelerator, 0);
+                        if (!accelDisplay.empty()) {
+                            displayLabel += "\t" + accelDisplay;
+                        }
+                    }
+
                     // Append the menu item
-                    AppendMenuA(popupMenu, flags, menuId, subLabel.c_str());
-                    
+                    AppendMenuA(popupMenu, flags, menuId, displayLabel.c_str());
+
                     if (subChecked) {
                         CheckMenuItem(popupMenu, menuId, MF_BYCOMMAND | MF_CHECKED);
-                    }
-                    
-                    // Set accelerator if specified
-                    if (!subAccelerator.empty()) {
-                        setMenuItemAccelerator(popupMenu, menuId, subAccelerator, 1); // Default to Ctrl
                     }
                     
                     // Handle nested submenus
@@ -4437,22 +5253,16 @@ ELECTROBUN_EXPORT bool initCEF() {
     // Set up CEF paths (resources are in ./cef relative to executable)
     std::string cefResourceDir = std::string(exePath) + "\\cef";
 
-    // Build cache path with namespaced directory structure to match installer and partition paths
-    // Use %LOCALAPPDATA%\{identifier}\{name-channel}\CEF
+    // Build cache path with identifier/channel structure (consistent with CLI and updater)
+    // Use %LOCALAPPDATA%\{identifier}\{channel}\CEF
     std::string userDataDir;
     char* localAppData = getenv("LOCALAPPDATA");
     if (localAppData) {
-        std::string appIdentifier = !g_electrobunIdentifier.empty() ? g_electrobunIdentifier : "Electrobun";
-        std::string appName = !g_electrobunName.empty() ? g_electrobunName : "App";
-        // Note: g_electrobunName already includes the channel from version.json
-        userDataDir = std::string(localAppData) + "\\" + appIdentifier + "\\" + appName + "\\CEF";
-        std::cout << "[CEF] Using namespaced path: " << appIdentifier << "\\" << appName << std::endl;
+        userDataDir = buildAppDataPath(localAppData, g_electrobunIdentifier, g_electrobunChannel, "CEF", '\\');
+        std::cout << "[CEF] Using path: " << userDataDir << std::endl;
     } else {
         // Fallback to executable directory if LOCALAPPDATA not available
-        userDataDir = std::string(exePath) + "\\cef_cache";
-        if (!g_electrobunChannel.empty()) {
-            userDataDir += "_" + g_electrobunChannel;
-        }
+        userDataDir = buildAppDataPath(exePath, g_electrobunIdentifier, g_electrobunChannel, "cef_cache", '\\');
     }
 
     // Create cache directory if it doesn't exist
@@ -4464,11 +5274,27 @@ ELECTROBUN_EXPORT bool initCEF() {
     // Create the app
     g_cef_app = new ElectrobunCefApp();
 
+    // Read user-defined chromium flags from build.json
+    std::string buildJsonPath = std::string(exePath) + "\\..\\Resources\\build.json";
+    std::string buildJsonContent = electrobun::readFileToString(buildJsonPath);
+    if (!buildJsonContent.empty()) {
+        g_userChromiumFlags = electrobun::parseChromiumFlags(buildJsonContent);
+    }
+
     // CEF settings
     CefSettings settings;
     settings.no_sandbox = true;
     settings.multi_threaded_message_loop = false; // Use single-threaded message loop
     settings.windowless_rendering_enabled = true; // Required for OSR/transparent windows
+
+    // Remote DevTools port with scan for availability
+    int selectedPort = FindAvailableRemoteDebugPort(9222, 9232);
+    if (selectedPort == 0) {
+        selectedPort = 9222;
+        std::cout << "[CEF] Remote DevTools: no free port in 9222-9232, falling back to 9222" << std::endl;
+    }
+    g_remoteDebugPort = selectedPort;
+    settings.remote_debugging_port = selectedPort;
 
     // Set the subprocess path to the helper executable
     CefString(&settings.browser_subprocess_path) = std::string(exePath) + "\\bun Helper.exe";
@@ -5191,14 +6017,11 @@ static std::shared_ptr<WebView2View> createWebView2View(uint32_t webviewId,
             }
 
             // Create user data folder path based on partition
+            // Build path with identifier/channel structure (consistent with CLI and updater)
             std::wstring userDataFolder;
             char* localAppData = getenv("LOCALAPPDATA");
             if (localAppData) {
-                std::string appIdentifier = !g_electrobunIdentifier.empty() ? g_electrobunIdentifier : "Electrobun";
-                std::string appName = !g_electrobunName.empty() ? g_electrobunName : "App";
-                // Note: g_electrobunName already includes the channel from version.json
-
-                std::string userDataPath = std::string(localAppData) + "\\" + appIdentifier + "\\" + appName + "\\WebView2";
+                std::string userDataPath = buildAppDataPath(localAppData, g_electrobunIdentifier, g_electrobunChannel, "WebView2", '\\');
 
                 // Handle partition-specific storage
                 if (!partitionStr.empty()) {
@@ -5262,7 +6085,6 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
     if (!partitionIdentifier || !partitionIdentifier[0]) {
         // No partition - use in-memory session
         settings.persist_session_cookies = false;
-        settings.persist_user_preferences = false;
     } else {
         std::string identifier(partitionIdentifier);
         bool isPersistent = identifier.substr(0, 8) == "persist:";
@@ -5276,23 +6098,16 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
             if (!localAppData) {
                 printf("ERROR CEF: LOCALAPPDATA not found, falling back to in-memory session\n");
                 settings.persist_session_cookies = false;
-                settings.persist_user_preferences = false;
             } else {
-                // Build namespaced path to match installer structure
-                // Structure: %LOCALAPPDATA%\{identifier}\{name-channel}\CEF\Partitions\{partitionName}
-                std::string appIdentifier = !g_electrobunIdentifier.empty() ? g_electrobunIdentifier : "Electrobun";
-                std::string appName = !g_electrobunName.empty() ? g_electrobunName : "App";
-                // Note: g_electrobunName already includes the channel from version.json
-
-                // Build cache path with namespacing: %LOCALAPPDATA%\{identifier}\{name-channel}\CEF\Partitions\{partitionName}
-                std::string cachePath = std::string(localAppData) + "\\" + appIdentifier + "\\" + appName + "\\CEF\\Partitions\\" + partitionName;
+                // Build path with identifier/channel structure (consistent with CLI and updater)
+                // Structure: %LOCALAPPDATA%\{identifier}\{channel}\CEF\Partitions\{partitionName}
+                std::string cachePath = buildPartitionPath(localAppData, g_electrobunIdentifier, g_electrobunChannel, "CEF", partitionName, '\\');
 
                 // Create directory if it doesn't exist
                 std::wstring wideCachePath(cachePath.begin(), cachePath.end());
                 SHCreateDirectoryExW(NULL, wideCachePath.c_str(), NULL);
 
                 settings.persist_session_cookies = true;
-                settings.persist_user_preferences = true;
                 CefString(&settings.cache_path).FromString(cachePath);
 
                 printf("DEBUG CEF: Persistent partition '%s' using cache path: %s\n",
@@ -5301,7 +6116,6 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
         } else {
             // Non-persistent partition - in-memory session
             settings.persist_session_cookies = false;
-            settings.persist_user_preferences = false;
             printf("DEBUG CEF: In-memory partition '%s'\n", identifier.c_str());
         }
     }
@@ -5359,6 +6173,7 @@ static std::shared_ptr<CEFView> createCEFView(uint32_t webviewId,
         
         // Create CEF browser info
         CefWindowInfo windowInfo;
+        windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
         CefRect cefBounds((int)x, (int)y, (int)width, (int)height);
 
         CefBrowserSettings browserSettings;
@@ -5582,6 +6397,10 @@ ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, 
             // Fall back to Windows message loop if CEF init fails
             MSG msg;
             while (GetMessage(&msg, NULL, 0, 0)) {
+                // Check for menu accelerators first
+                if (g_hAccelTable && TranslateAccelerator(msg.hwnd, g_hAccelTable, &msg)) {
+                    continue;
+                }
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
             }
@@ -5590,6 +6409,10 @@ ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, 
         // Use Windows message loop if CEF is not available
         MSG msg;
         while (GetMessage(&msg, NULL, 0, 0)) {
+            // Check for menu accelerators first
+            if (g_hAccelTable && TranslateAccelerator(msg.hwnd, g_hAccelTable, &msg)) {
+                continue;
+            }
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
@@ -5885,10 +6708,52 @@ ELECTROBUN_EXPORT void webviewFindInPage(AbstractView *abstractView, const char 
     }
 }
 
+// Remote DevTools helper functions for CEF on Windows
+void openRemoteDevTools(uint32_t webviewId) {
+    // TODO: Implement remote debugger approach for Windows CEF
+    // This should trigger the remote debugger system when it's ported from macOS
+    // For now, this is a placeholder that can be implemented once the 
+    // remote debugger approach is fully ported to Windows
+}
+
+void closeRemoteDevTools(uint32_t webviewId) {
+    // TODO: Close remote debugger window for Windows CEF
+}
+
+void toggleRemoteDevTools(uint32_t webviewId) {
+    // TODO: Toggle remote debugger window for Windows CEF  
+    // For now, just try to open
+    openRemoteDevTools(webviewId);
+}
+
 ELECTROBUN_EXPORT void webviewStopFind(AbstractView *abstractView) {
     if (abstractView) {
         MainThreadDispatcher::dispatch_sync([abstractView]() {
             abstractView->stopFindInPage();
+        });
+    }
+}
+
+ELECTROBUN_EXPORT void webviewOpenDevTools(AbstractView *abstractView) {
+    if (abstractView) {
+        MainThreadDispatcher::dispatch_sync([abstractView]() {
+            abstractView->openDevTools();
+        });
+    }
+}
+
+ELECTROBUN_EXPORT void webviewCloseDevTools(AbstractView *abstractView) {
+    if (abstractView) {
+        MainThreadDispatcher::dispatch_sync([abstractView]() {
+            abstractView->closeDevTools();
+        });
+    }
+}
+
+ELECTROBUN_EXPORT void webviewToggleDevTools(AbstractView *abstractView) {
+    if (abstractView) {
+        MainThreadDispatcher::dispatch_sync([abstractView]() {
+            abstractView->toggleDevTools();
         });
     }
 }
@@ -7517,14 +8382,18 @@ ELECTROBUN_EXPORT void setApplicationMenu(const char *jsonString, ZigStatusItemH
             g_appMenuTarget->zigHandler = zigTrayItemHandler;
             g_appMenuTarget->trayId = 0;
             
-            // Clean up existing application menu
+            // Clean up existing application menu and accelerators
             if (g_applicationMenu) {
                 DestroyMenu(g_applicationMenu);
                 g_applicationMenu = NULL;
             }
-            
+            clearMenuAccelerators();
+
             // Create new application menu from JSON config
             g_applicationMenu = createApplicationMenuFromConfig(menuConfig, g_appMenuTarget.get());
+
+            // Rebuild the accelerator table after menu creation
+            rebuildAcceleratorTable();
             
             if (g_applicationMenu) {
                 
@@ -7577,12 +8446,12 @@ ELECTROBUN_EXPORT void showContextMenu(const char *jsonString, ZigStatusItemHand
     MainThreadDispatcher::dispatch_sync([=]() {
         try {
             SimpleJsonValue menuConfig = parseJson(std::string(jsonString));
-            
-            std::unique_ptr<StatusItemTarget> target = std::make_unique<StatusItemTarget>();
-            target->zigHandler = contextMenuHandler;
+
+            std::unique_ptr<NSStatusItem> target = std::make_unique<NSStatusItem>();
+            target->handler = contextMenuHandler;
             target->trayId = 0;
-            
-            HMENU menu = createMenuFromConfig(menuConfig, reinterpret_cast<NSStatusItem*>(target.get()));
+
+            HMENU menu = createMenuFromConfig(menuConfig, target.get());
             if (!menu) {
                 ::log("ERROR: Failed to create context menu");
                 return;
@@ -7611,7 +8480,7 @@ ELECTROBUN_EXPORT void showContextMenu(const char *jsonString, ZigStatusItemHand
             
             // Handle menu selection
             if (cmd != 0) {
-                handleMenuItemSelection(cmd, reinterpret_cast<NSStatusItem*>(target.get()));
+                handleMenuItemSelection(cmd, target.get());
             }
             
             // Required for proper cleanup
@@ -8095,40 +8964,17 @@ static UINT getVirtualKeyCode(const std::string& key) {
     return 0;
 }
 
-// Helper to parse modifiers from accelerator string
+// Parse modifiers from accelerator string for global shortcuts using the
+// shared cross-platform parser. Returns MOD_CONTROL, MOD_ALT, MOD_SHIFT flags.
 static UINT parseModifiers(const std::string& accelerator, std::string& outKey) {
+    auto parts = electrobun::parseAccelerator(accelerator);
+    outKey = parts.key;
+
     UINT modifiers = 0;
-    std::vector<std::string> parts;
-
-    // Split by '+'
-    size_t start = 0, end;
-    while ((end = accelerator.find('+', start)) != std::string::npos) {
-        parts.push_back(accelerator.substr(start, end - start));
-        start = end + 1;
-    }
-    parts.push_back(accelerator.substr(start));
-
-    // Last part is the key
-    outKey = parts.back();
-    parts.pop_back();
-
-    for (const auto& part : parts) {
-        std::string lowerPart = part;
-        std::transform(lowerPart.begin(), lowerPart.end(), lowerPart.begin(), ::tolower);
-
-        if (lowerPart == "command" || lowerPart == "cmd" ||
-            lowerPart == "commandorcontrol" || lowerPart == "cmdorctrl" ||
-            lowerPart == "control" || lowerPart == "ctrl") {
-            modifiers |= MOD_CONTROL;
-        } else if (lowerPart == "alt" || lowerPart == "option") {
-            modifiers |= MOD_ALT;
-        } else if (lowerPart == "shift") {
-            modifiers |= MOD_SHIFT;
-        } else if (lowerPart == "win" || lowerPart == "super" || lowerPart == "meta") {
-            modifiers |= MOD_WIN;
-        }
-    }
-
+    if (parts.commandOrControl || parts.command || parts.control) modifiers |= MOD_CONTROL;
+    if (parts.alt)                                                modifiers |= MOD_ALT;
+    if (parts.shift)                                              modifiers |= MOD_SHIFT;
+    if (parts.super)                                              modifiers |= MOD_WIN;
     return modifiers;
 }
 
