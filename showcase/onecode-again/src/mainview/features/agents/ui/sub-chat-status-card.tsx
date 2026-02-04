@@ -17,7 +17,7 @@ function AnimatedDots() {
 		}, 400);
 		onCleanup(() => clearInterval(interval));
 	});
-	return <span class="inline-block w-[1em] text-left">{".".repeat(dotCount)}</span>;
+	return <span class="inline-block w-[1em] text-left">{".".repeat(dotCount())}</span>;
 }
 interface SubChatStatusCardProps {
 	chatId: string;
@@ -35,12 +35,14 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
 	const hasQueueCardAbove = () => props.hasQueueCardAbove ?? false;
 	// Use per-chat atom family instead of legacy global atom
 	const diffSidebarAtom = createMemo(() => diffSidebarOpenAtomFamily(props.chatId));
-	const [, setDiffSidebarOpen] = diffSidebarAtom;
+	const setDiffSidebarOpen = (value: boolean | ((prev: boolean) => boolean)) => {
+		diffSidebarAtom()[1](value);
+	};
 	const setFilteredDiffFiles = filteredDiffFilesAtom[1];
 	const setFilteredSubChatId = filteredSubChatIdAtom[1];
 	const setFocusedDiffFile = agentsFocusedDiffFileAtom[1];
 	// Listen for file changes from Claude Write/Edit tools
-	useFileChangeListener(props.worktreePath);
+	useFileChangeListener(() => props.worktreePath);
 	// Fetch git status to filter out committed files
 	const gitStatusQuery = useQuery(() => ({
 		queryKey: ["changes", "getStatus", props.worktreePath] as const,
@@ -108,16 +110,16 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
 		};
 	});
 	// Check if there's expandable content (only files now)
-	const hasExpandableContent = uncommittedFiles.length > 0;
+	const hasExpandableContent = createMemo(() => uncommittedFiles().length > 0);
 	// Don't show if no changed files - only show when there are files to review
-	if (uncommittedFiles.length === 0) {
+	if (uncommittedFiles().length === 0) {
 		console.log(`[StatusCard] Returning null - no uncommitted files`);
 		return null;
 	}
 	const handleReview = () => {
 		// Set filter to only show files from this sub-chat
 		// Use displayPath (relative path) to match git diff paths
-		const filePaths = uncommittedFiles.map((f) => f.displayPath);
+		const filePaths = uncommittedFiles().map((f) => f.displayPath);
 		console.log("[SubChatStatusCard] handleReview:", {
 			subChatId: props.subChatId,
 			filePaths
@@ -133,7 +135,7 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
 		hasQueueCardAbove() ? "rounded-none" : "rounded-t-xl"
 	)}>
       {	/* Header - at top */}
-      <div role="button" tabIndex={0} onClick={() => setIsExpanded((prev) => !prev)} onKeyDown={(e) => {
+		<div role="button" tabIndex={0} onClick={() => setIsExpanded((prev) => !prev)} onKeyDown={(e) => {
  if (e.key === "Enter" || e.key === " ") {
 			e.preventDefault();
 			setIsExpanded((prev) => !prev);
@@ -141,7 +143,7 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
 	}} aria-expanded={isExpanded()} aria-label={`${isExpanded() ? "Collapse" : "Expand"} status details`} class="flex items-center justify-between pr-1 pl-3 h-8 cursor-pointer hover:bg-muted/50 transition-colors duration-150 focus:outline-none rounded-sm">
         <div class="flex items-center gap-2 text-xs flex-1 min-w-0">
           {	/* Expand/Collapse chevron - always show */}
-          <ChevronDown class={cn("w-4 h-4 text-muted-foreground transition-transform duration-200", !isExpanded && "-rotate-90")} />
+			<ChevronDown class={cn("w-4 h-4 text-muted-foreground transition-transform duration-200", !isExpanded() && "-rotate-90")} />
 
           { /* Streaming indicator */}
           <Show when={props.isStreaming}>
@@ -151,16 +153,16 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
           </Show>
 
           { /* File count and stats - only show when not streaming */}
-          <Show when={!props.isStreaming}>
+			  <Show when={!props.isStreaming}>
             <span class="text-xs text-muted-foreground">
-              {totals.fileCount} {totals.fileCount === 1 ? "file" : "files"}
-              <Show when={totals.additions > 0 || totals.deletions > 0}>
+					{totals().fileCount} {totals().fileCount === 1 ? "file" : "files"}
+					<Show when={totals().additions > 0 || totals().deletions > 0}>
                 {" "}
                 <span class="text-green-600 dark:text-green-400">
-                  +{totals.additions}
+						+{totals().additions}
                 </span>{" "}
                 <span class="text-red-600 dark:text-red-400">
-                  -{totals.deletions}
+						-{totals().deletions}
                 </span>
               </Show>
             </span>
@@ -192,7 +194,7 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
 
       {	/* Expanded content - files */}
       <Presence>
-        <Show when={isExpanded() && hasExpandableContent}>
+		<Show when={isExpanded() && hasExpandableContent()}>
           <Motion.div initial={{
  height: 0,
 		opacity: 0
@@ -227,9 +229,7 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
                   }
                 };
                 return <div role="button" tabIndex={0} onClick={handleFileClick} onKeyDown={handleKeyDown} aria-label={`View diff for ${file.displayPath}`} class="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors cursor-pointer focus:outline-none rounded-sm">
-                  <Show when={FileIcon}>
-                    <FileIcon class="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                  </Show>
+                  {FileIcon && <FileIcon class="w-4 h-4 flex-shrink-0 text-muted-foreground" />}
                   <span class="truncate flex-1 text-foreground">
                     {file.displayPath}
                   </span>

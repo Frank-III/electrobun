@@ -1,4 +1,4 @@
-import { type Component, type ComponentProps, type JSX, splitProps } from "solid-js";
+import { type Component, type ComponentProps, type JSX, mergeProps, splitProps } from "solid-js";
 import { DropdownMenu as DropdownMenuPrimitive } from "@kobalte/core/dropdown-menu";
 import { cn } from "../../lib/utils";
 import {
@@ -13,7 +13,10 @@ import {
 	overlayChevron,
 } from "../../lib/overlay-styles";
 
-const DropdownMenu = DropdownMenuPrimitive;
+const DropdownMenu: Component<ComponentProps<typeof DropdownMenuPrimitive>> = (props) => {
+	const merged = mergeProps({ modal: false }, props);
+	return <DropdownMenuPrimitive {...merged} />;
+};
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 const DropdownMenuGroup = DropdownMenuPrimitive.Group;
 const DropdownMenuPortal = DropdownMenuPrimitive.Portal;

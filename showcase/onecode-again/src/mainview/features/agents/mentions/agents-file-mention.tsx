@@ -6,7 +6,7 @@ import { debounce } from "@solid-primitives/scheduled";
 import { Portal, render } from "solid-js/web";
 import type { FileMentionOption } from "./agents-mentions-editor";
 import { MENTION_PREFIXES } from "./agents-mentions-editor";
-import { sessionInfoAtom } from "../../../lib/atoms";
+import { sessionInfoAtom } from "../../../lib/state/preferences-store";
 import { FilesIcon, IconSpinner, SkillIcon, CustomAgentIcon, OriginalMCPIcon } from "../../../components/ui/icons";
 import { ChevronRight } from "lucide-solid";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../../components/ui/tooltip";
@@ -19,6 +19,10 @@ function FolderOpenIcon({ class: cls }: {
     </svg>;
 }
 import { TypeScriptIcon, JavaScriptIcon, PythonIcon, GoIcon, RustIcon, CodeIcon, ReactIcon, MarkdownInfoIcon, MarkdownIcon, CSSIcon, HTMLIcon, SCSSIcon, JSONIcon, YAMLIcon, ShellIcon, SQLIcon, GraphQLIcon, PrismaIcon, DockerIcon, TOMLIcon, JavaIcon, CIcon, CppIcon, CSharpIcon, PHPIcon, RubyIcon, KotlinIcon, VueIcon, SvelteIcon, AstroIcon, SwiftIcon, PDFIcon, SVGIcon } from "../../../icons/framework-icons";
+import type { Component, JSX } from "solid-js";
+
+/** Icon component type that accepts standard SVG props */
+export type IconComponent = Component<{ class?: string }>;
 
 interface ChangedFile {
 	filePath: string;
@@ -132,7 +136,7 @@ const KNOWN_FILE_ICON_EXTENSIONS = new Set([
 ]);
 // Get file icon component based on file extension
 // If returnNullForUnknown is true, returns null for unknown file types instead of default icon
-export function getFileIconByExtension(filename: string, returnNullForUnknown = false) {
+export function getFileIconByExtension(filename: string, returnNullForUnknown = false): IconComponent | null {
 	const filenameLower = filename.toLowerCase();
 	// Special handling for files without extensions (like Dockerfile)
 	if (filenameLower === "dockerfile" || filenameLower.endsWith("/dockerfile")) {
@@ -483,9 +487,9 @@ function renderTooltipContent(option: FileMentionOption) {
 					Model: {option.model}
 				</div>
 			</Show>
-			<Show when={option.tools && option.tools.length > 0}>
+			<Show when={(option.tools ?? []).length > 0}>
 				<div class="text-xs text-muted-foreground break-words">
-					Tools: {option.tools.join(", ")}
+					Tools: {(option.tools ?? []).join(", ")}
 				</div>
 			</Show>
 			<div class="text-[10px] text-muted-foreground/70 font-mono truncate w-full">
@@ -510,7 +514,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	const [selectedIndex, setSelectedIndex] = createSignal(0);
 	let placementValue: "above" | "below" | null = null;
 	const [debouncedSearchText, setDebouncedSearchText] = createSignal(searchText);
-	const [hoverIndex, setHoverIndex] = createSignal(null);
+	const [hoverIndex, setHoverIndex] = createSignal<number | null>(null);
 	// Get session info (MCP servers, tools) from atom
 	const sessionInfo = sessionInfoAtom[0];
 	// Fetch skills from filesystem (cached for 5 minutes)
@@ -556,7 +560,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 		enabled: isOpen && (!!projectPath || !!(teamId && (!!repository || !!sandboxId || !!branch))),
 		staleTime: 5e3,
 		refetchOnWindowFocus: false,
-		placeholderData: (prev: unknown) => prev,
+		placeholderData: (prev) => prev ?? [],
 	}));
 	const fileResults = () => fileSearchQuery.data ?? [];
 	const isLoading = () => fileSearchQuery.isLoading;
@@ -566,7 +570,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	const changedFileOptions = createMemo(() => {
 		if (!changedFiles.length) return [];
 		const searchLower = debouncedSearchText().toLowerCase();
-		const mapped = changedFiles.filter((file) => matchesMultiWordSearch(file.filePath, searchLower)).map((file) => {
+		const mapped: FileMentionOption[] = changedFiles.filter((file) => matchesMultiWordSearch(file.filePath, searchLower)).map((file) => {
 			// Use displayPath (relative path) for UI display, filePath only for internal ID
 			const displayPath = file.displayPath || file.filePath;
 			const pathParts = displayPath.split("/");
@@ -579,7 +583,8 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 				repository: repository || "",
 				truncatedPath: dirPath,
 				additions: file.additions,
-				deletions: file.deletions
+				deletions: file.deletions,
+				type: "file" as const
 			};
 		});
 		// Sort by relevance using shared function
@@ -588,9 +593,9 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	// Convert API results to options with truncated path
 	// Exclude files that are already in changedFileOptions
 	const changedFilePaths = createMemo(() => new Set(changedFiles.map((f) => f.filePath)));
-	const repoFileOptions = createMemo(() => {
+	const repoFileOptions = createMemo((): FileMentionOption[] => {
 		const searchLower = debouncedSearchText().toLowerCase();
-		const mapped = fileResults().filter((file: any) => !changedFilePaths().has(file.path)).filter((file: any) => matchesMultiWordSearch(file.path, searchLower)).map((file: any) => {
+		const mapped: FileMentionOption[] = fileResults().filter((file: any) => !changedFilePaths().has(file.path)).filter((file: any) => matchesMultiWordSearch(file.path, searchLower)).map((file: any) => {
 			// Get directory path (without filename/foldername) for inline display
 			const pathParts = file.path.split("/");
 			const dirPath = pathParts.slice(0, -1).join("/") || "/";
@@ -609,7 +614,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 		return sortFilesByRelevance(mapped, debouncedSearchText());
 	});
 	// Convert skills to mention options
-	const skillOptions = createMemo(() => {
+	const skillOptions = createMemo((): FileMentionOption[] => {
 		const searchLower = debouncedSearchText().toLowerCase();
 		return (skills() ?? []).filter((skill: { name: string; description: string }) => matchesMultiWordSearch(skill.name, searchLower) || matchesMultiWordSearch(skill.description, searchLower)).map((skill: { name: string; description: string; path: string; source?: string }) => ({
 			id: `${MENTION_PREFIXES.SKILL}${skill.name}`,
@@ -619,11 +624,11 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 			truncatedPath: skill.description,
 			type: "skill" as const,
 			description: skill.description,
-			source: skill.source
+			source: skill.source as FileMentionOption["source"]
 		}));
 	});
 	// Convert custom agents to mention options
-	const agentOptions = createMemo(() => {
+	const agentOptions = createMemo((): FileMentionOption[] => {
 		const searchLower = debouncedSearchText().toLowerCase();
 		return (customAgents() ?? []).filter((agent: { name: string; description: string }) => matchesMultiWordSearch(agent.name, searchLower) || matchesMultiWordSearch(agent.description, searchLower)).map((agent: { name: string; description: string; path: string; tools?: string[]; model?: string; source?: string }) => ({
 			id: `${MENTION_PREFIXES.AGENT}${agent.name}`,
@@ -635,12 +640,12 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 			description: agent.description,
 			tools: agent.tools,
 			model: agent.model,
-			source: agent.source
+			source: agent.source as FileMentionOption["source"]
 		}));
 	});
 	// Convert MCP tools to mention options (stable, doesn't depend on search)
 	// MCP tools have format like "mcp__servername__toolname"
-	const allToolOptions = createMemo(() => {
+	const allToolOptions = createMemo((): FileMentionOption[] => {
 		const info = sessionInfo();
 		if (!info?.tools || !info?.mcpServers) return [];
 		// Get connected MCP server names
@@ -670,10 +675,10 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 		});
 	});
 	// Filtered tool options based on search
-	const toolOptions = createMemo(() => {
+	const toolOptions = createMemo((): FileMentionOption[] => {
 		if (!debouncedSearchText()) return allToolOptions();
 		const searchLower = debouncedSearchText().toLowerCase();
-		return allToolOptions().filter((tool: { label: string; path: string; mcpServer?: string }) => {
+		return allToolOptions().filter((tool) => {
 			// Search by: display name, raw tool name, full path, server name
 			return matchesMultiWordSearch(tool.label, searchLower) || matchesMultiWordSearch(tool.path, searchLower) || matchesMultiWordSearch(tool.mcpServer || "", searchLower);
 		});
@@ -701,10 +706,10 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	// Root view shows changed files + category navigation options
 	// Search filters globally in root view, within category in subpage
 	// If no skills, agents, or tools, skip root view and show files directly
-	const options = createMemo(() => {
+	const options = createMemo((): FileMentionOption[] => {
 		// SUBPAGE: Files (or if no skills/agents/tools, show files directly)
 		if (showingFilesList || hasOnlyFiles()) {
-			const allFiles = [...changedFileOptions(), ...repoFileOptions()];
+			const allFiles: FileMentionOption[] = [...changedFileOptions(), ...repoFileOptions()];
 			if (debouncedSearchText()) {
 				return sortFilesByRelevance(allFiles, debouncedSearchText());
 			}
@@ -727,7 +732,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 			// Global search: search across changed files + categories + skills + agents + tools + repo files
 			const searchLower = debouncedSearchText().toLowerCase();
 			const filteredCategories = availableCategoryOptions().filter((c) => c.label.toLowerCase().includes(searchLower));
-			const allItems = [
+			const allItems: FileMentionOption[] = [
 				...changedFileOptions(),
 				...filteredCategories,
 				...skillOptions(),

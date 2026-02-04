@@ -7,7 +7,7 @@ import { ChatMarkdownRenderer } from "@/components/chat-markdown-renderer";
 import { useQuery } from "@tanstack/solid-query";
 import { desktopRpc } from "@/lib/desktop-rpc";
 import { planContentCacheAtomFamily } from "../atoms";
-import type { AgentMode } from "../../agents/atoms";
+import type { AgentMode } from "../../../lib/state/agents-store";
 interface PlanWidgetProps {
 	/** Chat ID for cache */
 	chatId: string;
@@ -36,8 +36,8 @@ export function PlanWidget(props: PlanWidgetProps) {
 	// Expanded/collapsed state
 	const [isExpanded, setIsExpanded] = createSignal(false);
 	// Refs for scroll gradients
-	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
-	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement>(null);
+	const [contentRef, setContentRef] = createSignal<HTMLDivElement | null>(null);
+	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement | null>(null);
 	// Plan content cache to avoid flashing loading state
 	const [planCache, setPlanCache] = planContentCacheAtomFamily(effectiveChatId());
 	// Fetch plan file content via desktop RPC
@@ -69,7 +69,7 @@ export function PlanWidget(props: PlanWidgetProps) {
 	const displayContent = createMemo(() => {
 		const content = planContent();
 		if (content) return content;
-		const cache = planCache;
+		const cache = planCache();
 		if (cache?.isReady && cache.planPath === props.planPath) {
 			return cache.content;
 		}

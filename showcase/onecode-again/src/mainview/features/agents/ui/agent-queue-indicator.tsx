@@ -71,14 +71,15 @@ export function AgentQueueIndicator(props: AgentQueueIndicatorProps) {
 	const merged = mergeProps({ isStreaming: false, hasStatusCardBelow: false }, props);
 	const [local] = splitProps(merged, ["queue", "onRemoveItem", "onSendNow", "isStreaming", "hasStatusCardBelow"]);
 	// Load expanded state from localStorage (window-scoped)
-	const [isExpanded, setIsExpanded] = createSignal(() => {
+	const initialExpanded = (() => {
 		if (typeof window === "undefined") return true;
 		const saved = localStorage.getItem(getQueueExpandedKey());
 		return saved !== null ? saved === "true" : true;
-	});
+	})();
+	const [isExpanded, setIsExpanded] = createSignal(initialExpanded);
 	// Save expanded state to localStorage (window-scoped)
 	createEffect(() => {
-		localStorage.setItem(getQueueExpandedKey(), String(isExpanded));
+		localStorage.setItem(getQueueExpandedKey(), String(isExpanded()));
 	});
 	if (local.queue.length === 0) {
 		return null;
@@ -90,14 +91,14 @@ export function AgentQueueIndicator(props: AgentQueueIndicatorProps) {
 		local.hasStatusCardBelow ? "border-b-0" : "border-b-0 pb-6"
 	)}>
       {	/* Header - at top */}
-      <div role="button" tabIndex={0} onClick={() => setIsExpanded(!isExpanded)} onKeyDown={(e) => {
+      <div role="button" tabIndex={0} onClick={() => setIsExpanded(!isExpanded())} onKeyDown={(e) => {
  if (e.key === "Enter" || e.key === " ") {
 			e.preventDefault();
-			setIsExpanded(!isExpanded);
+			setIsExpanded(!isExpanded());
 		}
 	}} aria-expanded={isExpanded()} aria-label={`${isExpanded() ? "Collapse" : "Expand"} queue`} class="flex items-center justify-between pr-1 pl-3 h-8 cursor-pointer hover:bg-muted/50 transition-colors duration-150 focus:outline-none rounded-sm">
         <div class="flex items-center gap-2 text-xs flex-1 min-w-0">
-          <ChevronDown class={cn("w-4 h-4 text-muted-foreground transition-transform duration-200", !isExpanded && "-rotate-90")} />
+          <ChevronDown class={cn("w-4 h-4 text-muted-foreground transition-transform duration-200", !isExpanded() && "-rotate-90")} />
 	          <span class="text-xs text-muted-foreground">
 	            {local.queue.length} in queue
 	          </span>
@@ -127,7 +128,7 @@ export function AgentQueueIndicator(props: AgentQueueIndicatorProps) {
 		]
 	}} class="overflow-hidden">
  <div class="border-t border-border max-h-[200px] overflow-y-auto">
-	              <For each={local.queue}>{(item) => <QueueItemRow key={item.id} item={item} onRemove={local.onRemoveItem} onSendNow={local.onSendNow} />}</For>
+	              <For each={local.queue}>{(item) => <QueueItemRow item={item} onRemove={local.onRemoveItem} onSendNow={local.onSendNow} />}</For>
 	            </div>
           </Motion.div>
         </Show>

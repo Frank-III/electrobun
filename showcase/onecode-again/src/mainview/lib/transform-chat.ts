@@ -4,9 +4,19 @@
  */
 type AnyObj = Record<string, unknown>;
 
+/** Type guard to check if a value is a record/object */
+function isRecord(value: unknown): value is AnyObj {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function normalizeMessageParts(parts: unknown[]): unknown[] {
-  return parts.map((part: AnyObj) => {
-    if (part.type === "tool-invocation" && part.toolName) {
+  return parts.map((part) => {
+    if (!isRecord(part)) return part;
+
+    const partType = part.type;
+    if (typeof partType !== "string") return part;
+
+    if (partType === "tool-invocation" && part.toolName) {
       return {
         ...part,
         type: `tool-${part.toolName}`,
@@ -14,11 +24,12 @@ function normalizeMessageParts(parts: unknown[]): unknown[] {
         input: part.input || part.args,
       };
     }
-    if (part.type?.startsWith("tool-") && part.state) {
+    if (partType.startsWith("tool-") && part.state) {
       let normalizedState = part.state;
       if (part.state === "result") {
+        const result = part.result;
         normalizedState =
-          part.result?.success === false ? "output-error" : "output-available";
+          isRecord(result) && result.success === false ? "output-error" : "output-available";
       }
       return {
         ...part,

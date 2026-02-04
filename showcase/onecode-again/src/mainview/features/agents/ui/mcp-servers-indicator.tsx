@@ -4,7 +4,7 @@ import { Button } from "../../../components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { OriginalMCPIcon } from "../../../components/ui/icons";
-import { sessionInfoAtom, type MCPServerStatus } from "../../../lib/atoms";
+import { sessionInfoAtom, type MCPServerStatus } from "../../../lib/state/preferences-store";
 import { cn } from "../../../lib/utils";
 import { useQuery } from "@tanstack/solid-query";
 import { desktopRpc } from "../../../lib/desktop-rpc";
@@ -27,19 +27,19 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
 	const mcpQuery = useQuery(() => ({
 		queryKey: ["claude", "getMcpConfig", local.projectPath] as const,
 		queryFn: () => desktopRpc.claude.getMcpConfig({ projectPath: local.projectPath! }),
-		enabled: !!local.projectPath && !sessionInfo?.mcpServers?.length,
+		enabled: !!local.projectPath && !sessionInfo()?.mcpServers?.length,
 		staleTime: 5 * 60 * 1e3,
 	}));
 	const mcpConfig = () => mcpQuery.data;
 	// Update sessionInfo with MCP config if we don't have it yet
 	createEffect(() => {
 		const config = mcpConfig();
-		if (config?.mcpServers?.length && !sessionInfo?.mcpServers?.length) {
+		if (config?.mcpServers?.length && !sessionInfo()?.mcpServers?.length) {
 			setSessionInfo((prev) => ({
 				tools: prev?.tools || [],
 				mcpServers: config.mcpServers.map((s) => ({
 					name: s.name,
-					status: s.status
+					status: s.status as MCPServerStatus
 				})),
 				plugins: prev?.plugins || [],
 				skills: prev?.skills || []
@@ -52,19 +52,21 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
 	const [serverButtonsRef, setServerButtonsRef] = createSignal<(HTMLButtonElement | null)[]>([]);
 	// Count connected servers
 	const connectedCount = createMemo(() => {
-		if (!sessionInfo?.mcpServers) return 0;
-		return sessionInfo.mcpServers.filter((s) => s.status === "connected").length;
+		const info = sessionInfo();
+		if (!info?.mcpServers) return 0;
+		return info.mcpServers.filter((s) => s.status === "connected").length;
 	});
 	// Get tools grouped by MCP server
 	const toolsByServer = createMemo(() => {
-		if (!sessionInfo?.tools || !sessionInfo?.mcpServers) return new Map();
+		const info = sessionInfo();
+		if (!info?.tools || !info?.mcpServers) return new Map();
 		const map = new Map<string, string[]>();
 		// Initialize map with all servers
-		for (const server of sessionInfo.mcpServers) {
+		for (const server of info.mcpServers) {
 			map.set(server.name, []);
 		}
 		// Group tools by server (format: mcp__servername__toolname)
-		for (const tool of sessionInfo.tools) {
+		for (const tool of info.tools) {
 			if (!tool.startsWith("mcp__")) continue;
 			const parts = tool.split("__");
 			if (parts.length < 3) continue;
@@ -77,7 +79,7 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
 		return map;
 	});
 	// Don't show if no session info or no MCP servers
-	if (!sessionInfo?.mcpServers || sessionInfo.mcpServers.length === 0) {
+	if (!sessionInfo()?.mcpServers || sessionInfo()!.mcpServers.length === 0) {
 		return null;
 	}
 	const toggleServer = (serverName: string) => {
@@ -111,7 +113,9 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
 	};
 	// Keyboard navigation handler
 	const handleKeyDown = (e: KeyboardEvent) => {
-		const serverCount = sessionInfo.mcpServers.length;
+		const info = sessionInfo();
+		if (!info?.mcpServers) return;
+		const serverCount = info.mcpServers.length;
 		switch (e.key) {
 			case "ArrowDown":
 				e.preventDefault();
@@ -131,9 +135,9 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
 				break;
 			case "Enter":
 			case " ":
-				if (focusedIndex >= 0 && focusedIndex < serverCount) {
-					const server = sessionInfo.mcpServers[focusedIndex];
-					const hasTools = (toolsByServer.get(server.name) || []).length > 0;
+				if (focusedIndex() >= 0 && focusedIndex() < serverCount) {
+					const server = info.mcpServers[focusedIndex()];
+					const hasTools = (toolsByServer().get(server.name) || []).length > 0;
 					if (hasTools) {
 						e.preventDefault();
 						toggleServer(server.name);
@@ -151,7 +155,7 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
           <PopoverTrigger asChild>
             <Button variant="ghost" size="sm" class="h-6 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors rounded-md" aria-label="MCP Servers" aria-haspopup="dialog" aria-expanded={isOpen()}>
               <OriginalMCPIcon class="h-3.5 w-3.5" aria-hidden="true" />
-              <span>{connectedCount} MCP</span>
+              <span>{connectedCount()} MCP</span>
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
@@ -171,11 +175,11 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
         </div>
 
         <div class="max-h-64 overflow-y-auto py-1" role="list" aria-labelledby="mcp-servers-title">
-          {sessionInfo.mcpServers.map((server, index) => {
-		const tools = toolsByServer.get(server.name) || [];
-		const isExpanded = expandedServers.has(server.name);
+          {sessionInfo()!.mcpServers.map((server, index) => {
+		const tools = toolsByServer().get(server.name) || [];
+		const isExpanded = expandedServers().has(server.name);
 		const hasTools = tools.length > 0;
-		return <div key={server.name} role="listitem">
+		return <div role="listitem">
                 {		/* Server row */}
                 <button ref={(el) => {
  setServerButtonsRef((prev) => {
@@ -183,7 +187,7 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
 		next[index] = el;
 		return next;
 	});
-		}} onClick={() => hasTools && toggleServer(server.name)} onFocus={() => setFocusedIndex(index)} class={cn("w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors", hasTools ? "hover:bg-muted/50 cursor-pointer" : "cursor-default", focusedIndex === index && "bg-muted/50")} aria-expanded={hasTools ? isExpanded : undefined} aria-controls={hasTools ? `tools-${server.name}` : undefined} tabIndex={0} title={server.error || getStatusText(server.status)}>
+		}} onClick={() => hasTools && toggleServer(server.name)} onFocus={() => setFocusedIndex(index)} class={cn("w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors", hasTools ? "hover:bg-muted/50 cursor-pointer" : "cursor-default", focusedIndex() === index && "bg-muted/50")} aria-expanded={hasTools ? isExpanded : undefined} aria-controls={hasTools ? `tools-${server.name}` : undefined} tabIndex={0} title={server.error || getStatusText(server.status)}>
                   {		/* Expand/collapse chevron */}
                   <ChevronRight class={cn("h-3 w-3 text-muted-foreground transition-transform shrink-0", isExpanded && "rotate-90", !hasTools && "opacity-0")} aria-hidden="true" />
 
@@ -195,7 +199,7 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
                     <span class="truncate block">{server.name}</span>
                     <Show when={server.serverInfo?.version}>
                       <span class="text-[10px] text-muted-foreground/70 truncate block">
-                        v{server.serverInfo.version}
+                        v{server.serverInfo?.version}
                       </span>
                     </Show>
                   </div>
@@ -218,7 +222,7 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
                 { /* Tools list (expanded) */}
                 <Show when={isExpanded && hasTools}>
                   <div id={`tools-${server.name}`} class="pl-8 pr-3 py-1 space-y-0.5" role="list" aria-label={`Tools for ${server.name}`}>
-                    {tools.map((tool: string) => <div key={tool} class="text-xs text-muted-foreground py-0.5 truncate" title={tool} role="listitem">
+                    {tools.map((tool: string) => <div class="text-xs text-muted-foreground py-0.5 truncate" title={tool} role="listitem">
                         {tool}
                       </div>)}
                   </div>
@@ -228,7 +232,7 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
         </div>
 
         {	/* Plugins section */}
-        <Show when={sessionInfo.plugins && sessionInfo.plugins.length > 0}>
+        <Show when={sessionInfo()?.plugins && sessionInfo()!.plugins.length > 0}>
           <>
             <div class="border-t px-3 py-2">
               <h4 class="font-medium text-sm" id="plugins-title">
@@ -236,7 +240,7 @@ export function McpServersIndicator(props: McpServersIndicatorProps) {
               </h4>
             </div>
             <div class="pb-1" role="list" aria-labelledby="plugins-title">
-              {sessionInfo.plugins.map((plugin) => <div key={plugin.path} class="px-3 py-1.5 text-sm flex items-center gap-2" role="listitem">
+              {sessionInfo()!.plugins.map((plugin) => <div class="px-3 py-1.5 text-sm flex items-center gap-2" role="listitem">
                   <span class="w-2 h-2 rounded-full bg-green-500" aria-label="Active" />
                   <span class="truncate">{plugin.name}</span>
                 </div>)}

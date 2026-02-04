@@ -13,7 +13,7 @@ const [store, setStore] = createStore<MessageQueueState>({
   queues: {},
 })
 
-export function useMessageQueueStore() {
+function _useMessageQueueStore() {
   return {
     get queues() { return store.queues },
 
@@ -61,36 +61,39 @@ export function getMessageQueueState() {
 }
 
 // Return type for hook and getState (for TypeScript augmentation)
-export type MessageQueueStoreApi = ReturnType<typeof useMessageQueueStore>
+export type MessageQueueStoreApi = ReturnType<typeof _useMessageQueueStore>
 
 // Zustand-compatible getState() for imperative access (e.g. QueueProcessor)
-;(useMessageQueueStore as typeof useMessageQueueStore & { getState(): MessageQueueStoreApi }).getState = () => ({
-  get queues() {
-    return store.queues
-  },
-  addToQueue: (subChatId: string, item: AgentQueueItem) => {
-    setStore("queues", subChatId, (current) => [...(current || []), item])
-  },
-  removeFromQueue: (subChatId: string, itemId: string) => {
-    setStore("queues", subChatId, (current) => removeQueueItem(current || [], itemId))
-  },
-  getQueue: (subChatId: string): AgentQueueItem[] => store.queues[subChatId] ?? EMPTY_QUEUE,
-  getNextItem: (subChatId: string): AgentQueueItem | null => {
-    const queue = store.queues[subChatId] || []
-    return queue.find((item) => item.status === "pending") || null
-  },
-  clearQueue: (subChatId: string) => {
-    setStore("queues", subChatId, [])
-  },
-  popItem: (subChatId: string, itemId: string): AgentQueueItem | null => {
-    const currentQueue = store.queues[subChatId] || []
-    const foundItem = currentQueue.find((i) => i.id === itemId) || null
-    if (foundItem) {
-      setStore("queues", subChatId, (current) => (current || []).filter((i) => i.id !== itemId))
-    }
-    return foundItem
-  },
-  prependItem: (subChatId: string, item: AgentQueueItem) => {
-    setStore("queues", subChatId, (current) => [item, ...(current || [])])
-  },
+type UseMessageQueueStoreWithGetState = typeof _useMessageQueueStore & { getState(): MessageQueueStoreApi }
+export const useMessageQueueStore: UseMessageQueueStoreWithGetState = Object.assign(_useMessageQueueStore, {
+  getState: (): MessageQueueStoreApi => ({
+    get queues() {
+      return store.queues
+    },
+    addToQueue: (subChatId: string, item: AgentQueueItem) => {
+      setStore("queues", subChatId, (current) => [...(current || []), item])
+    },
+    removeFromQueue: (subChatId: string, itemId: string) => {
+      setStore("queues", subChatId, (current) => removeQueueItem(current || [], itemId))
+    },
+    getQueue: (subChatId: string): AgentQueueItem[] => store.queues[subChatId] ?? EMPTY_QUEUE,
+    getNextItem: (subChatId: string): AgentQueueItem | null => {
+      const queue = store.queues[subChatId] || []
+      return queue.find((item) => item.status === "pending") || null
+    },
+    clearQueue: (subChatId: string) => {
+      setStore("queues", subChatId, [])
+    },
+    popItem: (subChatId: string, itemId: string): AgentQueueItem | null => {
+      const currentQueue = store.queues[subChatId] || []
+      const foundItem = currentQueue.find((i) => i.id === itemId) || null
+      if (foundItem) {
+        setStore("queues", subChatId, (current) => (current || []).filter((i) => i.id !== itemId))
+      }
+      return foundItem
+    },
+    prependItem: (subChatId: string, item: AgentQueueItem) => {
+      setStore("queues", subChatId, (current) => [item, ...(current || [])])
+    },
+  }),
 })

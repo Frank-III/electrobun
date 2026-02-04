@@ -322,8 +322,10 @@ export function ChatInputArea({ editorRef, setEditorRef, fileInputRef, setFileIn
 	const [currentSubChatIdRef, setCurrentSubChatIdRef] = createSignal<string>(subChatId);
 	const [currentChatIdRef, setCurrentChatIdRef] = createSignal<string | null>(parentChatId);
 	const [currentDraftTextRef, setCurrentDraftTextRef] = createSignal<string>("");
-	setCurrentSubChatIdRef(subChatId);
-	setCurrentChatIdRef(parentChatId);
+	createEffect(() => {
+		setCurrentSubChatIdRef(subChatId);
+		setCurrentChatIdRef(parentChatId);
+	});
 	// Keyboard shortcut: Cmd+/ to open model selector
 	createEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {

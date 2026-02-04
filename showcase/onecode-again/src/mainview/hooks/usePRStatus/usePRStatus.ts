@@ -1,4 +1,15 @@
-import type { GitHubStatus } from "../../../main/lib/git/github/types";
+// GitHubStatus type inferred from desktop RPC
+interface GitHubStatus {
+	pr: {
+		number: number;
+		title: string;
+		url: string;
+		state: string;
+		reviewDecision?: string;
+	} | null;
+	repoUrl: string | null;
+	branchExistsOnRemote: boolean;
+}
 import { useQuery } from "@tanstack/solid-query";
 import { desktopRpc } from "../../lib/desktop-rpc";
 

@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/solid-query";
 import { desktopRpc } from "../../../lib/desktop-rpc";
 import { cn } from "../../../lib/utils";
 import { ToolSelector } from "./tool-selector";
+import type { AgentModel } from "../../../../shared/rpc-schema";
 
 interface FileAgent {
 	name: string;
@@ -12,7 +13,7 @@ interface FileAgent {
 	prompt: string;
 	tools?: string[];
 	disallowedTools?: string[];
-	model?: "sonnet" | "opus" | "haiku" | "inherit";
+	model?: AgentModel;
 	source: "user" | "project";
 	path: string;
 }
@@ -33,8 +34,8 @@ export function AgentDialog(props: AgentDialogProps) {
 	const [name, setName] = createSignal("");
 	const [description, setDescription] = createSignal("");
 	const [prompt, setPrompt] = createSignal("");
-	const [model, setModel] = createSignal<string>("inherit");
-	const [source, setSource] = createSignal<string>("user");
+	const [model, setModel] = createSignal<AgentModel>("inherit");
+	const [source, setSource] = createSignal<"user" | "project">("user");
 	const [toolMode, setToolMode] = createSignal<ToolMode>("all");
 	const [selectedTools, setSelectedTools] = createSignal<string[]>([]);
 
@@ -282,7 +283,7 @@ export function AgentDialog(props: AgentDialogProps) {
 									<ToolSelector
 										selectedTools={selectedTools()}
 										onChange={setSelectedTools}
-										mode={toolMode()}
+										mode={toolMode() as "allowlist" | "denylist"}
 									/>
 								</Show>
 							</div>

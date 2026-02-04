@@ -5,7 +5,7 @@ import { getQueryClient } from "../../../contexts/QueryProvider";
 import { Button } from "../../ui/button";
 import { Switch } from "../../ui/switch";
 import { toast } from "solid-sonner";
-import { Copy, FolderOpen, RefreshCw, Terminal, Check, Scan, WifiOff } from "lucide-solid";
+import { Copy, FolderOpen, RefreshCw, Terminal, Check, WifiOff } from "lucide-solid";
 
 function useIsNarrowScreen(): Accessor<boolean> {
 	const [isNarrow, setIsNarrow] = createSignal(false);
@@ -19,42 +19,11 @@ function useIsNarrowScreen(): Accessor<boolean> {
 	});
 	return isNarrow;
 }
-// React Scan state management (only available in dev mode)
-const REACT_SCAN_SCRIPT_ID = "react-scan-script";
-const REACT_SCAN_STORAGE_KEY = "react-scan-enabled";
-function loadReactScan(): Promise<void> {
-	return new Promise((resolve, reject) => {
-		if (document.getElementById(REACT_SCAN_SCRIPT_ID)) {
-			resolve();
-			return;
-		}
-		const script = document.createElement("script");
-		script.id = REACT_SCAN_SCRIPT_ID;
-		script.src = "https://unpkg.com/react-scan/dist/auto.global.js";
-		script.async = true;
-		script.onload = () => resolve();
-		script.onerror = () => reject(new Error("Failed to load React Scan"));
-		document.head.appendChild(script);
-	});
-}
-function unloadReactScan(): void {
-	const script = document.getElementById(REACT_SCAN_SCRIPT_ID);
-	if (script) {
-		script.remove();
-	}
-	// React Scan adds a toolbar element, try to remove it
-	const toolbar = document.querySelector("[data-react-scan]");
-	if (toolbar) {
-		toolbar.remove();
-	}
-}
 export function AgentsDebugTab() {
 	const [copiedPath, setCopiedPath] = createSignal(false);
 	const [copiedInfo, setCopiedInfo] = createSignal(false);
-	const [reactScanEnabled, setReactScanEnabled] = createSignal(false);
-	const [reactScanLoading, setReactScanLoading] = createSignal(false);
 	const isNarrowScreen = useIsNarrowScreen();
-	// Check if we're in dev mode (only show React Scan in dev)
+	// Check if we're in dev mode
 	const isDev = import.meta.env.DEV;
 	const queryClient = getQueryClient();
 	// Fetch system info
@@ -106,14 +75,7 @@ export function AgentsDebugTab() {
 		},
 		onError: (error: Error) => toast.error(error.message),
 	}));
-	const logoutMutation = useMutation(() => ({
-		mutationFn: () => desktopRpc.debug.logout.mutate(undefined as never),
-		onSuccess: () => {
-			toast.success("Logged out. Reloading...");
-			setTimeout(() => window.location.reload(), 500);
-		},
-		onError: (error: Error) => toast.error(error.message),
-	}));
+	// logout mutation removed - not available in current RPC schema
 	const openFolderMutation = useMutation(() => ({
 		mutationFn: () => desktopRpc.debug.openUserDataFolder.mutate(undefined as never),
 		onError: (error: Error) => toast.error(error.message),
@@ -139,34 +101,6 @@ export function AgentsDebugTab() {
 	const handleOpenDevTools = () => {
 		// TODO: Not available in Electrobun yet;
 	};
-	const handleReactScanToggle = async (enabled: boolean) => {
-		if (!isDev) return;
-		setReactScanLoading(true);
-		try {
-			if (enabled) {
-				await loadReactScan();
-				localStorage.setItem(REACT_SCAN_STORAGE_KEY, "true");
-				setReactScanEnabled(true);
-				toast.success("React Scan enabled", { description: "Reload the page to see re-render highlights" });
-			} else {
-				unloadReactScan();
-				localStorage.removeItem(REACT_SCAN_STORAGE_KEY);
-				setReactScanEnabled(false);
-				toast.success("React Scan disabled", { description: "Reload the page to fully remove it" });
-			}
-		} catch (error) {
-			toast.error("Failed to toggle React Scan");
-			console.error(error);
-		} finally {
-			setReactScanLoading(false);
-		}
-	};
-	// Initialize React Scan state from localStorage (dev only)
-	createEffect(() => {
-		if (isDev && localStorage.getItem(REACT_SCAN_STORAGE_KEY) === "true") {
-			loadReactScan().then(() => setReactScanEnabled(true)).catch(console.error);
-		}
-	});
 	const isLoading = () => isLoadingSystem() || isLoadingDb();
     return <div class="p-6 space-y-6">
       {	/* Header - hidden on narrow screens since it's in the navigation bar */}
@@ -226,18 +160,6 @@ export function AgentsDebugTab() {
           <div class="rounded-lg border bg-muted/30 divide-y">
             <div class="flex items-center justify-between p-3">
               <div class="flex items-center gap-2">
-                <Scan class="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <span class="text-sm">React Scan</span>
-                  <p class="text-xs text-muted-foreground">
-                    Highlight component re-renders
-                  </p>
-                </div>
-              </div>
-              <Switch checked={reactScanEnabled()} onCheckedChange={handleReactScanToggle} disabled={reactScanLoading()} />
-            </div>
-            <div class="flex items-center justify-between p-3">
-              <div class="flex items-center gap-2">
                 <WifiOff class="h-4 w-4 text-muted-foreground" />
                 <div>
                   <span class="text-sm">Simulate Offline</span>
@@ -246,7 +168,7 @@ export function AgentsDebugTab() {
                   </p>
                 </div>
               </div>
-              <Switch checked={offlineSimulation()?.enabled ?? false} onCheckedChange={(enabled) => setOfflineSimulationMutation.mutate({ enabled })} disabled={setOfflineSimulationMutation.isPending} />
+              <Switch checked={offlineSimulation()?.enabled ?? false} onCheckedChange={(enabled: boolean) => setOfflineSimulationMutation.mutate({ enabled })} disabled={setOfflineSimulationMutation.isPending} />
             </div>
           </div>
         </div>
@@ -333,13 +255,7 @@ export function AgentsDebugTab() {
 	}} disabled={clearChatsMutation.isPending}>
             {clearChatsMutation.isPending ? "..." : "Clear Chats"}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => {
-		if (confirm("Logout? You will need to sign in again.")) {
-			logoutMutation.mutate();
-		}
-	}} disabled={logoutMutation.isPending}>
-            {logoutMutation.isPending ? "..." : "Logout"}
-          </Button>
+          {/* Logout button removed - not available in current RPC schema */}
           <Button variant="destructive" size="sm" onClick={() => {
 		if (confirm("Reset everything? This will clear all data and log you out.")) {
 			clearAllDataMutation.mutate();

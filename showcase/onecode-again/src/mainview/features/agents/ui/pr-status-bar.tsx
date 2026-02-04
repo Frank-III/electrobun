@@ -35,7 +35,7 @@ export function PrStatusBar(props: PrStatusBarProps) {
 	const isLoading = () => prStatusQuery.isLoading;
 	const pr = () => status()?.pr;
 	const handleOpenPr = () => {
-		window.desktopApi.openExternal(local.prUrl);
+		window.desktopApi?.openExternal(local.prUrl);
 	};
 	return <div class="flex items-center gap-3 px-3 py-2 bg-muted/30 border-b border-border/50">
       {	/* PR Link */}

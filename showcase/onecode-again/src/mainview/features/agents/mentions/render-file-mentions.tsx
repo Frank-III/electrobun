@@ -1,5 +1,4 @@
-import type { JSX } from "solid-js";
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, For, Show, type Accessor, type JSX } from "solid-js";
 import { getFileIconByExtension } from "./agents-file-mention";
 import { FilesIcon, SkillIcon, CustomAgentIcon, OriginalMCPIcon } from "../../../components/ui/icons";
 import { MENTION_PREFIXES } from "./agents-mentions-editor";
@@ -268,7 +267,7 @@ function renderTextWithUltrathink(text: string): JSX.Element {
 * Hook to render text with file/folder mentions and ultrathink highlighting
 * Returns array of React nodes with mentions rendered as chips
 */
-export function useRenderFileMentions(text: string): JSX.Element[] {
+export function useRenderFileMentions(text: string): Accessor<JSX.Element[]> {
 	return createMemo(() => {
 		const nodes: JSX.Element[] = [];
 		const regex = /@\[([^\]]+)\]/g;
@@ -278,23 +277,23 @@ export function useRenderFileMentions(text: string): JSX.Element[] {
 		while ((match = regex.exec(text)) !== null) {
 			// Add text before mention (with ultrathink highlighting)
 			if (match.index > lastIndex) {
-				nodes.push(<span key={`text-${key++}`}>
+				nodes.push(<span>
             {renderTextWithUltrathink(text.slice(lastIndex, match.index))}
           </span>);
 			}
 			const id = match[1];
 			const mention = parseMention(id);
 			if (mention) {
-				nodes.push(<MentionChip key={`mention-${key++}`} mention={mention} />);
+				nodes.push(<MentionChip mention={mention} />);
 			} else {
 				// Fallback: show as plain text if not a valid mention
-				nodes.push(<span key={`unknown-${key++}`}>{match[0]}</span>);
+				nodes.push(<span>{match[0]}</span>);
 			}
 			lastIndex = match.index + match[0].length;
 		}
 		// Add remaining text (with ultrathink highlighting)
 		if (lastIndex < text.length) {
-			nodes.push(<span key={`text-end-${key}`}>
+			nodes.push(<span>
           {renderTextWithUltrathink(text.slice(lastIndex))}
         </span>);
 		}
@@ -309,7 +308,7 @@ export function RenderFileMentions({ text, class: cls }: {
 	class?: string;
 }) {
 	const nodes = useRenderFileMentions(text);
-	return <span class={cls}>{nodes}</span>;
+	return <span class={cls}>{nodes()}</span>;
 }
 /**
 * Extract all file/folder mentions from text

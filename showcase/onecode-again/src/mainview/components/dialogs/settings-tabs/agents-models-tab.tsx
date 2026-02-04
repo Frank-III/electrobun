@@ -32,7 +32,7 @@ interface AccountRowProps {
 	account: {
 		id: string;
 		displayName: string | null;
-		email: string | null;
+		email?: string | null;
 		connectedAt: string | null;
 	};
 	isActive: boolean;

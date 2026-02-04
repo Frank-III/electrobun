@@ -31,15 +31,15 @@ export function PreviewSetupHoverCard(props: PreviewSetupHoverCardProps) {
           <div class="relative w-full flex items-start justify-center pt-3">
             { /* Container showing only top 70% of image (16/7 aspect ratio = 70% of 16/10) */}
             <div class="relative w-full overflow-hidden rounded-t-lg border" style={{
- aspectRatio: "16/7",
-		maxHeight: "110px"
-	}}>
+	"aspect-ratio": "16/7",
+	"max-height": "110px"
+}}>
               <div class="absolute inset-0" style={{
 		height: "142.86%",
 		top: 0
 	}}>
                 {	/* Desktop: use regular img tag instead of next/image */}
-                <img src={resolvedTheme() === "dark" ? "/agents-onboarding-dark.webp" : "/agents-onboarding-light.webp"} alt="Preview setup" class="object-cover w-full h-full" style={{ objectPosition: "top" }} />
+                <img src={resolvedTheme() === "dark" ? "/agents-onboarding-dark.webp" : "/agents-onboarding-light.webp"} alt="Preview setup" class="object-cover w-full h-full" style={{ "object-position": "top" }} />
               </div>
             </div>
           </div>

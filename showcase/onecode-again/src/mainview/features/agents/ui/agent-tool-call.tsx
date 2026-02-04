@@ -1,4 +1,4 @@
-import { splitProps, Show } from "solid-js";
+import { splitProps, Show, type Component } from "solid-js";
 import { TextShimmer } from "../../../components/ui/text-shimmer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 interface AgentToolCallProps {
@@ -21,11 +21,11 @@ export function AgentToolCall(props: AgentToolCallProps) {
 	const subtitleElement = (
 		<Show when={subtitleStr}>
 			<Show when={local.tooltipContent} fallback={
-				<span class="text-muted-foreground/60 font-normal truncate min-w-0" dangerouslySetInnerHTML={{ __html: subtitleStr! }} />
+				<span class="text-muted-foreground/60 font-normal truncate min-w-0" innerHTML={subtitleStr!} />
 			}>
 				<Tooltip>
 					<TooltipTrigger asChild>
-						<span class="text-muted-foreground/60 font-normal truncate min-w-0" dangerouslySetInnerHTML={{ __html: subtitleStr! }} />
+						<span class="text-muted-foreground/60 font-normal truncate min-w-0" innerHTML={subtitleStr!} />
 					</TooltipTrigger>
 					<TooltipContent side="top" class="px-2 py-1.5 max-w-none flex items-center justify-center">
 						<span class="font-mono text-[10px] text-muted-foreground whitespace-nowrap leading-none">

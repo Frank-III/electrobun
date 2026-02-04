@@ -25,30 +25,38 @@ function getWidgetIcon(widgetId: WidgetId) {
 export function WidgetSettingsPopup(props: WidgetSettingsPopupProps) {
 	const visibilityAtom = createMemo(() => widgetVisibilityAtomFamily(props.workspaceId));
 	const orderAtom = createMemo(() => widgetOrderAtomFamily(props.workspaceId));
-	const [visibleWidgets, setVisibleWidgets] = visibilityAtom;
-	const [widgetOrder, setWidgetOrder] = orderAtom;
+	const visibleWidgets = () => visibilityAtom()[0]();
+	const setVisibleWidgets = (value: WidgetId[] | ((prev: WidgetId[]) => WidgetId[])) => {
+		visibilityAtom()[1](value);
+	};
+	const widgetOrder = () => orderAtom()[0]();
+	const setWidgetOrder = (value: WidgetId[] | ((prev: WidgetId[]) => WidgetId[])) => {
+		orderAtom()[1](value);
+	};
 	// Drag state
-	const [draggedWidget, setDraggedWidget] = createSignal(null);
-	const [dragOverWidget, setDragOverWidget] = createSignal(null);
+	const [draggedWidget, setDraggedWidget] = createSignal<WidgetId | null>(null);
+	const [dragOverWidget, setDragOverWidget] = createSignal<WidgetId | null>(null);
 	const toggleWidget = (widgetId: WidgetId) => {
-		if (visibleWidgets.includes(widgetId)) {
-			setVisibleWidgets(visibleWidgets.filter((id) => id !== widgetId));
+		if (visibleWidgets().includes(widgetId)) {
+			setVisibleWidgets(visibleWidgets().filter((id) => id !== widgetId));
 		} else {
 			// Add widget - preserve current order
-			const newVisibleWidgets = [...visibleWidgets, widgetId];
+			const newVisibleWidgets = [...visibleWidgets(), widgetId];
 			// Sort by widgetOrder
-			newVisibleWidgets.sort((a, b) => widgetOrder.indexOf(a) - widgetOrder.indexOf(b));
+			newVisibleWidgets.sort((a, b) => widgetOrder().indexOf(a) - widgetOrder().indexOf(b));
 			setVisibleWidgets(newVisibleWidgets);
 		}
 	};
 	// Drag handlers
 	const handleDragStart = (e: DragEvent, widgetId: WidgetId) => {
+		if (!e.dataTransfer) return;
 		setDraggedWidget(widgetId);
 		e.dataTransfer.effectAllowed = "move";
 		e.dataTransfer.setData("text/plain", widgetId);
 	};
 	const handleDragOver = (e: DragEvent, widgetId: WidgetId) => {
 		e.preventDefault();
+		if (!e.dataTransfer) return;
 		e.dataTransfer.dropEffect = "move";
 		if (draggedWidget() && draggedWidget() !== widgetId) {
 			setDragOverWidget(widgetId);
@@ -65,17 +73,17 @@ export function WidgetSettingsPopup(props: WidgetSettingsPopupProps) {
 			return;
 		}
 		// Reorder widgets
-		const newOrder = [...widgetOrder];
-		const draggedIndex = newOrder.indexOf(draggedWidget);
+		const newOrder = [...widgetOrder()];
+		const draggedIndex = newOrder.indexOf(draggedWidget()!);
 		const targetIndex = newOrder.indexOf(targetWidgetId);
 		if (draggedIndex !== -1 && targetIndex !== -1) {
 			// Remove dragged widget from its position
 			newOrder.splice(draggedIndex, 1);
 			// Insert at target position
-			newOrder.splice(targetIndex, 0, draggedWidget);
+			newOrder.splice(targetIndex, 0, draggedWidget()!);
 			setWidgetOrder(newOrder);
 			// Also update visible widgets order
-			const newVisibleWidgets = visibleWidgets.slice().sort((a, b) => newOrder.indexOf(a) - newOrder.indexOf(b));
+			const newVisibleWidgets = visibleWidgets().slice().sort((a, b) => newOrder.indexOf(a) - newOrder.indexOf(b));
 			setVisibleWidgets(newVisibleWidgets);
 		}
 		setDraggedWidget(null);
@@ -89,7 +97,7 @@ export function WidgetSettingsPopup(props: WidgetSettingsPopupProps) {
 	const orderedWidgets = createMemo(() => {
 		const isRemote = props.isRemoteChat ?? false;
 		const widgets = isRemote ? WIDGET_REGISTRY.filter((w) => w.id !== "terminal") : WIDGET_REGISTRY;
-		return [...widgets].sort((a, b) => widgetOrder.indexOf(a.id) - widgetOrder.indexOf(b.id));
+		return [...widgets].sort((a, b) => widgetOrder().indexOf(a.id) - widgetOrder().indexOf(b.id));
 	});
 	return <Popover>
       <PopoverTrigger asChild>
@@ -102,15 +110,15 @@ export function WidgetSettingsPopup(props: WidgetSettingsPopupProps) {
 				<div class="px-2 py-1.5 text-xs font-medium text-muted-foreground">
 					Widgets
 				</div>
-				<For each={orderedWidgets}>
+				<For each={orderedWidgets()}>
 					{(widget) => {
-						const isVisible = visibleWidgets.includes(widget.id);
+						const isVisible = visibleWidgets().includes(widget.id);
 						const Icon = getWidgetIcon(widget.id);
-						const isDragging = draggedWidget === widget.id;
-						const isDragOver = dragOverWidget === widget.id;
+						const isDragging = draggedWidget() === widget.id;
+						const isDragOver = dragOverWidget() === widget.id;
 						return <div draggable onDragStart={(e) => handleDragStart(e, widget.id)} onDragOver={(e) => handleDragOver(e, widget.id)} onDragLeave={handleDragLeave} onDrop={(e) => handleDrop(e, widget.id)} onDragEnd={handleDragEnd} class={cn("flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted cursor-grab active:cursor-grabbing transition-colors", isDragging && "opacity-50", isDragOver && "bg-muted/80 ring-1 ring-primary/50")}>
 							<GripVertical class="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
-							<Checkbox checked={isVisible} onCheckedChange={() => toggleWidget(widget.id)} onClick={(e) => e.stopPropagation()} class="h-4 w-4" />
+							<Checkbox checked={isVisible} onCheckedChange={() => toggleWidget(widget.id)} onClick={(e: MouseEvent) => e.stopPropagation()} class="h-4 w-4" />
 							<Icon class="h-4 w-4 text-muted-foreground flex-shrink-0" />
 							<span class="text-sm flex-1">{widget.label}</span>
 						</div>;

@@ -42,7 +42,7 @@ export function CommitItem(props: CommitItemProps) {
 		props.onFileDoubleClick?.(file, props.commit.hash);
 	};
 	const isCommitSelected = props.selectedCommitHash === props.commit.hash;
-	return <CollapsibleRow isExpanded={props.isExpanded} onToggle={() => props.onToggle()} triggerClassName="mx-0.5" contentClassName="ml-4 pl-1.5 border-l border-border mt-0.5 mb-0.5" header={<CommitHeader shortHash={props.commit.shortHash} message={props.commit.message} date={props.commit.date} />}>
+	return <CollapsibleRow isExpanded={props.isExpanded} onToggle={() => props.onToggle()} triggerClassName="mx-0.5" contentClassName="ml-4 pl-1.5 border-l border-border mt-0.5 mb-0.5" header={<CommitHeader shortHash={props.commit.shortHash} message={props.commit.message} date={new Date(props.commit.date)} />}>
 			<Show when={hasFiles}><FileList files={props.commit.files} viewMode={props.viewMode} selectedFile={isCommitSelected ? props.selectedFile : null} selectedCommitHash={props.selectedCommitHash} onFileSelect={handleFileSelect} onFileDoubleClick={handleFileDoubleClick} worktreePath={props.worktreePath} /></Show>
 		</CollapsibleRow>;
 }

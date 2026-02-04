@@ -353,7 +353,7 @@ export function getDiffSidebarOpen(chatId: string): boolean {
   if (runtime[chatId] !== undefined) {
     return runtime[chatId]
   }
-  if (diffViewDisplayMode[0]() !== "side-peek") {
+	if (diffViewDisplayMode() !== "side-peek") {
     return false
   }
   const stored = diffSidebarOpenStorage[0]()

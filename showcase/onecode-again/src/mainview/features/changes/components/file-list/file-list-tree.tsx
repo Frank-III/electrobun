@@ -90,7 +90,7 @@ function TreeNodeComponent(props: TreeNodeComponentProps) {
 	const isFile = props.node.type === "file";
 	const isSelected = props.selectedPath === props.node.path && !props.selectedCommitHash;
 	if (hasChildren) {
-		return <FolderRow name={props.node.name} isExpanded={isExpanded} onToggle={setIsExpanded} level={level()} variant="tree">
+		return <FolderRow name={props.node.name} isExpanded={isExpanded()} onToggle={setIsExpanded} level={level()} variant="tree">
 				<For each={props.node.children ?? []}>
 					{(child) => <TreeNodeComponent node={child} level={level() + 1} selectedPath={props.selectedPath} selectedCommitHash={props.selectedCommitHash} onFileSelect={props.onFileSelect} onFileDoubleClick={props.onFileDoubleClick} showStats={props.showStats} showCheckbox={props.showCheckbox} isStaged={props.isStaged} onStage={props.onStage} onUnstage={props.onUnstage} isActioning={props.isActioning} worktreePath={props.worktreePath} onDiscard={props.onDiscard} />}
 				</For>
@@ -98,7 +98,7 @@ function TreeNodeComponent(props: TreeNodeComponentProps) {
 	}
 	if (isFile && props.node.file) {
 		const file = props.node.file;
-		return <FileItem file={file} isSelected={isSelected} onClick={() => props.onFileSelect(file)} onDoubleClick={props.onFileDoubleClick ? () => props.onFileDoubleClick!(file) : undefined} showStats={props.showStats} showCheckbox={props.showCheckbox} isStaged={props.isStaged} level={level()} onStage={props.onStage ? () => props.onStage!(file) : undefined} onUnstage={props.onUnstage ? () => props.onUnstage!(file) : undefined} isActioning={props.isActioning} worktreePath={props.worktreePath} onDiscard={props.onDiscard ? () => props.onDiscard!(file) : undefined} />;
+		return <FileItem file={file} isSelected={isSelected} onClick={() => props.onFileSelect(file)} onDblClick={props.onFileDoubleClick ? () => props.onFileDoubleClick!(file) : undefined} showStats={props.showStats} showCheckbox={props.showCheckbox} isStaged={props.isStaged} level={level()} onStage={props.onStage ? () => props.onStage!(file) : undefined} onUnstage={props.onUnstage ? () => props.onUnstage!(file) : undefined} isActioning={props.isActioning} worktreePath={props.worktreePath} onDiscard={props.onDiscard ? () => props.onDiscard!(file) : undefined} />;
 	}
 	return null;
 }

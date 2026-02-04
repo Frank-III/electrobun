@@ -26,7 +26,7 @@ export interface FileListItemProps {
 	/** Click handler */
 	onSelect: () => void;
 	/** Double click handler */
-	onDoubleClick?: () => void;
+	onDblClick?: () => void;
 	/** Checkbox change handler */
 	onCheckboxChange: () => void;
 	/** Copy absolute path */
@@ -49,8 +49,8 @@ export interface FileListItemProps {
 export function FileListItem(props: FileListItemProps) {
 	const isSelected = () => props.isSelected ?? false;
 	const showContextMenu = () => props.showContextMenu ?? true;
-	const content = <div data-file-item class={cn("flex items-center gap-2 px-2 py-1 cursor-pointer", "hover:bg-muted/80 transition-colors", isSelected() && "bg-muted")} onClick={props.onSelect} onDoubleClick={props.onDoubleClick}>
-      <Checkbox checked={props.isChecked} onCheckedChange={props.onCheckboxChange} onClick={(e) => e.stopPropagation()} class="size-4 shrink-0 border-muted-foreground/50" />
+	const content = <div data-file-item class={cn("flex items-center gap-2 px-2 py-1 cursor-pointer", "hover:bg-muted/80 transition-colors", isSelected() && "bg-muted")} onClick={props.onSelect} onDblClick={props.onDblClick}>
+      <Checkbox checked={props.isChecked} onCheckedChange={props.onCheckboxChange} onClick={(e: MouseEvent) => e.stopPropagation()} class="size-4 shrink-0 border-muted-foreground/50" />
       <div class="flex-1 min-w-0 flex items-center overflow-hidden">
         <Show when={props.dirPath}>
           <span class="text-xs text-muted-foreground truncate flex-shrink min-w-0">

@@ -14,6 +14,9 @@ let cachedBaseUrl: string | null = null
  */
 export async function getApiBaseUrl(): Promise<string> {
   if (cachedBaseUrl) return cachedBaseUrl
+  if (!window.desktopApi) {
+    throw new Error("desktopApi not available")
+  }
   cachedBaseUrl = await window.desktopApi.getApiBaseUrl()
   return cachedBaseUrl
 }

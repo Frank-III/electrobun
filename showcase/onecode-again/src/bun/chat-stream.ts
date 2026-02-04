@@ -433,11 +433,24 @@ async function runChatStream(options: {
       const config = await readClaudeConfig();
       const lookupPath = projectPath || cwd;
       const globalServers = config.mcpServers || {};
-      const projectServers = getProjectMcpServers(config, lookupPath) || {};
+      const projectServers = (await getProjectMcpServers(config, lookupPath)) || {};
       const allServers = { ...globalServers, ...projectServers };
 
       if (Object.keys(allServers).length > 0) {
-        mcpServersForSdk = allServers;
+        // Filter to only servers with command (required by SDK) and cast to SDK type
+        const commandServers: Record<string, McpServerSdkConfig> = {};
+        for (const [name, server] of Object.entries(allServers)) {
+          if (server.command) {
+            commandServers[name] = {
+              command: server.command,
+              args: server.args,
+              env: server.env as Record<string, string> | undefined,
+            };
+          }
+        }
+        if (Object.keys(commandServers).length > 0) {
+          mcpServersForSdk = commandServers;
+        }
       }
     } catch (err) {
       console.error("[chat-stream] Failed to read MCP config:", err);

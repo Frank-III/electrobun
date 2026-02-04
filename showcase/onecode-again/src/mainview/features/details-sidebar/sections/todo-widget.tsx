@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { cn } from "@/lib/utils";
 import { PlanIcon, CheckIcon, IconArrowRight, ExpandIcon, CollapseIcon } from "@/components/ui/icons";
-import { currentTodosAtomFamily } from "@/features/agents/atoms";
+import { currentTodosAtomFamily } from "@/lib/state/agents-store";
 interface TodoItem {
 	content: string;
 	status: "pending" | "in_progress" | "completed";
@@ -40,7 +40,7 @@ const ProgressCircle = ({ completed, total, size = 16, class: cls }: {
 		const y2 = cy + innerRadius * Math.sin(endRad);
 		const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
 		const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
-		segments.push(<path key={i} d={pathData} fill={i < completed ? "currentColor" : "transparent"} opacity={i < completed ? .7 : .15} />);
+		segments.push(<path d={pathData} fill={i < completed ? "currentColor" : "transparent"} opacity={i < completed ? .7 : .15} />);
 	}
 	return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} class={cn("text-muted-foreground",cls)}>
       {	/* Outer border circle */}

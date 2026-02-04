@@ -69,7 +69,7 @@ export function KanbanCard(props: KanbanCardProps) {
 	{	/* Checkbox for multi-select mode */}
 	<Show when={props.isMultiSelectMode && !props.card.isDraft}>
 	<div class="pt-0.5 flex-shrink-0">
-	<Checkbox checked={props.card.isSelected} onClick={(e) => props.onCheckboxClick(e, props.card.chatId)} class="h-4 w-4" />
+	<Checkbox checked={props.card.isSelected} onClick={(e: MouseEvent) => props.onCheckboxClick(e, props.card.chatId)} class="h-4 w-4" />
 	</div>
 	</Show>
 

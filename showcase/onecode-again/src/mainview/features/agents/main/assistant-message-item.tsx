@@ -286,12 +286,12 @@ export function AssistantMessageItem(props: AssistantMessageItemProps) {
 		}
 		const hasToolsAndFinalText = lastToolIndex !== -1 && lastTextIndex > lastToolIndex;
 		const finalTextIndex = hasToolsAndFinalText ? lastTextIndex : -1;
-		const hasFinalText = finalTextIndex !== -1 && (!isStreaming || !props.isLastMessage);
+		const hasFinalText = finalTextIndex !== -1 && (!planOpsSummary().isStreaming || !props.isLastMessage);
 		// Collapse only when there's final text after tools
 		const shouldCollapse = hasFinalText;
 		const collapseBeforeIndex = hasFinalText ? finalTextIndex : -1;
 		// Calculate visible steps count for collapsible header
-		const stepPartsLocal = shouldCollapse && collapseBeforeIndex !== -1 ? messageParts.slice(0, collapseBeforeIndex) : [];
+		const stepPartsLocal = shouldCollapse && collapseBeforeIndex !== -1 ? messageParts().slice(0, collapseBeforeIndex) : [];
 		const nestedIds = nestedToolIds();
 		const orphanIds = orphanToolCallIds();
 		const orphanFirstIds = orphanFirstToolCallIds();
@@ -327,13 +327,13 @@ export function AssistantMessageItem(props: AssistantMessageItemProps) {
 	});
 	const stepParts = createMemo(() => {
 		if (!shouldCollapse() || collapseBeforeIndex() === -1) return [];
-		return messageParts.slice(0, collapseBeforeIndex());
+		return messageParts().slice(0, collapseBeforeIndex());
 	});
 	const finalParts = createMemo(() => {
 		if (!shouldCollapse() || collapseBeforeIndex() === -1) return messageParts;
-		return messageParts.slice(collapseBeforeIndex());
+		return messageParts().slice(collapseBeforeIndex());
 	});
-	const hasTextContent = createMemo(() => messageParts.some((p: any) => p.type === "text" && p.text?.trim()));
+	const hasTextContent = createMemo(() => messageParts().some((p: any) => p.type === "text" && p.text?.trim()));
 	const msgMetadata = props.message?.metadata as AgentMessageMetadata;
 	const renderPart = (part: any, idx: number, isFinal = false) => {
 		if (part.type === "step-start") return null;

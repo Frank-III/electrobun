@@ -12,7 +12,6 @@ import { useResolvedHotkeyDisplay } from "@/lib/hotkeys";
 import { Terminal } from "./terminal";
 import { TerminalTabs } from "./terminal-tabs";
 import { getDefaultTerminalBg } from "./helpers";
-import type { SignalPair } from "@/lib/state/signal-map";
 import { useTerminalStore } from "./terminal-store-context";
 import { desktopRpc } from "@/lib/desktop-rpc";
 import type { TerminalInstance } from "./types";
@@ -60,13 +59,11 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
 		setStore("sidebarOpenByChatId", chatId, next);
 	};
 	const terminalCwds = () => store.cwdByPaneId;
-	const widthAtom: SignalPair<number> = [
-		() => store.sidebarWidth,
-		(v: number | ((prev: number) => number)) => {
-			const next = typeof v === "function" ? v(store.sidebarWidth) : v;
-			setStore("sidebarWidth", next);
-		},
-	];
+	const getSidebarWidth = () => store.sidebarWidth;
+	const setSidebarWidth = (value: number | ((prev: number) => number)) => {
+		const next = typeof value === "function" ? value(store.sidebarWidth) : value;
+		setStore("sidebarWidth", next);
+	};
 	// Theme detection for terminal background
 	const { resolvedTheme } = useTheme();
 	const isDark = resolvedTheme() === "dark";
@@ -249,7 +246,7 @@ const killTerminal = (paneId: string) => desktopRpc.ghosttyTabs.close.mutate({ t
       </div>;
 	}
 	// Desktop sidebar layout
-	return <ResizableSidebar isOpen={isOpen()} onClose={closeSidebar} widthAtom={widthAtom} side="right" minWidth={300} maxWidth={800} animationDuration={SIDEBAR_ANIMATION_DURATION_SECONDS} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-background border-l" style={{
+	return <ResizableSidebar isOpen={isOpen()} onClose={closeSidebar} width={getSidebarWidth} setWidth={setSidebarWidth} side="right" minWidth={300} maxWidth={800} animationDuration={SIDEBAR_ANIMATION_DURATION_SECONDS} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-background border-l" style={{
 		"border-left-width": "0.5px",
 		overflow: "hidden"
 	}}>

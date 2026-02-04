@@ -61,7 +61,7 @@ export function AgentsRenameSubChatDialog({ isOpen, onClose, onSave, currentName
 		onClose();
 	};
 	const handleSave = async () => {
-		const trimmedName = name.trim();
+		const trimmedName = name().trim();
 		if (!trimmedName || trimmedName === currentName) {
 			handleClose();
 			return;

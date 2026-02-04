@@ -1,4 +1,4 @@
-import { createSignal, Show, Switch, Match } from "solid-js";
+import { createSignal, Show, Switch, Match, type Component } from "solid-js";
 import { GitBranchFilledIcon, FolderFilledIcon, GitPullRequestFilledIcon } from "@/components/ui/icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useQuery, useMutation } from "@tanstack/solid-query";
@@ -119,19 +119,19 @@ export function InfoSection(props: InfoSectionProps) {
 	const handleOpenPr = () => {
 		const prData = pr();
 		if (prData?.url) {
-			window.desktopApi.openExternal(prData.url);
+			window.desktopApi?.openExternal(prData.url);
 		}
 	};
 	const handleOpenRepository = () => {
 		if (props.remoteInfo?.repository) {
 			const repoUrl = props.remoteInfo.repository.startsWith("http") ? props.remoteInfo.repository : `https://github.com/${props.remoteInfo.repository}`;
-			window.desktopApi.openExternal(repoUrl);
+			window.desktopApi?.openExternal(repoUrl);
 		}
 	};
 	const handleOpenSandbox = () => {
 		if (props.remoteInfo?.sandboxId) {
 			const sandboxUrl = `https://3003-${props.remoteInfo.sandboxId}.e2b.app`;
-			window.desktopApi.openExternal(sandboxUrl);
+			window.desktopApi?.openExternal(sandboxUrl);
 		}
 	};
 	// Show loading state while branch data is loading (only for local chats)

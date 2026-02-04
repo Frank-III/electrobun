@@ -1,9 +1,10 @@
 import { createEffect, createMemo, createSignal, For, Show, Switch, Match, mergeProps, onCleanup, splitProps } from "solid-js";
+import { ReactiveSet } from "@solid-primitives/set";
 import { Portal } from "solid-js/web";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/utils";
-import { loadingSubChatsAtom, agentsSubChatUnseenChangesAtom, selectedAgentChatIdAtom, previousAgentChatIdAtom, subChatFilesAtom, justCreatedIdsAtom, pendingUserQuestionsAtom, undoStackAtom, subChatModeAtomFamily, type UndoItem } from "../agents/atoms";
+import { loadingSubChatsAtom, agentsSubChatUnseenChangesAtom, selectedAgentChatIdAtom, previousAgentChatIdAtom, subChatFilesAtom, justCreatedIdsAtom, pendingUserQuestionsAtom, undoStackAtom, subChatModeAtomFamily, type UndoItem } from "../../lib/state/agents-store";
 import { selectedTeamIdAtom, selectedSubChatIdsAtom, isSubChatMultiSelectModeAtom, toggleSubChatSelectionAtom, selectAllSubChatsAtom, clearSubChatSelectionAtom, selectedSubChatsCountAtom, isDesktopAtom, isFullscreenAtom, chatSourceModeAtom, defaultAgentModeAtom } from "../../lib/atoms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/solid-query";
 import { desktopRpc } from "../../lib/desktop-rpc";
@@ -193,11 +194,11 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	const [subChatToArchive, setSubChatToArchive] = createSignal<SubChatMeta | null>(null);
 	// Multi-select state
 	const [selectedSubChatIds, setSelectedSubChatIds] = selectedSubChatIdsAtom;
-	const isMultiSelectMode = isSubChatMultiSelectModeAtom[0];
-	const selectedSubChatsCount = selectedSubChatsCountAtom[0];
-	const toggleSubChatSelection = toggleSubChatSelectionAtom[1];
-	const selectAllSubChats = selectAllSubChatsAtom[1];
-	const clearSubChatSelection = clearSubChatSelectionAtom[1];
+	const isMultiSelectMode = isSubChatMultiSelectModeAtom;
+	const selectedSubChatsCount = selectedSubChatsCountAtom;
+	const toggleSubChatSelection = toggleSubChatSelectionAtom;
+	const selectAllSubChats = selectAllSubChatsAtom;
+	const clearSubChatSelection = clearSubChatSelectionAtom;
 	// Global desktop/fullscreen state from atoms (initialized in AgentsLayout)
 	const isDesktop = isDesktopAtom[0];
 	const isFullscreen = isFullscreenAtom[0];
@@ -235,8 +236,9 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	});
 	// Scroll focused item into view
 	createEffect(() => {
-		if (focusedChatIndex() >= 0 && filteredSubChats().length > 0) {
-			const focusedElement = scrollContainerRef?.querySelector(`[data-subchat-index="${focusedChatIndex()}"]`) as HTMLElement | null;
+		const container = scrollContainerRef as HTMLDivElement | undefined;
+		if (focusedChatIndex() >= 0 && filteredSubChats().length > 0 && container) {
+			const focusedElement = container.querySelector(`[data-subchat-index="${focusedChatIndex()}"]`) as HTMLElement | null;
 			if (focusedElement) {
 				focusedElement.scrollIntoView({
 					block: "nearest",
@@ -619,7 +621,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 			// Select range from anchor to clicked item
 			const startIndex = Math.min(anchorIndex, clickedIndex);
 			const endIndex = Math.max(anchorIndex, clickedIndex);
-			const newSelection = new Set(selectedSubChatIds());
+			const newSelection = new ReactiveSet<string>([...selectedSubChatIds()]);
 			for (let i = startIndex; i <= endIndex; i++) {
 				const chat = filteredSubChats()[i];
 				if (chat) {
@@ -700,10 +702,10 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
       <Show when={isDesktop() && !isFullscreen()}><div class="absolute inset-0 z-0" style={{ "-webkit-app-region": "drag" } as any} /></Show>
 
       { /* Spacer for macOS traffic lights - only when agents sidebar is open */}
-      <Show when={local.isSidebarOpen}><TrafficLightSpacer isDesktop={isDesktop} isFullscreen={isFullscreen} /></Show>
+      <Show when={local.isSidebarOpen}><TrafficLightSpacer isDesktop={isDesktop()} isFullscreen={isFullscreen()} /></Show>
 
       { /* Header buttons - absolutely positioned when agents sidebar is open */}
-      <Show when={local.isSidebarOpen}><div class="absolute right-2 top-2 z-20" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={local.isSidebarOpen}><div class="absolute right-2 top-2 z-20" style={{ "-webkit-app-region": "no-drag" } as any}>
           {headerButtons()}
         </div></Show>
 
@@ -714,19 +716,19 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
           <Show when={local.isSidebarOpen} fallback={<div class="flex items-center justify-between gap-1 mb-1">
               <Show when={local.onBackToChats}><Tooltip delayDuration={500}>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={local.onBackToChats} tabIndex={-1} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="Toggle agents sidebar" style={{ WebkitAppRegion: "no-drag" }}>
+                    <Button variant="ghost" size="icon" onClick={local.onBackToChats} tabIndex={-1} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="Toggle agents sidebar" style={{ "-webkit-app-region": "no-drag" } as any}>
                       <AlignJustify class="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Open chats sidebar</TooltipContent>
                 </Tooltip></Show>
               <div class="flex-1" />
-              <div style={{ WebkitAppRegion: "no-drag" }}>
+              <div style={{ "-webkit-app-region": "no-drag" } as any}>
                 {headerButtons()}
               </div>
             </div>}><div class="h-6" /></Show>
           { /* Search Input */}
-          <div class="relative" style={{ WebkitAppRegion: "no-drag" }}>
+          <div class="relative" style={{ "-webkit-app-region": "no-drag" } as any}>
             <Input ref={(el) => searchInputRef = el} placeholder="Search chats..." value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} onKeyDown={(e) => {
  if (e.key === "Escape") {
 			e.preventDefault();
@@ -765,7 +767,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	}} class="h-7 w-full rounded-lg text-sm bg-muted border border-input placeholder:text-muted-foreground/40" />
           </div>
           {	/* New Chat Button */}
-          <div style={{ WebkitAppRegion: "no-drag" }}>
+          <div style={{ "-webkit-app-region": "no-drag" } as any}>
             <Tooltip delayDuration={500}>
               <TooltipTrigger asChild>
                 <Button onClick={handleCreateNew} variant="outline" size="sm" class="h-7 px-2 w-full hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground rounded-lg">
@@ -782,7 +784,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
       </div>
 
       { /* Scrollable Sub-Chats List */}
-      <div class="flex-1 min-h-0 relative z-10" style={{ WebkitAppRegion: "no-drag" }}>
+      <div class="flex-1 min-h-0 relative z-10" style={{ "-webkit-app-region": "no-drag" } as any}>
         { /* Loading state - centered spinner */}
         <Show when={local.isLoading} fallback={<>
             { /* Top gradient */}
@@ -801,26 +803,26 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
                   </div>
                 </div></Show>}><div class={cn("mb-4", isMultiSelectMode() ? "px-0" : "-mx-1")}>
                   { /* Pinned section */}
-                  <Show when={pinnedChats.length > 0}>
+			  <Show when={pinnedChats().length > 0}>
                       <div class={cn("flex items-center h-4 mb-1", isMultiSelectMode() ? "pl-3" : "pl-2")}>
                         <h3 class="text-xs font-medium text-muted-foreground whitespace-nowrap">
                           Pinned Chats
                         </h3>
                       </div>
                       <div class="list-none p-0 m-0 mb-3">
-                        <For each={pinnedChats}>{(subChat) => {
- const isSubChatLoading = loadingChatIds.has(subChat.id);
+					  <For each={pinnedChats()}>{(subChat) => {
+	const isSubChatLoading = loadingChatIds().has(subChat.id);
 		const isActive = activeSubChatId === subChat.id;
 		const isPinned = pinnedSubChatIds.includes(subChat.id);
 		const globalIndex = filteredSubChats().findIndex((c) => c.id === subChat.id);
 		const isFocused = focusedChatIndex() === globalIndex && focusedChatIndex() >= 0;
 		const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
 		const mode = subChat.mode || "agent";
-		const isChecked = selectedSubChatIds.has(subChat.id);
+		const isChecked = selectedSubChatIds().has(subChat.id);
 		const draftText = getDraftText(subChat.id);
-		const hasPendingQuestion = pendingQuestionsMap.has(subChat.id);
-		const hasPendingPlan = pendingPlanApprovals.has(subChat.id);
-		const fileChanges = subChatFiles.get(subChat.id) || [];
+		const hasPendingQuestion = pendingQuestionsMap().has(subChat.id);
+		const hasPendingPlan = pendingPlanApprovals().has(subChat.id);
+		const fileChanges = subChatFiles().get(subChat.id) || [];
 		const stats = fileChanges.length > 0 ? fileChanges.reduce((acc, f) => ({
 			fileCount: acc.fileCount + 1,
 			additions: acc.additions + f.additions,
@@ -830,7 +832,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 			additions: 0,
 			deletions: 0
 		}) : null;
-		return <ContextMenu key={subChat.id}>
+		return <ContextMenu>
                               <ContextMenuTrigger asChild>
                                 <div data-subchat-index={globalIndex} onClick={(e) => handleSubChatItemClick(subChat.id, e, globalIndex)} tabIndex={0} onKeyDown={(e) => {
 			if (e.key === "Enter" || e.key === " ") {
@@ -882,10 +884,10 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
                                       </div>
                                       <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 min-w-0">
                                         <Show when={draftText} fallback={<span class="truncate flex-1 min-w-0">
-                                            <Show when={stats}><>
-                                                {stats.fileCount}{" "}
-                                                {stats.fileCount === 1 ? "file" : "files"}
-                                              </></Show>
+                                            <Show when={stats}>{(s) => <>
+                                                {s().fileCount}{" "}
+                                                {s().fileCount === 1 ? "file" : "files"}
+                                              </>}</Show>
                                           </span>}><span class="truncate flex-1 min-w-0">
                                             <span class="text-blue-500">Draft:</span>{" "}
                                             {draftText}
@@ -893,10 +895,10 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
                                         <div class="flex items-center gap-1.5 flex-shrink-0">
                                           <Show when={!draftText && stats && (stats.additions > 0 || stats.deletions > 0)}><>
                                               <span class="text-green-600 dark:text-green-400">
-                                                +{stats.additions}
+                                                +{stats!.additions}
                                               </span>
                                               <span class="text-red-600 dark:text-red-400">
-                                                -{stats.deletions}
+                                                -{stats!.deletions}
                                               </span>
                                             </></Show>
                                           <span>{timeAgo}</span>
@@ -925,26 +927,26 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
                     </Show>
 
                   {	/* Unpinned section */}
-                  <Show when={unpinnedChats.length > 0}><>
+			  <Show when={unpinnedChats().length > 0}><>
                       <div class={cn("flex items-center h-4 mb-1", isMultiSelectMode() ? "pl-3" : "pl-2")}>
                         <h3 class="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                          {pinnedChats.length > 0 ? "Recent chats" : "Chats"}
+						{pinnedChats().length > 0 ? "Recent chats" : "Chats"}
                         </h3>
                       </div>
                       <div class="list-none p-0 m-0">
-                        <For each={unpinnedChats}>{(subChat) => {
- const isSubChatLoading = loadingChatIds.has(subChat.id);
+					  <For each={unpinnedChats()}>{(subChat) => {
+	const isSubChatLoading = loadingChatIds().has(subChat.id);
 		const isActive = activeSubChatId === subChat.id;
 		const isPinned = pinnedSubChatIds.includes(subChat.id);
 		const globalIndex = filteredSubChats().findIndex((c) => c.id === subChat.id);
 		const isFocused = focusedChatIndex() === globalIndex && focusedChatIndex() >= 0;
 		const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
 		const mode = subChat.mode || "agent";
-		const isChecked = selectedSubChatIds.has(subChat.id);
+		const isChecked = selectedSubChatIds().has(subChat.id);
 		const draftText = getDraftText(subChat.id);
-		const hasPendingQuestion = pendingQuestionsMap.has(subChat.id);
-		const hasPendingPlan = pendingPlanApprovals.has(subChat.id);
-		const fileChanges = subChatFiles.get(subChat.id) || [];
+		const hasPendingQuestion = pendingQuestionsMap().has(subChat.id);
+		const hasPendingPlan = pendingPlanApprovals().has(subChat.id);
+		const fileChanges = subChatFiles().get(subChat.id) || [];
 		const stats = fileChanges.length > 0 ? fileChanges.reduce((acc, f) => ({
 			fileCount: acc.fileCount + 1,
 			additions: acc.additions + f.additions,
@@ -954,7 +956,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 			additions: 0,
 			deletions: 0
 		}) : null;
-		return <ContextMenu key={subChat.id}>
+		return <ContextMenu>
                               <ContextMenuTrigger asChild>
                                 <div data-subchat-index={globalIndex} onClick={(e) => handleSubChatItemClick(subChat.id, e, globalIndex)} tabIndex={0} onKeyDown={(e) => {
 			if (e.key === "Enter" || e.key === " ") {
@@ -1006,10 +1008,10 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
                                       </div>
                                       <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 min-w-0">
                                         <Show when={draftText} fallback={<span class="truncate flex-1 min-w-0">
-                                            <Show when={stats}><>
-                                                {stats.fileCount}{" "}
-                                                {stats.fileCount === 1 ? "file" : "files"}
-                                              </></Show>
+                                            <Show when={stats}>{(s) => <>
+                                                {s().fileCount}{" "}
+                                                {s().fileCount === 1 ? "file" : "files"}
+                                              </>}</Show>
                                           </span>}><span class="truncate flex-1 min-w-0">
                                             <span class="text-blue-500">Draft:</span>{" "}
                                             {draftText}
@@ -1017,10 +1019,10 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
                                         <div class="flex items-center gap-1.5 flex-shrink-0">
                                           <Show when={!draftText && stats && (stats.additions > 0 || stats.deletions > 0)}><>
                                               <span class="text-green-600 dark:text-green-400">
-                                                +{stats.additions}
+                                                +{stats!.additions}
                                               </span>
                                               <span class="text-red-600 dark:text-red-400">
-                                                -{stats.deletions}
+                                                -{stats!.deletions}
                                               </span>
                                             </></Show>
                                           <span>{timeAgo}</span>
@@ -1058,7 +1060,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 
       {	/* Multi-select Footer Toolbar */}
       <Show when={isMultiSelectMode()}>
-        <div class="flex-shrink-0 p-2 bg-background space-y-2 relative z-10" style={{ "webkit-app-region": "no-drag" }}>
+        <div class="flex-shrink-0 p-2 bg-background space-y-2 relative z-10" style={{ "-webkit-app-region": "no-drag" } as any}>
             <div class="flex items-center justify-between px-1">
               <span class="text-xs text-muted-foreground">
                 {selectedSubChatsCount()} selected

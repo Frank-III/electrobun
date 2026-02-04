@@ -1,5 +1,7 @@
-import { type Component, type ComponentProps, type JSX, splitProps, Show, For } from "solid-js";
+import { type Component, type ComponentProps, type JSX, splitProps, createMemo } from "solid-js";
 import { Select as SelectPrimitive } from "@kobalte/core/select";
+import type { SelectRootItemComponentProps } from "@kobalte/core/select";
+import type { CollectionNode } from "@kobalte/core";
 import { cn } from "../../lib/utils";
 import {
 	overlayContentBase,
@@ -36,45 +38,53 @@ type SelectProps<T extends SelectOption = string> = {
 
 function Select<T extends SelectOption = string>(props: SelectProps<T>) {
 	const [local, rest] = splitProps(props, ["value", "onChange", "onValueChange", "options", "optionValue", "optionTextValue", "optionDisabled", "children"]);
-	
+
 	// If no options provided, use empty array (component won't be functional but won't crash)
 	const options = () => local.options ?? ([] as T[]);
-	
+
 	const getOptionValue = (opt: T): string => {
 		if (local.optionValue) return local.optionValue(opt);
 		if (typeof opt === "string") return opt;
 		return (opt as { value: string }).value;
 	};
-	
+
 	const getOptionLabel = (opt: T): string => {
 		if (local.optionTextValue) return local.optionTextValue(opt);
 		if (typeof opt === "string") return opt;
 		return (opt as { value: string; label: string }).label || (opt as { value: string }).value;
 	};
-	
+
 	const getOptionDisabled = (opt: T): boolean => {
 		if (local.optionDisabled) return local.optionDisabled(opt);
 		if (typeof opt === "object" && "disabled" in opt) return opt.disabled ?? false;
 		return false;
 	};
 
-	const handleChange = (value: string | null) => {
-		if (value !== null) {
+	// Find the option object that matches the string value
+	const selectedOption = createMemo(() => {
+		if (local.value === undefined) return undefined;
+		return options().find(opt => getOptionValue(opt) === local.value) ?? null;
+	});
+
+	// Handle change by extracting the string value from the option
+	const handleChange = (option: T | null) => {
+		if (option !== null) {
+			const value = getOptionValue(option);
 			local.onChange?.(value);
 			local.onValueChange?.(value);
 		}
 	};
 
 	return (
-		<SelectPrimitive
-			value={local.value}
+		<SelectPrimitive<T>
+			value={selectedOption()}
 			onChange={handleChange}
 			options={options()}
 			optionValue={getOptionValue}
 			optionTextValue={getOptionLabel}
 			optionDisabled={getOptionDisabled}
-			itemComponent={(itemProps) => (
-				<SelectItemInternal value={getOptionValue(itemProps.item.rawValue)} disabled={getOptionDisabled(itemProps.item.rawValue)}>
+			itemComponent={(itemProps: SelectRootItemComponentProps<T>) => (
+				<SelectItemInternal item={itemProps.item}>
 					{getOptionLabel(itemProps.item.rawValue)}
 				</SelectItemInternal>
 			)}
@@ -85,8 +95,8 @@ function Select<T extends SelectOption = string>(props: SelectProps<T>) {
 	);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any  
-const SelectValue: any = SelectPrimitive.Value;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const SelectValue: Component<ComponentProps<typeof SelectPrimitive.Value>> = SelectPrimitive.Value;
 const SelectDescription = SelectPrimitive.Description;
 const SelectErrorMessage = SelectPrimitive.ErrorMessage;
 const SelectHiddenSelect = SelectPrimitive.HiddenSelect;
@@ -155,17 +165,16 @@ const SelectLabel: Component<ComponentProps<typeof SelectPrimitive.Label>> = (pr
 	return <SelectPrimitive.Label class={cn(overlayLabel, local.class)} {...rest} />;
 };
 
-type SelectItemProps = {
+// Internal item props - item is required for Kobalte
+interface SelectItemInternalProps {
 	class?: string;
 	children?: JSX.Element;
 	hasDescription?: boolean;
-	value?: string;
-	item?: any;
-	disabled?: boolean;
-};
+	item: CollectionNode;
+}
 
 // Internal item component used by the Select wrapper's itemComponent
-const SelectItemInternal: Component<SelectItemProps> = (props) => {
+const SelectItemInternal: Component<SelectItemInternalProps> = (props) => {
 	const [local, rest] = splitProps(props, ["class", "children", "hasDescription"]);
 	return (
 		<SelectPrimitive.Item
@@ -206,9 +215,22 @@ const SelectItemInternal: Component<SelectItemProps> = (props) => {
 	);
 };
 
+// Public SelectItem type for backwards compatibility
+type SelectItemProps = {
+	class?: string;
+	children?: JSX.Element;
+	hasDescription?: boolean;
+	value?: string; // Legacy prop for backwards compatibility
+	disabled?: boolean;
+};
+
 // Deprecated: SelectItem is kept for backwards compatibility but is now handled internally
 // With Kobalte, items are rendered via the itemComponent prop on Select
-const SelectItem: Component<SelectItemProps> = SelectItemInternal;
+const SelectItem: Component<SelectItemProps> = (_props) => {
+	// This component is not used when using the Select wrapper
+	// Items are rendered via itemComponent prop
+	return null;
+};
 
 const SelectItemDescription = SelectPrimitive.ItemDescription;
 

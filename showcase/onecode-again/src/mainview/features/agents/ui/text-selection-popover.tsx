@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, Show, splitProps } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show, splitProps, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { useTextSelection, type TextSelectionSource } from "../context/text-selection-context";
 interface TextSelectionPopoverProps {
@@ -79,8 +79,8 @@ export function TextSelectionPopover(props: TextSelectionPopoverProps) {
 
 	const style = (): JSX.CSSProperties => ({
 		position: "fixed",
-		top: computedPosition().top,
-		left: computedPosition().left,
+		top: `${computedPosition().top}px`,
+		left: `${computedPosition().left}px`,
 		"z-index": 100000
 	});
 

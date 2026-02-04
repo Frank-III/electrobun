@@ -1,14 +1,14 @@
-import type { SignalPair } from "../../lib/state/signal-map";
 import { Motion, Presence } from "solid-motionone";
 import { Show } from "solid-js";
-import { createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, type Accessor, type JSX, type Setter } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Kbd } from "./kbd";
 
 interface ResizableSidebarProps {
 	isOpen: boolean;
 	onClose: () => void;
-	widthAtom: SignalPair<number>;
+	width: Accessor<number>;
+	setWidth: Setter<number>;
 	minWidth?: number;
 	maxWidth?: number;
 	side: "left" | "right";
@@ -37,9 +37,9 @@ export function ResizableSidebar(props: ResizableSidebarProps) {
 	const exitWidth = () => props.exitWidth ?? 0;
 	const disableClickToClose = () => props.disableClickToClose ?? false;
 	const showResizeTooltip = () => props.showResizeTooltip ?? false;
-	const widthAtom = props.widthAtom;
 	const cls = () => props.class ?? "";
-	const [sidebarWidth, setSidebarWidth] = widthAtom;
+	const sidebarWidth = props.width;
+	const setSidebarWidth = props.setWidth;
 	const [hasOpenedOnce, setHasOpenedOnce] = createSignal(false);
 	const [wasOpen, setWasOpen] = createSignal(false);
 	const [shouldAnimate, setShouldAnimate] = createSignal(!props.isOpen);

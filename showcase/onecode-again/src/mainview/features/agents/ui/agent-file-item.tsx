@@ -64,7 +64,7 @@ export function AgentFileItem(props: AgentFileItemProps) {
 	          {local.filename}
 	        </span>
 	        <Show when={local.size !== undefined}><span class="text-[10px] text-muted-foreground">
-	            {formatFileSize(local.size)}
+	            {formatFileSize(local.size ?? 0)}
 	          </span></Show>
 	      </div>
 

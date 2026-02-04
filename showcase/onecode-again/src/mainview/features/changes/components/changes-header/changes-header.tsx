@@ -6,7 +6,7 @@ import { RefreshCw } from "lucide-solid";
 import { IconSpinner } from "../../../../icons";
 import { useQuery } from "@tanstack/solid-query";
 import { desktopRpc } from "../../../../lib/desktop-rpc";
-import { PRIcon } from "../pr-icon";
+import { PRIcon, type PRState } from "../pr-icon";
 import { usePRStatus } from "../../../../hooks/usePRStatus";
 import { useChangesStore } from "../../../../lib/stores/changes-store";
 import type { ChangesViewMode } from "../../types";
@@ -106,14 +106,14 @@ export function ChangesHeader(props: ChangesHeaderProps) {
 				</Tooltip>
 
 				{	/* PR Status Icon */}
-				<Show when={isPRLoading}>
+				<Show when={isPRLoading()}>
 					<IconSpinner class="w-4 h-4 text-muted-foreground shrink-0" />
 				</Show>
-				<Show when={!isPRLoading && pr}>
+				<Show when={!isPRLoading() && pr()}>
 					{(prData) => <Tooltip>
 						<TooltipTrigger asChild>
 							<a href={prData().url} target="_blank" rel="noopener noreferrer" class="flex items-center gap-1 shrink-0 hover:opacity-80 transition-opacity">
-								<PRIcon state={prData().state} class="w-4 h-4" />
+								<PRIcon state={prData().state as PRState} class="w-4 h-4" />
 								<span class="text-xs text-muted-foreground font-mono">#{prData().number}</span>
 							</a>
 						</TooltipTrigger>

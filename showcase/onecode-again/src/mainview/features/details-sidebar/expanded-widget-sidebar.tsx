@@ -34,9 +34,12 @@ interface ExpandedWidgetSidebarProps {
 export function ExpandedWidgetSidebar(props: ExpandedWidgetSidebarProps) {
 	// Per-workspace expanded widget state
 	const expandedWidgetAtom = createMemo(() => expandedWidgetAtomFamily(props.chatId));
-	const [expandedWidget, setExpandedWidget] = expandedWidgetAtom;
+	const expandedWidget = () => expandedWidgetAtom()[0]();
+	const setExpandedWidget = (value: WidgetId | null | ((prev: WidgetId | null) => WidgetId | null)) => {
+		expandedWidgetAtom()[1](value);
+	};
 	// Get widget config
-	const widgetConfig = createMemo(() => WIDGET_REGISTRY.find((w) => w.id === expandedWidget));
+	const widgetConfig = createMemo(() => WIDGET_REGISTRY.find((w) => w.id === expandedWidget()));
 	// Close sidebar callback
 	const closeSidebar = () => {
 		setExpandedWidget(null);
@@ -55,7 +58,7 @@ export function ExpandedWidgetSidebar(props: ExpandedWidgetSidebarProps) {
 	});
 	// Render the appropriate widget content based on expandedWidget
 	const renderWidgetContent = () => {
-		switch (expandedWidget) {
+		switch (expandedWidget()) {
 			case "info": return <InfoSection chatId={props.chatId} worktreePath={props.worktreePath} isExpanded />;
 			case "plan": return <PlanSection chatId={props.activeSubChatId || props.chatId} planPath={props.planPath} refetchTrigger={props.planRefetchTrigger} isExpanded />;
 			case "terminal": return <Show when={props.worktreePath}>{(path) => <TerminalSection chatId={props.chatId} cwd={path()} isExpanded />}</Show>;
@@ -63,7 +66,7 @@ export function ExpandedWidgetSidebar(props: ExpandedWidgetSidebarProps) {
 			default: return null;
 		}
 	};
-	return <ResizableSidebar isOpen={expandedWidget !== null} onClose={closeSidebar} widthAtom={expandedWidgetSidebarWidthAtom} side="right" minWidth={400} maxWidth={800} animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{
+	return <ResizableSidebar isOpen={expandedWidget() !== null} onClose={closeSidebar} width={expandedWidgetSidebarWidthAtom[0]} setWidth={expandedWidgetSidebarWidthAtom[1]} side="right" minWidth={400} maxWidth={800} animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{
 		"border-left-width": "0.5px",
 		overflow: "hidden"
 	}}>

@@ -43,7 +43,7 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentM
 				fragments.push(text.slice(lastIndex, searchIndex));
 			}
 			const mark = document.createElement("mark");
-			mark.class = "search-highlight";
+			mark.className = "search-highlight";
 			mark.textContent = text.slice(searchIndex, searchIndex + searchText.length);
 			if (currentMatchIndex !== null && matchCounter === currentMatchIndex) {
 				mark.classList.add("search-highlight-current");
@@ -87,7 +87,7 @@ function MemoizedTextPartInner(props: Omit<MemoizedTextPartProps, "isStreaming">
 // This may re-render when search changes, but the inner MemoizedTextPartInner won't
 // because its props (text, etc.) haven't changed
 export function MemoizedTextPart(props: MemoizedTextPartProps) {
-	const [containerRef, setContainerRef] = createSignal<HTMLDivElement>(null);
+	const [containerRef, setContainerRef] = createSignal<HTMLDivElement | null>(null);
 	const isStreaming = () => props.isStreaming ?? false;
 	// Search hooks - when search is closed, these return empty/null values
 	// and don't cause re-renders (SearchHighlightProvider returns static context)

@@ -1,5 +1,4 @@
-import type { JSX } from "solid-js";
-import { createEffect, createSignal, Show } from "solid-js";
+import { createEffect, createSignal, Show, type JSX } from "solid-js";
 import { cn } from "../../../lib/utils";
 /**
 * Hybrid traffic lights component for macOS desktop app
@@ -28,7 +27,7 @@ export function TrafficLights(props: {
 	// Native lights are shown by default (main process), and AgentsLayout controls visibility
 	// Only show in desktop app, hide in fullscreen (Show for reactivity)
 	const placeholder = () => (
-		<div class={cn("relative", cls())} style={{ WebkitAppRegion: "no-drag" }} data-sidebar-content>
+		<div class={cn("relative", cls())} style={{ "-webkit-app-region": "no-drag" } as JSX.CSSProperties} data-sidebar-content>
 			<div class="flex items-center gap-2" data-sidebar-content>
 				<div class="w-3 h-3" />
 				<div class="w-3 h-3" />
@@ -37,7 +36,7 @@ export function TrafficLights(props: {
 		</div>
 	);
 	const mutedCircles = () => (
-		<div class={cn("relative", cls())} style={{ WebkitAppRegion: "no-drag" }} data-sidebar-content>
+		<div class={cn("relative", cls())} style={{ "-webkit-app-region": "no-drag" } as JSX.CSSProperties} data-sidebar-content>
 			<div class="flex items-center gap-2" data-sidebar-content>
 				<div class="w-3 h-3 rounded-full border border-foreground/20 bg-transparent" aria-hidden="true" />
 				<div class="w-3 h-3 rounded-full border border-foreground/20 bg-transparent" aria-hidden="true" />
@@ -83,7 +82,7 @@ export function TrafficLightSpacer(props: {
 	// Show spacer when desktop and not fullscreen
 	// If isFullscreen is null (not initialized), assume not fullscreen
 	const shouldShow = () => isDesktop() && isFullscreen() !== true;
-	return <div class={cn("w-full shrink-0 overflow-hidden", shouldAnimate() && "transition-[height] duration-200 ease-out", cls())} style={{ height: shouldShow() ? 32 : 0 }} />;
+	return <div class={cn("w-full shrink-0 overflow-hidden", shouldAnimate() && "transition-[height] duration-200 ease-out", cls())} style={{ height: shouldShow() ? "32px" : "0px" }} />;
 }
 /**
 * Wrapper to make child elements non-draggable within a draggable region
@@ -91,7 +90,7 @@ export function TrafficLightSpacer(props: {
 export function NoDrag({ children }: {
 	children: JSX.Element;
 }) {
-	return <div style={{ WebkitAppRegion: "no-drag" }}>
+	return <div style={{ "-webkit-app-region": "no-drag" } as JSX.CSSProperties}>
       {children}
     </div>;
 }

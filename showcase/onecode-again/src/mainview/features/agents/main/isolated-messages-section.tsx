@@ -60,7 +60,7 @@ export function IsolatedMessagesSection({ subChatId, chatId, isMobile, sandboxSe
 	// a re-render of this component (since we're subscribed to it).
 	const currentSubChatId = currentSubChatIdAtom[0];
 	// Subscribe to user message IDs - but only use them if we're the active chat
-	const userMsgIds = userMessageIdsAtom[0];
+	const userMsgIds = userMessageIdsAtom;
 	if (currentSubChatId() !== subChatId) {
 		// Data not synced yet - render nothing, we'll re-render when currentSubChatIdAtom updates
 		return null;

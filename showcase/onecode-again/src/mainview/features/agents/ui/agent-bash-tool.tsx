@@ -63,7 +63,7 @@ export function AgentBashTool(props: AgentBashToolProps) {
 	const MAX_OUTPUT_LINES = 3;
 	const stdoutLimited = createMemo(() => limitLines(stdout, MAX_OUTPUT_LINES));
 	const stderrLimited = createMemo(() => limitLines(stderr, MAX_OUTPUT_LINES));
-	const hasMoreOutput = stdoutLimited.truncated || stderrLimited.truncated;
+	const hasMoreOutput = stdoutLimited().truncated || stderrLimited().truncated;
 	// Memoize command summary to avoid recalculation on every render
 	const commandSummary = createMemo(() => extractCommandSummary(command));
 	// Check if command input is still being streamed
@@ -94,7 +94,7 @@ export function AgentBashTool(props: AgentBashToolProps) {
       <div onClick={() => hasMoreOutput && !isPending && setIsOutputExpanded((prev) => !prev)} class={cn("flex items-center justify-between pl-2.5 pr-0.5 h-7", hasMoreOutput && !isPending && "cursor-pointer hover:bg-muted/50 transition-colors duration-150")}>
         <span class="text-xs text-muted-foreground truncate flex-1 min-w-0">
           {isPending ? "Running command: " : "Ran command: "}
-          {commandSummary}
+			{commandSummary()}
         </span>
 
         { /* Status and expand button */}
@@ -143,7 +143,7 @@ export function AgentBashTool(props: AgentBashToolProps) {
 
         { /* Stdout - show limited lines when collapsed, full when expanded */}
         <Show when={stdout}><div class="mt-1.5 font-mono text-xs text-muted-foreground whitespace-pre-wrap break-all">
-            {isOutputExpanded() ? stdout : stdoutLimited.text}
+			{isOutputExpanded() ? stdout : stdoutLimited().text}
           </div></Show>
 
         { /* Stderr - warning/error color based on exit code */}
@@ -153,7 +153,7 @@ export function AgentBashTool(props: AgentBashToolProps) {
 		// If exitCode is non-zero, it's an error
 		exitCode === 0 || exitCode === undefined ? "text-amber-600 dark:text-amber-400" : "text-rose-500 dark:text-rose-400"
 	)}>
-            {isOutputExpanded() ? stderr : stderrLimited.text}
+			{isOutputExpanded() ? stderr : stderrLimited().text}
           </div></Show>
 
       </div>

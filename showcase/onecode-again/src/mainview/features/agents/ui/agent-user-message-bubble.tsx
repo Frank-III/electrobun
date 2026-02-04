@@ -50,7 +50,7 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentO
 				fragments.push(text.slice(lastIndex, searchIndex));
 			}
 			const mark = document.createElement("mark");
-			mark.class = "search-highlight";
+			mark.className = "search-highlight";
 			mark.textContent = text.slice(searchIndex, searchIndex + searchText.length);
 			if (currentOffset !== null && currentLength !== null) {
 				const matchStart = globalOffset + searchIndex;
@@ -84,11 +84,13 @@ export function AgentUserMessageBubble(props: AgentUserMessageBubbleProps) {
 	const merged = mergeProps({ imageParts: [], skipTextMentionBlocks: false }, props);
 	const [local] = splitProps(merged, ["messageId", "textContent", "imageParts", "skipTextMentionBlocks"]);
 	const [isExpanded, setIsExpanded] = createSignal(false);
-	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
+	const [contentRef, setContentRef] = createSignal<HTMLDivElement | null>(null);
 	// Extract quote/diff mentions to display above the bubble
-	const { textMentions, cleanedText } = createMemo(() => extractTextMentions(local.textContent));
+	const mentionsData = createMemo(() => extractTextMentions(local.textContent));
+	const textMentions = () => mentionsData().textMentions;
+	const cleanedText = () => mentionsData().cleanedText;
 	// VS Code style overflow detection using ResizeObserver (no layout thrashing)
-	const showGradient = useOverflowDetection(contentRef, [local.textContent]);
+	const showGradient = useOverflowDetection(contentRef);
 	// Search highlight support
 	const highlights = useSearchHighlight(local.messageId, 0, "text");
 	const searchQuery = useSearchQuery();
@@ -154,11 +156,11 @@ export function AgentUserMessageBubble(props: AgentUserMessageBubbleProps) {
 				</div>
 			</Show>
 			{	/* Show text mentions (quote/diff) as blocks above text bubble - only if not rendered by parent */}
-			<Show when={!local.skipTextMentionBlocks && textMentions.length > 0}>
-				<TextMentionBlocks mentions={textMentions} />
+			<Show when={!local.skipTextMentionBlocks && textMentions().length > 0}>
+				<TextMentionBlocks mentions={textMentions()} />
 			</Show>
           { /* Text bubble with overflow detection */}
-	          <Show when={cleanedText} fallback={<Show when={(local.imageParts.length > 0 || textMentions.length > 0) && !local.skipTextMentionBlocks}>
+		          <Show when={cleanedText()} fallback={<Show when={(local.imageParts.length > 0 || textMentions().length > 0) && !local.skipTextMentionBlocks}>
             <div class="bg-input-background border px-3 py-2 rounded-xl text-sm text-muted-foreground italic">
               {(() => {
                 const parts: string[] = [];
@@ -167,8 +169,8 @@ export function AgentUserMessageBubble(props: AgentUserMessageBubbleProps) {
 	                  parts.push(local.imageParts.length === 1 ? "image" : `${local.imageParts.length} images`);
 	                }
                 // Count text mentions by type
-                const quoteCount = textMentions.filter((m) => m.type === "quote" || m.type === "pasted").length;
-                const codeCount = textMentions.filter((m) => m.type === "diff").length;
+	                const quoteCount = textMentions().filter((m) => m.type === "quote" || m.type === "pasted").length;
+	                const codeCount = textMentions().filter((m) => m.type === "diff").length;
                 if (quoteCount > 0) {
                   parts.push(quoteCount === 1 ? "selected text" : `${quoteCount} text selections`);
                 }
@@ -179,14 +181,14 @@ export function AgentUserMessageBubble(props: AgentUserMessageBubbleProps) {
               })()}
             </div>
           </Show>}>
-            <div ref={contentRef} onClick={() => showGradient() && !hasCurrentSearchHighlight && setIsExpanded(true)} class={cn(
+	            <div ref={contentRef} onClick={() => showGradient() && !hasCurrentSearchHighlight && setIsExpanded(true)} class={cn(
               "relative bg-input-background border px-3 py-2 rounded-xl whitespace-pre-wrap text-sm transition-all duration-200 max-h-[100px]",
               // When searching in this message, allow scroll; otherwise hide overflow
               hasCurrentSearchHighlight ? "overflow-y-auto" : "overflow-hidden",
               // Cursor and hover only when can expand (not during search)
               showGradient() && !hasCurrentSearchHighlight && "cursor-pointer hover:brightness-110"
 	            )} data-message-id={local.messageId} data-part-index={0} data-part-type="text">
-              <RenderFileMentions text={cleanedText} />
+	              <RenderFileMentions text={cleanedText()} />
               {	/* Show gradient only when collapsed and not searching in this message */}
               <Show when={showGradient() && !hasCurrentSearchHighlight}>
                 <div class="absolute bottom-0 left-0 right-0 h-10 pointer-events-none bg-gradient-to-t from-[hsl(var(--input-background))] to-transparent rounded-b-xl" />
@@ -205,12 +207,12 @@ export function AgentUserMessageBubble(props: AgentUserMessageBubbleProps) {
             </DialogTitle>
           </DialogHeader>
           <div class="space-y-3">
-				<Show when={textMentions.length > 0}>
-					<TextMentionBlocks mentions={textMentions} />
+				<Show when={textMentions().length > 0}>
+					<TextMentionBlocks mentions={textMentions()} />
 				</Show>
-            <div class="whitespace-pre-wrap text-sm">
-              <RenderFileMentions text={cleanedText} />
-            </div>
+	            <div class="whitespace-pre-wrap text-sm">
+	              <RenderFileMentions text={cleanedText()} />
+	            </div>
           </div>
         </DialogContent>
       </Dialog>

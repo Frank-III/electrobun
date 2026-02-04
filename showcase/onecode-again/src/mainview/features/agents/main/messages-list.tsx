@@ -233,8 +233,8 @@ interface NonStreamingMessageItemProps {
 function NonStreamingMessageItem(props: NonStreamingMessageItemProps) {
 	// Subscribe to this specific message via Jotai - only re-renders when THIS message changes
 	const message = messageAtomFamily(props.messageId)[0];
-	if (!message) return null;
-	return <AssistantMessageItem message={message} isLastMessage={false} isStreaming={false} status="ready" subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />;
+	if (!message()) return null;
+	return <AssistantMessageItem message={message()} isLastMessage={false} isStreaming={false} status="ready" subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />;
 }
 // For the last message - subscribes to streaming status AND message via Jotai
 // Passes message as prop to AssistantMessageItem
@@ -249,10 +249,10 @@ function StreamingMessageItem(props: StreamingMessageItemProps) {
 	// Subscribe to this specific message via Jotai - only re-renders when THIS message changes
 	const message = messageAtomFamily(props.messageId)[0];
 	// Subscribe to streaming status
-	const isStreaming = isStreamingAtom[0];
+	const isStreaming = isStreamingAtom;
 	const status = chatStatusAtom[0];
-	if (!message) return null;
-	return <AssistantMessageItem message={message} isLastMessage={true} isStreaming={isStreaming} status={status} subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />;
+	if (!message()) return null;
+	return <AssistantMessageItem message={message()} isLastMessage={true} isStreaming={isStreaming()} status={status()} subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />;
 }
 // Combined hook - get message AND isLast in one memo (Solid)
 function useMessageWithLastStatus(messageId: string) {
@@ -268,7 +268,7 @@ function useMessageWithLastStatus(messageId: string) {
 export function MessageItemWrapper(props: MessageItemWrapperProps) {
 	// Only subscribe to isLast - NOT to message content!
 	// StreamingMessageItem and NonStreamingMessageItem will subscribe to message themselves
-	const isLast = isLastMessageAtomFamily(props.messageId)[0];
+	const isLast = isLastMessageAtomFamily(props.messageId);
 	// Only the last message subscribes to streaming status
 	if (isLast()) {
 		// StreamingMessageItem subscribes to messageAtomFamily internally
@@ -416,6 +416,7 @@ export function useUserMessageWithAssistants(userMsgId: string) {
 interface SimpleIsolatedGroupProps {
 	userMsgId: string;
 	subChatId: string;
+	chatId: string;
 	isMobile: boolean;
 	sandboxSetupStatus: "cloning" | "ready" | "error";
 	isSubChatsSidebarOpen: boolean;
@@ -444,7 +445,7 @@ interface SimpleIsolatedGroupProps {
 	}>;
 }
 function areSimpleGroupPropsEqual(prev: SimpleIsolatedGroupProps, next: SimpleIsolatedGroupProps): boolean {
-	return prev.userMsgId === next.userMsgId && prev.subChatId === next.subChatId && prev.isMobile === next.isMobile && prev.sandboxSetupStatus === next.sandboxSetupStatus && prev.isSubChatsSidebarOpen === next.isSubChatsSidebarOpen && prev.stickyTopClass === next.stickyTopClass && prev.sandboxSetupError === next.sandboxSetupError && prev.onRetrySetup === next.onRetrySetup && prev.UserBubbleComponent === next.UserBubbleComponent && prev.ToolCallComponent === next.ToolCallComponent && prev.MessageGroupComponent === next.MessageGroupComponent && prev.toolRegistry === next.toolRegistry;
+	return prev.userMsgId === next.userMsgId && prev.subChatId === next.subChatId && prev.chatId === next.chatId && prev.isMobile === next.isMobile && prev.sandboxSetupStatus === next.sandboxSetupStatus && prev.isSubChatsSidebarOpen === next.isSubChatsSidebarOpen && prev.stickyTopClass === next.stickyTopClass && prev.sandboxSetupError === next.sandboxSetupError && prev.onRetrySetup === next.onRetrySetup && prev.UserBubbleComponent === next.UserBubbleComponent && prev.ToolCallComponent === next.ToolCallComponent && prev.MessageGroupComponent === next.MessageGroupComponent && prev.toolRegistry === next.toolRegistry;
 }
 export function SimpleIsolatedGroup(props: SimpleIsolatedGroupProps) {
 	const groupData = useUserMessageWithAssistants(props.userMsgId);
@@ -460,28 +461,28 @@ export function SimpleIsolatedGroup(props: SimpleIsolatedGroupProps) {
 	const imageParts = createMemo(() => userMsg()?.parts?.filter((p: any) => p.type === "data-image") || []);
 	return <props.MessageGroupComponent>
       <Show when={userMsg()}>
-        {(msg) => {
-          const raw = rawTextContent();
-          const images = imageParts();
-          const ids = assistantMsgIds();
-          const isLast = isLastGroup();
-          const streaming = isStreaming();
-          const shouldShowCloning = props.sandboxSetupStatus === "cloning" && isLast && ids.length === 0;
-          const shouldShowSetupError = props.sandboxSetupStatus === "error" && isLast && ids.length === 0;
-          const { textMentions: mentions, cleanedText: content } = extractTextMentions(raw);
-          return <>
-      <Show when={images.length > 0}>
-        <div class="mb-2 pointer-events-auto">
-          <props.UserBubbleComponent messageId={msg.id} textContent="" imageParts={images} skipTextMentionBlocks />
-        </div>
-      </Show>
+		{(msg) => {
+			const raw = rawTextContent();
+			const images = imageParts();
+			const ids = assistantMsgIds();
+			const isLast = isLastGroup();
+			const streaming = isStreaming();
+			const shouldShowCloning = props.sandboxSetupStatus === "cloning" && isLast && ids.length === 0;
+			const shouldShowSetupError = props.sandboxSetupStatus === "error" && isLast && ids.length === 0;
+			const { textMentions: mentions, cleanedText: content } = extractTextMentions(raw);
+			return <>
+				<Show when={images.length > 0}>
+					<div class="mb-2 pointer-events-auto">
+						<props.UserBubbleComponent messageId={msg().id} textContent="" imageParts={images} skipTextMentionBlocks />
+					</div>
+				</Show>
       <Show when={mentions.length > 0}>
         <div class="mb-2 pointer-events-auto">
           <TextMentionBlocks mentions={mentions} />
         </div>
       </Show>
-      <div data-user-message-id={msg.id} class={`[&>div]:!mb-4 pointer-events-auto sticky z-10 ${props.stickyTopClass}`}>
-        <Show when={!content.trim() && (images.length > 0 || mentions.length > 0)} fallback={<props.UserBubbleComponent messageId={msg.id} textContent={content} imageParts={[]} skipTextMentionBlocks />}>
+				<div data-user-message-id={msg().id} class={`[&>div]:!mb-4 pointer-events-auto sticky z-10 ${props.stickyTopClass}`}>
+					<Show when={!content.trim() && (images.length > 0 || mentions.length > 0)} fallback={<props.UserBubbleComponent messageId={msg().id} textContent={content} imageParts={[]} skipTextMentionBlocks />}>
           <div class="flex justify-start drop-shadow-[0_10px_20px_hsl(var(--background))]" data-user-bubble>
             <div class="space-y-2 w-full">
               <div class="bg-input-background border px-3 py-2 rounded-xl text-sm text-muted-foreground italic">
@@ -515,7 +516,7 @@ export function SimpleIsolatedGroup(props: SimpleIsolatedGroupProps) {
         </Show>
       </div>
       <Show when={ids.length > 0}>
-        <MemoizedAssistantMessages assistantMsgIds={ids} subChatId={props.subChatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />
+        <MemoizedAssistantMessages assistantMsgIds={ids} subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />
       </Show>
       <Show when={streaming && isLast && ids.length === 0 && props.sandboxSetupStatus === "ready"}>
         <div class="mt-4">
@@ -532,6 +533,7 @@ export function SimpleIsolatedGroup(props: SimpleIsolatedGroupProps) {
 // ============================================================================
 interface SimpleIsolatedListProps {
 	subChatId: string;
+	chatId: string;
 	isMobile: boolean;
 	sandboxSetupStatus: "cloning" | "ready" | "error";
 	isSubChatsSidebarOpen: boolean;
@@ -544,18 +546,19 @@ interface SimpleIsolatedListProps {
 	toolRegistry: SimpleIsolatedGroupProps["toolRegistry"];
 }
 function areSimpleListPropsEqual(prev: SimpleIsolatedListProps, next: SimpleIsolatedListProps): boolean {
-	return prev.subChatId === next.subChatId && prev.isMobile === next.isMobile && prev.sandboxSetupStatus === next.sandboxSetupStatus && prev.isSubChatsSidebarOpen === next.isSubChatsSidebarOpen && prev.stickyTopClass === next.stickyTopClass && prev.sandboxSetupError === next.sandboxSetupError && prev.onRetrySetup === next.onRetrySetup && prev.UserBubbleComponent === next.UserBubbleComponent && prev.ToolCallComponent === next.ToolCallComponent && prev.MessageGroupComponent === next.MessageGroupComponent && prev.toolRegistry === next.toolRegistry;
+	return prev.subChatId === next.subChatId && prev.chatId === next.chatId && prev.isMobile === next.isMobile && prev.sandboxSetupStatus === next.sandboxSetupStatus && prev.isSubChatsSidebarOpen === next.isSubChatsSidebarOpen && prev.stickyTopClass === next.stickyTopClass && prev.sandboxSetupError === next.sandboxSetupError && prev.onRetrySetup === next.onRetrySetup && prev.UserBubbleComponent === next.UserBubbleComponent && prev.ToolCallComponent === next.ToolCallComponent && prev.MessageGroupComponent === next.MessageGroupComponent && prev.toolRegistry === next.toolRegistry;
 }
 export function SimpleIsolatedMessagesList(props: SimpleIsolatedListProps) {
 	// Subscribe to user message IDs only
 	const userMsgIds = useUserMessageIds();
 	return <>
-      <For each={userMsgIds}>
-        {(userMsgId) => (
-          <SimpleIsolatedGroup
-            userMsgId={userMsgId}
-            subChatId={props.subChatId}
-            isMobile={props.isMobile}
+	  <For each={userMsgIds()}>
+	    {(userMsgId) => (
+	      <SimpleIsolatedGroup
+	        userMsgId={userMsgId}
+	        subChatId={props.subChatId}
+	        chatId={props.chatId}
+	        isMobile={props.isMobile}
             sandboxSetupStatus={props.sandboxSetupStatus}
             isSubChatsSidebarOpen={props.isSubChatsSidebarOpen}
             stickyTopClass={props.stickyTopClass}

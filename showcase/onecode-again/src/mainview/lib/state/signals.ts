@@ -185,10 +185,14 @@ export function createKeyedStateFamily<K extends string | number, T>(
   }
 
   const getValue = (key: K): Accessor<T> => get(key)[0]
-  
+
   const setValue = (key: K, value: T | ((prev: T) => T)) => {
     const [, setter] = get(key)
-    setter(value)
+    if (typeof value === "function") {
+      setter(value as (prev: T) => T)
+    } else {
+      setter(() => value)
+    }
   }
 
   const remove = (key: K) => {
@@ -222,10 +226,14 @@ export function createStoredKeyedStateFamily<K extends string | number, T>(
   }
 
   const getValue = (key: K): Accessor<T> => get(key)[0]
-  
+
   const setValue = (key: K, value: T | ((prev: T) => T)) => {
     const [, setter] = get(key)
-    setter(value)
+    if (typeof value === "function") {
+      setter(value as (prev: T) => T)
+    } else {
+      setter(() => value)
+    }
   }
 
   const remove = (key: K) => {

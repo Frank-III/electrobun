@@ -18,7 +18,7 @@ interface FileItemProps {
 	/** Single click - opens in preview mode */
 	onClick: () => void;
 	/** Double click - opens pinned (permanent) */
-	onDoubleClick?: () => void;
+	onDblClick?: () => void;
 	showStats?: boolean;
 	/** Number of level indentations (for tree view) */
 	level?: number;
@@ -61,7 +61,7 @@ export function FileItem(props: FileItemProps) {
 		"file",
 		"isSelected",
 		"onClick",
-		"onDoubleClick",
+		"onDblClick",
 		"showStats",
 		"level",
 		"onStage",
@@ -138,7 +138,7 @@ export function FileItem(props: FileItemProps) {
 				</div>
 			</Show>
 
-			<button type="button" onClick={local.onClick} onDoubleClick={local.onDoubleClick} class={cn("flex items-center gap-1.5 flex-1 min-w-0", hasIndent ? "py-0.5" : "py-1")}>
+			<button type="button" onClick={local.onClick} onDblClick={local.onDblClick} class={cn("flex items-center gap-1.5 flex-1 min-w-0", hasIndent ? "py-0.5" : "py-1")}>
 				<span class={cn("shrink-0 flex items-center text-xs", statusBadgeColor)}>
 					{statusIndicator}
 				</span>
@@ -177,7 +177,7 @@ export function FileItem(props: FileItemProps) {
 								<Button variant="ghost" size="icon" class="size-5 hover:bg-accent" onClick={(e) => {
 		e.stopPropagation();
 		local.onStage?.();
-	}} disabled={isActioning}>
+	}} disabled={local.isActioning}>
 									<HiMiniPlus class="size-3" />
 								</Button>
 							</TooltipTrigger>
@@ -190,7 +190,7 @@ export function FileItem(props: FileItemProps) {
 								<Button variant="ghost" size="icon" class="size-5 hover:bg-accent" onClick={(e) => {
 		e.stopPropagation();
 		local.onUnstage?.();
-	}} disabled={isActioning}>
+	}} disabled={local.isActioning}>
 									<HiMiniMinus class="size-3" />
 								</Button>
 							</TooltipTrigger>

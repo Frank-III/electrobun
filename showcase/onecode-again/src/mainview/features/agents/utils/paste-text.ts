@@ -80,6 +80,7 @@ export function handlePasteEvent(
   handleAddAttachments: (files: File[]) => void,
   addPastedText?: AddPastedTextFn,
 ): void {
+  if (!e.clipboardData) return
   const files = Array.from(e.clipboardData.items)
     .filter((item) => item.type.startsWith("image/"))
     .map((item) => item.getAsFile())

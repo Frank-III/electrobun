@@ -56,34 +56,42 @@ function areGroupPropsEqual(prev: IsolatedMessageGroupProps, next: IsolatedMessa
 export function IsolatedMessageGroup(props: IsolatedMessageGroupProps) {
 	// Subscribe to specific atoms - NOT the whole messages array
 	const userMsg = messageAtomFamily(props.userMsgId)[0];
-	const assistantIds = assistantIdsForUserMsgAtomFamily(props.userMsgId)[0];
-	const isLastGroup = isLastUserMessageAtomFamily(props.userMsgId)[0];
-	const isStreaming = isStreamingAtom[0];
+	const assistantIds = assistantIdsForUserMsgAtomFamily(props.userMsgId);
+	const isLastGroup = isLastUserMessageAtomFamily(props.userMsgId);
+	const isStreaming = isStreamingAtom;
 	// Extract user message content
 	// Note: file-content parts are hidden from UI but sent to agent
-	const rawTextContent = userMsg?.parts?.filter((p: any) => p.type === "text").map((p: any) => p.text).join("\n") || "";
-	const imageParts = userMsg?.parts?.filter((p: any) => p.type === "data-image") || [];
+	const rawTextContent = createMemo(() => {
+		const message = userMsg();
+		return message?.parts?.filter((p: any) => p.type === "text").map((p: any) => p.text).join("\n") || "";
+	});
+	const imageParts = createMemo(() => {
+		const message = userMsg();
+		return message?.parts?.filter((p: any) => p.type === "data-image") || [];
+	});
 	// Extract text mentions (quote/diff) to render separately above sticky block
 	// NOTE: useMemo must be called before any early returns to follow Rules of Hooks
-	const { textMentions, cleanedText: textContent } = createMemo(() => extractTextMentions(rawTextContent));
-	if (!userMsg) return null;
+	const extractedText = createMemo(() => extractTextMentions(rawTextContent()));
+	const textMentions = createMemo(() => extractedText().textMentions);
+	const textContent = createMemo(() => extractedText().cleanedText);
+	if (!userMsg()) return null;
 	// Show cloning when sandbox is being set up
-	const shouldShowCloning = props.sandboxSetupStatus === "cloning" && isLastGroup() && assistantIds.length === 0;
+	const shouldShowCloning = props.sandboxSetupStatus === "cloning" && isLastGroup() && assistantIds().length === 0;
 	// Show setup error if sandbox setup failed
-	const shouldShowSetupError = props.sandboxSetupStatus === "error" && isLastGroup() && assistantIds.length === 0;
+	const shouldShowSetupError = props.sandboxSetupStatus === "error" && isLastGroup() && assistantIds().length === 0;
 	// Check if this is an image-only message (no text content and no text mentions)
-	const isImageOnlyMessage = imageParts.length > 0 && !textContent.trim() && textMentions.length === 0;
+	const isImageOnlyMessage = imageParts().length > 0 && !textContent().trim() && textMentions().length === 0;
 	// Check if this is an attachment-only message (no text but has images or text mentions)
-	const isAttachmentOnlyMessage = !textContent.trim() && (imageParts.length > 0 || textMentions.length > 0);
-	return <props.MessageGroupWrapper isLastGroup={isLastGroup}>
+	const isAttachmentOnlyMessage = !textContent().trim() && (imageParts().length > 0 || textMentions().length > 0);
+	return <props.MessageGroupWrapper isLastGroup={isLastGroup()}>
       {	/* Attachments - NOT sticky (only when there's also text) */}
-      <Show when={imageParts.length > 0 && !isImageOnlyMessage}><div class="mb-2 pointer-events-auto">
-          <props.UserBubbleComponent messageId={props.userMsgId} textContent="" imageParts={imageParts} skipTextMentionBlocks />
+      <Show when={imageParts().length > 0 && !isImageOnlyMessage}><div class="mb-2 pointer-events-auto">
+          <props.UserBubbleComponent messageId={props.userMsgId} textContent="" imageParts={imageParts()} skipTextMentionBlocks />
         </div></Show>
 
       { /* Text mentions (quote/diff/pasted) - NOT sticky */}
-      <Show when={textMentions.length > 0}><div class="mb-2 pointer-events-auto">
-          <TextMentionBlocks mentions={textMentions} />
+      <Show when={textMentions().length > 0}><div class="mb-2 pointer-events-auto">
+          <TextMentionBlocks mentions={textMentions()} />
         </div></Show>
 
       { /* User message text - sticky (or attachment-only summary bubble) */}
@@ -91,18 +99,18 @@ export function IsolatedMessageGroup(props: IsolatedMessageGroupProps) {
         { /* Show "Using X" summary when no text but have attachments */}
         <Show 
           when={isAttachmentOnlyMessage && !isImageOnlyMessage}
-          fallback={<props.UserBubbleComponent messageId={props.userMsgId} textContent={textContent} imageParts={isImageOnlyMessage ? imageParts : []} skipTextMentionBlocks={!isImageOnlyMessage} />}
+          fallback={<props.UserBubbleComponent messageId={props.userMsgId} textContent={textContent()} imageParts={isImageOnlyMessage ? imageParts() : []} skipTextMentionBlocks={!isImageOnlyMessage} />}
         >
           <div class="flex justify-start drop-shadow-[0_10px_20px_hsl(var(--background))]" data-user-bubble>
             <div class="space-y-2 w-full">
               <div class="bg-input-background border px-3 py-2 rounded-xl text-sm text-muted-foreground italic">
               {(() => {
                 const parts: string[] = [];
-                if (imageParts.length > 0) {
-                  parts.push(imageParts.length === 1 ? "image" : `${imageParts.length} images`);
+                if (imageParts().length > 0) {
+                  parts.push(imageParts().length === 1 ? "image" : `${imageParts().length} images`);
                 }
-                const quoteCount = textMentions.filter((m) => m.type === "quote" || m.type === "pasted").length;
-                const codeCount = textMentions.filter((m) => m.type === "diff").length;
+                const quoteCount = textMentions().filter((m) => m.type === "quote" || m.type === "pasted").length;
+                const codeCount = textMentions().filter((m) => m.type === "diff").length;
                 if (quoteCount > 0) {
                   parts.push(quoteCount === 1 ? "selected text" : `${quoteCount} text selections`);
                 }
@@ -136,10 +144,10 @@ export function IsolatedMessageGroup(props: IsolatedMessageGroupProps) {
       </div>
 
       { /* Assistant messages - memoized, only re-renders when IDs change */}
-      <Show when={assistantIds.length > 0}><MemoizedAssistantMessages assistantMsgIds={assistantIds} subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} /></Show>
+      <Show when={assistantIds().length > 0}><MemoizedAssistantMessages assistantMsgIds={assistantIds()} subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} /></Show>
 
       { /* Planning indicator */}
-      <Show when={isStreaming() && isLastGroup() && assistantIds.length === 0 && props.sandboxSetupStatus === "ready"}><div class="mt-4">
+      <Show when={isStreaming() && isLastGroup() && assistantIds().length === 0 && props.sandboxSetupStatus === "ready"}><div class="mt-4">
             <props.ToolCallComponent icon={props.toolRegistry["tool-planning"]?.icon} title={props.toolRegistry["tool-planning"]?.title({}) || "Planning..."} isPending={true} isError={false} />
           </div></Show>
     </props.MessageGroupWrapper>;

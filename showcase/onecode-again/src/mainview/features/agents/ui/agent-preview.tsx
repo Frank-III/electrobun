@@ -37,7 +37,7 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 	const [device, setDevice] = mobileDeviceAtomFamily(chatId);
 	// Local state for resizing
 	const [isResizing, setIsResizing] = createSignal(false);
-	const [maxWidth, setMaxWidth] = createSignal(AGENTS_PREVIEW_CONSTANTS.MAX_WIDTH);
+	const [maxWidth, setMaxWidth] = createSignal<number>(AGENTS_PREVIEW_CONSTANTS.MAX_WIDTH);
 	// Dual state architecture:
 	// - loadedPath: Controls iframe src (stable, only changes on manual navigation)
 	// - currentPath: Display path (updates immediately on internal navigation)
@@ -269,7 +269,7 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 
           { /* Right: External link + Mode toggle + Close */}
           <div class="flex items-center justify-end gap-1 flex-1">
-            <Button variant="ghost" class="h-7 w-7 p-0 hover:bg-muted transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md" onClick={() => desktopRpc.window.openExternal.mutate({ url: previewUrl() })}>
+            <Button variant="ghost" class="h-7 w-7 p-0 hover:bg-muted transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md" onClick={() => desktopRpc.external.openExternal.mutate({ url: previewUrl() })}>
               <ExternalLinkIcon class="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
 

@@ -569,11 +569,18 @@ export type BunRequestsSchema = AppRPC["bun"]["requests"];
 /** Typed client: each request key is (params) => Promise<response>. */
 export type BunRequestClient = {
   [K in keyof BunRequestsSchema]: BunRequestsSchema[K] extends {
-    params: infer P;
+    params?: infer P;
     response: infer R;
   }
-    ? (params: P) => Promise<R>
-    : never;
+    ? undefined extends P
+      ? (params?: P) => Promise<R>
+      : (params: P) => Promise<R>
+    : BunRequestsSchema[K] extends {
+        params: infer P;
+        response: infer R;
+      }
+      ? (params: P) => Promise<R>
+      : never;
 };
 
 /** Type for sending messages to webview */

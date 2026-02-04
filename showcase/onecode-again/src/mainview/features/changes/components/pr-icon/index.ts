@@ -1,1 +1,1 @@
-export { PRIcon } from "./pr-icon";
+export { PRIcon, type PRState } from "./pr-icon";

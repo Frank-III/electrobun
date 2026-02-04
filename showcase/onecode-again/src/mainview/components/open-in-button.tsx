@@ -126,7 +126,7 @@ export function OpenInButton(props: OpenInButtonProps) {
     if (!path) return
 
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.metaKey && e.shiftKey && e.key === "c") {
+      if (e.metaKey && e.shiftKey && e.key === "c" && path) {
         e.preventDefault()
         desktopRpc.clipboardWrite.mutate({ text: path })
       }

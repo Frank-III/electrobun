@@ -220,7 +220,7 @@ export function AgentsPreferencesTab() {
                   Help us improve Agents by sharing anonymous usage data. We only track feature usage and app performance–never your code, prompts, or messages. No AI training on your data.
                 </span>
               </div>
-              <Switch checked={!analyticsOptOut()} onCheckedChange={(enabled) => handleAnalyticsToggle(!enabled)} />
+              <Switch checked={!analyticsOptOut()} onCheckedChange={(enabled: boolean) => handleAnalyticsToggle(!enabled)} />
             </div>
           </div>
         </div>

@@ -3,7 +3,7 @@ import { CheckIcon, CopyIcon, IconSpinner, PauseIcon, VolumeIcon } from "../../.
 import { cn } from "../../../lib/utils";
 import { apiFetch } from "../../../lib/api-fetch";
 import { useHaptic } from "../hooks/use-haptic";
-import { ttsPlaybackRateAtom, setTtsPlaybackRateAtom, PLAYBACK_SPEEDS, type PlaybackSpeed } from "../stores/message-store";
+import { ttsPlaybackRateAtom, setTtsPlaybackRate, PLAYBACK_SPEEDS, type PlaybackSpeed } from "../stores/message-store";
 
 interface CopyButtonProps {
 	text: string;
@@ -40,7 +40,7 @@ interface PlayButtonProps {
 export function PlayButton(props: PlayButtonProps) {
 	const [state, setState] = createSignal<PlayButtonState>("idle");
 	const [playbackRate] = ttsPlaybackRateAtom;
-	const setPlaybackRate = setTtsPlaybackRateAtom[1];
+	const setPlaybackRate = setTtsPlaybackRate;
 	
 	let audioRef: HTMLAudioElement | null = null;
 	let mediaSourceRef: MediaSource | null = null;

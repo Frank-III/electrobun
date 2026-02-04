@@ -55,8 +55,7 @@ interface ServerRowProps {
 	onAuth?: () => void;
 }
 function ServerRow(props: ServerRowProps) {
-	const { tools, needsAuth } = props.server;
-	const hasTools = tools.length > 0;
+	const hasTools = props.server.tools.length > 0;
 	const isConnected = props.server.status === "connected";
 	return <div>
       <div role={hasTools ? "button" : undefined} tabIndex={hasTools ? 0 : undefined} onClick={hasTools ? props.onToggle : undefined} onKeyDown={hasTools ? (e) => {
@@ -69,7 +68,7 @@ function ServerRow(props: ServerRowProps) {
         <ChevronRight class={cn("h-3.5 w-3.5 text-muted-foreground transition-transform flex-shrink-0", props.isExpanded && "rotate-90", !hasTools && "opacity-0")} />
 
         { /* Status dot */}
-        <StatusDot status={props.server.status} />
+		<StatusDot status={props.server.status} />
 
         { /* Server info */}
         <div class="flex-1 min-w-0">
@@ -91,12 +90,12 @@ function ServerRow(props: ServerRowProps) {
         </div>
 
         { /* Status / tool count */}
-        <span class="text-xs text-muted-foreground flex-shrink-0">
-          {isConnected ? hasTools ? `${tools.length} tool${tools.length !== 1 ? "s" : ""}` : "No tools" : getStatusText(props.server.status)}
-        </span>
+		<span class="text-xs text-muted-foreground flex-shrink-0">
+			{isConnected ? hasTools ? `${props.server.tools.length} tool${props.server.tools.length !== 1 ? "s" : ""}` : "No tools" : getStatusText(props.server.status)}
+		</span>
 
         { /* Authenticate button */}
-        <Show when={needsAuth && props.onAuth}>
+		<Show when={props.server.needsAuth && props.onAuth}>
           <Button variant="secondary" size="sm" class="h-6 px-2 text-xs" onClick={(e: MouseEvent) => {
             e.stopPropagation();
             props.onAuth!();
@@ -107,15 +106,15 @@ function ServerRow(props: ServerRowProps) {
       </div>
 
       {	/* Expanded tools list */}
-      <Show when={props.isExpanded && hasTools}>
-        <div class="overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
-          <div class="pl-10 pr-3 pb-3 space-y-1">
-            <For each={tools}>{(tool) => <div class="text-xs text-muted-foreground font-mono py-0.5">
+		<Show when={props.isExpanded && hasTools}>
+			<div class="overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+				<div class="pl-10 pr-3 pb-3 space-y-1">
+					<For each={props.server.tools}>{(tool) => <div class="text-xs text-muted-foreground font-mono py-0.5">
                 {tool}
               </div>}</For>
-          </div>
-        </div>
-      </Show>
+				</div>
+			</div>
+		</Show>
     </div>;
 }
 export function AgentsMcpTab() {

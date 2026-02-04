@@ -3,7 +3,7 @@ import { toast } from "solid-sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/solid-query";
 import { desktopRpc } from "../../lib/desktop-rpc";
 import { getWindowId } from "../../contexts/WindowContext";
-import { selectedAgentChatIdAtom, selectedDraftIdAtom, showNewChatFormAtom, loadingSubChatsAtom, pendingUserQuestionsAtom, pendingPlanApprovalsAtom, agentsUnseenChangesAtom, selectedProjectAtom, agentsSidebarOpenAtom } from "../agents/atoms";
+import { selectedAgentChatIdAtom, selectedDraftIdAtom, showNewChatFormAtom, loadingSubChatsAtom, pendingUserQuestionsAtom, pendingPlanApprovalsAtom, agentsUnseenChangesAtom, selectedProjectAtom, agentsSidebarOpenAtom } from "../../lib/state/agents-store";
 import { selectedAgentChatIdsAtom, isAgentMultiSelectModeAtom, toggleAgentChatSelectionAtom } from "../../lib/atoms";
 import { KanbanBoard } from "./components/kanban-board";
 import type { KanbanCardData } from "./components/kanban-card";
@@ -24,8 +24,8 @@ export function KanbanView() {
 	const setSidebarOpen = agentsSidebarOpenAtom[1];
 	// Multi-select state
 	const selectedChatIds = selectedAgentChatIdsAtom[0];
-	const isMultiSelectMode = isAgentMultiSelectModeAtom[0];
-	const toggleChatSelection = toggleAgentChatSelectionAtom[1];
+	const isMultiSelectMode = isAgentMultiSelectModeAtom;
+	const toggleChatSelection = toggleAgentChatSelectionAtom;
 	// Status atoms
 	const loadingSubChats = loadingSubChatsAtom[0];
 	const pendingQuestions = pendingUserQuestionsAtom[0];
@@ -34,13 +34,13 @@ export function KanbanView() {
 	// Project for pinned chats storage
 	const selectedProject = selectedProjectAtom[0];
 	// Pinned chats (stored in localStorage per project)
-	const [pinnedChatIds, setPinnedChatIds] = createSignal(new Set());
+	const [pinnedChatIds, setPinnedChatIds] = createSignal<Set<string>>(new Set());
 	// Rename dialog state
 	const [renameDialogOpen, setRenameDialogOpen] = createSignal(false);
-	const [renamingChat, setRenamingChat] = createSignal(null);
+	const [renamingChat, setRenamingChat] = createSignal<{ id: string; name: string | null } | null>(null);
 	// Archive confirmation dialog state
 	const [confirmArchiveDialogOpen, setConfirmArchiveDialogOpen] = createSignal(false);
-	const [archivingChatId, setArchivingChatId] = createSignal(null);
+	const [archivingChatId, setArchivingChatId] = createSignal<string | null>(null);
 	const [activeProcessCount, setActiveProcessCount] = createSignal(0);
 	const [hasWorktree, setHasWorktree] = createSignal(false);
 	const [uncommittedCount, setUncommittedCount] = createSignal(0);
@@ -48,15 +48,15 @@ export function KanbanView() {
 	// Load pinned IDs from localStorage when project changes
 	createEffect(() => {
 		if (!selectedProject()?.id) {
-			setPinnedChatIds(new Set());
+			setPinnedChatIds(new Set<string>());
 			return;
 		}
 		try {
 			const windowId = getWindowId();
 			const stored = localStorage.getItem(`${windowId}:agent-pinned-chats-${selectedProject()!.id}`);
-			setPinnedChatIds(stored ? new Set(JSON.parse(stored)) : new Set());
+			setPinnedChatIds(stored ? new Set<string>(JSON.parse(stored) as string[]) : new Set<string>());
 		} catch {
-			setPinnedChatIds(new Set());
+			setPinnedChatIds(new Set<string>());
 		}
 	});
 	// Save pinned IDs to localStorage when they change
@@ -88,12 +88,12 @@ export function KanbanView() {
 	// Fetch all chats (workspaces)
 	const chatsQuery = useQuery(() => ({
 		queryKey: ["chats", "list"] as const,
-		queryFn: () => desktopRpc.chats.list.query({}),
+		queryFn: () => desktopRpc.chats.list.query(),
 	}));
 	// Fetch projects for metadata
 	const projectsQuery = useQuery(() => ({
 		queryKey: ["projects", "list"] as const,
-		queryFn: () => desktopRpc.projects.list.query({}),
+		queryFn: () => desktopRpc.projects.list.query(),
 	}));
 	// Create projects map
 	type Project = { id: string; name: string; path: string; [k: string]: unknown };
@@ -165,9 +165,9 @@ export function KanbanView() {
 	});
 	// Build set of chatIds with pending plan approvals from runtime atom
 	const workspacesWithPendingApprovals = createMemo(() => {
-		const set = new Set<string>(workspacesWithPendingApprovalsFromDb);
+		const set = new Set<string>(workspacesWithPendingApprovalsFromDb());
 		// Add from runtime atom (parentChatId is the workspace id)
-		pendingPlanApprovals.forEach((parentChatId) => {
+		pendingPlanApprovals().forEach((parentChatId) => {
 			set.add(parentChatId);
 		});
 		return set;
@@ -194,19 +194,19 @@ export function KanbanView() {
 	// Build set of chatIds with pending questions
 	const workspacesWithPendingQuestions = createMemo(() => {
 		const set = new Set<string>();
-		pendingQuestions.forEach((q) => {
+		pendingQuestions().forEach((q) => {
 			set.add(q.parentChatId);
 		});
 		return set;
 	});
 	// Build set of chatIds (workspace IDs) that are loading
 	// loadingSubChats is Map<subChatId, parentChatId>, we need the VALUES (parentChatId)
-	const workspacesLoading = createMemo(() => new Set([...loadingSubChats.values()]));
+	const workspacesLoading = createMemo(() => new Set([...loadingSubChats().values()]));
 	// Build kanban cards from workspaces (chats) + drafts
 	const cards = createMemo(() => {
 		const result: KanbanCardData[] = [];
 		// Add drafts first (they go to "draft" column)
-		for (const draft of drafts) {
+		for (const draft of drafts()) {
 			result.push({
 				id: draft.id,
 				name: draft.text.slice(0, 50) + (draft.text.length > 50 ? "..." : ""),
@@ -227,32 +227,32 @@ export function KanbanView() {
 			});
 		}
 		// Add workspaces
-		const chatList = chats?.();
+		const chatList = chatsQuery.data;
 		if (chatList) {
 			for (const chat of chatList) {
-				const project = projectsMap.get(chat.projectId);
+				const project = projectsMap().get(chat.projectId);
 				const status = deriveWorkspaceStatus(chat.id, {
-					workspacesLoading,
-					workspacesWithPendingQuestions,
-					workspacesWithPendingApprovals
+					workspacesLoading: workspacesLoading(),
+					workspacesWithPendingQuestions: workspacesWithPendingQuestions(),
+					workspacesWithPendingApprovals: workspacesWithPendingApprovals()
 				});
 				result.push({
 					id: chat.id,
 					name: chat.name,
 					chatId: chat.id,
 					chatName: chat.name,
-					projectName: project?.gitRepo || project?.name || null,
-					branch: chat.branch,
+					projectName: (project?.gitRepo || project?.name || null) as string | null,
+					branch: chat.branch ?? null,
 					mode: "agent",
 					status,
 					hasUnseenChanges: unseenChanges().has(chat.id),
-					hasPendingPlan: workspacesWithPendingApprovals.has(chat.id),
-					hasPendingQuestion: workspacesWithPendingQuestions.has(chat.id),
+					hasPendingPlan: workspacesWithPendingApprovals().has(chat.id),
+					hasPendingQuestion: workspacesWithPendingQuestions().has(chat.id),
 					createdAt: new Date(chat.createdAt || Date.now()),
 					updatedAt: chat.updatedAt ? new Date(chat.updatedAt) : null,
 					isDraft: false,
-					stats: workspaceFileStats.get(chat.id),
-					isPinned: pinnedChatIds.has(chat.id),
+					stats: workspaceFileStats().get(chat.id),
+					isPinned: pinnedChatIds().has(chat.id),
 					isSelected: selectedChatIds().has(chat.id)
 				});
 			}
@@ -303,9 +303,10 @@ export function KanbanView() {
 		setRenameDialogOpen(true);
 	};
 	const handleRenameSave = async (newName: string) => {
-		if (!renamingChat) return;
+		const currentRenaming = renamingChat();
+		if (!currentRenaming) return;
 		await renameChatMutation.mutateAsync({
-			id: renamingChat.id,
+			id: currentRenaming.id,
 			name: newName
 		});
 		setRenameDialogOpen(false);
@@ -341,8 +342,9 @@ export function KanbanView() {
 		}
 	};
 	const handleConfirmArchive = async () => {
-		if (!archivingChatId) return;
-		await archiveChatMutation.mutateAsync({ id: archivingChatId });
+		const chatId = archivingChatId();
+		if (!chatId) return;
+		await archiveChatMutation.mutateAsync({ id: chatId });
 		setConfirmArchiveDialogOpen(false);
 		setArchivingChatId(null);
 	};

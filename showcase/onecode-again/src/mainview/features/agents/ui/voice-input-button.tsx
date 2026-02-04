@@ -45,7 +45,7 @@ export function VoiceInputButton(props: VoiceInputButtonProps) {
 	};
 	
 	const handleEnd = async () => {
-		if (!isRecording) return;
+		if (!isRecording()) return;
 		try {
 			const blob = await stopRecording();
 			if (blob.size < 1e3) {
@@ -103,7 +103,7 @@ export function VoiceInputButton(props: VoiceInputButtonProps) {
 	};
 	
 	const isLoading = () => isTranscribing() || transcribeMutation.isPending;
-	const hasError = () => !!error || !!transcribeError();
+	const hasError = () => !!error() || !!transcribeError();
 	
 	return (
 		<button
@@ -114,7 +114,7 @@ export function VoiceInputButton(props: VoiceInputButtonProps) {
 			onTouchStart={handleTouchStart}
 			onTouchEnd={handleTouchEnd}
 			disabled={props.disabled || isLoading()}
-			title={hasError() ? transcribeError() || error?.message || "Voice input error" : isRecording() ? "Release to transcribe" : "Hold to record"}
+			title={hasError() ? transcribeError() || error()?.message || "Voice input error" : isRecording() ? "Release to transcribe" : "Hold to record"}
 			class={cn(
 				"relative p-1.5 rounded-md transition-all duration-150 ease-out",
 				"hover:bg-accent active:scale-[0.97]",

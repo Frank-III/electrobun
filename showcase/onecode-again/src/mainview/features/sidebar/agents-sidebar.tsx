@@ -31,7 +31,7 @@ import { IconDoubleChevronLeft, SettingsIcon, PlusIcon, ProfileIcon, PublisherSt
 import { Logo } from "../../components/ui/logo";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
-import { selectedAgentChatIdAtom, selectedChatIsRemoteAtom, previousAgentChatIdAtom, selectedDraftIdAtom, showNewChatFormAtom, loadingSubChatsAtom, agentsUnseenChangesAtom, archivePopoverOpenAtom, agentsDebugModeAtom, selectedProjectAtom, justCreatedIdsAtom, undoStackAtom, pendingUserQuestionsAtom, type UndoItem } from "../agents/atoms";
+import { selectedAgentChatIdAtom, selectedChatIsRemoteAtom, previousAgentChatIdAtom, selectedDraftIdAtom, showNewChatFormAtom, loadingSubChatsAtom, agentsUnseenChangesAtom, archivePopoverOpenAtom, agentsDebugModeAtom, selectedProjectAtom, justCreatedIdsAtom, undoStackAtom, pendingUserQuestionsAtom, type UndoItem } from "../../lib/state/agents-store";
 import { NetworkStatus } from "../../components/ui/network-status";
 import { useAgentSubChatStore, OPEN_SUB_CHATS_CHANGE_EVENT } from "../agents/stores/sub-chat-store";
 import { getWindowId } from "../../contexts/WindowContext";
@@ -139,9 +139,9 @@ const ChatIcon = function ChatIcon(props: {
 	}} transition={{ duration: 0.15 }} class={cn("absolute -bottom-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center", local.isSelected ? "bg-[#E8E8E8] dark:bg-[#1B1B1B]" : "bg-[#F4F4F4] group-hover:bg-[#E8E8E8] dark:bg-[#101010] dark:group-hover:bg-[#1B1B1B]")}>
             {	/* Priority: question > loader > amber dot (pending plan) > blue dot (unseen) */}
             <Presence exitBeforeEnter>
-              <Show when={hasPendingQuestion} fallback={
-                <Show when={isLoading} fallback={
-                  <Show when={hasPendingPlan} fallback={
+              <Show when={local.hasPendingQuestion} fallback={
+                <Show when={local.isLoading} fallback={
+                  <Show when={local.hasPendingPlan} fallback={
                     <Motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
                       <LoadingDot isLoading={false} class="w-2.5 h-2.5 text-muted-foreground" />
                     </Motion.div>
@@ -821,7 +821,7 @@ function SidebarHeader(props: SidebarHeaderProps) {
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent class="w-36" sideOffset={6} alignOffset={-4}>
                         <DropdownMenuItem onSelect={() => {
-	desktopRpc.window.openExternal.mutate({ url: "https://discord.gg/8ektTZGnj4" });
+	desktopRpc.external.openExternal.mutate({ url: "https://discord.gg/8ektTZGnj4" });
 		setIsDropdownOpen(false);
 	}} class="gap-2">
                           <DiscordIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -871,7 +871,7 @@ function SidebarHeader(props: SidebarHeaderProps) {
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent class="w-36" sideOffset={6} alignOffset={-4}>
                         <DropdownMenuItem onSelect={() => {
-	desktopRpc.window.openExternal.mutate({ url: "https://discord.gg/8ektTZGnj4" });
+	desktopRpc.external.openExternal.mutate({ url: "https://discord.gg/8ektTZGnj4" });
 		setIsDropdownOpen(false);
 	}} class="gap-2">
                           <DiscordIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -967,11 +967,11 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 	const isFullscreen = isFullscreenAtom[0];
 	// Multi-select state
 	const [selectedChatIds, setSelectedChatIds] = selectedAgentChatIdsAtom;
-	const isMultiSelectMode = isAgentMultiSelectModeAtom[0];
-	const selectedChatsCount = selectedAgentChatsCountAtom[0];
-	const toggleChatSelection = toggleAgentChatSelectionAtom[1];
-	const selectAllChats = selectAllAgentChatsAtom[1];
-	const clearChatSelection = clearAgentChatSelectionAtom[1];
+	const isMultiSelectMode = isAgentMultiSelectModeAtom;
+	const selectedChatsCount = selectedAgentChatsCountAtom;
+	const toggleChatSelection = toggleAgentChatSelectionAtom;
+	const selectAllChats = selectAllAgentChatsAtom;
+	const clearChatSelection = clearAgentChatSelectionAtom;
 	// Scroll gradient refs - use DOM manipulation to avoid re-renders
 	const [topGradientRef, setTopGradientRef] = createSignal<HTMLDivElement | null>(null);
 	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement | null>(null);
@@ -2270,7 +2270,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
             </div>
 
             { /* Feedback Button */}
-											<ButtonCustom onClick={() => desktopRpc.window.openExternal.mutate({ url: FEEDBACK_URL })} variant="outline" size="sm" class={cn("px-2 w-full hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground rounded-lg gap-1.5", isMobileFullscreen() ? "h-10" : "h-7")}>
+											<ButtonCustom onClick={() => desktopRpc.external.openExternal.mutate({ url: FEEDBACK_URL })} variant="outline" size="sm" class={cn("px-2 w-full hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground rounded-lg gap-1.5", isMobileFullscreen() ? "h-10" : "h-7")}>
               <span class="text-sm font-medium">Feedback</span>
             </ButtonCustom>
           </Motion.div>

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, For, Show, Switch, Match, onCleanup, mergeProps, splitProps } from "solid-js";
+import { createEffect, createMemo, For, Show, Switch, Match, onCleanup, mergeProps, splitProps, type JSX } from "solid-js";
 import { ArrowUpRight, TerminalSquare, Box, ListTodo } from "lucide-solid";
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import { PlanWidget } from "./sections/plan-widget";
 import { TerminalWidget } from "./sections/terminal-widget";
 import { ChangesWidget } from "./sections/changes-widget";
 import type { ParsedDiffFile } from "./types";
-import type { AgentMode } from "../agents/atoms";
+import type { AgentMode } from "../../lib/state/agents-store";
 interface DetailsSidebarProps {
 	/** Workspace/chat ID */
 	chatId: string;
@@ -73,10 +73,10 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
 	const [isOpen, setIsOpen] = detailsSidebarOpenAtom;
 	// Per-workspace widget visibility
 	const widgetVisibilityAtom = createMemo(() => widgetVisibilityAtomFamily(local.chatId));
-	const visibleWidgets = widgetVisibilityAtom[0];
+	const visibleWidgets = () => widgetVisibilityAtom()[0]();
 	// Per-workspace widget order
 	const widgetOrderAtom = createMemo(() => widgetOrderAtomFamily(local.chatId));
-	const widgetOrder = widgetOrderAtom[0];
+	const widgetOrder = () => widgetOrderAtom()[0]();
 	// Close sidebar callback
 	const closeSidebar = () => {
 		setIsOpen(false);
@@ -98,7 +98,7 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
 		}
 	};
 	// Check if a widget should be shown
-	const isWidgetVisible = (widgetId: WidgetId) => visibleWidgets.includes(widgetId);
+	const isWidgetVisible = (widgetId: WidgetId) => visibleWidgets().includes(widgetId);
 	// Check if a widget can be expanded
 	const canWidgetExpand = (widgetId: WidgetId) => {
 		const config = WIDGET_REGISTRY.find((w) => w.id === widgetId);
@@ -177,7 +177,7 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
           </div>
         </div>;
  };
-	return <ResizableSidebar isOpen={isOpen()} onClose={closeSidebar} widthAtom={detailsSidebarWidthAtom} side="right" minWidth={350} maxWidth={700} animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{
+	return <ResizableSidebar isOpen={isOpen()} onClose={closeSidebar} width={detailsSidebarWidthAtom[0]} setWidth={detailsSidebarWidthAtom[1]} side="right" minWidth={350} maxWidth={700} animationDuration={0} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-tl-background border-l" style={{
 		"border-left-width": "0.5px",
 		overflow: "hidden"
 	}}>
@@ -203,7 +203,7 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
 
         { /* Widget Cards - rendered in user-defined order */}
         <div class="flex-1 overflow-y-auto py-2">
-          <For each={widgetOrder}>
+          <For each={widgetOrder()}>
             {(widgetId) => (
               <Show when={isWidgetVisible(widgetId)}>
                 <Switch>
@@ -219,7 +219,7 @@ export function DetailsSidebar(props: DetailsSidebarProps) {
                     <PlanWidget chatId={local.chatId} activeSubChatId={local.activeSubChatId} planPath={local.planPath} refetchTrigger={local.planRefetchTrigger} mode={local.mode} onApprovePlan={local.onBuildPlan} onExpandPlan={local.onExpandPlan} />
                   </Match>
 				<Match when={widgetId === "terminal" && local.worktreePath && !local.isTerminalSidebarOpen}>
-					<TerminalWidget chatId={local.chatId} cwd={local.worktreePath} onExpand={local.onExpandTerminal} />
+					<TerminalWidget chatId={local.chatId} cwd={local.worktreePath!} onExpand={local.onExpandTerminal} />
 				</Match>
                   <Match when={widgetId === "diff" && (local.canOpenDiff || (local.isRemoteChat && local.diffStats && (local.diffStats.fileCount > 0 || local.diffStats.additions > 0 || local.diffStats.deletions > 0))) && !(local.isDiffSidebarOpen && local.diffDisplayMode === "side-peek")}>
                     <ChangesWidget chatId={local.chatId} worktreePath={local.worktreePath} diffStats={local.diffStats} parsedFileDiffs={local.parsedFileDiffs} onCommit={local.onCommit} isCommitting={local.isCommitting} onExpand={local.canOpenDiff ? local.onExpandDiff : undefined} onFileSelect={local.canOpenDiff ? local.onFileSelect : undefined} diffDisplayMode={local.diffDisplayMode} />

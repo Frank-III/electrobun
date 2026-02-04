@@ -7,7 +7,7 @@ import { useQuery, useMutation } from "@tanstack/solid-query";
 import { desktopRpc } from "../../../../lib/desktop-rpc";
 import { cn } from "../../../../lib/utils";
 import { usePRStatus } from "../../../../hooks/usePRStatus";
-import { PRIcon } from "../pr-icon";
+import { PRIcon, type PRState } from "../pr-icon";
 type LayoutMode = "compact" | "standard" | "wide" | "full";
 interface ChangesPanelHeaderProps {
 	worktreePath: string;
@@ -104,7 +104,7 @@ export function ChangesPanelHeader(props: ChangesPanelHeaderProps) {
 				</Tooltip>
 				<DropdownMenuContent align="start" class="w-48">
 					<For each={branches()}>
-						{(branchInfo) => <DropdownMenuItem onClick={() => handleBranchSelect(branchInfo.branch)} class={cn("text-xs", branchInfo.branch === currentBranch && "bg-accent")}>
+						{(branchInfo) => <DropdownMenuItem onClick={() => handleBranchSelect(branchInfo.branch)} class={cn("text-xs", branchInfo.branch === props.currentBranch && "bg-accent")}>
 							<GitBranch class="mr-2 size-3.5" />
 							<span class="truncate">{branchInfo.branch}</span>
 							<Show when={branchInfo.branch === branchData()?.defaultBranch}>
@@ -127,11 +127,11 @@ export function ChangesPanelHeader(props: ChangesPanelHeaderProps) {
 			{	/* Right side: PR status + Fetch */}
 			<div class="flex items-center gap-1">
 				{ /* PR Status */}
-				<Show when={pr}>
+				<Show when={pr()}>
 					{(prData) => <Tooltip>
 						<TooltipTrigger asChild>
 							<a href={prData().url} target="_blank" rel="noopener noreferrer" class={cn("flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-accent transition-colors", isCompact && "px-1")}>
-								<PRIcon state={prData().state} class={cn("size-3.5", isCompact && "size-3")} />
+								<PRIcon state={prData().state as PRState} class={cn("size-3.5", isCompact && "size-3")} />
 								<Show when={!isCompact}>
 									<span class="text-[10px] text-muted-foreground font-mono">#{prData().number}</span>
 								</Show>

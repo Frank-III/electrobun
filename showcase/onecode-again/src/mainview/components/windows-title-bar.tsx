@@ -20,17 +20,17 @@ export function WindowsTitleBar() {
   });
 
   const handleMinimize = async () => {
-    await desktopRpc.window.minimize.mutate();
+    await desktopRpc.window.minimize.mutate({});
   };
 
   const handleMaximize = async () => {
-    await desktopRpc.window.maximize.mutate();
+    await desktopRpc.window.maximize.mutate({});
     const { isMaximized: maximized } = await desktopRpc.window.isMaximized();
     setIsMaximized(maximized);
   };
 
   const handleClose = async () => {
-    await desktopRpc.window.close.mutate();
+    await desktopRpc.window.close.mutate({});
   };
 
   return (

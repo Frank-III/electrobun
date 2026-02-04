@@ -2,8 +2,7 @@
  * tRPC client for remote web backend (21st.dev)
  * Uses signedFetch via IPC for authentication (no CORS issues)
  */
-import { createTRPCClient, httpLink } from "@trpc/client"
-import type { AppRouter } from "../../../../web/server/api/root"
+import { createTRPCClient, httpLink, type TRPCClientErrorLike } from "@trpc/client"
 import SuperJSON from "superjson"
 
 // Placeholder URL - actual base is fetched dynamically from main process
@@ -24,7 +23,7 @@ async function getApiBase(): Promise<string> {
  * Automatically adds auth token and bypasses CORS
  * Replaces placeholder URL with actual API base from env
  */
-const signedFetch: typeof fetch = async (input, init) => {
+async function signedFetchImpl(input: URL | RequestInfo, init?: RequestInit): Promise<Response> {
   if (typeof window === "undefined" || !window.desktopApi?.signedFetch) {
     throw new Error("Desktop API not available")
   }
@@ -37,31 +36,53 @@ const signedFetch: typeof fetch = async (input, init) => {
     url = url.replace("/__dynamic__", apiBase)
   }
 
-  const result = await window.desktopApi.signedFetch(url, {
+  // signedFetch returns a standard Response object
+  const response = await window.desktopApi.signedFetch(url, {
     method: init?.method,
-    body: init?.body as string | undefined,
-    headers: init?.headers as Record<string, string> | undefined,
+    body: init?.body as BodyInit | undefined,
+    headers: init?.headers as HeadersInit | undefined,
   })
 
-  // Convert IPC result to Response-like object
-  return {
-    ok: result.ok,
-    status: result.status,
-    json: async () => result.data,
-    text: async () => JSON.stringify(result.data),
-  } as Response
+  return response
+}
+
+// Type-safe procedure result types for the remote API
+type QueryProcedure<TInput, TOutput> = {
+  query: (input: TInput) => Promise<TOutput>
+}
+type MutationProcedure<TInput, TOutput> = {
+  mutate: (input: TInput) => Promise<TOutput>
+}
+
+// Stub type for the remote tRPC router shape we use
+// This mirrors the actual API structure without importing the web backend
+interface RemoteTrpcClient {
+  teams: {
+    getUserTeams: QueryProcedure<void, Array<{ id: string; name: string }>>
+  }
+  agents: {
+    getAgentChats: QueryProcedure<{ teamId: string }, unknown[]>
+    getAgentChat: QueryProcedure<{ chatId: string }, unknown>
+    getArchivedChats: QueryProcedure<{ teamId: string }, unknown[]>
+    archiveChat: MutationProcedure<{ chatId: string }, void>
+    archiveChatsBatch: MutationProcedure<{ chatIds: string[] }, { archivedCount: number }>
+    restoreChat: MutationProcedure<{ chatId: string }, void>
+    renameSubChat: MutationProcedure<{ subChatId: string; name: string }, void>
+    renameChat: MutationProcedure<{ chatId: string; name: string }, void>
+  }
 }
 
 /**
  * tRPC client connected to web backend
  * Fully typed, handles superjson automatically
+ * Note: Uses type assertion because the actual AppRouter type is in the web backend
  */
-export const remoteTrpc = createTRPCClient<AppRouter>({
+export const remoteTrpc: RemoteTrpcClient = createTRPCClient({
   links: [
     httpLink({
       url: TRPC_PLACEHOLDER,
-      fetch: signedFetch,
+      fetch: signedFetchImpl,
       transformer: SuperJSON,
     }),
   ],
-})
+}) as unknown as RemoteTrpcClient

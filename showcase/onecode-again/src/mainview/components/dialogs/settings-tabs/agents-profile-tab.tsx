@@ -19,10 +19,9 @@ function useIsNarrowScreen(): Accessor<boolean> {
 }
 interface DesktopUser {
 	id: string;
-	email: string;
-	name: string | null;
-	imageUrl: string | null;
-	username: string | null;
+	email?: string;
+	name?: string;
+	avatarUrl?: string;
 }
 export function AgentsProfileTab() {
 	const [user, setUser] = createSignal<DesktopUser | null>(null);
@@ -46,7 +45,7 @@ export function AgentsProfileTab() {
 		setIsSaving(true);
 		try {
 			if (window.desktopApi?.updateUser) {
-				const updatedUser = await window.desktopApi.updateUser({ name: fullName });
+				const updatedUser = await window.desktopApi.updateUser({ name: fullName() });
 				if (updatedUser) {
 					setUser(updatedUser);
 					toast.success("Profile updated successfully");

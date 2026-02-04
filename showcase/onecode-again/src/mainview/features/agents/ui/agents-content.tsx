@@ -2,10 +2,10 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "so
 import { Portal } from "solid-js/web";
 // import { useSearchParams, useRouter } from "next/navigation" // Desktop doesn't use next/navigation
 // Desktop: mock Next.js navigation hooks
-const useSearchParams = () => ({ get: () => null });
+const useSearchParams = () => ({ get: (_key: string): string | null => null });
 const useRouter = () => ({
-	push: () => {},
-	replace: () => {}
+	push: (_url: string, _options?: { scroll?: boolean }) => {},
+	replace: (_url: string, _options?: { scroll?: boolean }) => {}
 });
 // Desktop: mock Clerk hooks
 const useUser = () => ({ user: null });
@@ -154,7 +154,7 @@ export function AgentsContent() {
 	// Quick-switch dialog state - Agents (Opt+Ctrl+Tab)
 	const [quickSwitchOpen, setQuickSwitchOpen] = agentsQuickSwitchOpenAtom;
 	const [quickSwitchSelectedIndex, setQuickSwitchSelectedIndex] = agentsQuickSwitchSelectedIndexAtom;
-	const [holdTimerRef, setHoldTimerRef] = createSignal<NodeJS.Timeout | null>(null);
+	const [holdTimerRef, setHoldTimerRef] = createSignal<ReturnType<typeof setTimeout> | null>(null);
 	const [modifierKeysHeldRef, setModifierKeysHeldRef] = createSignal(false);
 	const [wasShiftPressedRef, setWasShiftPressedRef] = createSignal(false);
 	const [isQuickSwitchingRef, setIsQuickSwitchingRef] = createSignal(false);
@@ -164,7 +164,7 @@ export function AgentsContent() {
 	// Quick-switch dialog state - Sub-chats (Ctrl+Tab)
 	const [subChatQuickSwitchOpen, setSubChatQuickSwitchOpen] = subChatsQuickSwitchOpenAtom;
 	const [subChatQuickSwitchSelectedIndex, setSubChatQuickSwitchSelectedIndex] = subChatsQuickSwitchSelectedIndexAtom;
-	const [subChatHoldTimerRef, setSubChatHoldTimerRef] = createSignal<NodeJS.Timeout | null>(null);
+	const [subChatHoldTimerRef, setSubChatHoldTimerRef] = createSignal<ReturnType<typeof setTimeout> | null>(null);
 	const [subChatModifierKeysHeldRef, setSubChatModifierKeysHeldRef] = createSignal(false);
 	const [subChatWasShiftPressedRef, setSubChatWasShiftPressedRef] = createSignal(false);
 	const [frozenSubChatsRef, setFrozenSubChatsRef] = createSignal<SubChatMeta[]>([]);
@@ -203,7 +203,7 @@ export function AgentsContent() {
 	// Fetch agent chats for keyboard navigation and mobile view
 	const agentChatsQuery = useQuery(() => ({
 		queryKey: ["chats", "list"] as const,
-		queryFn: () => desktopRpc.chats.list.query({}),
+		queryFn: () => desktopRpc.chats.list.query(),
 		enabled: !!selectedTeamId(),
 	}));
 	const agentChats = () => agentChatsQuery.data ?? [];
@@ -335,13 +335,13 @@ export function AgentsContent() {
 					let nextIndex: number;
 					if (e.shiftKey) {
 						// Shift + Tab = Previous
-						nextIndex = quickSwitchSelectedIndex - 1;
+						nextIndex = quickSwitchSelectedIndex() - 1;
 						if (nextIndex < 0) {
 							nextIndex = (frozenRecentChatsRef()?.length ?? 1) - 1;
 						}
 					} else {
 						// Tab = Next
-						nextIndex = (quickSwitchSelectedIndex + 1) % (frozenRecentChatsRef()?.length ?? 1);
+						nextIndex = (quickSwitchSelectedIndex() + 1) % (frozenRecentChatsRef()?.length ?? 1);
 					}
 					setQuickSwitchSelectedIndex(nextIndex);
 					return;
@@ -380,7 +380,7 @@ export function AgentsContent() {
 				setModifierKeysHeldRef(false);
 				setIsQuickSwitchingRef(false);
 				if (holdTimerRef()) {
-					clearTimeout(holdTimerRef());
+					clearTimeout(holdTimerRef()!);
 					setHoldTimerRef(null);
 				}
 				setQuickSwitchOpen(false);
@@ -395,7 +395,7 @@ export function AgentsContent() {
 				setModifierKeysHeldRef(false);
 				// If timer is still running (quick press - dialog not shown yet)
 				if (holdTimerRef()) {
-					clearTimeout(holdTimerRef());
+					clearTimeout(holdTimerRef()!);
 					setHoldTimerRef(null);
 					setIsQuickSwitchingRef(false);
 					// Do quick switch without showing dialog
@@ -462,7 +462,7 @@ export function AgentsContent() {
 			window.removeEventListener("keydown", handleKeyDown);
 			window.removeEventListener("keyup", handleKeyUp);
 			if (holdTimerRef()) {
-				clearTimeout(holdTimerRef());
+				clearTimeout(holdTimerRef()!);
 			}
 		});
 	});
@@ -504,9 +504,9 @@ export function AgentsContent() {
 				return {
 					id: subChat.id,
 					label: subChat.name ?? "Tab",
-					subLabel: subChat.mode ?? null,
+					subLabel: subChat.mode as string | null,
 					isActive: subChat.id === activeSubChatId,
-				};
+				} as CmdOverlayItem;
 			})
 			.filter((item): item is CmdOverlayItem => item !== null);
 	});
@@ -539,8 +539,16 @@ export function AgentsContent() {
 		const target = cmdOverlayWorktrees()[index];
 		if (!target) return;
 		const project = (projects() ?? []).find((entry: any) => entry.id === target.id);
-		if (!project) return;
-		setSelectedProject(project);
+		if (!project?.id || !project.path) return;
+		setSelectedProject({
+			id: project.id,
+			name: project.name ?? project.path,
+			path: project.path,
+			gitRemoteUrl: project.gitRemoteUrl ?? null,
+			gitProvider: (project.gitProvider as "github" | "gitlab" | "bitbucket" | null) ?? null,
+			gitOwner: project.gitOwner ?? null,
+			gitRepo: project.gitRepo ?? null,
+		});
 		setSelectedChatId(null);
 		setSelectedChatIsRemote(false);
 		setChatSourceMode("local");
@@ -648,7 +656,7 @@ export function AgentsContent() {
 				e.preventDefault();
 				setSubChatModifierKeysHeldRef(false);
 				if (subChatHoldTimerRef()) {
-					clearTimeout(subChatHoldTimerRef());
+					clearTimeout(subChatHoldTimerRef()!);
 					setSubChatHoldTimerRef(null);
 				}
 				setSubChatQuickSwitchOpen(false);
@@ -663,7 +671,7 @@ export function AgentsContent() {
 				setSubChatModifierKeysHeldRef(false);
 				// If timer is still running (quick press - dialog not shown yet)
 				if (subChatHoldTimerRef()) {
-					clearTimeout(subChatHoldTimerRef());
+					clearTimeout(subChatHoldTimerRef()!);
 					setSubChatHoldTimerRef(null);
 					// Do quick switch without showing dialog (only between open tabs)
 					const store = useAgentSubChatStore.getState();
@@ -766,20 +774,21 @@ export function AgentsContent() {
 		<Show when={isMobile()} fallback={<>
       <div class="flex h-full">
         {	/* Sub-chats sidebar - only show in sidebar mode when viewing a chat */}
-        <ResizableSidebar isOpen={!!isSubChatsSidebarOpen} onClose={() => {
+		<ResizableSidebar isOpen={!!isSubChatsSidebarOpen} onClose={() => {
  setShouldAnimateSubChatsSidebar(true);
 		setSubChatsSidebarMode("tabs");
-	}} widthAtom={agentsSubChatsSidebarWidthAtom} minWidth={160} maxWidth={300} side="left" animationDuration={0} initialWidth={0} exitWidth={0} disableClickToClose={true}>
+	}} width={agentsSubChatsSidebarWidthAtom[0]} setWidth={agentsSubChatsSidebarWidthAtom[1]} minWidth={160} maxWidth={300} side="left" animationDuration={0} initialWidth={0} exitWidth={0} disableClickToClose={true}>
           <AgentsSubChatsSidebar onClose={() => {
 		setShouldAnimateSubChatsSidebar(true);
 		setSubChatsSidebarMode("tabs");
-	}} isMobile={isMobile()} isSidebarOpen={sidebarOpen()} onBackToChats={() => setSidebarOpen((prev) => !prev)} isLoading={isLoadingSubChats()} agentName={chatData()?.name} />
+	}} isMobile={isMobile()} isSidebarOpen={sidebarOpen()} onBackToChats={() => setSidebarOpen((prev) => !prev)} isLoading={isLoadingSubChats()} agentName={chatData()?.name as string | undefined} />
         </ResizableSidebar>
 
         {	/* Main content */}
         <div class="flex-1 min-w-0 overflow-hidden" style={{ "min-width": "350px" }}>
 	      <Show
 	        when={selectedChatId()}
+			keyed
 	        fallback={(
 	          <Show
 	            when={selectedDraftId() || showNewChatForm()}
@@ -788,7 +797,9 @@ export function AgentsContent() {
 	                when={betaKanbanEnabled()}
 	                fallback={(
 	                  <div class="h-full flex flex-col relative overflow-hidden">
-	                    <NewChatForm key={`new-chat-${newChatFormKeyRef()}`} />
+	                    <Show when={newChatFormKeyRef() + 1} keyed>
+	                      <NewChatForm />
+	                    </Show>
 	                  </div>
 	                )}
 	              >
@@ -797,23 +808,27 @@ export function AgentsContent() {
 	            )}
 	          >
 	            <div class="h-full flex flex-col relative overflow-hidden">
-	              <NewChatForm key={`new-chat-${newChatFormKeyRef()}`} />
+	              <Show when={newChatFormKeyRef() + 1} keyed>
+	                <NewChatForm />
+	              </Show>
 	            </div>
 	          </Show>
 	        )}
 	      >
-	        <div class="h-full flex flex-col relative overflow-hidden">
-	          <ChatView key={`${chatSourceMode()}-${selectedChatId()}`} chatId={selectedChatId()!} isSidebarOpen={sidebarOpen()} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} selectedTeamName={selectedTeam()?.name} selectedTeamImageUrl={selectedTeam()?.image_url} />
-	        </div>
+	        {(chatId) => (
+				<div class="h-full flex flex-col relative overflow-hidden">
+					<ChatView chatId={chatId} isSidebarOpen={sidebarOpen()} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} selectedTeamName={selectedTeam()?.name} selectedTeamImageUrl={selectedTeam()?.image_url} />
+				</div>
+			)}
 	      </Show>
         </div>
       </div>
 
       { /* Quick-switch dialog - Agents (Opt+Ctrl+Tab) */}
-      <AgentsQuickSwitchDialog isOpen={quickSwitchOpen()} chats={quickSwitchOpen() ? frozenRecentChatsRef() ?? [] : recentChats} selectedIndex={quickSwitchSelectedIndex()} projectsMap={projectsMap} onHover={setQuickSwitchSelectedIndex} />
+	      <AgentsQuickSwitchDialog isOpen={quickSwitchOpen()} chats={quickSwitchOpen() ? frozenRecentChatsRef() ?? [] : recentChats} selectedIndex={quickSwitchSelectedIndex()} projectsMap={projectsMap()} onHover={setQuickSwitchSelectedIndex} />
 
 	      { /* Quick-switch dialog - Sub-chats (Ctrl+Tab) */}
-	      <SubChatsQuickSwitchDialog isOpen={subChatQuickSwitchOpen()} subChats={subChatQuickSwitchOpen() ? frozenSubChatsRef() ?? [] : recentSubChats} selectedIndex={subChatQuickSwitchSelectedIndex()} onHover={setSubChatQuickSwitchSelectedIndex} />
+	      <SubChatsQuickSwitchDialog isOpen={subChatQuickSwitchOpen()} subChats={subChatQuickSwitchOpen() ? frozenSubChatsRef() ?? [] : recentSubChats()} selectedIndex={subChatQuickSwitchSelectedIndex()} onHover={setSubChatQuickSwitchSelectedIndex} />
 
 	      <CmdKeymapOverlay
 	        open={cmdOverlayOpen()}
@@ -825,7 +840,7 @@ export function AgentsContent() {
 	      { /* Dev mode / Admin sandbox debugger */}
 	      <Show when={(process.env.NODE_ENV === "development" || isAdmin) && chatData()?.sandbox_id}>
 	        <a href={`https://codesandbox.io/p/devbox/${chatData()!.sandbox_id}`} target="_blank" rel="noopener noreferrer" class="fixed bottom-4 right-4 z-50 bg-zinc-900 text-zinc-300 px-3 py-1.5 rounded-md text-xs font-mono opacity-70 hover:opacity-100 hover:bg-zinc-800 transition-all cursor-pointer">
-	          sandbox: {chatData()!.sandbox_id}
+	          sandbox: {chatData()!.sandbox_id as string}
 	        </a>
 	      </Show>
     </>}>
@@ -846,31 +861,33 @@ export function AgentsContent() {
 												<div class="h-full w-full flex flex-col overflow-hidden select-text" data-mobile-chat-mode>
 													<Show
 														when={selectedChatId()}
+														keyed
 														fallback={(
 															<div class="h-full flex flex-col relative overflow-hidden">
 																<NewChatForm isMobileFullscreen={true} onBackToChats={() => setMobileViewMode("chats")} />
 															</div>
 														)}
 													>
-														<ChatView
-															key={`${chatSourceMode()}-${selectedChatId()}`}
-															chatId={selectedChatId()!}
-															isSidebarOpen={false}
-															onToggleSidebar={() => {}}
-															selectedTeamName={selectedTeam()?.name}
-															selectedTeamImageUrl={selectedTeam()?.image_url}
-															isMobileFullscreen={true}
-															onBackToChats={() => {
-																setMobileViewMode("chats");
-																setSelectedChatId(null);
-															}}
-															onOpenPreview={canShowPreview ? () => setMobileViewMode("preview") : undefined}
-															onOpenDiff={canShowDiff ? () => setMobileViewMode("diff") : undefined}
-															onOpenTerminal={canShowTerminal ? () => {
-																setTerminalSidebarOpen(true);
-																setMobileViewMode("terminal");
-															} : undefined}
-														/>
+														{(chatId) => (
+															<ChatView
+																chatId={chatId}
+																isSidebarOpen={false}
+																onToggleSidebar={() => {}}
+																selectedTeamName={selectedTeam()?.name}
+																selectedTeamImageUrl={selectedTeam()?.image_url}
+																isMobileFullscreen={true}
+																onBackToChats={() => {
+																	setMobileViewMode("chats");
+																	setSelectedChatId(null);
+																}}
+																onOpenPreview={canShowPreview ? () => setMobileViewMode("preview") : undefined}
+																onOpenDiff={canShowDiff ? () => setMobileViewMode("diff") : undefined}
+																onOpenTerminal={canShowTerminal ? () => {
+																	setTerminalSidebarOpen(true);
+																	setMobileViewMode("terminal");
+																} : undefined}
+															/>
+														)}
 													</Show>
 												</div>
 											)}
@@ -879,11 +896,11 @@ export function AgentsContent() {
 										</Show>
 									)}
 								>
-									<AgentDiffView chatId={selectedChatId()!} sandboxId={chatData()!.sandbox_id!} worktreePath={worktreePath} repository={chatMeta?.repository} showFooter={true} isMobile={true} onClose={() => setMobileViewMode("chat")} />
+									<AgentDiffView chatId={selectedChatId()!} sandboxId={chatData()!.sandbox_id as string} worktreePath={worktreePath} repository={chatMeta?.repository} showFooter={true} isMobile={true} onClose={() => setMobileViewMode("chat")} />
 							</Show>
 						)}
 					>
-						<AgentPreview chatId={selectedChatId()!} sandboxId={chatData()!.sandbox_id!} port={chatMeta?.sandboxConfig?.port!} isMobile={true} onClose={() => setMobileViewMode("chat")} />
+						<AgentPreview chatId={selectedChatId()!} sandboxId={chatData()!.sandbox_id as string} port={chatMeta?.sandboxConfig?.port!} isMobile={true} onClose={() => setMobileViewMode("chat")} />
 					</Show>
 					)}
 				>

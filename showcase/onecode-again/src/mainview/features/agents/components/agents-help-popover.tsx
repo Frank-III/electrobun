@@ -19,7 +19,7 @@ export function AgentsHelpPopover({ children, open: controlledOpen, onOpenChange
 	const isOpen = createMemo(() => controlledOpen ?? internalOpen());
 	const setOpen = controlledOnOpenChange ?? setInternalOpen;
 	const handleCommunityClick = () => {
-		desktopRpc.window.openExternal.mutate({ url: "https://discord.gg/8ektTZGnj4" });
+		desktopRpc.external.openExternal.mutate({ url: "https://discord.gg/8ektTZGnj4" });
 	};
 	const handleKeyboardShortcutsClick = () => {
 		setOpen(false);

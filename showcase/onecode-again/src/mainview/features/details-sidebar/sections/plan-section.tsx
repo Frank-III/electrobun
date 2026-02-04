@@ -17,9 +17,9 @@ interface PlanSectionProps {
 */
 export function PlanSection(props: PlanSectionProps) {
 	// Refs for scroll gradients (avoid re-renders)
-	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
-	const [topGradientRef, setTopGradientRef] = createSignal<HTMLDivElement>(null);
-	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement>(null);
+	const [contentRef, setContentRef] = createSignal<HTMLDivElement | null>(null);
+	const [topGradientRef, setTopGradientRef] = createSignal<HTMLDivElement | null>(null);
+	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement | null>(null);
 	// Plan content cache to avoid flashing loading state
 	const [planCache, setPlanCache] = planContentCacheAtomFamily(props.chatId);
 	// Fetch plan file content via desktop RPC
@@ -45,7 +45,8 @@ export function PlanSection(props: PlanSectionProps) {
 	});
 	// Clear cache when plan path changes to a different file
 	createEffect(() => {
-		if (props.planPath && planCache && planCache.planPath !== props.planPath) {}
+		const cache = planCache();
+		if (props.planPath && cache && cache.planPath !== props.planPath) {}
 	});
 	// Refetch when trigger changes
 	createEffect(() => {
@@ -86,8 +87,9 @@ export function PlanSection(props: PlanSectionProps) {
 	const displayContent = createMemo(() => {
 		const content = planContent();
 		if (content) return content;
-		if (planCache?.isReady && planCache.planPath === props.planPath) {
-			return planCache.content;
+		const cache = planCache();
+		if (cache?.isReady && cache.planPath === props.planPath) {
+			return cache.content;
 		}
 		return null;
 	});

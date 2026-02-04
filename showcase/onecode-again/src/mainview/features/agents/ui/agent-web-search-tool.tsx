@@ -43,15 +43,15 @@ export function AgentWebSearchTool(props: AgentWebSearchToolProps) {
 		}
 		return allResults;
 	});
-	const resultCount = results.length;
-	const hasResults = resultCount > 0;
+	const resultCount = createMemo(() => results().length);
+	const hasResults = createMemo(() => resultCount() > 0);
 	// Show interrupted state if search was interrupted without completing
-	if (isInterrupted && !hasResults) {
+	if (isInterrupted && !hasResults()) {
 		return <AgentToolInterrupted toolName="Search" subtitle={truncatedQuery} />;
 	}
 	return <div class="rounded-lg border border-border bg-muted/30 overflow-hidden mx-2">
       {	/* Header - clickable to toggle expand */}
-      <div onClick={() => hasResults && !isPending && setIsExpanded((prev) => !prev)} class={cn("flex items-center justify-between px-2.5 h-7", hasResults && !isPending && "cursor-pointer hover:bg-muted/50 transition-colors duration-150")}>
+		<div onClick={() => hasResults() && !isPending && setIsExpanded((prev) => !prev)} class={cn("flex items-center justify-between px-2.5 h-7", hasResults() && !isPending && "cursor-pointer hover:bg-muted/50 transition-colors duration-150")}>
         <div class="flex items-center gap-1.5 text-xs truncate flex-1 min-w-0">
           <SearchIcon class="w-3 h-3 flex-shrink-0 text-muted-foreground" />
           
@@ -70,7 +70,7 @@ export function AgentWebSearchTool(props: AgentWebSearchToolProps) {
         <div class="flex items-center gap-2 flex-shrink-0 ml-2">
           <div class="flex items-center gap-1.5 text-xs">
             <Show when={isPending} fallback={<Show when={isError} fallback={<span class="text-muted-foreground">
-              {resultCount} {resultCount === 1 ? "result" : "results"}
+					{resultCount()} {resultCount() === 1 ? "result" : "results"}
             </span>}>
               <span class="text-destructive">Failed</span>
             </Show>}>
@@ -79,7 +79,7 @@ export function AgentWebSearchTool(props: AgentWebSearchToolProps) {
           </div>
 
           { /* Expand/Collapse icon */}
-          <Show when={hasResults && !isPending}>
+			<Show when={hasResults() && !isPending}>
             <div class="relative w-4 h-4">
               <ExpandIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
               <CollapseIcon class={cn("absolute inset-0 w-4 h-4 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isExpanded() ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
@@ -89,9 +89,9 @@ export function AgentWebSearchTool(props: AgentWebSearchToolProps) {
       </div>
 
       { /* Results list - expandable */}
-      <Show when={hasResults && isExpanded()}>
+		<Show when={hasResults() && isExpanded()}>
         <div class="border-t border-border max-h-[200px] overflow-y-auto">
-          <For each={results}>{(result) => <a href={result.url} target="_blank" rel="noopener noreferrer" class="flex items-start gap-2 px-2.5 py-1.5 hover:bg-muted/50 transition-colors group">
+          <For each={results()}>{(result) => <a href={result.url} target="_blank" rel="noopener noreferrer" class="flex items-start gap-2 px-2.5 py-1.5 hover:bg-muted/50 transition-colors group">
             <ExternalLinkIcon class="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground group-hover:text-foreground" />
             <div class="min-w-0 flex-1">
               <div class="text-xs text-foreground truncate">

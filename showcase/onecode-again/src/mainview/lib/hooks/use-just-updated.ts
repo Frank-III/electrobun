@@ -1,4 +1,4 @@
-import { createEffect, onCleanup } from "solid-js"
+import { onMount, batch } from "solid-js"
 import { justUpdatedAtom, justUpdatedVersionAtom } from "../atoms"
 
 const LAST_VERSION_KEY = "app:last-version"
@@ -12,7 +12,7 @@ export function useJustUpdated() {
   const [justUpdatedVersion, setJustUpdatedVersion] = justUpdatedVersionAtom
 
   // Check for update on mount
-  createEffect(() => {
+  onMount(() => {
     const checkForUpdate = async () => {
       const api = window.desktopApi
       if (!api) return
@@ -23,8 +23,10 @@ export function useJustUpdated() {
 
         // If this is first launch or version changed, show "What's New"
         if (lastVersion && lastVersion !== currentVersion) {
-          setJustUpdated(true)
-          setJustUpdatedVersion(currentVersion)
+          batch(() => {
+            setJustUpdated(true)
+            setJustUpdatedVersion(currentVersion)
+          })
         }
 
         // Always update stored version
@@ -39,8 +41,10 @@ export function useJustUpdated() {
 
   // Dismiss the "What's New" banner
   const dismissJustUpdated = () => {
-    setJustUpdated(false)
-    setJustUpdatedVersion(null)
+    batch(() => {
+      setJustUpdated(false)
+      setJustUpdatedVersion(null)
+    })
   }
 
   // Open changelog in browser

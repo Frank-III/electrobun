@@ -63,14 +63,14 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
 		onSwitchFromHistory(subChat.id);
 		setIsHistoryOpen(false);
 	};
-	return <div class="flex items-center gap-1.5 h-7 w-full min-w-0" style={{ WebkitAppRegion: "drag" }}>
+	return <div class="flex items-center gap-1.5 h-7 w-full min-w-0" style={{ "-webkit-app-region": "drag" }}>
       {	/* Burger button - opens all projects */}
-      <Show when={onBackToChats}><Button variant="ghost" size="icon" onClick={onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="All projects" style={{ WebkitAppRegion: "no-drag" }}>
+      <Show when={onBackToChats}><Button variant="ghost" size="icon" onClick={onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="All projects" style={{ "-webkit-app-region": "no-drag" }}>
           <AlignJustify class="h-4 w-4" />
         </Button></Show>
 
       { /* Active chat trigger - opens history (shrinks to content, max-width limited) */}
-      <SearchCombobox isOpen={isHistoryOpen()} onOpenChange={setIsHistoryOpen} items={sortedSubChats} onSelect={handleSelectFromHistory} placeholder="Search chats..." emptyMessage="No results" align="start" side="bottom" sideOffset={8} getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={(subChat) => {
+      <SearchCombobox isOpen={isHistoryOpen()} onOpenChange={setIsHistoryOpen} items={sortedSubChats()} onSelect={handleSelectFromHistory} placeholder="Search chats..." emptyMessage="No results" align="start" side="bottom" sideOffset={8} getItemValue={(subChat) => `${subChat.name || "New Chat"} ${subChat.id}`} renderItem={(subChat) => {
  const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
 		const isActive = subChat.id === activeSubChatId();
 		return <div class={cn("flex items-center gap-2 flex-1 min-w-0", isActive && "font-medium")}>
@@ -82,7 +82,7 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
               </span>
             </div>;
 	}} trigger={<PopoverTrigger asChild>
-            <button class={cn("flex items-center gap-1.5 h-7 px-2 rounded-md text-sm", "bg-muted/50 hover:bg-muted transition-colors", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", "min-w-0 max-w-[50vw] shrink")} style={{ WebkitAppRegion: "no-drag" }}>
+            <button class={cn("flex items-center gap-1.5 h-7 px-2 rounded-md text-sm", "bg-muted/50 hover:bg-muted transition-colors", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", "min-w-0 max-w-[50vw] shrink")} style={{ "-webkit-app-region": "no-drag" }}>
               {	/* Icon */}
               <div class="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
                 <Show when={isLoading} fallback={<Show when={mode === "plan"} fallback={<AgentIcon class="w-3.5 h-3.5 text-muted-foreground" />}><PlanIcon class="w-3.5 h-3.5 text-muted-foreground" /></Show>}>
@@ -104,7 +104,7 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
       <div class="flex-1" />
 
       { /* Action buttons - always on the right */}
-      <div class="flex items-center gap-1 flex-shrink-0" style={{ WebkitAppRegion: "no-drag" }}>
+      <div class="flex items-center gap-1 flex-shrink-0" style={{ "-webkit-app-region": "no-drag" }}>
         { /* Open Locally - only for sandbox chats */}
         <Show when={showOpenLocally && onOpenLocally}><Button variant="default" size="sm" onClick={onOpenLocally} class="h-7 px-2.5 gap-1.5 text-xs font-medium">
             <FolderDown class="h-3.5 w-3.5" />

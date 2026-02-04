@@ -48,7 +48,8 @@ export function WorkModeSelector({ value, onChange, disabled }: WorkModeSelector
 		const isSoon = "soon" in option && option.soon;
 		return <button onClick={() => {
 			if (isDisabled) return;
-			onChange(option.id);
+			// Cast is safe because disabled options are filtered out above
+			onChange(option.id as WorkMode);
 			setOpen(false);
 		}} disabled={isDisabled} class={cn("flex items-center gap-1.5 min-h-[32px] py-[5px] px-1.5 mx-1 w-[calc(100%-8px)] text-sm text-left rounded-md cursor-default select-none outline-none transition-colors", isDisabled ? "opacity-50 cursor-not-allowed" : isSelected ? "dark:bg-neutral-800 text-foreground" : "dark:hover:bg-neutral-800 hover:text-foreground")}>
               <OptionIcon class="h-4 w-4 text-muted-foreground shrink-0" />

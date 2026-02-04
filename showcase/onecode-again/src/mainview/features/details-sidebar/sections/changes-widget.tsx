@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import { useResolvedHotkeyDisplay } from "@/lib/hotkeys";
-import { viewedFilesAtomFamily } from "@/features/agents/atoms";
+import { viewedFilesAtomFamily } from "@/lib/state/agents-store";
 import { FileListItem, getFileName, getFileDir } from "@/features/changes/components/file-list-item";
 import { useMutation } from "@tanstack/solid-query";
 import { desktopRpc } from "@/lib/desktop-rpc";
@@ -182,7 +182,7 @@ export function ChangesWidget(props: ChangesWidgetProps) {
 			</div>}>
 			{ /* Select all header - like in changes-view */}
 			<div class="flex items-center gap-2 px-2 py-1.5 border-b border-border/50">
-				<Checkbox checked={someSelected() ? "indeterminate" : allSelected()} onCheckedChange={handleSelectAllChange} class="size-4 border-muted-foreground/50" />
+				<Checkbox checked={allSelected()} indeterminate={someSelected()} onCheckedChange={handleSelectAllChange} class="size-4 border-muted-foreground/50" />
 				<span class="text-xs text-muted-foreground">
 					{selectedCount()} of {displayFiles().length} file
 	{displayFiles().length !== 1 ? "s" : ""} selected

@@ -27,7 +27,7 @@ export function AgentTaskTool(props: AgentTaskToolProps) {
 	const { isPending, isInterrupted } = getToolStatus(props.part, props.chatStatus);
 	// Default: collapsed
 	const [isExpanded, setIsExpanded] = createSignal(false);
-	const [scrollRef, setScrollRef] = createSignal<HTMLDivElement>(null);
+	const [scrollRef, setScrollRef] = createSignal<HTMLDivElement | null>(null);
 	// Track elapsed time for running tasks
 	const [elapsedMs, setElapsedMs] = createSignal(0);
 	const description = props.part.input?.description || "";
@@ -112,7 +112,7 @@ export function AgentTaskTool(props: AgentTaskToolProps) {
           <div class={cn("absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-background to-transparent z-10 pointer-events-none transition-opacity duration-200", isPending && props.nestedTools.length > MAX_VISIBLE_TOOLS ? "opacity-100" : "opacity-0")} />
 
           {/* Scrollable container - auto-scrolls to bottom when streaming */}
-          <div ref={setScrollRef} class={cn("space-y-1.5", isPending && props.nestedTools.length > MAX_VISIBLE_TOOLS && "overflow-y-auto scrollbar-hide")} style={isPending && props.nestedTools.length > MAX_VISIBLE_TOOLS ? { maxHeight: `${MAX_VISIBLE_TOOLS * TOOL_HEIGHT_PX}px` } : undefined}>
+		<div ref={setScrollRef} class={cn("space-y-1.5", isPending && props.nestedTools.length > MAX_VISIBLE_TOOLS && "overflow-y-auto scrollbar-hide")} style={isPending && props.nestedTools.length > MAX_VISIBLE_TOOLS ? { "max-height": `${MAX_VISIBLE_TOOLS * TOOL_HEIGHT_PX}px` } : undefined}>
             <For each={props.nestedTools}>{(nestedPart, idx) => {
  const nestedMeta = AgentToolRegistry[nestedPart.type];
 		if (!nestedMeta) {

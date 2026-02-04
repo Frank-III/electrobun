@@ -133,7 +133,7 @@ export function VSCodeThemeProvider(props: ParentProps) {
 		setThemeById,
 		shikiThemeName: shikiThemeName()
 	}));
-	return <ThemeContext.Provider value={contextValue}>
+	return <ThemeContext.Provider value={contextValue()}>
       {props.children}
     </ThemeContext.Provider>;
 }

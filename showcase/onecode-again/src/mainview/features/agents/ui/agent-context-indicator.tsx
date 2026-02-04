@@ -48,14 +48,15 @@ function CircularProgress(props: {
       {	/* Background circle */}
 		<circle cx={local.size / 2} cy={local.size / 2} r={radius} fill="none" stroke="currentColor" stroke-width={local.strokeWidth} class="text-muted-foreground/20" />
       { /* Progress circle */}
-		<circle cx={local.size / 2} cy={local.size / 2} r={radius} fill="none" stroke="currentColor" stroke-width={local.strokeWidth} stroke-dasharray={circumference} stroke-dashoffset={offset} stroke-linecap="round" class="transition-all duration-300 text-muted-foreground/60" />
+		<circle cx={local.size / 2} cy={local.size / 2} r={radius} fill="none" stroke="currentColor" stroke-width={local.strokeWidth} stroke-dasharray={String(circumference)} stroke-dashoffset={offset} stroke-linecap="round" class="transition-all duration-300 text-muted-foreground/60" />
     </svg>;
  }
 export function AgentContextIndicator(props: AgentContextIndicatorProps) {
 	const merged = mergeProps({ modelId: "sonnet" }, props);
 	const [local] = splitProps(merged, ["tokenData", "modelId", "class", "onCompact", "isCompacting", "disabled"]);
 	const totalTokens = local.tokenData.totalInputTokens + local.tokenData.totalOutputTokens;
-	const contextWindow = CONTEXT_WINDOWS[local.modelId];
+	const modelKey = (local.modelId ?? "sonnet") as ModelId;
+	const contextWindow = CONTEXT_WINDOWS[modelKey];
 	const percentUsed = Math.min(100, totalTokens / contextWindow * 100);
 	const isEmpty = totalTokens === 0;
 	const isClickable = local.onCompact && !local.disabled && !local.isCompacting;

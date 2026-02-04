@@ -1,11 +1,11 @@
-import { createSignal, Show, Switch, Match } from "solid-js";
+import { createSignal, Show, Switch, Match, type JSX } from "solid-js";
 import { ChevronLeft } from "lucide-solid";
 import { IconSpinner, GitHubIcon } from "../../components/ui/icons";
 import { Logo } from "../../components/ui/logo";
 import { Input } from "../../components/ui/input";
 import { useMutation, useQueryClient } from "@tanstack/solid-query";
 import { desktopRpc } from "../../lib/desktop-rpc";
-import { selectedProjectAtom } from "../agents/atoms";
+import { selectedProjectAtom } from "../../lib/state/agents-store";
 
 export function SelectRepoPage() {
 	const [, setSelectedProject] = selectedProjectAtom;

@@ -42,11 +42,11 @@ export function AgentWebSearchCollapsible(props: AgentWebSearchCollapsibleProps)
 		}
 		return allResults;
 	});
-	const resultCount = results.length;
-	const hasResults = resultCount > 0;
+	const resultCount = createMemo(() => results().length);
+	const hasResults = createMemo(() => resultCount() > 0);
 	return <div>
         {	/* Header - clickable to toggle */}
-        <div onClick={() => hasResults && !isPending && setIsExpanded((prev) => !prev)} class={cn("group flex items-start gap-1.5 py-0.5 px-2", hasResults && !isPending && "cursor-pointer")}>
+		<div onClick={() => hasResults() && !isPending && setIsExpanded((prev) => !prev)} class={cn("group flex items-start gap-1.5 py-0.5 px-2", hasResults() && !isPending && "cursor-pointer")}>
           <div class="flex-1 min-w-0 flex items-center gap-1">
             <div class="text-xs flex items-center gap-1.5 min-w-0">
               <span class="font-medium whitespace-nowrap flex-shrink-0 text-muted-foreground">
@@ -57,24 +57,24 @@ export function AgentWebSearchCollapsible(props: AgentWebSearchCollapsibleProps)
                 {query.length > 40 ? query.slice(0, 37) + "..." : query}
               </span>
               { /* Result count */}
-              <Show when={!isStreaming && hasResults}>
-                <span class="text-muted-foreground/60 whitespace-nowrap flex-shrink-0">
-                  · {resultCount} {resultCount === 1 ? "result" : "results"}
-                </span>
-              </Show>
+				<Show when={!isStreaming && hasResults()}>
+					<span class="text-muted-foreground/60 whitespace-nowrap flex-shrink-0">
+						· {resultCount()} {resultCount() === 1 ? "result" : "results"}
+					</span>
+				</Show>
               { /* Chevron - rotates when expanded, visible on hover when collapsed */}
-              <Show when={hasResults && !isPending}>
-                <ChevronRight class={cn("w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200 ease-out flex-shrink-0", isExpanded() && "rotate-90", !isExpanded() && "opacity-0 group-hover:opacity-100")} />
-              </Show>
+				<Show when={hasResults() && !isPending}>
+					<ChevronRight class={cn("w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200 ease-out flex-shrink-0", isExpanded() && "rotate-90", !isExpanded() && "opacity-0 group-hover:opacity-100")} />
+				</Show>
             </div>
           </div>
         </div>
 
         { /* Results list - only show when expanded */}
-        <Show when={isExpanded() && hasResults}>
+		<Show when={isExpanded() && hasResults()}>
           <div class="px-2 pb-1">
             <div class="space-y-1">
-              <For each={results}>{(result) => <a href={result.url} target="_blank" rel="noopener noreferrer" class="flex items-start gap-1.5 px-2 py-1 rounded hover:bg-muted/50 transition-colors group/link">
+              <For each={results()}>{(result) => <a href={result.url} target="_blank" rel="noopener noreferrer" class="flex items-start gap-1.5 px-2 py-1 rounded hover:bg-muted/50 transition-colors group/link">
                 <ExternalLinkIcon class="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground group-hover/link:text-foreground transition-colors" />
                 <div class="min-w-0 flex-1">
                   <div class="text-xs text-foreground truncate">

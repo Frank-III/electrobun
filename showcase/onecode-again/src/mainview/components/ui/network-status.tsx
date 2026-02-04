@@ -10,7 +10,7 @@ export function NetworkStatus() {
 	const showOfflineFeatures = showOfflineModeFeaturesAtom[0];
 	const query = useQuery(() => ({
 		queryKey: ["ollama", "getStatus"],
-		queryFn: () => desktopRpc.ollama.getStatus.query(),
+		queryFn: () => desktopRpc.ollama.getStatus(),
 		refetchInterval: () => (showOfflineFeatures() ? 3e4 : false),
 		enabled: !!showOfflineFeatures(),
 	}));

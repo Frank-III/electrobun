@@ -105,7 +105,7 @@ export function SubChatContextMenu(props: SubChatContextMenuProps) {
 	      <ContextMenuItem onClick={() => local.onCloseTab?.(local.subChat.id)} class="justify-between" disabled={local.isOnlyChat}>
 	        Close chat
 	        <Show when={!local.isOnlyChat}>
-	          <Kbd>{closeTabShortcut}</Kbd>
+	          <Kbd>{closeTabShortcut()}</Kbd>
 	        </Show>
 	      </ContextMenuItem>
 	      <ContextMenuItem onClick={() => local.onCloseOtherTabs?.(local.subChat.id)} disabled={!local.canCloseOtherTabs}>
@@ -118,7 +118,7 @@ export function SubChatContextMenu(props: SubChatContextMenuProps) {
 	      <ContextMenuItem onClick={() => local.onArchive(local.subChat.id)} class="justify-between" disabled={local.isOnlyChat}>
 	        Archive chat
 	        <Show when={!local.isOnlyChat}>
-	          <Kbd>{closeTabShortcut}</Kbd>
+	          <Kbd>{closeTabShortcut()}</Kbd>
 	        </Show>
 	      </ContextMenuItem>
 	      <ContextMenuItem onClick={() => local.onArchiveAllBelow?.(local.subChat.id)} disabled={local.currentIndex === undefined || local.currentIndex >= (local.totalCount || 0) - 1}>

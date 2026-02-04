@@ -11,9 +11,9 @@ import { useQuery, useMutation } from "@tanstack/solid-query";
 import { desktopRpc } from "../../../../lib/desktop-rpc";
 import { cn } from "../../../../lib/utils";
 import { usePRStatus } from "../../../../hooks/usePRStatus";
-import { PRIcon } from "../pr-icon";
+import { PRIcon, type PRState } from "../pr-icon";
 import { toast } from "solid-sonner";
-import type { DiffViewMode } from "../../../../agents/ui/agent-diff-view";
+import type { DiffViewMode } from "../../../agents/ui/agent-diff-view";
 interface DiffStats {
 	isLoading: boolean;
 	hasChanges: boolean;
@@ -194,13 +194,15 @@ export function DiffSidebarHeader(props: DiffSidebarHeaderComponentProps) {
 		});
 	};
 	const handleOpenPR = () => {
-		if (pr?.url) {
-			desktopRpc.window.openExternal.mutate({ url: pr.url });
+		const prData = pr();
+		if (prData?.url) {
+			desktopRpc.external.openExternal.mutate({ url: prData.url });
 		}
 	};
 	const handleCopyPRLink = () => {
-		if (pr?.url) {
-			navigator.clipboard.writeText(pr.url);
+		const prData = pr();
+		if (prData?.url) {
+			navigator.clipboard.writeText(prData.url);
 		}
 	};
 	onCleanup(() => {
@@ -287,7 +289,7 @@ interface ActionButton {
 				label: "Open PR",
 				icon: <ExternalLinkIcon class="size-3.5" />,
 				handler: handleOpenPR,
-				tooltip: `Open Pull Request #${pr.number}`,
+				tooltip: `Open Pull Request #${pr()?.number}`,
 				variant: "ghost"
 			};
 		}
@@ -347,11 +349,11 @@ interface ActionButton {
 	const displayAction = getDisplayAction();
 	return <div class="relative flex items-center justify-between h-10 px-2 border-b border-border/50 bg-background flex-shrink-0">
 			{	/* Drag region for window dragging */}
-			<Show when={merged.isDesktop && !merged.isFullscreen}>
-				<div class="absolute inset-0 z-0" style={{ WebkitAppRegion: "drag" }} />
-			</Show>
+		<Show when={merged.isDesktop && !merged.isFullscreen}>
+			<div class="absolute inset-0 z-0" style={{ "-webkit-app-region": "drag" } as JSX.CSSProperties} />
+		</Show>
 			{ /* Left side: Close button + Branch selector */}
-			<div class="relative z-10 flex items-center gap-1 min-w-0 flex-shrink" style={{ WebkitAppRegion: "no-drag" }}>
+		<div class="relative z-10 flex items-center gap-1 min-w-0 flex-shrink" style={{ "-webkit-app-region": "no-drag" } as JSX.CSSProperties}>
 				{ /* Close button - X icon for dialog/fullpage modes, chevron for sidebar */}
 				<Button variant="ghost" size="sm" class="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10" onClick={merged.onClose}>
 					<Show
@@ -363,43 +365,43 @@ interface ActionButton {
 				</Button>
 
 				{ /* Display mode switcher (side-peek, center-peek, full-page) */}
-				<Show when={merged.onDisplayModeChange}>
-					<DiffViewModeSwitcher mode={merged.displayMode} onModeChange={merged.onDisplayModeChange} />
-				</Show>
+		<Show when={merged.onDisplayModeChange}>
+			<DiffViewModeSwitcher mode={merged.displayMode} onModeChange={merged.onDisplayModeChange!} />
+		</Show>
 
 				{ /* Branch name display (branch switching will be added later) */}
 				<div class="h-6 px-2 gap-1 text-xs font-medium min-w-0 flex items-center">
-					<LuGitBranch class="size-3.5 shrink-0 opacity-70" />
+			<GitBranch class="size-3.5 shrink-0 opacity-70" />
 					<span class="truncate max-w-[120px] text-foreground">
 						{merged.currentBranch || "No branch"}
 					</span>
 				</div>
 
 				{ /* PR Status badge */}
-				<Show when={pr}>
-					<ContextMenu>
-						<ContextMenuTrigger asChild>
-							<a href={pr.url} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 h-6 px-2 rounded-md hover:bg-foreground/10 transition-colors">
-								<PRIcon state={pr.state} class="size-3.5" />
-								<span class="text-xs text-muted-foreground font-mono">
-									#{pr.number}
-								</span>
-							</a>
-						</ContextMenuTrigger>
-						<ContextMenuContent>
-							<ContextMenuItem onClick={handleOpenPR} class="text-xs">
-								Open in browser
-							</ContextMenuItem>
-							<ContextMenuItem onClick={handleCopyPRLink} class="text-xs">
-								Copy link
-							</ContextMenuItem>
-						</ContextMenuContent>
-					</ContextMenu>
-				</Show>
+		<Show when={pr()}>
+			{(prData) => <ContextMenu>
+				<ContextMenuTrigger asChild>
+					<a href={prData().url} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 h-6 px-2 rounded-md hover:bg-foreground/10 transition-colors">
+						<PRIcon state={prData().state as PRState} class="size-3.5" />
+						<span class="text-xs text-muted-foreground font-mono">
+							#{prData().number}
+						</span>
+					</a>
+				</ContextMenuTrigger>
+				<ContextMenuContent>
+					<ContextMenuItem onClick={handleOpenPR} class="text-xs">
+						Open in browser
+					</ContextMenuItem>
+					<ContextMenuItem onClick={handleCopyPRLink} class="text-xs">
+						Copy link
+					</ContextMenuItem>
+				</ContextMenuContent>
+			</ContextMenu>}
+		</Show>
 			</div>
 
 			{ /* Right side: Review + View mode toggle + Primary action (split button) + Secondary action + Overflow menu */}
-			<div class="relative z-10 flex items-center gap-1 flex-shrink-0" style={{ WebkitAppRegion: "no-drag" }}>
+		<div class="relative z-10 flex items-center gap-1 flex-shrink-0" style={{ "-webkit-app-region": "no-drag" } as JSX.CSSProperties}>
 				{ /* Review button - visible when there's enough space */}
 				<Show when={showReviewButton() && merged.diffStats.hasChanges && merged.onReview}>
 					<Tooltip>
@@ -571,10 +573,10 @@ interface ActionButton {
 								</Show>
 
 								{ /* Open PR */}
-								<Show when={pr && primaryAction.label !== "Open PR"}>
+								<Show when={pr() && primaryAction.label !== "Open PR"}>
 									<DropdownMenuItem onClick={handleOpenPR} class="text-xs">
 										<ExternalLinkIcon class="mr-2 size-3.5" />
-										<span>Open Pull Request #{pr.number}</span>
+										<span>Open Pull Request #{pr()?.number}</span>
 									</DropdownMenuItem>
 								</Show>
 

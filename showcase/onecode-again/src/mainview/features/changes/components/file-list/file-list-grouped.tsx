@@ -66,9 +66,9 @@ function FolderGroupItem(props: FolderGroupItemProps) {
 	const [isExpanded, setIsExpanded] = createSignal(true);
 	const isRoot = props.group.folderPath === "";
 	const displayName = isRoot ? "Root Path" : props.group.folderPath;
-	return <FolderRow name={displayName} isExpanded={isExpanded} onToggle={setIsExpanded} fileCount={props.group.files.length} variant="grouped">
+	return <FolderRow name={displayName} isExpanded={isExpanded()} onToggle={setIsExpanded} fileCount={props.group.files.length} variant="grouped">
 			<For each={props.group.files}>
-				{(file) => <FileItem file={file} isSelected={props.selectedFile?.path === file.path} onClick={() => props.onFileSelect(file)} onDoubleClick={props.onFileDoubleClick ? () => props.onFileDoubleClick!(file) : undefined} showStats={props.showStats} showCheckbox={props.showCheckbox} isStaged={props.isStaged} onStage={props.onStage ? () => props.onStage!(file) : undefined} onUnstage={props.onUnstage ? () => props.onUnstage!(file) : undefined} isActioning={props.isActioning} worktreePath={props.worktreePath} onDiscard={props.onDiscard ? () => props.onDiscard!(file) : undefined} />}
+				{(file) => <FileItem file={file} isSelected={props.selectedFile?.path === file.path} onClick={() => props.onFileSelect(file)} onDblClick={props.onFileDoubleClick ? () => props.onFileDoubleClick!(file) : undefined} showStats={props.showStats} showCheckbox={props.showCheckbox} isStaged={props.isStaged} onStage={props.onStage ? () => props.onStage!(file) : undefined} onUnstage={props.onUnstage ? () => props.onUnstage!(file) : undefined} isActioning={props.isActioning} worktreePath={props.worktreePath} onDiscard={props.onDiscard ? () => props.onDiscard!(file) : undefined} />}
 			</For>
 		</FolderRow>;
 }

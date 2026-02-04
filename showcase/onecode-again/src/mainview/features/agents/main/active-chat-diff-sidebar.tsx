@@ -142,7 +142,8 @@ export function DiffSidebarRenderer(props: DiffSidebarRendererProps) {
 			<ResizableSidebar
 				isOpen={props.isDiffSidebarOpen}
 				onClose={handleCloseDiff}
-				widthAtom={agentsDiffSidebarWidthAtom}
+				width={agentsDiffSidebarWidthAtom[0]}
+				setWidth={agentsDiffSidebarWidthAtom[1]}
 				minWidth={320}
 				side="right"
 				animationDuration={0}

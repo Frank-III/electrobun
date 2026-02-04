@@ -19,7 +19,7 @@ export interface SplitButtonProps extends Omit<ButtonProps, "children"> {
 	showDropdown?: boolean;
 }
 export function SplitButton(props: SplitButtonProps) {
-	const merged = mergeProps({ showDropdown: true, variant: "default", size: "sm" }, props);
+	const merged = mergeProps({ showDropdown: true, variant: "default" as const, size: "sm" as const }, props);
 	const [local, rest] = splitProps(merged, ["label", "icon", "badge", "onClick", "dropdownContent", "showDropdown", "disabled", "variant", "size", "class"]);
 	// If no dropdown content, render just the button
 	if (!local.showDropdown || !local.dropdownContent) {

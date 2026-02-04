@@ -107,7 +107,7 @@ export function AgentsAppearanceTab() {
 				// Load all themes in parallel
 				const loadedThemes = await Promise.all(newThemes.map(async (theme: { name: string; id: string; path: string }) => {
 					try {
-						const fullTheme = await api.loadVSCodeTheme(theme.path);
+						const fullTheme = await api.loadVSCodeTheme(theme.path) as Partial<VSCodeFullTheme>;
 						return {
 							...fullTheme,
 							id: theme.id,

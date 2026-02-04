@@ -5,6 +5,46 @@ import { App } from "./App";
 import { preloadDiffHighlighter } from "./lib/themes/diff-view-highlighter";
 // Preload shiki highlighter for diff view (prevents delay when opening diff sidebar)
 preloadDiffHighlighter();
+// Disable legacy devtools hooks (React/Solid) that can inject element pickers.
+try {
+	const hookKeys = [
+		"__REACT_DEVTOOLS_GLOBAL_HOOK__",
+		"__SOLID_DEVTOOLS_GLOBAL_HOOK__",
+		"__SOLID_DEVTOOLS__",
+		"__REACT_SCAN__",
+	];
+	for (const key of hookKeys) {
+		if (key in window) {
+			try {
+				// Best-effort removal if already injected.
+				// eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+				delete (window as any)[key];
+			} catch {
+				// ignore
+			}
+		}
+		try {
+			Object.defineProperty(window, key, {
+				value: undefined,
+				writable: false,
+				configurable: false,
+			});
+		} catch {
+			// ignore
+		}
+	}
+} catch {
+	// ignore
+}
+// Remove any legacy React Scan artifacts from older builds.
+try {
+	const reactScanScript = document.getElementById("react-scan-script");
+	if (reactScanScript) reactScanScript.remove();
+	document.querySelectorAll("[data-react-scan]").forEach((el) => el.remove());
+	localStorage.removeItem("react-scan-enabled");
+} catch {
+	// Best-effort cleanup; ignore errors.
+}
 // Suppress ResizeObserver loop error - this is a non-fatal browser warning
 // that can occur when layout changes trigger observation callbacks
 // Common with virtualization libraries and diff viewers
@@ -13,6 +53,17 @@ const resizeObserverErr = /ResizeObserver loop/;
 window.addEventListener("error", (e) => {
 	if (e.message && resizeObserverErr.test(e.message)) {
 		e.stopImmediatePropagation();
+		e.preventDefault();
+		return false;
+	}
+});
+window.addEventListener("unhandledrejection", (e) => {
+	const reason = e.reason as unknown;
+	if (reason instanceof RangeError && /Maximum call stack size exceeded/.test(reason.message)) {
+		console.error("[App] Unhandled rejection (stack overflow):", reason);
+		if (reason.stack) {
+			console.error("[App] Stack trace:", reason.stack);
+		}
 		e.preventDefault();
 		return false;
 	}

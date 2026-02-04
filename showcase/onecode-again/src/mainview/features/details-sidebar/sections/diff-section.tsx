@@ -90,7 +90,7 @@ export function DiffSection(props: DiffSectionProps) {
 								return <div class={cn("group flex items-center gap-2 font-mono text-xs", "py-1 px-1.5 rounded cursor-pointer", "hover:bg-accent/50 transition-colors")} onClick={() => props.setIsDiffSidebarOpen(true)}>
                     {		/* File icon */}
                     <div class="relative w-3.5 h-3.5 shrink-0">
-                      <Show when={FileIcon}><FileIcon class="w-3.5 h-3.5 text-muted-foreground" /></Show>
+                      {FileIcon && <FileIcon class="w-3.5 h-3.5 text-muted-foreground" />}
                     </div>
 
                     { /* File name + path + status - same layout as agent-diff-view */}

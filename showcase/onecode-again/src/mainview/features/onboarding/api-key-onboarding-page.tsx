@@ -1,4 +1,4 @@
-import { createSignal, createEffect, Show, Switch, Match } from "solid-js";
+import { createSignal, createEffect, Show, Switch, Match, type JSX } from "solid-js";
 import { ChevronLeft } from "lucide-solid";
 import { IconSpinner, KeyFilledIcon, SettingsFilledIcon } from "../../components/ui/icons";
 import { Input } from "../../components/ui/input";
@@ -21,19 +21,20 @@ export function ApiKeyOnboardingPage() {
 	// Default values for API key mode (not custom model)
 	const defaultModel = "claude-sonnet-4-20250514";
 	const defaultBaseUrl = "https://api.anthropic.com";
-	const [apiKey, setApiKey] = createSignal(storedConfig.token);
-	const [model, setModel] = createSignal(storedConfig.model || "");
-	const [token, setToken] = createSignal(storedConfig.token);
-	const [baseUrl, setBaseUrl] = createSignal(storedConfig.baseUrl || "");
+	const [apiKey, setApiKey] = createSignal(storedConfig().token);
+	const [model, setModel] = createSignal(storedConfig().model || "");
+	const [token, setToken] = createSignal(storedConfig().token);
+	const [baseUrl, setBaseUrl] = createSignal(storedConfig().baseUrl || "");
 	const [isSubmitting, setIsSubmitting] = createSignal(false);
 	// Sync from stored config on mount
 	createEffect(() => {
-		if (storedConfig.token) {
-			setApiKey(storedConfig.token);
-			setToken(storedConfig.token);
+		const config = storedConfig();
+		if (config.token) {
+			setApiKey(config.token);
+			setToken(config.token);
 		}
-		if (storedConfig.model) setModel(storedConfig.model);
-		if (storedConfig.baseUrl) setBaseUrl(storedConfig.baseUrl);
+		if (config.model) setModel(config.model);
+		if (config.baseUrl) setBaseUrl(config.baseUrl);
 	});
 	const handleBack = () => {
 		setBillingMethod(null);
@@ -53,9 +54,9 @@ export function ApiKeyOnboardingPage() {
 	};
 	// Submit for custom model mode (all three fields)
 	const submitCustomModel = () => {
-		const trimmedModel = model.trim();
-		const trimmedToken = token.trim();
-		const trimmedBaseUrl = baseUrl.trim();
+		const trimmedModel = model().trim();
+		const trimmedToken = token().trim();
+		const trimmedBaseUrl = baseUrl().trim();
 		if (!trimmedModel || !trimmedToken || !trimmedBaseUrl) return;
 		setIsSubmitting(true);
 		const config: CustomClaudeConfig = {

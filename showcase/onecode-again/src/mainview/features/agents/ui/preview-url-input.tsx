@@ -150,7 +150,7 @@ export function PreviewUrlInput(props: PreviewUrlInputProps) {
 	            ~{local.currentPath}
 	          </button>
 	        }>
-	          <input ref={inputRef} type="text" value={inputValue()} onInput={(e) => setInputValue(e.currentTarget.value)} onKeyDown={handleKeyDown} onBlur={handleSubmit} spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off" class={cn(sharedStyles, local.variant === "mobile" ? "bg-muted shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 text-foreground" : "bg-background shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 text-foreground")} placeholder="~/" />
+	          <input ref={inputRef} type="text" value={inputValue()} onInput={(e) => setInputValue(e.currentTarget.value)} onKeyDown={handleKeyDown} onBlur={handleSubmit} spellcheck={false} autocomplete="off" autocorrect="off" autocapitalize="off" class={cn(sharedStyles, local.variant === "mobile" ? "bg-muted shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 text-foreground" : "bg-background shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70 text-foreground")} placeholder="~/" />
 	        </Show>
 
         {/* Progress bar at bottom with upward glow */}

@@ -18,7 +18,7 @@ import { HistoryView, type CommitInfo } from "./components/history-view";
 import { getStatusIndicator } from "./utils/status";
 import { GitPullRequest, Eye } from "lucide-solid";
 import type { ChangedFile as HistoryChangedFile } from "../../../shared/changes-types";
-import { viewedFilesAtomFamily, type ViewedFileState } from "../agents/atoms";
+import { viewedFilesAtomFamily, type ViewedFileState } from "../../lib/state/agents-store";
 import { Kbd } from "../../components/ui/kbd";
 
 interface ChangesFileItemWithContextProps {
@@ -32,7 +32,7 @@ interface ChangesFileItemWithContextProps {
 	highlightedPaths: string[];
 	index: number;
 	onSelect: () => void;
-	onDoubleClick: () => void;
+	onDblClick: () => void;
 	onCheckboxChange: () => void;
 	onShiftClick: (index: number) => void;
 	onCopyPath: () => void;
@@ -54,15 +54,15 @@ function ChangesFileItemWithContext(props: ChangesFileItemWithContextProps) {
 	const showMultiDiscard = () => props.highlightedCount > 1 && props.isHighlighted;
 	return <ContextMenu>
 			<ContextMenuTrigger asChild>
-				<div data-file-item class={cn("flex items-center gap-2 px-2 py-1 cursor-pointer", "hover:bg-muted/80 transition-colors", props.isSelected && !props.isHighlighted && "bg-muted", props.isHighlighted && "bg-primary/10 hover:bg-primary/15")} onClick={(e) => {
+				<div data-file-item class={cn("flex items-center gap-2 px-2 py-1 cursor-pointer", "hover:bg-muted/80 transition-colors", props.isSelected && !props.isHighlighted && "bg-muted", props.isHighlighted && "bg-primary/10 hover:bg-primary/15")} onClick={(e: MouseEvent & { currentTarget: HTMLDivElement; target: Element }) => {
 		if (e.shiftKey) {
 			e.preventDefault();
 			props.onShiftClick(props.index);
 		} else {
 			props.onSelect();
 		}
-	}} onDoubleClick={props.onDoubleClick}>
-					<Checkbox checked={props.isChecked} onCheckedChange={props.onCheckboxChange} onClick={(e) => e.stopPropagation()} class="size-4 shrink-0 border-muted-foreground/50" />
+	}} onDblClick={props.onDblClick}>
+					<Checkbox checked={props.isChecked} onCheckedChange={props.onCheckboxChange} onClick={(e: MouseEvent) => e.stopPropagation()} class="size-4 shrink-0 border-muted-foreground/50" />
 					<div class="flex-1 min-w-0 flex items-center overflow-hidden">
 						<Show when={dirPath()}>
 							<span class="text-xs text-muted-foreground truncate flex-shrink min-w-0">
@@ -156,7 +156,7 @@ export function ChangesView(props: ChangesViewProps) {
 	const merged = mergeProps({ subChats: [], initialSubChatFilter: null }, props);
 	const [local] = splitProps(merged, ["worktreePath", "selectedFilePath", "onFileSelect", "onFileOpenPinned", "onCreatePr", "onCommitSuccess", "subChats", "initialSubChatFilter", "chatId", "selectedCommitHash", "onCommitSelect", "onCommitFileSelect", "onActiveTabChange", "pushCount"]);
 	const onFileSelectProp = local.onFileSelect;
-	useFileChangeListener(local.worktreePath);
+	useFileChangeListener(() => local.worktreePath);
 	// Viewed files state from agents diff view (for showing eye icon and toggling)
 	const [viewedFiles, setViewedFiles] = viewedFilesAtomFamily(local.chatId || "");
 	const { baseBranch } = useChangesStore();
@@ -620,7 +620,7 @@ export function ChangesView(props: ChangesViewProps) {
 
 						{ /* Select all header */}
 						<div class="flex items-center gap-2 px-2 py-1.5 border-b border-border/50">
-							<Checkbox checked={someSelected() ? "indeterminate" : allSelected()} onCheckedChange={handleSelectAllChange} class="size-4 border-muted-foreground/50" />
+							<Checkbox checked={allSelected()} indeterminate={someSelected()} onCheckedChange={handleSelectAllChange} class="size-4 border-muted-foreground/50" />
 							<span class="text-xs text-muted-foreground">
 								{selectedCount()} of {totalCount()} file{totalCount() !== 1 ? "s" : ""} selected
 							</span>
@@ -634,7 +634,7 @@ export function ChangesView(props: ChangesViewProps) {
 									{({ file, category }, index) => <ChangesFileItemWithContext file={file} category={category} isSelected={selectedFile?.path === file.path} isChecked={selectedForCommit().has(file.path)} isViewed={isFileMarkedAsViewed(file.path)} isHighlighted={highlightedFiles().has(file.path)} highlightedCount={highlightedCount()} highlightedPaths={highlightedPaths()} index={index()} onSelect={() => {
 										handleFileSelect(file, category);
 										fileListRef?.focus();
-									}} onDoubleClick={() => handleFileDoubleClick(file, category)} onCheckboxChange={() => handleCheckboxChange(file.path)} onShiftClick={handleShiftClick} onCopyPath={() => handleCopyPath(file.path)} onCopyRelativePath={() => handleCopyRelativePath(file.path)} onRevealInFinder={() => handleRevealInFinder(file.path)} onToggleViewed={() => toggleFileViewed(file.path)} onDiscard={() => setDiscardFile(file)} onDiscardSelected={handleDiscardSelected} onIncludeSelected={handleIncludeSelected} onExcludeSelected={handleExcludeSelected} onCopySelectedPaths={() => handleCopySelectedPaths(local.worktreePath)} onCopySelectedRelativePaths={handleCopySelectedRelativePaths} />}
+									}} onDblClick={() => handleFileDoubleClick(file, category)} onCheckboxChange={() => handleCheckboxChange(file.path)} onShiftClick={handleShiftClick} onCopyPath={() => handleCopyPath(file.path)} onCopyRelativePath={() => handleCopyRelativePath(file.path)} onRevealInFinder={() => handleRevealInFinder(file.path)} onToggleViewed={() => toggleFileViewed(file.path)} onDiscard={() => setDiscardFile(file)} onDiscardSelected={handleDiscardSelected} onIncludeSelected={handleIncludeSelected} onExcludeSelected={handleExcludeSelected} onCopySelectedPaths={() => handleCopySelectedPaths(local.worktreePath)} onCopySelectedRelativePaths={handleCopySelectedRelativePaths} />}
 								</For>
 							</div>
 						</Show>

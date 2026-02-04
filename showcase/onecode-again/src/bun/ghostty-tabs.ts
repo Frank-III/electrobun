@@ -2,7 +2,20 @@ import type { BrowserWindow } from "electrobun/bun";
 
 type TabFrame = { x: number; y: number; width: number; height: number };
 
-export function createGhosttyTabHandlers(getWindow: () => BrowserWindow | null) {
+// Extended BrowserWindow with Ghostty terminal support
+interface GhosttyTerminalManager {
+  createTab(options: { frame: TabFrame; workingDirectory: string | null; command: string | null }): { id: number };
+  focusTab(surfaceId: number): void;
+  resizeTab(surfaceId: number, frame: TabFrame): void;
+  closeTab(surfaceId: number): void;
+  getActiveTab(): number | null;
+}
+
+interface BrowserWindowWithGhostty extends BrowserWindow {
+  getTerminalTabs?: () => GhosttyTerminalManager;
+}
+
+export function createGhosttyTabHandlers(getWindow: () => BrowserWindowWithGhostty | null) {
   const tabIdToSurfaceId = new Map<string, number>();
 
   const getTabManager = () => {

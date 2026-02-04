@@ -33,7 +33,7 @@ export function AgentImageItem(props: AgentImageItemProps) {
 		url: local.url
 	}];
 	const hasMultipleImages = images.length > 1;
-	const currentImage = images[currentIndex] || images[0];
+	const currentImage = images[currentIndex()] || images[0];
 	const handleImageError = () => {
 		console.warn("[AgentImageItem] Failed to load image:", local.filename, local.url);
 		setHasError(true);

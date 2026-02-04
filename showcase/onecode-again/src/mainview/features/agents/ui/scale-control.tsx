@@ -13,7 +13,7 @@ export function ScaleControl(props: ScaleControlProps) {
 	const [local] = splitProps(merged, ["value", "onChange", "presets", "class"]);
 	const [isOpen, setIsOpen] = createSignal(false);
 	const [inputValue, setInputValue] = createSignal(String(local.value));
-	const [inputRef, setInputRef] = createSignal<HTMLInputElement>(null);
+	const [inputRef, setInputRef] = createSignal<HTMLInputElement | null>(null);
 	// Sync input value when value prop changes
 	createEffect(() => {
 		setInputValue(String(local.value));
@@ -27,7 +27,7 @@ export function ScaleControl(props: ScaleControlProps) {
 		}
 	};
 	const handleCommit = () => {
-		const num = parseInt(inputValue);
+		const num = parseInt(inputValue());
 		if (!isNaN(num) && num >= AGENTS_PREVIEW_CONSTANTS.MIN_SCALE && num <= AGENTS_PREVIEW_CONSTANTS.MAX_SCALE) {
 			local.onChange(num);
 			setInputValue(String(num));
@@ -35,7 +35,7 @@ export function ScaleControl(props: ScaleControlProps) {
 			setInputValue(String(local.value));
 		}
 	};
-	const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+	const handleKeyDown = (e: KeyboardEvent) => {
 		if (e.key === "Enter") {
 			handleCommit();
 			setIsOpen(false);
@@ -60,7 +60,7 @@ export function ScaleControl(props: ScaleControlProps) {
 			inputRef()?.focus();
 		}
 	}}>
-          <input ref={inputRef} type="text" value={inputValue} onInput={handleInputChange} onFocus={(e) => {
+          <input ref={setInputRef} type="text" value={inputValue()} onInput={handleInputChange} onFocus={(e) => {
 		e.target.select();
 		if (!isOpen()) {
 			setIsOpen(true);

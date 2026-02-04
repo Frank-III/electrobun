@@ -1,4 +1,4 @@
-import { createUniqueId } from "solid-js";
+import { createUniqueId, type JSX } from "solid-js";
 import { cn } from "../lib/utils";
 // Framework icon components with brand colors
 // Based on language from GitHub API + common framework detection

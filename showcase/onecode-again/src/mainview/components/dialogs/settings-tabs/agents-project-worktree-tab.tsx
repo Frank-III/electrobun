@@ -1,5 +1,4 @@
 import { createSignal, createEffect, onCleanup, Show, For, createResource } from "solid-js";
-import { useSetAtom } from "../../../lib/state/store";
 import { getRpc } from "../../../lib/rpc";
 import { Button, buttonVariants } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -57,10 +56,10 @@ export function AgentsProjectWorktreeTab(props: AgentsProjectWorktreeTabProps) {
 	const [isDeleting, setIsDeleting] = createSignal(false);
 
 	// For "Fill with AI" - create chat and close settings
-	const setSettingsDialogOpen = useSetAtom(agentsSettingsDialogOpenAtom);
-	const setSelectedChatId = useSetAtom(selectedAgentChatIdAtom);
-	const setSelectedProject = useSetAtom(selectedProjectAtom);
-	const setSettingsActiveTab = useSetAtom(agentsSettingsDialogActiveTabAtom);
+  const setSettingsDialogOpen = agentsSettingsDialogOpenAtom[1];
+  const setSelectedChatId = selectedAgentChatIdAtom[1];
+  const setSelectedProject = selectedProjectAtom[1];
+  const setSettingsActiveTab = agentsSettingsDialogActiveTabAtom[1];
 
 	const [showDeleteDialog, setShowDeleteDialog] = createSignal(false);
 

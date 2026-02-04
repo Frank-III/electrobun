@@ -1,9 +1,23 @@
+declare module "electrobun" {
+  const Electrobun: unknown;
+  export default Electrobun;
+}
+
+declare module "electrobun/*" {
+  const moduleValue: unknown;
+  export default moduleValue;
+}
+
 declare module "electrobun/view" {
   type RequestMap<T> = T extends { requests: infer R } ? R : Record<string, never>;
   type RequestClient<T> = {
-    [K in keyof RequestMap<T>]: (
-      params: RequestMap<T>[K] extends { params: infer P } ? P : never
-    ) => Promise<RequestMap<T>[K] extends { response: infer R } ? R : never>;
+    [K in keyof RequestMap<T>]: RequestMap<T>[K] extends { params?: infer P; response: infer R }
+      ? undefined extends P
+        ? (params?: P) => Promise<R>
+        : (params: P) => Promise<R>
+      : RequestMap<T>[K] extends { params: infer P; response: infer R }
+        ? (params: P) => Promise<R>
+        : never;
   };
 
   type MessageMap<T> = T extends { messages: infer M } ? M : Record<string, never>;
@@ -17,12 +31,14 @@ declare module "electrobun/view" {
       requests: Partial<RequestClient<T extends { bun: infer B } ? B : never>>;
       messages: Partial<MessageHandlers<T extends { webview: infer W } ? W : never>>;
     };
+    /** Request client for invoking bun-side procedures (available after defineRPC initializes) */
+    request: RequestClient<T extends { bun: infer B } ? B : never>;
   };
 
   export class Electroview<T> {
     rpc?: { request: RequestClient<T extends { bun: infer B } ? B : never> };
     constructor(options: { rpc: RPCDefinition<T> });
-    static defineRPC<T>(config: RPCDefinition<T>): RPCDefinition<T>;
+    static defineRPC<T>(config: Omit<RPCDefinition<T>, 'request'>): RPCDefinition<T>;
   }
 
   const Electrobun: {

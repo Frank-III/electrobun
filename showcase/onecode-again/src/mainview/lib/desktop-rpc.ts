@@ -6,6 +6,51 @@
  */
 import { getRpc } from "./rpc";
 import type { AgentModel, WorktreeConfig } from "../../shared/rpc-schema";
+import type { ToolInput } from "../../shared/chat-rpc";
+
+// MCP Config types
+interface McpServer {
+  name: string;
+  status: string;
+  tools: string[];
+  needsAuth: boolean;
+  config: Record<string, unknown>;
+  serverInfo?: {
+    name: string;
+    version: string;
+  };
+  error?: string;
+}
+
+interface McpGroup {
+  groupName: string;
+  projectPath: string | null;
+  mcpServers: McpServer[];
+}
+
+interface McpConfigResponse {
+  mcpServers: McpServer[];
+}
+
+interface AllMcpConfigResponse {
+  groups: McpGroup[];
+}
+
+interface McpOAuthResult {
+  success: boolean;
+  error?: string;
+}
+
+// PR Status types
+interface PrStatusResponse {
+  pr: {
+    number: number;
+    title: string;
+    url: string;
+    state: string;
+    reviewDecision?: string;
+  } | null;
+}
 
 function rpc() {
   return getRpc();
@@ -97,7 +142,7 @@ export const desktopRpc = {
       (input: { subChatId: string; sdkMessageUuid: string }) =>
         rpc().chatsRollbackToMessage(input),
     ),
-    getPrStatus: (input: { chatId: string }) => rpc().chatsGetPrStatus(input),
+    getPrStatus: (input: { chatId: string }): Promise<PrStatusResponse> => rpc().chatsGetPrStatus(input) as Promise<PrStatusResponse>,
     getPrContext: (input: { chatId: string }) => rpc().chatsGetPrContext(input),
     updatePrInfo: mutation(
       (input: { chatId: string; prUrl: string; prNumber: number }) =>
@@ -451,18 +496,18 @@ export const desktopRpc = {
   // Claude chat namespace (for tool approval and MCP config)
   claude: {
     respondToolApproval: mutation(
-      (input: { toolUseId: string; approved: boolean; message?: string; updatedInput?: unknown }) =>
+      (input: { toolUseId: string; approved: boolean; message?: string; updatedInput?: ToolInput }) =>
         rpc().chatRespondToolApproval(input),
     ),
-    getMcpConfig: async (_input: { projectPath: string }) => {
+    getMcpConfig: async (_input: { projectPath: string }): Promise<McpConfigResponse> => {
       // TODO: Implement MCP config reading from ~/.claude.json or .mcp.json
       return { mcpServers: [] };
     },
-    getAllMcpConfig: async () => {
+    getAllMcpConfig: async (): Promise<AllMcpConfigResponse> => {
       // TODO: Implement MCP config reading
-      return { mcpServers: [] };
+      return { groups: [] };
     },
-    startMcpOAuth: mutation(async (_input: { serverId: string }) => {
+    startMcpOAuth: mutation(async (_input: { serverName: string; projectPath: string }): Promise<McpOAuthResult> => {
       // TODO: Implement MCP OAuth flow
       throw new Error("MCP OAuth not yet implemented");
     }),
@@ -526,11 +571,11 @@ export const desktopRpc = {
         rpc().chatStop(input),
     ),
     respondToolApproval: mutation(
-      (input: { toolUseId: string; approved: boolean; message?: string; updatedInput?: unknown }) =>
+      (input: { toolUseId: string; approved: boolean; message?: string; updatedInput?: ToolInput }) =>
         rpc().chatRespondToolApproval(input),
     ),
     respondUserQuestion: mutation(
-      (input: { questionId: string; response: string }) =>
+      (input: { toolUseId: string; answers: Array<{ question: string; answer: string | string[] }> }) =>
         rpc().chatRespondUserQuestion(input),
     ),
   },

@@ -1,19 +1,18 @@
 import { Provider as StateProvider } from "./lib/state/store";
 import { ColorModeProvider, ColorModeScript, useColorMode } from "@kobalte/core";
-import { createEffect, createMemo, onCleanup, Switch, Match } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, Switch, Match } from "solid-js";
 import "./lib/electrobun-rpc";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { QueryProvider } from "./contexts/QueryProvider";
 import { WindowProvider, getInitialWindowParams } from "./contexts/WindowContext";
-import { selectedProjectAtom, selectedAgentChatIdAtom } from "./features/agents/atoms";
+import { selectedProjectAtom, selectedAgentChatIdAtom } from "./lib/state/agents-store";
 import { useAgentSubChatStore } from "./features/agents/stores/sub-chat-store";
 import { AgentsLayout } from "./features/layout/agents-layout";
 import { AnthropicOnboardingPage, ApiKeyOnboardingPage, BillingMethodPage, SelectRepoPage } from "./features/onboarding";
 import { anthropicOnboardingCompletedAtom, apiKeyOnboardingCompletedAtom, billingMethodAtom } from "./lib/atoms";
 import { appStore } from "./lib/app-store";
 import { VSCodeThemeProvider } from "./lib/themes/theme-provider";
-import { useQuery } from "@tanstack/solid-query";
 import { desktopRpc } from "./lib/desktop-rpc";
 import { TerminalStoreProvider } from "./features/terminal/terminal-store-context";
 /**
@@ -51,12 +50,21 @@ function AppContent() {
 	});
 	// Check if user has existing CLI config (API key or proxy)
 	// Based on PR #29 by @sa4hnd
-	const cliConfigQuery = useQuery(() => ({
-		queryKey: ["claudeCode", "hasExistingCliConfig"] as const,
-		queryFn: () => desktopRpc.claudeCode.hasExistingCliConfig(),
-	}));
-	const cliConfig = () => cliConfigQuery.data;
-	const isLoadingCliConfig = () => cliConfigQuery.isLoading;
+	const [cliConfig, setCliConfig] = createSignal<{ hasConfig: boolean; hasApiKey: boolean; baseUrl: string | null } | null>(null);
+	createEffect(() => {
+		let cancelled = false;
+		desktopRpc.claudeCode.hasExistingCliConfig()
+			.then((data) => {
+				if (!cancelled) setCliConfig(data);
+			})
+			.catch((err) => {
+				console.error("[App] Failed to check CLI config:", err);
+				if (!cancelled) setCliConfig({ hasConfig: false, hasApiKey: false, baseUrl: null });
+			});
+		onCleanup(() => {
+			cancelled = true;
+		});
+	});
 	// Migration: If user already completed Anthropic onboarding but has no billing method set,
 	// automatically set it to "claude-subscription" (legacy users before billing method was added)
 	createEffect(() => {
@@ -75,12 +83,33 @@ function AppContent() {
 		}
 	});
 	// Fetch projects to validate selectedProject exists (Electrobun RPC + Solid Query)
-	const projectsQuery = useQuery(() => ({
-		queryKey: ["projects", "list"] as const,
-		queryFn: () => desktopRpc.projects.list.query(),
-	}));
-	const projects = () => projectsQuery.data;
-	const isLoadingProjects = () => projectsQuery.isLoading;
+	const [projects, setProjects] = createSignal<Awaited<ReturnType<typeof desktopRpc.projects.list.query>> | null>(null);
+	const [isLoadingProjects, setIsLoadingProjects] = createSignal(false);
+	const shouldLoadProjects = createMemo(() => {
+		if (!billingMethod()) return false;
+		if (billingMethod() === "claude-subscription" && !anthropicOnboardingCompleted()) return false;
+		if ((billingMethod() === "api-key" || billingMethod() === "custom-model") && !apiKeyOnboardingCompleted()) return false;
+		return true;
+	});
+	createEffect(() => {
+		if (!shouldLoadProjects()) return;
+		let cancelled = false;
+		setIsLoadingProjects(true);
+		desktopRpc.projects.list.query()
+			.then((data) => {
+				if (!cancelled) setProjects(data);
+			})
+			.catch((err) => {
+				console.error("[App] Failed to load projects:", err);
+				if (!cancelled) setProjects([]);
+			})
+			.finally(() => {
+				if (!cancelled) setIsLoadingProjects(false);
+			});
+		onCleanup(() => {
+			cancelled = true;
+		});
+	});
 	// Validated project - only valid if exists in DB
 	const validatedProject = createMemo(() => {
 		if (!selectedProject()) return null;

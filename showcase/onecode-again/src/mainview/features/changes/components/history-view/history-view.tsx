@@ -17,6 +17,21 @@ export interface CommitInfo {
 	email: string;
 	date: Date;
 }
+
+function toDate(date: Date | string | number): Date {
+	return date instanceof Date ? date : new Date(date);
+}
+
+function normalizeCommit(commit: { hash: string; shortHash: string; message: string; author: string; email?: string; date: Date | string | number }): CommitInfo {
+	return {
+		hash: commit.hash,
+		shortHash: commit.shortHash,
+		message: commit.message,
+		author: commit.author,
+		email: commit.email ?? "",
+		date: toDate(commit.date),
+	};
+}
 interface HistoryViewProps {
 	worktreePath: string;
 	selectedCommitHash?: string | null;
@@ -58,7 +73,7 @@ export function HistoryView(props: HistoryViewProps) {
 	createEffect(() => {
 		const c = commits();
 		if (c && c.length > 0 && !props.selectedCommitHash && props.onCommitSelect) {
-			props.onCommitSelect(c[0]);
+			props.onCommitSelect(normalizeCommit(c[0]));
 		}
 	});
 	// Auto-select first file when commit files load
@@ -113,14 +128,17 @@ export function HistoryView(props: HistoryViewProps) {
 				</div>
 			</Show>
 			<For each={commitsList}>
-				{(commit, index) => (
-					<HistoryCommitItem
-						commit={commit}
-						isSelected={props.selectedCommitHash === commit.hash}
-						isUnpushed={index() < (props.pushCount || 0)}
-						onClick={() => handleCommitClick(commit)}
-					/>
-				)}
+				{(commit, index) => {
+					const normalized = normalizeCommit(commit);
+					return (
+						<HistoryCommitItem
+							commit={normalized}
+							isSelected={props.selectedCommitHash === commit.hash}
+							isUnpushed={index() < (props.pushCount || 0)}
+							onClick={() => handleCommitClick(normalized)}
+						/>
+					);
+				}}
 			</For>
 		</div>
 	);

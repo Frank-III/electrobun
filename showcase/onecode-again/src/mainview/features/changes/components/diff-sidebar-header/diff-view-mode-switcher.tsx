@@ -3,7 +3,7 @@ import { Check } from "lucide-solid";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { IconSidePeek, IconCenterPeek, IconFullPage } from "@/components/ui/icons";
-import type { DiffViewDisplayMode } from "@/features/agents/atoms";
+import type { DiffViewDisplayMode } from "@/lib/state/agents-store";
 interface DiffViewModeSwitcherProps {
 	mode: DiffViewDisplayMode;
 	onModeChange: (mode: DiffViewDisplayMode) => void;

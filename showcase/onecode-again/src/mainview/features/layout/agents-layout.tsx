@@ -1,8 +1,8 @@
 import { createEffect, createSignal, createMemo, onCleanup } from "solid-js";
 import { isDesktopApp } from "../../lib/utils/platform";
 import { useIsMobile } from "../../lib/hooks/use-mobile";
-import { agentsSidebarOpenAtom, agentsSidebarWidthAtom, agentsSettingsDialogOpenAtom, agentsSettingsDialogActiveTabAtom, isDesktopAtom, isFullscreenAtom, customHotkeysAtom, betaKanbanEnabledAtom } from "../../lib/atoms";
-import { selectedAgentChatIdAtom, selectedProjectAtom, selectedDraftIdAtom, showNewChatFormAtom } from "../agents/atoms";
+import { agentsSidebarOpenAtom, agentsSidebarWidthAtom, agentsSettingsDialogOpenAtom, agentsSettingsDialogActiveTabAtom, isDesktopAtom, isFullscreenAtom, customHotkeysAtom, betaKanbanEnabledAtom, anthropicOnboardingCompletedAtom } from "../../lib/atoms";
+import { selectedAgentChatIdAtom, selectedProjectAtom, selectedDraftIdAtom, showNewChatFormAtom } from "../../lib/state/agents-store";
 import { useQuery } from "@tanstack/solid-query";
 import { desktopRpc } from "../../lib/desktop-rpc";
 import { useAgentsHotkeys } from "../agents/lib/agents-hotkeys-manager";
@@ -96,7 +96,7 @@ export function AgentsLayout() {
 	});
 	const { setChatId } = useAgentSubChatStore();
 	// Desktop user state
-	const [desktopUser, setDesktopUser] = createSignal(null);
+	const [desktopUser, setDesktopUser] = createSignal<{ id: string; email?: string; name?: string } | null>(null);
 	// Fetch desktop user on mount
 	createEffect(() => {
 		async function fetchUser() {
@@ -130,7 +130,7 @@ export function AgentsLayout() {
 		// Clear selected project and anthropic onboarding on logout
 		setSelectedProject(null);
 		setSelectedChatId(null);
-		setAnthropicOnboardingCompleted(false);
+		anthropicOnboardingCompletedAtom[1](false);
 		if (window.desktopApi?.logout) {
 			await window.desktopApi.logout();
 		}
@@ -144,7 +144,7 @@ export function AgentsLayout() {
 		}
 	});
 	// Chat search toggle
-	const toggleChatSearch = toggleSearchAtom[1];
+	const toggleChatSearch = toggleSearchAtom;
 	// Custom hotkeys config
 	const customHotkeysConfig = customHotkeysAtom[0];
 	// Initialize hotkeys manager
@@ -156,9 +156,9 @@ export function AgentsLayout() {
 		setSettingsDialogOpen: setSettingsOpen,
 		setSettingsActiveTab,
 		toggleChatSearch,
-		selectedChatId,
-		customHotkeysConfig,
-		betaKanbanEnabled
+		selectedChatId: selectedChatId(),
+		customHotkeysConfig: customHotkeysConfig(),
+		betaKanbanEnabled: betaKanbanEnabled()
 	});
 	const handleCloseSidebar = () => {
 		setSidebarOpen(false);
@@ -173,8 +173,8 @@ export function AgentsLayout() {
         <WindowsTitleBar />
         <div class="flex flex-1 overflow-hidden">
           { /* Left Sidebar (Agents) */}
-          <ResizableSidebar isOpen={!isMobile && sidebarOpen()} onClose={handleCloseSidebar} widthAtom={agentsSidebarWidthAtom} minWidth={SIDEBAR_MIN_WIDTH} maxWidth={SIDEBAR_MAX_WIDTH} side="left" closeHotkey={SIDEBAR_CLOSE_HOTKEY} animationDuration={SIDEBAR_ANIMATION_DURATION} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="overflow-hidden bg-background border-r" style={{ "border-right-width": "0.5px" }}>
-          <AgentsSidebar desktopUser={desktopUser} onSignOut={handleSignOut} onToggleSidebar={handleCloseSidebar} />
+			<ResizableSidebar isOpen={!isMobile && sidebarOpen()} onClose={handleCloseSidebar} width={agentsSidebarWidthAtom[0]} setWidth={agentsSidebarWidthAtom[1]} minWidth={SIDEBAR_MIN_WIDTH} maxWidth={SIDEBAR_MAX_WIDTH} side="left" closeHotkey={SIDEBAR_CLOSE_HOTKEY} animationDuration={SIDEBAR_ANIMATION_DURATION} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="overflow-hidden bg-background border-r" style={{ "border-right-width": "0.5px" }}>
+          <AgentsSidebar desktopUser={desktopUser() as any} onSignOut={handleSignOut} onToggleSidebar={handleCloseSidebar} />
         </ResizableSidebar>
 
           { /* Main Content */}

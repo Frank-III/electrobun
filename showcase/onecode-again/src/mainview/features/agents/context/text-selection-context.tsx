@@ -88,7 +88,7 @@ function extractDiffLineInfo(element: Element): {
 	};
 }
 export function TextSelectionProvider({ children }: TextSelectionProviderProps) {
-	const [state, setState] = createSignal({
+	const [state, setState] = createSignal<TextSelectionState>({
 		selectedText: null,
 		source: null,
 		selectionRect: null
@@ -217,15 +217,17 @@ export function TextSelectionProvider({ children }: TextSelectionProviderProps) 
 			}
 		});
 	});
-	// Compute legacy selectedMessageId for backwards compatibility
-	const selectedMessageId = state.source?.type === "assistant-message" ? state.source.messageId : null;
 	// Memoize context value to prevent unnecessary re-renders of consumers
-	const contextValue = createMemo(() => ({
-		...state,
-		clearSelection,
-		selectedMessageId
-	}));
-	return <TextSelectionContext.Provider value={contextValue}>
+	const contextValue = createMemo<TextSelectionContextValue>(() => {
+		const current = state();
+		return {
+			...current,
+			clearSelection,
+			// Legacy getter for backwards compatibility
+			selectedMessageId: current.source?.type === "assistant-message" ? current.source.messageId : null
+		};
+	});
+	return <TextSelectionContext.Provider value={contextValue()}>
       {children}
     </TextSelectionContext.Provider>;
 }

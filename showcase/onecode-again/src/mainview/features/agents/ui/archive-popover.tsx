@@ -31,7 +31,7 @@ return <div class={cn(cls(), "relative flex-shrink-0")}>
     </div>;
  }
 // Format relative time - moved outside component to avoid recreation
-const formatTime = (dateInput: Date | string) => {
+const formatTime = (dateInput: Date | string | number) => {
 	const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
 	const now = new Date();
 	const diffMs = now.getTime() - date.getTime();
@@ -55,8 +55,8 @@ interface NormalizedArchivedChat {
 	repository: string | null;
 	gitOwner: string | null;
 	gitProvider: string | null;
-	updatedAt: Date | string | null;
-	archivedAt: Date | string | null;
+	updatedAt: Date | string | number | null;
+	archivedAt: Date | string | number | null;
 	isRemote: boolean;
 }
 // Memoized chat item component to prevent unnecessary re-renders
@@ -161,7 +161,7 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	// Local archived chats (always fetch)
 	const localArchivedQuery = useQuery(() => ({
 		queryKey: ["chats", "listArchived"] as const,
-		queryFn: () => desktopRpc.chats.listArchived.query({}),
+		queryFn: () => desktopRpc.chats.listArchived.query(),
 		enabled: open(),
 	}));
 	// Remote archived chats (always fetch)
@@ -171,7 +171,7 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	// Fetch all projects for git info (for local chats)
 	const projectsQuery = useQuery(() => ({
 		queryKey: ["projects", "list"] as const,
-		queryFn: () => desktopRpc.projects.list.query({}),
+		queryFn: () => desktopRpc.projects.list.query(),
 	}));
 	// Collect chat IDs for file stats query (only local chats)
 	const archivedChatIds = createMemo(() => {
@@ -202,9 +202,9 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 		mutationFn: (input: { id: string }) => desktopRpc.chats.restore.mutate(input),
 		onSuccess: (restoredChat) => {
 			if (restoredChat && queryClient) {
-				queryClient.setQueryData(["chats", "list"], (oldData: unknown[] | undefined) => {
+				queryClient.setQueryData(["chats", "list"], (oldData: Array<{ id: string }> | undefined) => {
 					if (!oldData) return [restoredChat];
-					if (oldData.some((c: { id: string }) => c.id === restoredChat.id)) return oldData;
+					if (oldData.some((c) => c.id === restoredChat.id)) return oldData;
 					return [restoredChat, ...oldData];
 				});
 			}
@@ -223,14 +223,14 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 			for (const chat of local) {
 				merged.push({
 					id: chat.id,
-					name: chat.name,
-					branch: chat.branch,
-					projectId: chat.projectId,
+					name: chat.name ?? null,
+					branch: chat.branch ?? null,
+					projectId: chat.projectId ?? null,
 					repository: null,
 					gitOwner: null,
 					gitProvider: null,
-					updatedAt: chat.updatedAt,
-					archivedAt: chat.archivedAt,
+					updatedAt: chat.updatedAt ?? null,
+					archivedAt: chat.archivedAt ?? null,
 					isRemote: false
 				});
 			}

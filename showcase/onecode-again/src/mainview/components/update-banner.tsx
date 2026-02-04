@@ -50,8 +50,16 @@ export function UpdateBanner() {
 	const [isPackaged, setIsPackaged] = createSignal(true);
 	
 	createEffect(() => {
-		desktopRpc.system.getVersion().then(setCurrentVersion);
-		window.desktopApi?.isPackaged().then(setIsPackaged);
+		desktopRpc.system.getVersion()
+			.then(setCurrentVersion)
+			.catch((err) => {
+				console.error("[UpdateBanner] Failed to get version:", err);
+			});
+		window.desktopApi?.isPackaged()
+			.then(setIsPackaged)
+			.catch((err) => {
+				console.error("[UpdateBanner] Failed to get packaged state:", err);
+			});
 	});
 	
 	// Use current version for display (or the just updated version if available)

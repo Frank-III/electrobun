@@ -55,7 +55,7 @@ export function ProjectSelector() {
 
 	const projectsQuery = useQuery(() => ({
 		queryKey: ["projects", "list"] as const,
-		queryFn: () => desktopRpc.projects.list.query(undefined),
+		queryFn: () => desktopRpc.projects.list.query(),
 	}));
 	const projects = () => projectsQuery.data;
 	const isLoadingProjects = () => projectsQuery.isLoading;

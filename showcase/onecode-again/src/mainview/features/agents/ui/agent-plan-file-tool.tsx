@@ -35,17 +35,21 @@ export function AgentPlanFileTool(props: AgentPlanFileToolProps) {
 	const isWrite = local.part.type === "tool-Write";
 	// Get mode from per-subChat atomFamily
 	const subChatModeAtom = createMemo(() => subChatModeAtomFamily(local.subChatId));
-	const subChatMode = subChatModeAtom[0];
+	const subChatMode = () => subChatModeAtom()[0]();
 	const setPendingBuildPlanSubChatId = pendingBuildPlanSubChatIdAtom[1];
 	// Refs for scroll gradients (avoid re-renders)
-	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
-	const [topGradientRef, setTopGradientRef] = createSignal<HTMLDivElement>(null);
-	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement>(null);
+	const [contentRef, setContentRef] = createSignal<HTMLDivElement | null>(null);
+	const [topGradientRef, setTopGradientRef] = createSignal<HTMLDivElement | null>(null);
+	const [bottomGradientRef, setBottomGradientRef] = createSignal<HTMLDivElement | null>(null);
 	// Plan sidebar atoms - per subChat
 	const planSidebarOpenAtom = createMemo(() => planSidebarOpenAtomFamily(local.subChatId));
 	const currentPlanPathAtom = createMemo(() => currentPlanPathAtomFamily(local.subChatId));
-	const [, setIsPlanSidebarOpen] = planSidebarOpenAtom;
-	const [, setCurrentPlanPath] = currentPlanPathAtom;
+	const setIsPlanSidebarOpen = (value: boolean | ((prev: boolean) => boolean)) => {
+		planSidebarOpenAtom()[1](value);
+	};
+	const setCurrentPlanPath = (value: string | null | ((prev: string | null) => string | null)) => {
+		currentPlanPathAtom()[1](value);
+	};
 	// Only consider streaming if chat is actively streaming
 	const isActivelyStreaming = local.chatStatus === "streaming" || local.chatStatus === "submitted";
 	const isInputStreaming = local.part.state === "input-streaming" && isActivelyStreaming;
@@ -180,7 +184,7 @@ export function AgentPlanFileTool(props: AgentPlanFileToolProps) {
           View plan
         </Button>
 
-        <Show when={subChatMode === "plan"}>
+        <Show when={subChatMode() === "plan"}>
           <Button size="sm" onClick={handleBuildPlan} disabled={buildDisabled} class="h-6 px-3 text-xs font-medium rounded-md transition-transform duration-150 active:scale-[0.97] disabled:opacity-50">
             Approve
             <Kbd class="ml-1.5 text-primary-foreground/70">⌘↵</Kbd>

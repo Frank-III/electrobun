@@ -7,7 +7,7 @@
  * then use "Import existing token" in settings.
  */
 import { X } from "lucide-solid";
-import { createSignal, createEffect, Show, Switch, Match } from "solid-js";
+import { createSignal, createEffect, Show, Switch, Match, on, batch } from "solid-js";
 import { agentsLoginModalOpenAtom } from "../../lib/atoms";
 import { desktopRpc } from "../../lib/desktop-rpc";
 import { cn } from "../../lib/utils";
@@ -25,19 +25,21 @@ export function ClaudeLoginModal() {
   const [hasSystemToken, setHasSystemToken] = createSignal(false);
 
   // Check for existing system token when modal opens
-  createEffect(() => {
-    if (open()) {
+  createEffect(on(open, (isOpen) => {
+    if (isOpen) {
       desktopRpc.claudeCode.getSystemToken().then((result) => {
         setHasSystemToken(!!result.token);
       });
     }
-  });
+  }));
 
   const handleImportToken = async () => {
-    setIsImporting(true);
-    setError(null);
+    batch(() => {
+      setIsImporting(true);
+      setError(null);
+    });
     try {
-      await desktopRpc.claudeCode.importSystemToken.mutate();
+      await desktopRpc.claudeCode.importSystemToken.mutate({});
       setOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to import token");
@@ -47,8 +49,10 @@ export function ClaudeLoginModal() {
   };
 
   const handleClose = () => {
-    setOpen(false);
-    setError(null);
+    batch(() => {
+      setOpen(false);
+      setError(null);
+    });
   };
 
   return (

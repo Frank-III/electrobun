@@ -127,13 +127,15 @@ export const remoteApi = {
       throw new Error("Desktop API not available")
     }
     const apiBase = await getApiBase()
-    const result = await window.desktopApi.signedFetch(
+    const response = await window.desktopApi.signedFetch(
       `${apiBase}/api/agents/sandbox/${sandboxId}/diff`
     )
-    if (!result.ok) {
-      throw new Error(result.error || `Failed to fetch diff: ${result.status}`)
+    // signedFetch returns browser Response - need to parse JSON
+    if (!response.ok) {
+      throw new Error(`Failed to fetch diff: ${response.status}`)
     }
-    return result.data as { diff: string }
+    const result = await response.json() as { diff: string }
+    return result
   },
 
   /**
@@ -144,12 +146,14 @@ export const remoteApi = {
       throw new Error("Desktop API not available")
     }
     const apiBase = await getApiBase()
-    const result = await window.desktopApi.signedFetch(
+    const response = await window.desktopApi.signedFetch(
       `${apiBase}/api/agents/sandbox/${sandboxId}/files?path=${encodeURIComponent(path)}`
     )
-    if (!result.ok) {
-      throw new Error(result.error || `Failed to fetch file: ${result.status}`)
+    // signedFetch returns browser Response - need to parse JSON
+    if (!response.ok) {
+      throw new Error(`Failed to fetch file: ${response.status}`)
     }
-    return result.data as { content: string }
+    const result = await response.json() as { content: string }
+    return result
   },
 }

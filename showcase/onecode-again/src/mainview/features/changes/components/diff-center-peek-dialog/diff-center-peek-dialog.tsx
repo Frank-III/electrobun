@@ -1,5 +1,5 @@
 import { Motion, Presence } from "solid-motionone";
-import { createEffect, onCleanup, Show } from "solid-js";
+import { createEffect, onCleanup, Show, type JSX } from "solid-js";
 
 interface DiffCenterPeekDialogProps {
 	isOpen: boolean;

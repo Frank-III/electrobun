@@ -1,4 +1,4 @@
-import { type Component, type ComponentProps, type JSX, splitProps } from "solid-js";
+import { type Component, type ComponentProps, type JSX, mergeProps, splitProps } from "solid-js";
 import { ContextMenu as ContextMenuPrimitive } from "@kobalte/core/context-menu";
 import { cn } from "../../lib/utils";
 import { CaretRightIcon } from "./icons";
@@ -14,7 +14,10 @@ import {
 	overlayChevron,
 } from "../../lib/overlay-styles";
 
-const ContextMenu = ContextMenuPrimitive;
+const ContextMenu: Component<ComponentProps<typeof ContextMenuPrimitive>> = (props) => {
+	const merged = mergeProps({ modal: false }, props);
+	return <ContextMenuPrimitive {...merged} />;
+};
 const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
 const ContextMenuGroup = ContextMenuPrimitive.Group;
 const ContextMenuPortal = ContextMenuPrimitive.Portal;

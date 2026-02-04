@@ -1,3 +1,4 @@
+import type { Component } from "solid-js";
 import { Database, FileCode2, FolderSearch, GitBranch, ListTodo, LogOut, Minimize2, Server, Terminal, XCircle } from "lucide-solid";
 import { CustomTerminalIcon, EyeIcon, GlobeIcon, IconEditFile, PlanningIcon, SearchIcon, SparklesIcon, WriteFileIcon } from "../../../components/ui/icons";
 export type ToolVariant = "simple" | "collapsible";

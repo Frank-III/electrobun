@@ -130,7 +130,7 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
                         <span class="truncate flex-1">{branch.name}</span>
                         <Show when={branch.committedAt}>
                           <span class="text-xs text-muted-foreground/70 shrink-0">
-                            {formatTimeAgo(branch.committedAt)}
+                            {formatTimeAgo(branch.committedAt ?? undefined)}
                           </span>
                         </Show>
                         <Show when={baseBranch() === branch.name}>

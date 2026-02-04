@@ -1,9 +1,8 @@
-import { createMemo, createEffect, createSignal, onCleanup, For, Show } from "solid-js";
+import { createMemo, createEffect, createRoot, createSignal, onCleanup, For, Show } from "solid-js";
 import { cn } from "../../../lib/utils";
 import { MemoizedMarkdown } from "../../../components/chat-markdown-renderer";
 import { messageAtomFamily, isMessageStreamingAtomFamily } from "../stores/message-store";
 import { useSearchHighlight, useSearchQuery } from "../search";
-import { appStore } from "../../../lib/app-store";
 // ============================================================================
 // TEXT PART STORE - External store for text parts to avoid re-renders
 // ============================================================================
@@ -23,7 +22,7 @@ function getTextPart(messageId: string, partIndex: number): string {
 	const cached = textPartStore.get(key);
 	if (cached !== undefined) return cached;
 	// Get from Jotai store
-	const message = appStore.get(messageAtomFamily(messageId));
+	const message = messageAtomFamily(messageId)[0]();
 	const parts = message?.parts || [];
 	const part = parts[partIndex];
 	const text = part?.type === "text" ? part.text || "" : "";
@@ -39,20 +38,24 @@ function subscribeToTextPart(messageId: string, partIndex: number, callback: () 
 	}
 	textPartSubscribers.get(key)!.add(callback);
 	// Subscribe to Jotai message atom
-	const unsubscribe = appStore.sub(messageAtomFamily(messageId), () => {
-		const message = appStore.get(messageAtomFamily(messageId));
-		const parts = message?.parts || [];
-		const part = parts[partIndex];
-		const newText = part?.type === "text" ? part.text || "" : "";
-		const oldText = textPartStore.get(key);
-		if (oldText !== newText) {
-			textPartStore.set(key, newText);
-			// Only notify THIS part's subscribers
-			const subs = textPartSubscribers.get(key);
-			if (subs) {
-				subs.forEach((cb) => cb());
+	const unsubscribe = createRoot((dispose) => {
+		const messageAccessor = messageAtomFamily(messageId)[0];
+		createEffect(() => {
+			const message = messageAccessor();
+			const parts = message?.parts || [];
+			const part = parts[partIndex];
+			const newText = part?.type === "text" ? part.text || "" : "";
+			const oldText = textPartStore.get(key);
+			if (oldText !== newText) {
+				textPartStore.set(key, newText);
+				// Only notify THIS part's subscribers
+				const subs = textPartSubscribers.get(key);
+				if (subs) {
+					subs.forEach((cb) => cb());
+				}
 			}
-		}
+		});
+		return dispose;
 	});
 	return () => {
 		textPartSubscribers.get(key)?.delete(callback);
@@ -137,7 +140,7 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentM
 			}
 			// Create highlight mark
 			const mark = document.createElement("mark");
-			mark.class = "search-highlight";
+			mark.className = "search-highlight";
 			mark.textContent = text.slice(searchIndex, searchIndex + searchText.length);
 			// Mark match as current if it's the one we're looking for
 			if (currentMatchIndex !== null && matchCounter === currentMatchIndex) {
@@ -168,12 +171,12 @@ function highlightTextInDom(container: HTMLElement, searchText: string, currentM
 	}
 }
 export function IsolatedTextPart(props: IsolatedTextPartProps) {
-	const [contentRef, setContentRef] = createSignal<HTMLDivElement>(null);
+	const [contentRef, setContentRef] = createSignal<HTMLDivElement | null>(null);
 	// Subscribe to ONLY this text part (Solid accessor)
 	const text = useTextPart(props.messageId, props.partIndex);
 	// Use per-message streaming atom instead of global isStreamingAtom
 	// This prevents re-renders of old messages when streaming status changes
-	const isTextStreaming = isMessageStreamingAtomFamily(props.messageId)[0];
+	const isTextStreaming = isMessageStreamingAtomFamily(props.messageId);
 	// Get search highlights for this text part
 	const highlights = useSearchHighlight(props.messageId, props.partIndex, "text");
 	// Get search query from context
@@ -239,7 +242,7 @@ export function IsolatedTextPartsList(props: IsolatedTextPartsProps) {
 	// Find indices of text parts that should be rendered
 	// This is a stable calculation - only changes when parts array structure changes
 	const textPartIndices = createMemo(() => {
-		const parts = message?.parts || [];
+		const parts = message()?.parts || [];
 		const indices: number[] = [];
 		for (let i = 0; i < parts.length; i++) {
 			const part = parts[i];

@@ -5,7 +5,7 @@
  * For now, simplified to import existing token or instruct users to run 'claude login'.
  */
 import { ChevronLeft } from "lucide-solid";
-import { createSignal, createEffect, Show } from "solid-js";
+import { createSignal, createEffect, Show, type JSX } from "solid-js";
 import { ClaudeCodeIcon, IconSpinner } from "../../components/ui/icons";
 import { Logo } from "../../components/ui/logo";
 import { anthropicOnboardingCompletedAtom, billingMethodAtom } from "../../lib/atoms";
@@ -60,7 +60,7 @@ export function AnthropicOnboardingPage() {
   const handleUseExistingToken = async () => {
     setFlowState({ step: "importing" });
     try {
-      await desktopRpc.claudeCode.importSystemToken.mutate();
+      await desktopRpc.claudeCode.importSystemToken.mutate({});
       setAnthropicOnboardingCompleted(true);
     } catch (err) {
       setFlowState({

@@ -78,7 +78,7 @@ export function CommitInput(props: CommitInputProps) {
 		return trimmedSummary;
 	};
 	// Can commit if files are selected (will auto-generate message if needed)
-	const canCommit = hasStagedChanges;
+	const canCommit = local.hasStagedChanges;
 	const handleCommit = async () => {
 		if (!canCommit) return;
 		try {
@@ -95,7 +95,7 @@ export function CommitInput(props: CommitInputProps) {
 						ollamaModel: selectedOllamaModel(),
 					});
 					console.log("[CommitInput] AI generated message:", result?.message);
-					commitMessage = result?.message ?? null;
+					commitMessage = result?.message ?? "";
 					if (result?.message) setSummary(result.message);
 				} catch (error) {
 					console.error("[CommitInput] Failed to generate message:", error);

@@ -64,25 +64,26 @@ export function getAtomValue<T>(atomRef: Atom<T> | SignalPair<T>): T {
   return state.signal![0]()
 }
 
-export function setAtomValue<T>(atomRef: Atom<T> | SignalPair<T>, value: T | ((prev: T) => T)) {
+export function setAtomValue<T>(atomRef: Atom<T> | SignalPair<T>, value: T | ((prev: T) => T)): void {
   if (isSignalPair(atomRef)) {
     const setter = atomRef[1]
     if (typeof value === "function") {
       setter(value as (prev: T) => T)
     } else {
-      setter(value)
+      setter(() => value)
     }
     return
   }
   const state = ensureState(atomRef)
   if (atomRef.write) {
-    return atomRef.write(getAtomValue, setAtomValue, value)
+    atomRef.write(getAtomValue, setAtomValue, value)
+    return
   }
   const setter = state.signal![1]
   if (typeof value === "function") {
     setter(value as (prev: T) => T)
   } else {
-    setter(value)
+    setter(() => value)
   }
 }
 

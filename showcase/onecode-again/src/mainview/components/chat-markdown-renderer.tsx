@@ -252,7 +252,7 @@ export function ChatMarkdownRenderer(props: ChatMarkdownRendererProps) {
 		a: ({ href, children, ...props }: any) => <a href={href} onClick={(e) => {
 			e.preventDefault();
 			if (href) {
-				window.desktopApi.openExternal(href);
+				window.desktopApi?.openExternal(href);
 			}
 		}} class="text-blue-600 dark:text-blue-400 no-underline hover:underline hover:decoration-current underline-offset-2 decoration-1 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/30 focus-visible:rounded-sm" {...props}>
           {children}

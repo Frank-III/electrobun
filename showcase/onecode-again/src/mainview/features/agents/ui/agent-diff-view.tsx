@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, ErrorBoundary, For, onCleanup, Show, splitProps, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, ErrorBoundary, For, onCleanup, Show, splitProps, type Component, type JSX } from "solid-js";
 // Solid-compatible stubs for React APIs used in this file (no actual deferral; can be refined later)
 function useDeferredValue<T>(value: T | (() => T)): T | (() => T) {
 	// If it's an accessor (function), return a memo so consumers stay reactive
@@ -11,7 +11,7 @@ function startTransition(callback: () => void): void {
 	callback();
 }
 import { createPersistedSignal } from "../../../lib/state/signal-storage";
-import { agentsFocusedDiffFileAtom, filteredDiffFilesAtom, viewedFilesAtomFamily, type ViewedFileState } from "../atoms";
+import { agentsFocusedDiffFileAtom, filteredDiffFilesAtom, viewedFilesAtomFamily, type ViewedFileState } from "../../../lib/state/agents-store";
 import { FileDiff, parsePatchFiles } from "@pierre/diffs";
 import { useTheme } from "../../../lib/hooks/use-theme";
 import { toast } from "solid-sonner";
@@ -354,9 +354,9 @@ function FileDiffCard({ file, isLight, isCollapsed, toggleCollapsed, isFullExpan
           <div class="flex-1 flex items-center gap-2 text-left min-w-0 min-h-[22px]">
             { /* Icon container with hover swap */}
             {(() => {
- const FileIcon = getFileIconByExtension(fileName);
+ const FileIcon = getFileIconByExtension(fileName) as Component<{ class?: string }> | null;
 		return <div class="relative w-3.5 h-3.5 shrink-0">
-                  <Show when={FileIcon}><FileIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-all duration-200", "group-hover:opacity-0 group-hover:scale-75")} /></Show>
+                  {FileIcon ? <FileIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-all duration-200", "group-hover:opacity-0 group-hover:scale-75")} /> : null}
                   <ChevronDown class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-all duration-200", "opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100", isCollapsed && "-rotate-90")} />
                 </div>;
 	})()}
@@ -549,7 +549,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 		"chatId", "sandboxId", "worktreePath", "repository", "onStatsChange",
 		"initialDiff", "initialParsedFiles", "prefetchedFileContents", "showFooter",
 		"onCreatePr", "isCreatingPr", "isMobile", "onClose", "onCollapsedStateChange",
-		"onSelectNextFile", "onViewedCountChange", "initialSelectedFile"
+		"onSelectNextFile", "onViewedCountChange", "initialSelectedFile", "ref"
 	]);
 	const showFooter = () => local.showFooter ?? true;
 	const externalOnCreatePr = () => local.onCreatePr;
@@ -614,20 +614,20 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 	// Fetch diff on mount (only if initialDiff not provided)
 	createEffect(() => {
 		// Skip fetch if initialDiff was provided with actual content or parsed files
-		if (initialDiff !== undefined) {
-			setDiff(initialDiff);
+		if (local.initialDiff !== undefined) {
+			setDiff(local.initialDiff);
 			// Only mark as not loading if we have actual data or parsed files array
 			// Note: empty array [] means "no changes", null/undefined means "still loading"
-			const parentStillLoading = initialDiff === null && !Array.isArray(initialParsedFiles);
+			const parentStillLoading = local.initialDiff === null && !Array.isArray(local.initialParsedFiles);
 			setIsLoadingDiff(parentStillLoading);
 			return;
 		}
 		const fetchDiff = async () => {
 			// Desktop: use tRPC if no sandboxId
-			if (!sandboxId && chatId) {
+			if (!local.sandboxId && local.chatId) {
 				try {
 					setIsLoadingDiff(true);
-					const result = await desktopRpc.chats.getDiff({ chatId });
+					const result = await desktopRpc.chats.getDiff({ chatId: local.chatId });
 					const diffContent = result.diff || "";
 					setDiff(diffContent.trim() ? diffContent : "");
 				} catch (error) {
@@ -638,14 +638,14 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 				return;
 			}
 			// Web: use sandbox API
-			if (!sandboxId) {
+			if (!local.sandboxId) {
 				setDiffError("Sandbox ID is required");
 				setIsLoadingDiff(false);
 				return;
 			}
 			try {
 				setIsLoadingDiff(true);
-				const response = await fetch(`/api/agents/sandbox/${sandboxId}/diff`);
+				const response = await fetch(`/api/agents/sandbox/${local.sandboxId}/diff`);
 				if (!response.ok) {
 					throw new Error(`Failed to fetch diff: ${response.statusText}`);
 				}
@@ -670,14 +670,14 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 		try {
 			let diffContent = "";
 			// Desktop: use tRPC to get diff from worktree
-			if (chatId && !sandboxId) {
-				const result = await desktopRpc.chats.getDiff({ chatId });
-				diffContent = result.diff || "";
-			} else if (sandboxId) {
-				const response = await fetch(`/api/agents/sandbox/${sandboxId}/diff`);
-				if (!response.ok) {
-					throw new Error(`Failed to fetch diff: ${response.statusText}`);
-				}
+		if (local.chatId && !local.sandboxId) {
+			const result = await desktopRpc.chats.getDiff({ chatId: local.chatId });
+			diffContent = result.diff || "";
+		} else if (local.sandboxId) {
+			const response = await fetch(`/api/agents/sandbox/${local.sandboxId}/diff`);
+			if (!response.ok) {
+				throw new Error(`Failed to fetch diff: ${response.statusText}`);
+			}
 				const data = await response.json();
 				diffContent = data.diff || "";
 			}
@@ -702,8 +702,8 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 	});
 	const allFileDiffs = createMemo(() => {
 		// Use pre-parsed files if provided (avoids duplicate parsing)
-		if (initialParsedFiles && initialParsedFiles.length > 0) {
-			return initialParsedFiles;
+		if (local.initialParsedFiles && local.initialParsedFiles.length > 0) {
+			return local.initialParsedFiles;
 		}
 		// Fall back to parsing raw diff
 		const diffVal = diff();
@@ -716,7 +716,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 	});
 	// Filter files if filteredDiffFiles is set (for sub-chat Review)
 	// Use initialSelectedFile as fallback for first render before atom updates
-	const effectiveFilter = filteredDiffFiles() ?? (initialSelectedFile ? [initialSelectedFile] : null);
+	const effectiveFilter = filteredDiffFiles() ?? (local.initialSelectedFile ? [local.initialSelectedFile] : null);
 	const fileDiffs = createMemo(() => {
 		// First, filter out invalid files without proper paths (file-N keys indicate parse failure)
 		const validFiles = allFileDiffs().filter((file: ParsedDiffFile) => {
@@ -744,7 +744,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 	});
 	// Handle discard confirmation
 	const handleConfirmDiscard = async () => {
-		if (!discardFilePath() || !worktreePath) return;
+		if (!discardFilePath() || !local.worktreePath) return;
 		try {
 			// Check if this is a new file (untracked) - needs delete instead of discard
 			const file = fileDiffs().find((f: ParsedDiffFile) => {
@@ -754,12 +754,12 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 			const isNewFile = file?.oldPath === "/dev/null";
 			if (isNewFile) {
 				await desktopRpc.changes.deleteUntracked.mutate({
-					worktreePath,
+					worktreePath: local.worktreePath,
 					filePath: discardFilePath()!,
 				});
 			} else {
 				await desktopRpc.changes.discardChanges.mutate({
-					worktreePath,
+					worktreePath: local.worktreePath,
 					filePath: discardFilePath()!,
 				});
 			}
@@ -867,7 +867,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 		markAllViewed,
 		markAllUnviewed
 	};
-	props.ref?.(handle);
+	local.ref?.(handle);
 	// Notify parent when collapsed state changes
 	const [prevCollapseStateRef, setPrevCollapseStateRef] = createSignal<{
 		allCollapsed: boolean;
@@ -882,7 +882,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 		const prev = prevCollapseStateRef();
 		if (prev?.allCollapsed !== newState.allCollapsed || prev?.allExpanded !== newState.allExpanded) {
 			setPrevCollapseStateRef(newState);
-			onCollapsedStateChange?.(newState);
+			local.onCollapsedStateChange?.(newState);
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- callbacks are stable, excluding to prevent loops
 	});
@@ -892,7 +892,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 		const count = getViewedCount();
 		if (prevViewedCountRef() !== count) {
 			setPrevViewedCountRef(count);
-			onViewedCountChange?.(count);
+			local.onViewedCountChange?.(count);
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- callbacks are stable, excluding to prevent loops
 	});
@@ -960,15 +960,15 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 		// Desktop: use worktreePath, Web: use sandboxId
 		if (DEBUG_AGENT_DIFF_VIEW) {
 			console.log("[AgentDiffView] File content effect:", {
-				fileDiffsCount: fileDiffs.length,
+				fileDiffsCount: fileDiffs().length,
 				isLoadingFileContents: isLoadingFileContents(),
-				worktreePath: !!worktreePath,
-				sandboxId,
+				worktreePath: !!local.worktreePath,
+				sandboxId: local.sandboxId,
 				existingContents: Object.keys(fileContents).length
 			});
 		}
 		if (fileDiffs().length === 0 || isLoadingFileContents()) return;
-		if (!worktreePath && !sandboxId) return;
+		if (!local.worktreePath && !local.sandboxId) return;
 		// Skip if we already have enough contents
 		const existingContentCount = Object.keys(fileContents()).length;
 		if (existingContentCount >= Math.min(fileDiffs().length, MAX_PREFETCH_FILES)) return;
@@ -995,7 +995,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 					return;
 				}
 				// Desktop: fetch each file via RPC (no batch readMultipleWorkingFiles in Electrobun RPC)
-				if (worktreePath) {
+				if (local.worktreePath) {
 					const settled = await Promise.allSettled(
 						filesToFetch.map(async ({ key, filePath }) => {
 							try {
@@ -1013,20 +1013,20 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 						}
 					}
 					setFileContents(newContents);
-				} else if (sandboxId) {
+				} else if (local.sandboxId) {
 					// Sandbox: use remoteApi on desktop, relative fetch on web
 					if (DEBUG_AGENT_DIFF_VIEW) console.log("[AgentDiffView] Fetching file contents for sandbox, isDesktop:", isDesktopApp());
 					const results = await Promise.allSettled(filesToFetch.map(async ({ key, filePath }) => {
 						if (isDesktopApp()) {
 							// Desktop: use signedFetch via remoteApi
-							const data = await remoteApi.getSandboxFile(sandboxId, filePath);
+							const data = await remoteApi.getSandboxFile(local.sandboxId!, filePath);
 							return {
 								key,
 								content: data.content
 							};
 						} else {
 							// Web: use relative fetch
-							const response = await Promise.race([fetch(`/api/agents/sandbox/${sandboxId}/files?path=${encodeURIComponent(filePath)}`), new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5e3))]);
+							const response = await Promise.race([fetch(`/api/agents/sandbox/${local.sandboxId}/files?path=${encodeURIComponent(filePath)}`), new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5e3))]);
 							if (!response.ok) throw new Error("Failed to fetch file");
 							const data = await response.json();
 							return {
@@ -1113,7 +1113,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 		};
 		// When marking as viewed, find and select next UNVIEWED file
 		// Use allFileDiffs (unfiltered) for navigation, since filtered list may only show current file
-		if (willBeViewed && onSelectNextFile) {
+		if (willBeViewed && local.onSelectNextFile) {
 			const currentIndex = allFileDiffs().findIndex((f: ParsedDiffFile) => f.key === fileKey);
 			if (currentIndex === -1) return;
 			// Find next unviewed file after current position
@@ -1141,7 +1141,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 				const filePath = nextUnviewedFile.newPath && nextUnviewedFile.newPath !== "/dev/null" ? nextUnviewedFile.newPath : nextUnviewedFile.oldPath;
 				if (filePath && filePath !== "/dev/null") {
 					// Select next file - this will update the filter and diff view
-					onSelectNextFile(filePath);
+					local.onSelectNextFile(filePath);
 				}
 			}
 		}
@@ -1167,10 +1167,10 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 		}
 		// Navigate back to the file that was undone
 		const file = allFileDiffs().find((f: ParsedDiffFile) => f.key === fileKey);
-		if (file && onSelectNextFile) {
+		if (file && local.onSelectNextFile) {
 			const filePath = file.newPath && file.newPath !== "/dev/null" ? file.newPath : file.oldPath;
 			if (filePath && filePath !== "/dev/null") {
-				onSelectNextFile(filePath);
+				local.onSelectNextFile(filePath);
 			}
 		}
 		return true;
@@ -1225,7 +1225,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 			deletions: totalDeletions,
 			isLoading: isLoadingDiff()
 		});
-		onStatsChange?.({
+		local.onStatsChange?.({
 			fileCount: allFileDiffs().length,
 			additions: totalAdditions,
 			deletions: totalDeletions,
@@ -1241,7 +1241,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 		if (isLoadingDiff()) return;
 		const diffVal = diff();
 		const hasRawDiff = diffVal && diffVal.trim().length > 0;
-		const hasParsedFiles = initialParsedFiles && initialParsedFiles.length > 0;
+		const hasParsedFiles = local.initialParsedFiles && local.initialParsedFiles.length > 0;
 		const hasAllFiles = allFileDiffs().length > 0;
 		const hasFilteredFiles = fileDiffs().length > 0;
 		const hasVirtualItems = virtualizer.getVirtualItems().length > 0;
@@ -1272,8 +1272,8 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 		// Case 4: Initial data provided but not being used
 		if (hasParsedFiles && !hasAllFiles) {
 			console.error("[DiffView Debug] initialParsedFiles provided but not used:", {
-				initialParsedFilesCount: initialParsedFiles?.length,
-				initialParsedFilesPaths: initialParsedFiles?.map((f) => f.newPath || f.oldPath)
+				initialParsedFilesCount: local.initialParsedFiles?.length,
+				initialParsedFilesPaths: local.initialParsedFiles?.map((f) => f.newPath || f.oldPath)
 			});
 		}
 	});
@@ -1374,12 +1374,12 @@ export function AgentDiffView(props: AgentDiffViewProps) {
           <IconSpinner class="w-4 h-4" />
         </div>;
 	}
-	return <div class={cn("flex flex-col bg-background overflow-hidden min-w-0", isMobile ? "h-full w-full" : "h-full")}>
+	return <div class={cn("flex flex-col bg-background overflow-hidden min-w-0", isMobile() ? "h-full w-full" : "h-full")}>
                 {	/* Mobile Header */}
-        <Show when={isMobile}><div class="flex-shrink-0 bg-background/95 backdrop-blur border-b h-11 min-h-[44px] max-h-[44px]" data-mobile-diff-header style={{ "-webkit-app-region": "drag" } as any}>
+		<Show when={isMobile()}><div class="flex-shrink-0 bg-background/95 backdrop-blur border-b h-11 min-h-[44px] max-h-[44px]" data-mobile-diff-header style={{ "-webkit-app-region": "drag" } as any}>
             <div class="flex h-full items-center px-2 gap-2" style={{ "-webkit-app-region": "no-drag" } as any}>
               { /* Back to chat button */}
-              <Button variant="ghost" size="icon" onClick={onClose} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md">
+				<Button variant="ghost" size="icon" onClick={local.onClose} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md">
                 <IconChatBubble class="h-4 w-4" />
                 <span class="sr-only">Back to chat</span>
               </Button>
@@ -1447,7 +1447,7 @@ export function AgentDiffView(props: AgentDiffViewProps) {
 			transform: `translateY(${virtualRow.start}px)`
 		}}>
                     <div class="pb-2">
-                      <FileDiffCard file={file} isLight={isLight} isCollapsed={!!collapsedByFileKey()[file.key]} toggleCollapsed={toggleFileCollapsed} isFullExpanded={!!fullExpandedByFileKey()[file.key]} toggleFullExpanded={toggleFileFullExpanded} hasContent={!!fileContents()[file.key]} isLoadingContent={isLoadingFileContents()} diffMode={diffMode()} worktreePath={worktreePath} onDiscardFile={handleDiscardFile} isViewed={isFileViewed(file.key, file.diffText)} onToggleViewed={handleToggleViewed} showViewed={!!worktreePath} />
+						<FileDiffCard file={file} isLight={isLight} isCollapsed={!!collapsedByFileKey()[file.key]} toggleCollapsed={toggleFileCollapsed} isFullExpanded={!!fullExpandedByFileKey()[file.key]} toggleFullExpanded={toggleFileFullExpanded} hasContent={!!fileContents()[file.key]} isLoadingContent={isLoadingFileContents()} diffMode={diffMode()} worktreePath={local.worktreePath} onDiscardFile={handleDiscardFile} isViewed={isFileViewed(file.key, file.diffText)} onToggleViewed={handleToggleViewed} showViewed={!!local.worktreePath} />
                     </div>
                   </div>;
 	}}</For>

@@ -41,7 +41,7 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 	const setChatSourceMode = chatSourceModeAtom[1];
 	const queryClient = useQueryClient();
 	// For multiple projects view
-	const [selectedProjectId, setSelectedProjectId] = createSignal(null);
+	const [selectedProjectId, setSelectedProjectId] = createSignal<string | null>(null);
 	// Mutations
 	const locateMutation = useMutation(() => ({
 		mutationFn: (input: { expectedOwner: string; expectedRepo: string }) =>
@@ -139,8 +139,12 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 				projectId: result.project.id,
 				chatName: remoteChat.name
 			});
-		} else if (result.reason === "wrong-repo") {
-			toast.error(`That folder is ${result.found}, not ${owner}/${repo}`);
+		} else if (!result.success) {
+			// Narrow to failure type
+			const failure = result as { success: false; reason: "canceled" | "wrong-repo"; found?: string };
+			if (failure.reason === "wrong-repo" && failure.found) {
+				toast.error(`That folder is ${failure.found}, not ${owner}/${repo}`);
+			}
 		}
 		// canceled = do nothing
 	};
