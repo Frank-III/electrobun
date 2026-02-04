@@ -268,9 +268,8 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	const handleScroll = (e: Event & { currentTarget: HTMLDivElement }) => {
 		updateScrollGradients(e.currentTarget);
 	};
-	// Initialize gradients on mount and observe container size changes
+	// Initialize gradients on mount and observe container size changes (runs once)
 	createEffect(() => {
-		filteredSubChats();
 		const container = scrollContainerRef;
 		if (!container) return;
 		updateScrollGradients();
@@ -279,6 +278,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 		onCleanup(() => resizeObserver.disconnect());
 	});
 	// Hotkey: / to focus search input (only when sidebar is visible and input not focused)
+	// Runs once on mount
 	createEffect(() => {
 		const handleSearchHotkey = (e: KeyboardEvent) => {
 			// Only trigger if / is pressed without Cmd/Ctrl/Alt
