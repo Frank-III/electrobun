@@ -1,5 +1,6 @@
 import type { RPCSchema } from "electrobun";
-import type { TestDefinition, TestResult, TestStatus } from "../test-framework/types";
+import type { TestResult } from "../test-framework/types";
+import type { UpdateStatusType, UpdateStatusEntry, UpdateStatusDetails } from "electrobun/bun";
 
 export interface TestInfo {
   id: string;
@@ -7,6 +8,23 @@ export interface TestInfo {
   category: string;
   description?: string;
   interactive: boolean;
+}
+
+export type UpdateStatus =
+  | 'checking'
+  | 'update-available'
+  | 'downloading'
+  | 'update-ready'
+  | 'no-update'
+  | 'error';
+
+export type { UpdateStatusType, UpdateStatusEntry, UpdateStatusDetails };
+
+export interface UpdateInfo {
+  status: UpdateStatus;
+  currentVersion: string;
+  newVersion?: string;
+  error?: string;
 }
 
 export type TestRunnerRPC = {
@@ -38,6 +56,18 @@ export type TestRunnerRPC = {
       };
       submitVerification: {
         params: { testId: string; action: 'pass' | 'fail' | 'retest'; notes?: string };
+        response: void;
+      };
+      applyUpdate: {
+        params: {};
+        response: void;
+      };
+      getUpdateStatusHistory: {
+        params: {};
+        response: UpdateStatusEntry[];
+      };
+      clearUpdateStatusHistory: {
+        params: {};
         response: void;
       };
     };
@@ -79,7 +109,11 @@ export type TestRunnerRPC = {
       buildConfig: {
         defaultRenderer: 'native' | 'cef';
         availableRenderers: ('native' | 'cef')[];
+        cefVersion?: string;
+        bunVersion?: string;
       };
+      updateStatus: UpdateInfo;
+      updateStatusEntry: UpdateStatusEntry;
     };
   }>;
 };

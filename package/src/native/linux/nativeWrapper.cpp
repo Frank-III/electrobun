@@ -37,35 +37,42 @@
 
 // Shared cross-platform utilities
 #include "../shared/glob_match.h"
+#include "../shared/callbacks.h"
+#include "../shared/permissions.h"
+#include "../shared/mime_types.h"
+#include "../shared/asar.h"
+#include "../shared/config.h"
+#include "../shared/preload_script.h"
+#include "../shared/webview_storage.h"
+#include "../shared/navigation_rules.h"
+#include "../shared/thread_safe_map.h"
+#include "../shared/shutdown_guard.h"
+#include "../shared/ffi_helpers.h"
+#include "../shared/json_menu_parser.h"
+#include "../shared/download_event.h"
+#include "../shared/app_paths.h"
+#include "../shared/accelerator_parser.h"
+#include "../shared/chromium_flags.h"
 
-// ASAR C FFI declarations
-extern "C" {
-    typedef struct AsarArchive AsarArchive;
+using namespace electrobun;
 
-    AsarArchive* asar_open(const char* path);
-    void asar_close(AsarArchive* archive);
-    const uint8_t* asar_read_file(AsarArchive* archive, const char* path, size_t* size_out);
-    void asar_free_buffer(const uint8_t* buffer, size_t size);
-}
-
-// Global ASAR archive handle (lazy-loaded)
+// Global ASAR archive handle (lazy-loaded) with thread-safe initialization
+// ASAR C FFI declarations are in shared/asar.h
 static AsarArchive* g_asarArchive = nullptr;
+static std::once_flag g_asarArchiveInitFlag;
+static std::mutex g_asarReadMutex; // Mutex to protect ASAR read operations
 
 // Global shutdown flag to prevent race conditions during cleanup
+// Note: shared/shutdown_guard.h provides ShutdownManager singleton for new code
+// This local atomic is kept for direct access patterns used throughout this file
 static std::atomic<bool> g_shuttingDown{false};
 
-// Additional race condition protection  
+// Additional race condition protection
 static std::atomic<int> g_activeOperations{0};
 static std::mutex g_cefBrowserMutex;
 
-// Lightweight operation guard - just check shutdown, don't track operations
-class OperationGuard {
-public:
-    OperationGuard() : valid_(!g_shuttingDown.load()) {}
-    bool isValid() const { return valid_; }
-private:
-    bool valid_;
-};
+// Use OperationGuard from shared/shutdown_guard.h
+using electrobun::OperationGuard;
 
 // CEF includes - always include them even if it marginally increases binary size
 // we want a few binaries that will work whenever an electrobun developer
@@ -82,6 +89,9 @@ private:
 #include "include/cef_dialog_handler.h"
 #include "include/cef_download_handler.h"
 #include "include/wrapper/cef_helpers.h"
+
+// CEF dynamic loader for weak linking
+#include "cef_loader.h"
 
 // Ensure the exported functions have appropriate visibility
 #define ELECTROBUN_EXPORT __attribute__((visibility("default")))
@@ -117,13 +127,9 @@ static void handleViewsURIScheme(WebKitURISchemeRequest* request, gpointer user_
 static WebKitWebContext* getContextForPartition(const char* partitionIdentifier);
 
 
-// Webview callback types
-typedef uint32_t (*DecideNavigationCallback)(uint32_t webviewId, const char* url);
-typedef void (*WebviewEventHandler)(uint32_t webviewId, const char* type, const char* url);
-typedef uint32_t (*HandlePostMessage)(uint32_t webviewId, const char* message);
-
-// Tray callback types
-typedef void (*ZigStatusItemHandler)(uint32_t trayId, const char* action);
+// Webview and tray callback types are defined in shared/callbacks.h
+// Platform-specific alias
+typedef StatusItemHandler ZigStatusItemHandler;
 
 // Menu item structure
 struct MenuItemData {
@@ -154,161 +160,19 @@ static std::string g_electrobunIdentifier = "";
 extern "C" ELECTROBUN_EXPORT const char* getWebviewHTMLContent(uint32_t webviewId);
 extern "C" ELECTROBUN_EXPORT void setWebviewHTMLContent(uint32_t webviewId, const char* htmlContent);
 
-// Shared MIME type detection function
-// Based on Bun runtime supported file types and web development standards
-static std::string getMimeTypeFromUrl(const std::string& url) {
-    // Web/Code Files (Bun native support)
-    if (url.find(".html") != std::string::npos || url.find(".htm") != std::string::npos) {
-        return "text/html";
-    } else if (url.find(".js") != std::string::npos || url.find(".mjs") != std::string::npos || url.find(".cjs") != std::string::npos) {
-        return "text/javascript";
-    } else if (url.find(".ts") != std::string::npos || url.find(".mts") != std::string::npos || url.find(".cts") != std::string::npos) {
-        return "text/typescript";
-    } else if (url.find(".jsx") != std::string::npos) {
-        return "text/jsx";
-    } else if (url.find(".tsx") != std::string::npos) {
-        return "text/tsx";
-    } else if (url.find(".css") != std::string::npos) {
-        return "text/css";
-    } else if (url.find(".json") != std::string::npos) {
-        return "application/json";
-    } else if (url.find(".xml") != std::string::npos) {
-        return "application/xml";
-    } else if (url.find(".md") != std::string::npos) {
-        return "text/markdown";
-    } else if (url.find(".txt") != std::string::npos) {
-        return "text/plain";
-    } else if (url.find(".toml") != std::string::npos) {
-        return "application/toml";
-    } else if (url.find(".yaml") != std::string::npos || url.find(".yml") != std::string::npos) {
-        return "application/x-yaml";
-    
-    // Image Files
-    } else if (url.find(".png") != std::string::npos) {
-        return "image/png";
-    } else if (url.find(".jpg") != std::string::npos || url.find(".jpeg") != std::string::npos) {
-        return "image/jpeg";
-    } else if (url.find(".gif") != std::string::npos) {
-        return "image/gif";
-    } else if (url.find(".webp") != std::string::npos) {
-        return "image/webp";
-    } else if (url.find(".svg") != std::string::npos) {
-        return "image/svg+xml";
-    } else if (url.find(".ico") != std::string::npos) {
-        return "image/x-icon";
-    } else if (url.find(".avif") != std::string::npos) {
-        return "image/avif";
-    
-    // Font Files
-    } else if (url.find(".woff") != std::string::npos) {
-        return "font/woff";
-    } else if (url.find(".woff2") != std::string::npos) {
-        return "font/woff2";
-    } else if (url.find(".ttf") != std::string::npos) {
-        return "font/ttf";
-    } else if (url.find(".otf") != std::string::npos) {
-        return "font/otf";
-    
-    // Media Files
-    } else if (url.find(".mp3") != std::string::npos) {
-        return "audio/mpeg";
-    } else if (url.find(".mp4") != std::string::npos) {
-        return "video/mp4";
-    } else if (url.find(".webm") != std::string::npos) {
-        return "video/webm";
-    } else if (url.find(".ogg") != std::string::npos) {
-        return "audio/ogg";
-    } else if (url.find(".wav") != std::string::npos) {
-        return "audio/wav";
-    
-    // Document Files
-    } else if (url.find(".pdf") != std::string::npos) {
-        return "application/pdf";
-    
-    // WebAssembly (Bun support)
-    } else if (url.find(".wasm") != std::string::npos) {
-        return "application/wasm";
-    
-    // Compressed Files
-    } else if (url.find(".zip") != std::string::npos) {
-        return "application/zip";
-    } else if (url.find(".gz") != std::string::npos) {
-        return "application/gzip";
-    }
-    
-    return "application/octet-stream"; // default
-}
+// MIME type detection function is in shared/mime_types.h
+// Permission cache types and functions are in shared/permissions.h
 
-// Permission cache for user media requests
-enum class PermissionType {
-    USER_MEDIA,
-    GEOLOCATION,
-    NOTIFICATIONS,
-    OTHER
-};
-
-enum class PermissionStatus {
-    UNKNOWN,
-    ALLOWED,
-    DENIED
-};
-
-struct PermissionCacheEntry {
-    PermissionStatus status;
-    std::chrono::system_clock::time_point expiry;
-};
-
-static std::map<std::pair<std::string, PermissionType>, PermissionCacheEntry> g_permissionCache;
-static std::mutex g_permissionCacheMutex;
-
-// Helper functions for permission management
+// Linux-specific permission request helper
 std::string getOriginFromPermissionRequest(WebKitPermissionRequest* request) {
     // For views:// scheme, use a constant origin since these are local files
     // For other schemes, you would use webkit_permission_request_get_requesting_origin() when available
     return "views://";
 }
 
-PermissionStatus getPermissionFromCache(const std::string& origin, PermissionType type) {
-    std::lock_guard<std::mutex> lock(g_permissionCacheMutex);
-    auto key = std::make_pair(origin, type);
-    auto it = g_permissionCache.find(key);
-    
-    if (it != g_permissionCache.end()) {
-        // Check if permission hasn't expired
-        auto now = std::chrono::system_clock::now();
-        if (now < it->second.expiry) {
-            return it->second.status;
-        } else {
-            // Permission expired, remove from cache
-            g_permissionCache.erase(it);
-        }
-    }
-    
-    return PermissionStatus::UNKNOWN;
-}
-
-void cachePermission(const std::string& origin, PermissionType type, PermissionStatus status) {
-    std::lock_guard<std::mutex> lock(g_permissionCacheMutex);
-    auto key = std::make_pair(origin, type);
-    
-    // Cache permission for 24 hours
-    auto expiry = std::chrono::system_clock::now() + std::chrono::hours(24);
-    
-    g_permissionCache[key] = {status, expiry};
-}
-
-// Simple JSON value structure for menu parsing
-struct MenuJsonValue {
-    std::string type;
-    std::string label;
-    std::string action; 
-    std::string role;
-    std::string tooltip;
-    bool enabled = true;
-    bool checked = false;
-    bool hidden = false;
-    std::vector<MenuJsonValue> submenu;
-};
+// Menu JSON structure is now defined in shared/json_menu_parser.h
+// Alias for backward compatibility with existing code
+using MenuJsonValue = MenuItemJson;
 
 // Forward declarations
 class ContainerView;
@@ -345,124 +209,8 @@ static void setX11WindowIcon(X11Window* x11win, GdkPixbuf* pixbuf);
 // Forward declaration for X11 menu function
 void applyApplicationMenuToX11Window(X11Window* x11win);
 
-// Parse JSON menu array (simplified parser for basic menu structure)
-std::vector<MenuJsonValue> parseMenuJson(const std::string& jsonStr) {
-    std::vector<MenuJsonValue> items;
-    
-    // This is a very basic parser - in production you'd want a proper JSON library
-    // For now, just create some test menu items if JSON parsing fails
-    
-    // Look for basic patterns in the JSON to extract menu items
-    size_t pos = 0;
-    while (pos < jsonStr.length()) {
-        size_t labelStart = jsonStr.find("\"label\":", pos);
-        if (labelStart == std::string::npos) break;
-        
-        size_t labelValueStart = jsonStr.find("\"", labelStart + 8);
-        if (labelValueStart == std::string::npos) break;
-        labelValueStart++;
-        
-        size_t labelValueEnd = jsonStr.find("\"", labelValueStart);
-        if (labelValueEnd == std::string::npos) break;
-        
-        MenuJsonValue item;
-        item.label = jsonStr.substr(labelValueStart, labelValueEnd - labelValueStart);
-        
-        // Look for action
-        size_t actionStart = jsonStr.find("\"action\":", labelStart);
-        if (actionStart != std::string::npos && actionStart < jsonStr.find("}", labelStart)) {
-            size_t actionValueStart = jsonStr.find("\"", actionStart + 9);
-            if (actionValueStart != std::string::npos) {
-                actionValueStart++;
-                size_t actionValueEnd = jsonStr.find("\"", actionValueStart);
-                if (actionValueEnd != std::string::npos) {
-                    item.action = jsonStr.substr(actionValueStart, actionValueEnd - actionValueStart);
-                }
-            }
-        }
-        
-        // Look for type
-        size_t typeStart = jsonStr.find("\"type\":", labelStart);
-        if (typeStart != std::string::npos && typeStart < jsonStr.find("}", labelStart)) {
-            size_t typeValueStart = jsonStr.find("\"", typeStart + 7);
-            if (typeValueStart != std::string::npos) {
-                typeValueStart++;
-                size_t typeValueEnd = jsonStr.find("\"", typeValueStart);
-                if (typeValueEnd != std::string::npos) {
-                    item.type = jsonStr.substr(typeValueStart, typeValueEnd - typeValueStart);
-                }
-            }
-        }
-        
-        // Find the end of this menu item object
-        size_t itemEnd = jsonStr.find("},{", labelStart);
-        if (itemEnd == std::string::npos) {
-            itemEnd = jsonStr.find("}]", labelStart);  // Last item in array
-        }
-        if (itemEnd == std::string::npos) {
-            itemEnd = jsonStr.find("}", labelStart);   // Single item
-        }
-        
-        // Look for enabled boolean within this item
-        size_t enabledStart = jsonStr.find("\"enabled\":", labelStart);
-        if (enabledStart != std::string::npos && enabledStart < itemEnd) {
-            size_t enabledValueStart = enabledStart + 10;  // Skip "enabled":
-            // Skip whitespace and colon
-            while (enabledValueStart < jsonStr.length() && (isspace(jsonStr[enabledValueStart]) || jsonStr[enabledValueStart] == ':')) {
-                enabledValueStart++;
-            }
-            if (jsonStr.substr(enabledValueStart, 4) == "true") {
-                item.enabled = true;
-            } else if (jsonStr.substr(enabledValueStart, 5) == "false") {
-                item.enabled = false;
-            }
-        }
-        
-        // Look for hidden boolean within this item
-        size_t hiddenStart = jsonStr.find("\"hidden\":", labelStart);
-        if (hiddenStart != std::string::npos && hiddenStart < itemEnd) {
-            size_t hiddenValueStart = hiddenStart + 9;  // Skip "hidden":
-            // Skip whitespace and colon
-            while (hiddenValueStart < jsonStr.length() && (isspace(jsonStr[hiddenValueStart]) || jsonStr[hiddenValueStart] == ':')) {
-                hiddenValueStart++;
-            }
-            if (jsonStr.substr(hiddenValueStart, 4) == "true") {
-                item.hidden = true;
-            } else if (jsonStr.substr(hiddenValueStart, 5) == "false") {
-                item.hidden = false;
-            }
-        }
-        
-        // Look for checked boolean within this item
-        size_t checkedStart = jsonStr.find("\"checked\":", labelStart);
-        if (checkedStart != std::string::npos && checkedStart < itemEnd) {
-            size_t checkedValueStart = checkedStart + 10;  // Skip "checked":
-            // Skip whitespace and colon
-            while (checkedValueStart < jsonStr.length() && (isspace(jsonStr[checkedValueStart]) || jsonStr[checkedValueStart] == ':')) {
-                checkedValueStart++;
-            }
-            if (jsonStr.substr(checkedValueStart, 4) == "true") {
-                item.checked = true;
-            } else if (jsonStr.substr(checkedValueStart, 5) == "false") {
-                item.checked = false;
-            }
-        }
-        
-        items.push_back(item);
-        pos = labelValueEnd + 1;
-    }
-    
-    // If no items found, create a basic test menu
-    if (items.empty()) {
-        MenuJsonValue testItem;
-        testItem.label = "Test Menu Item";
-        testItem.action = "test-action";
-        testItem.type = "normal";
-        items.push_back(testItem);
-    }
-    
-    return items;
-}
+// Use parseMenuJson from shared/json_menu_parser.h
+using electrobun::parseMenuJson;
 
 // Mask rectangle structure for X11 regions
 struct MaskRect {
@@ -575,6 +323,7 @@ static std::mutex g_webviewMapMutex;
 static std::map<int, std::string> g_preloadScripts;
 
 CefRefPtr<class ElectrobunApp> g_app;
+std::vector<electrobun::ChromiumFlag> g_userChromiumFlags;
 
 
 // Get the directory of the current executable
@@ -761,15 +510,13 @@ public:
 
         // Check if ASAR archive exists
         if (g_file_test(asarPath, G_FILE_TEST_EXISTS)) {
-            // Lazy-load ASAR archive on first use
-            if (!g_asarArchive) {
+            // Thread-safe lazy-load ASAR archive on first use
+            std::call_once(g_asarArchiveInitFlag, [asarPath]() {
                 g_asarArchive = asar_open(asarPath);
-                if (g_asarArchive) {
-                } else {
+                if (!g_asarArchive) {
                     printf("ERROR CEF loadViewsFile: Failed to open ASAR archive at %s\n", asarPath);
-                    // Fall through to flat file reading
                 }
-            }
+            });
 
             // If ASAR archive is loaded, try to read from it
             if (g_asarArchive) {
@@ -777,13 +524,22 @@ public:
                 std::string asarFilePath = "views/" + fullPath;
 
                 size_t fileSize = 0;
-                const uint8_t* fileData = asar_read_file(g_asarArchive, asarFilePath.c_str(), &fileSize);
+                const uint8_t* fileData = nullptr;
+                
+                // Protect ASAR read operations with mutex
+                {
+                    std::lock_guard<std::mutex> lock(g_asarReadMutex);
+                    fileData = asar_read_file(g_asarArchive, asarFilePath.c_str(), &fileSize);
+                    
+                    if (fileData && fileSize > 0) {
+                        // Create std::string that copies the buffer while holding the lock
+                        data_ = std::string(reinterpret_cast<const char*>(fileData), fileSize);
+                        // Free the ASAR buffer before releasing the lock
+                        asar_free_buffer(fileData, fileSize);
+                    }
+                }
 
-                if (fileData && fileSize > 0) {
-                    // Create std::string that copies the buffer (we'll free it after)
-                    data_ = std::string(reinterpret_cast<const char*>(fileData), fileSize);
-                    // Free the ASAR buffer
-                    asar_free_buffer(fileData, fileSize);
+                if (!data_.empty()) {
 
                     // Determine MIME type
                     std::string mimeType = "application/octet-stream";
@@ -954,6 +710,12 @@ public:
         command_line->AppendSwitch("disable-plugins");
         command_line->AppendSwitch("disable-web-security");
         command_line->AppendSwitch("no-sandbox");
+        // Force X11 backend for window embedding compatibility
+        command_line->AppendSwitchWithValue("ozone-platform", "x11");
+        command_line->AppendSwitch("use-x11");
+
+        // Apply user-defined chromium flags from build.json
+        electrobun::applyChromiumFlags(g_userChromiumFlags, command_line);
     }
     
     void OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) override {
@@ -1048,6 +810,9 @@ private:
     Display* display_;
     bool osr_enabled_;
     int osr_width_, osr_height_;
+    
+    // Parent window handle for proper CEF window parenting
+    Window parent_window_handle_;
 
 public:
     ElectrobunClient(uint32_t webviewId,
@@ -1066,7 +831,8 @@ public:
         , display_(nullptr)
         , osr_enabled_(false)
         , osr_width_(0)
-        , osr_height_(0) {}
+        , osr_height_(0)
+        , parent_window_handle_(0) {}
 
     void AddPreloadScript(const std::string& script, bool mainFrameOnly = false) {
         electrobun_script_ = script;
@@ -1086,6 +852,10 @@ public:
     
     void SetBrowser(CefRefPtr<CefBrowser> browser) {
         browser_ = browser;
+    }
+    
+    void SetParentWindowHandle(Window parent_window) {
+        parent_window_handle_ = parent_window;
     }
     
     CefRefPtr<CefBrowser> GetBrowser() {
@@ -1179,20 +949,20 @@ public:
                        bool is_redirect) override {
         std::string url = request->GetURL().ToString();
 
-        // Check for Ctrl key using GDK
+        // Check for Ctrl key using GDK (must use pointer device, not keyboard, for gdk_device_get_state)
         GdkDisplay* display = gdk_display_get_default();
         GdkSeat* seat = display ? gdk_display_get_default_seat(display) : nullptr;
-        GdkDevice* keyboard = seat ? gdk_seat_get_keyboard(seat) : nullptr;
+        GdkDevice* pointer = seat ? gdk_seat_get_pointer(seat) : nullptr;
         GdkModifierType modifiers = (GdkModifierType)0;
         bool isCtrlHeld = false;
 
-        if (keyboard) {
-            gdk_device_get_state(keyboard, gdk_get_default_root_window(), NULL, &modifiers);
+        if (pointer) {
+            gdk_device_get_state(pointer, gdk_get_default_root_window(), NULL, &modifiers);
             isCtrlHeld = (modifiers & GDK_CONTROL_MASK) != 0;
         }
 
-        printf("[CEF OnBeforeBrowse] url=%s user_gesture=%d is_redirect=%d display=%p seat=%p keyboard=%p modifiers=0x%X isCtrlHeld=%d hasHandler=%d webviewId=%u\n",
-               url.c_str(), user_gesture, is_redirect, display, seat, keyboard, modifiers, isCtrlHeld, webview_event_handler_ != nullptr, webview_id_);
+        printf("[CEF OnBeforeBrowse] url=%s user_gesture=%d is_redirect=%d display=%p seat=%p pointer=%p modifiers=0x%X isCtrlHeld=%d hasHandler=%d webviewId=%u\n",
+               url.c_str(), user_gesture, is_redirect, display, seat, pointer, modifiers, isCtrlHeld, webview_event_handler_ != nullptr, webview_id_);
 
         if (isCtrlHeld && !is_redirect && webview_event_handler_) {
             // Debounce: ignore ctrl+click navigations within 500ms
@@ -1293,6 +1063,7 @@ public:
             std::string url = frame->GetURL().ToString();
             webview_event_handler_(webview_id_, strdup("did-navigate"), strdup(url.c_str()));
         }
+        
     }
 
     // Context menu handler with DevTools option
@@ -1340,7 +1111,11 @@ public:
             case 26501: // Inspect Element
             case 26502: // Open DevTools
                 printf("CEF: Opening DevTools...\n");
-                browser->GetHost()->ShowDevTools(CefWindowInfo(), this, CefBrowserSettings(), CefPoint());
+                {
+                    CefWindowInfo devToolsInfo;
+                    devToolsInfo.runtime_style = CEF_RUNTIME_STYLE_CHROME;
+                    browser->GetHost()->ShowDevTools(devToolsInfo, this, CefBrowserSettings(), CefPoint());
+                }
                 return true;
                 
             case 26503: // Reload
@@ -1365,7 +1140,11 @@ public:
                        bool* is_keyboard_shortcut) override {
         if (event.type == KEYEVENT_KEYDOWN && event.windows_key_code == 123) { // F12 key
             printf("CEF: F12 pressed - opening DevTools\n");
-            browser->GetHost()->ShowDevTools(CefWindowInfo(), this, CefBrowserSettings(), CefPoint());
+            {
+                CefWindowInfo devToolsInfo;
+                devToolsInfo.runtime_style = CEF_RUNTIME_STYLE_CHROME;
+                browser->GetHost()->ShowDevTools(devToolsInfo, this, CefBrowserSettings(), CefPoint());
+            }
             return true; // Consume the event
         }
         return false;
@@ -1382,20 +1161,96 @@ public:
             browser_created_callback_(browser);
         }
         
+        // Schedule rapid interval to trigger OOPIF positioning
+        // Runs every 5ms for up to 1 second to ensure OOPIFs are positioned correctly
+        struct LayoutIntervalData {
+            CefRefPtr<CefBrowser> browser;
+            gint64 start_time;
+            int trigger_count;
+        };
+        
+        auto* interval_data = new LayoutIntervalData{
+            browser, 
+            g_get_monotonic_time(), // microseconds since arbitrary point
+            0
+        };
+        
+        g_timeout_add(5, [](gpointer data) -> gboolean {
+            auto* lid = static_cast<LayoutIntervalData*>(data);
+            
+            // Check if 1 second has elapsed
+            gint64 elapsed = g_get_monotonic_time() - lid->start_time;
+            if (elapsed > 1000000) { // 1 second in microseconds
+                delete lid;
+                return G_SOURCE_REMOVE;
+            }
+            
+            if (!g_shuttingDown && lid->browser) {
+                CefWindowHandle cefWindow = lid->browser->GetHost()->GetWindowHandle();
+                
+                if (cefWindow && cefWindow != 0x1) {
+                    
+                    
+                    // Get window dimensions for mouse event coordinates
+                    Display* display = gdk_x11_get_default_xdisplay();
+                    XWindowAttributes attrs;
+                    if (XGetWindowAttributes(display, (Window)cefWindow, &attrs) != 0) {
+                        // Send mouse move event to trigger layout recalculation
+                        CefMouseEvent moveEvent;
+                        moveEvent.x = attrs.width / 2;
+                        moveEvent.y = attrs.height / 2;
+                        lid->browser->GetHost()->SendMouseMoveEvent(moveEvent, false);
+                        
+                        // Send minimal scroll event
+                        CefMouseEvent scrollEvent;
+                        scrollEvent.x = attrs.width / 2;
+                        scrollEvent.y = attrs.height / 2;
+                        lid->browser->GetHost()->SendMouseWheelEvent(scrollEvent, 0, 1);
+                        lid->browser->GetHost()->SendMouseWheelEvent(scrollEvent, 0, -1);
+                    }
+                    
+                    lid->trigger_count++;
+                }
+            }
+            
+            return G_SOURCE_CONTINUE; // Continue interval
+        }, interval_data);
+        
         // The CEF browser window is now fully created
         CefWindowHandle cefWindow = browser->GetHost()->GetWindowHandle();
         
-        // Validate the CEF window handle and try to understand what's happening
+        // printf("CEF: [BROWSER_CREATED] Browser created, window handle: 0x%lx\n", (unsigned long)cefWindow);
+        
+        // Validate the CEF window handle and ensure proper parenting
         if (cefWindow) {
             Display* display = gdk_x11_get_default_xdisplay();
             
-            // For transparent windows, ensure the CEF window has no background
-            // This will be properly handled when transparency info is available
-            
+            // Try to get window attributes to validate the handle
             XWindowAttributes attrs;
+            int result = XGetWindowAttributes(display, (Window)cefWindow, &attrs);
             
-            
-            if (XGetWindowAttributes(display, cefWindow, &attrs) == 0) {
+            // Ensure the CEF window is properly parented to the main window
+            if (parent_window_handle_) {
+                if (cefWindow != 0x1 && result != 0) {
+                    XReparentWindow(display, cefWindow, parent_window_handle_, 0, 0);
+                    XMapRaised(display, cefWindow);
+                    XFlush(display);
+                } else {
+                    // printf("CEF: [BROWSER_CREATED] Skipping reparenting due to invalid window handle\n");
+                }
+            } else {
+                printf("CEF: [BROWSER_CREATED] No parent window handle set\n");
+            }
+                
+                // Get window geometry to verify positioning
+                XWindowAttributes parent_attrs, cef_attrs;
+                if (XGetWindowAttributes(display, parent_window_handle_, &parent_attrs) &&
+                    XGetWindowAttributes(display, cefWindow, &cef_attrs)) {
+                    
+                }
+                            
+            XWindowAttributes tree_attrs;
+            if (XGetWindowAttributes(display, cefWindow, &tree_attrs) == 0) {
                 Window root, parent;
                 Window* children;
                 unsigned int nchildren;
@@ -1445,19 +1300,27 @@ public:
                             bool canGoBack,
                             bool canGoForward) override {
         if (!isLoading) {
+            // Notify browser of resize when loading completes to ensure OOPIFs are positioned
+            browser->GetHost()->WasResized();
             
             // Check if CEF window handle is valid now
             CefWindowHandle cefWindow = browser->GetHost()->GetWindowHandle();
+            
             if (cefWindow) {
+   
+                
                 Display* display = gdk_x11_get_default_xdisplay();
                 XWindowAttributes attrs;
-                if (XGetWindowAttributes(display, cefWindow, &attrs) == 0) {
+                int result = XGetWindowAttributes(display, cefWindow, &attrs);
+                
+                if (result == 0) {
+                    printf("CEF: [LOADING_STATE] ERROR - Cannot get window attributes\n");
                 } else {
                     
                     // Check window class hint
                     XClassHint class_hint;
                     if (XGetClassHint(display, cefWindow, &class_hint) != 0) {
-                        
+                       
                         // Analyze toolkit based on class names
                         // if (class_hint.res_class) {
                         //     if (strstr(class_hint.res_class, "Gtk") || strstr(class_hint.res_class, "gtk")) {
@@ -1741,6 +1604,8 @@ public:
                             const CefString& title,
                             const CefString& default_file_path,
                             const std::vector<CefString>& accept_filters,
+                            const std::vector<CefString>& accept_extensions,
+                            const std::vector<CefString>& accept_descriptions,
                             CefRefPtr<CefFileDialogCallback> callback) override {
         
         printf("CEF Linux: File dialog requested - mode: %d\n", static_cast<int>(mode));
@@ -2068,11 +1933,19 @@ bool initializeCEF() {
     CefMainArgs main_args(argc, argv);
     g_app = new ElectrobunApp();
 
-   
+    // Read user-defined chromium flags from build.json
+    std::string buildJsonPath = getExecutableDir() + "/../Resources/build.json";
+    std::string buildJsonContent = electrobun::readFileToString(buildJsonPath);
+    if (!buildJsonContent.empty()) {
+        g_userChromiumFlags = electrobun::parseChromiumFlags(buildJsonContent);
+    }
+
     CefSettings settings;
     settings.no_sandbox = true;
     settings.windowless_rendering_enabled = true;  // Required for OSR/transparent windows
+    settings.log_severity = LOGSEVERITY_ERROR;  // Change to WARNING to see more CEF logs
     // settings.remote_debugging_port = 9222;
+    
     // printf("CEF: Remote debugging enabled on port 9222\n");
     
     // Use centralized GTK initialization to ensure proper setlocale handling
@@ -2087,16 +1960,13 @@ bool initializeCEF() {
     // Set browser subprocess path to the main helper binary
     CefString(&settings.browser_subprocess_path) = execDir + "/bun Helper";
     
-    // Set cache path with identifier and channel to allow multiple apps/channels to run simultaneously
-    // Use ~/.cache/identifier-channel/CEF (similar to macOS pattern)
+    // Set cache path with identifier/channel structure (consistent with CLI and updater)
+    // Use ~/.cache/identifier/channel/CEF
     char* home = getenv("HOME");
     if (home) {
-        std::string appIdentifier = !g_electrobunIdentifier.empty() ? g_electrobunIdentifier : "Electrobun";
-        if (!g_electrobunChannel.empty()) {
-            appIdentifier += "-" + g_electrobunChannel;
-        }
-        std::string cachePath = std::string(home) + "/.cache/" + appIdentifier + "/CEF";
-        std::cout << "[CEF] Using app: " << appIdentifier << std::endl;
+        std::string basePath = std::string(home) + "/.cache";
+        std::string cachePath = buildAppDataPath(basePath, g_electrobunIdentifier, g_electrobunChannel, "CEF");
+        std::cout << "[CEF] Using path: " << cachePath << std::endl;
         CefString(&settings.root_cache_path) = cachePath;
     }
     
@@ -2114,10 +1984,9 @@ bool initializeCEF() {
     }
     
     if (!result) {
-        printf("CEF initialization failed\n");
+        printf("CEF: [INIT] ERROR - CefInitialize failed\n");
         return false;
-    } else {
-    }
+    } 
     
     g_cefInitialized = true;
     // printf("CEF initialized successfully\n");
@@ -2238,6 +2107,11 @@ public:
     // Find in page methods
     virtual void findInPage(const char* searchText, bool forward, bool matchCase) = 0;
     virtual void stopFindInPage() = 0;
+
+    // Developer tools methods
+    virtual void openDevTools() = 0;
+    virtual void closeDevTools() = 0;
+    virtual void toggleDevTools() = 0;
 };
 
 // Helper function implementation - calls AbstractView's navigation rules method
@@ -2681,20 +2555,20 @@ public:
             WebKitURIRequest* request = webkit_navigation_action_get_request(action);
             const char* uri = webkit_uri_request_get_uri(request);
 
-            // Check for Ctrl key using GDK
+            // Check for Ctrl key using GDK (must use pointer device, not keyboard, for gdk_device_get_state)
             GdkDisplay* display = gdk_display_get_default();
             GdkSeat* seat = display ? gdk_display_get_default_seat(display) : nullptr;
-            GdkDevice* keyboard = seat ? gdk_seat_get_keyboard(seat) : nullptr;
+            GdkDevice* pointer = seat ? gdk_seat_get_pointer(seat) : nullptr;
             GdkModifierType modifiers = (GdkModifierType)0;
             bool isCtrlHeld = false;
 
-            if (keyboard) {
-                gdk_device_get_state(keyboard, gdk_get_default_root_window(), NULL, &modifiers);
+            if (pointer) {
+                gdk_device_get_state(pointer, gdk_get_default_root_window(), NULL, &modifiers);
                 isCtrlHeld = (modifiers & GDK_CONTROL_MASK) != 0;
             }
 
-            printf("[GTKWebKit onDecidePolicy] url=%s display=%p seat=%p keyboard=%p modifiers=0x%X isCtrlHeld=%d hasHandler=%d\n",
-                   uri ? uri : "(null)", display, seat, keyboard, modifiers, isCtrlHeld, impl->eventHandler != nullptr);
+            printf("[GTKWebKit onDecidePolicy] url=%s display=%p seat=%p pointer=%p modifiers=0x%X isCtrlHeld=%d hasHandler=%d\n",
+                   uri ? uri : "(null)", display, seat, pointer, modifiers, isCtrlHeld, impl->eventHandler != nullptr);
 
             if (isCtrlHeld && impl->eventHandler) {
                 // Debounce: ignore ctrl+click navigations within 500ms
@@ -3135,6 +3009,37 @@ public:
         }
     }
 
+    void openDevTools() override {
+        if (!WEBKIT_IS_WEB_VIEW(webview)) return;
+        
+        WebKitWebInspector* inspector = webkit_web_view_get_inspector(WEBKIT_WEB_VIEW(webview));
+        if (inspector) {
+            webkit_web_inspector_show(inspector);
+        }
+    }
+
+    void closeDevTools() override {
+        if (!WEBKIT_IS_WEB_VIEW(webview)) return;
+        
+        WebKitWebInspector* inspector = webkit_web_view_get_inspector(WEBKIT_WEB_VIEW(webview));
+        if (inspector) {
+            webkit_web_inspector_close(inspector);
+        }
+    }
+
+    void toggleDevTools() override {
+        if (!WEBKIT_IS_WEB_VIEW(webview)) return;
+        
+        WebKitWebInspector* inspector = webkit_web_view_get_inspector(WEBKIT_WEB_VIEW(webview));
+        if (inspector) {
+            if (webkit_web_inspector_is_attached(inspector)) {
+                webkit_web_inspector_close(inspector);
+            } else {
+                webkit_web_inspector_show(inspector);
+            }
+        }
+    }
+
 };
 
 // Initialize static debounce timestamp for ctrl+click handling
@@ -3147,7 +3052,6 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
     if (!partitionIdentifier || !partitionIdentifier[0]) {
         // No partition: use ephemeral settings
         settings.persist_session_cookies = false;
-        settings.persist_user_preferences = false;
     } else {
         std::string identifier(partitionIdentifier);
         bool isPersistent = identifier.substr(0, 8) == "persist:";
@@ -3155,27 +3059,19 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
         if (isPersistent) {
             std::string partitionName = identifier.substr(8);
 
-            // Build app identifier
-            std::string appIdentifier = !g_electrobunIdentifier.empty() ? g_electrobunIdentifier : "Electrobun";
-            if (!g_electrobunChannel.empty()) {
-                appIdentifier += "-" + g_electrobunChannel;
-            }
-
-            // Build cache path
+            // Build cache path with identifier/channel structure (consistent with CLI and updater)
             char* home = getenv("HOME");
-            std::string basePath = home ? std::string(home) : "/tmp";
-            std::string cachePath = basePath + "/.cache/" + appIdentifier + "/CEF/Partitions/" + partitionName;
+            std::string basePath = home ? std::string(home) + "/.cache" : "/tmp";
+            std::string cachePath = buildPartitionPath(basePath, g_electrobunIdentifier, g_electrobunChannel, "CEF", partitionName);
 
             // Create directory
             g_mkdir_with_parents(cachePath.c_str(), 0755);
 
             settings.persist_session_cookies = true;
-            settings.persist_user_preferences = true;
             CefString(&settings.cache_path).FromString(cachePath);
         } else {
             // Ephemeral partition
             settings.persist_session_cookies = false;
-            settings.persist_user_preferences = false;
         }
     }
 
@@ -3306,16 +3202,25 @@ public:
         
         // Create CEF browser immediately as child of X11 window
         CefWindowInfo window_info;
+        // Use Alloy runtime style for embedded windows (like macOS)
+        window_info.runtime_style = CEF_RUNTIME_STYLE_CHROME;
+        
+        // For child windows, position should be relative to parent (0,0 for fullscreen)
         CefRect cef_rect((int)x, (int)y, (int)width, (int)height);
         
         // Use SetAsChild with the X11 window
         window_info.SetAsChild(x11win->window, cef_rect);
         
+        // Validate parent window before creating browser
+        Display* display = gdk_x11_get_default_xdisplay();
+        XWindowAttributes parent_attrs;
+        bool parent_valid = XGetWindowAttributes(display, x11win->window, &parent_attrs) != 0;
+        
         // For transparent windows, use windowless/OSR mode like macOS and Windows
         if (x11win->transparent) {
             // Use windowless (off-screen) rendering for transparency
             window_info.SetAsWindowless(x11win->window);
-            printf("CEF: Using windowless (OSR) mode for transparency\n");
+            // printf("CEF: Using windowless (OSR) mode for transparency\n");
         }
         
         
@@ -3326,7 +3231,7 @@ public:
             // For OSR transparent windows, use fully transparent background
             browser_settings.background_color = CefColorSetARGB(0, 0, 0, 0); // Fully transparent
             this->parentTransparent = true;
-            printf("CEF: Using transparent background for OSR mode\n");
+            // printf("CEF: Using transparent background for OSR mode\n");
         }
         
         // Create client
@@ -3339,6 +3244,9 @@ public:
             nullptr  // No GTK window needed
         );
         
+        // Set parent window handle for proper CEF window parenting
+        client->SetParentWindowHandle(x11win->window);
+        
         // Enable OSR for transparent windows
         if (x11win->transparent) {
             client->EnableOSR(x11win->window, x11win->display, (int)width, (int)height);
@@ -3347,6 +3255,8 @@ public:
         // Set up browser creation callback to notify CEFWebViewImpl when browser is ready
         client->SetBrowserCreatedCallback([this, x11win](CefRefPtr<CefBrowser> browser) {
             this->browser = browser;
+            
+            CefWindowHandle handle = browser->GetHost()->GetWindowHandle();
             
             // Handle pending frame positioning now that browser is available
             if (hasPendingFrame) {
@@ -3448,15 +3358,20 @@ public:
         // Ensure the window is mapped and raised
         XMapRaised(display, (Window)cefWindow);
         XFlush(display);
-        
-        // Also notify CEF about the resize
-        browserRef->GetHost()->WasResized();
-        
+                
         // Check if the resize actually took effect
         XWindowAttributes newAttrs;
         if (XGetWindowAttributes(display, (Window)cefWindow, &newAttrs) != 0) {
-            // printf("CEF: After resize - CEF window 0x%lx now at (%d,%d) size %dx%d\n", 
-            //        (unsigned long)cefWindow, newAttrs.x, newAttrs.y, newAttrs.width, newAttrs.height);
+            // Check parent window
+            Window root, parent;
+            Window* children;
+            unsigned int nchildren;
+            if (XQueryTree(display, (Window)cefWindow, &root, &parent, &children, &nchildren) != 0) {
+                
+                if (children) XFree(children);
+            }
+        } else {
+            printf("CEF: [POSITION] ERROR - Could not get window attributes after resize\n");
         }
         
     }
@@ -3492,22 +3407,25 @@ public:
         
         // Move the CEF browser window to match the widget position
         CefWindowHandle cefWindow = browser->GetHost()->GetWindowHandle();
-        if (cefWindow) {
+        
+        if (cefWindow) {        
             Display* display = gdk_x11_get_default_xdisplay();
             
             // Validate CEF window handle before using it
             XWindowAttributes attrs;
-            if (XGetWindowAttributes(display, cefWindow, &attrs) == 0) {
-                printf("CEF: ERROR - Invalid CEF window handle 0x%lx in syncCEFPositionWithWidget, deferring until window is ready\n", 
-                       (unsigned long)cefWindow);
+            int result = XGetWindowAttributes(display, cefWindow, &attrs);
+            
+            if (result == 0) {
                 // Skip positioning for now - this is likely during initial creation
                 return;
             }
             
             XMoveResizeWindow(display, cefWindow, finalX, finalY, finalWidth, finalHeight);
             XFlush(display);
+            
+
         } else {
-            printf("CEF: No CEF window handle available\n");
+            printf("CEF: [SYNC_WIDGET] No CEF window handle available\n");
         }
     }
     
@@ -3857,6 +3775,41 @@ public:
         CefRefPtr<CefBrowserHost> host = browser->GetHost();
         if (host) {
             host->StopFinding(true); // true = clear selection
+        }
+    }
+
+    void openDevTools() override {
+        if (!browser) return;
+
+        CefRefPtr<CefBrowserHost> host = browser->GetHost();
+        if (host) {
+            CefWindowInfo devToolsInfo;
+            devToolsInfo.runtime_style = CEF_RUNTIME_STYLE_CHROME;
+            host->ShowDevTools(devToolsInfo, nullptr, CefBrowserSettings(), CefPoint());
+        }
+    }
+
+    void closeDevTools() override {
+        if (!browser) return;
+
+        CefRefPtr<CefBrowserHost> host = browser->GetHost();
+        if (host) {
+            host->CloseDevTools();
+        }
+    }
+
+    void toggleDevTools() override {
+        if (!browser) return;
+
+        CefRefPtr<CefBrowserHost> host = browser->GetHost();
+        if (host) {
+            if (host->HasDevTools()) {
+                host->CloseDevTools();
+            } else {
+                CefWindowInfo devToolsInfo;
+                devToolsInfo.runtime_style = CEF_RUNTIME_STYLE_CHROME;
+                host->ShowDevTools(devToolsInfo, nullptr, CefBrowserSettings(), CefPoint());
+            }
         }
     }
 };
@@ -4525,17 +4478,16 @@ static void handleViewsURIScheme(WebKitURISchemeRequest* request, gpointer user_
 
     // Check if ASAR archive exists
     if (g_file_test(asarPath, G_FILE_TEST_EXISTS)) {
-        // Lazy-load ASAR archive on first use
-        if (!g_asarArchive) {
+        // Thread-safe lazy-load ASAR archive on first use
+        std::call_once(g_asarArchiveInitFlag, [asarPath]() {
             g_asarArchive = asar_open(asarPath);
             if (g_asarArchive) {
                 fflush(stdout);
             } else {
                 printf("ERROR WebKit loadViewsFile: Failed to open ASAR archive at %s\n", asarPath);
                 fflush(stdout);
-                // Fall through to flat file reading
             }
-        }
+        });
 
         // If ASAR archive is loaded, try to read from it
         if (g_asarArchive) {
@@ -4543,17 +4495,25 @@ static void handleViewsURIScheme(WebKitURISchemeRequest* request, gpointer user_
             std::string asarFilePath = "views/" + std::string(fullPath);
 
             size_t asarFileSize = 0;
-            const uint8_t* fileData = asar_read_file(g_asarArchive, asarFilePath.c_str(), &asarFileSize);
-
-            if (fileData && asarFileSize > 0) {
-                fflush(stdout);
-                // Copy the data (glib will free it)
-                fileContents = (gchar*)g_memdup2(fileData, asarFileSize);
-                fileSize = asarFileSize;
-                foundFile = true;
-                // Free the ASAR buffer
-                asar_free_buffer(fileData, asarFileSize);
-            } else {
+            const uint8_t* fileData = nullptr;
+            
+            // Protect ASAR read operations with mutex
+            {
+                std::lock_guard<std::mutex> lock(g_asarReadMutex);
+                fileData = asar_read_file(g_asarArchive, asarFilePath.c_str(), &asarFileSize);
+                
+                if (fileData && asarFileSize > 0) {
+                    fflush(stdout);
+                    // Copy the data (glib will free it)
+                    fileContents = (gchar*)g_memdup2(fileData, asarFileSize);
+                    fileSize = asarFileSize;
+                    foundFile = true;
+                    // Free the ASAR buffer before releasing the lock
+                    asar_free_buffer(fileData, asarFileSize);
+                }
+            }
+            
+            if (!foundFile) {
                 fflush(stdout);
                 // Fall through to flat file reading
             }
@@ -4875,15 +4835,12 @@ static WebKitWebContext* getContextForPartition(const char* partitionIdentifier)
 
         if (isPersistent) {
             std::string partitionName = partition.substr(8);
-            std::string appIdentifier = !g_electrobunIdentifier.empty() ? g_electrobunIdentifier : "Electrobun";
-            if (!g_electrobunChannel.empty()) {
-                appIdentifier += "-" + g_electrobunChannel;
-            }
 
+            // Build paths with identifier/channel structure (consistent with CLI and updater)
             char* home = getenv("HOME");
-            std::string basePath = home ? std::string(home) : "/tmp";
-            std::string dataPath = basePath + "/.local/share/" + appIdentifier + "/WebKit/Partitions/" + partitionName;
-            std::string cachePath = basePath + "/.cache/" + appIdentifier + "/WebKit/Partitions/" + partitionName;
+            std::string homeStr = home ? std::string(home) : "/tmp";
+            std::string dataPath = buildPartitionPath(homeStr + "/.local/share", g_electrobunIdentifier, g_electrobunChannel, "WebKit", partitionName);
+            std::string cachePath = buildPartitionPath(homeStr + "/.cache", g_electrobunIdentifier, g_electrobunChannel, "WebKit", partitionName);
 
             g_mkdir_with_parents(dataPath.c_str(), 0755);
             g_mkdir_with_parents(cachePath.c_str(), 0755);
@@ -5932,6 +5889,30 @@ ELECTROBUN_EXPORT void webviewStopFind(AbstractView* abstractView) {
     }
 }
 
+ELECTROBUN_EXPORT void webviewOpenDevTools(AbstractView* abstractView) {
+    if (abstractView) {
+        dispatch_sync_main_void([abstractView]() {
+            abstractView->openDevTools();
+        });
+    }
+}
+
+ELECTROBUN_EXPORT void webviewCloseDevTools(AbstractView* abstractView) {
+    if (abstractView) {
+        dispatch_sync_main_void([abstractView]() {
+            abstractView->closeDevTools();
+        });
+    }
+}
+
+ELECTROBUN_EXPORT void webviewToggleDevTools(AbstractView* abstractView) {
+    if (abstractView) {
+        dispatch_sync_main_void([abstractView]() {
+            abstractView->toggleDevTools();
+        });
+    }
+}
+
 ELECTROBUN_EXPORT void updatePreloadScriptToWebView(AbstractView* abstractView, const char* scriptIdentifier, const char* scriptContent, bool forMainFrameOnly) {
     if (abstractView) {
         dispatch_sync_main_void([&]() {
@@ -6929,7 +6910,10 @@ const char* getWebviewHTMLContent(uint32_t webviewId) {
     }
 }
 
-ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* channel) {
+// Note: `name` parameter is accepted for API consistency with Windows but not used on Linux
+ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, const char* channel) {
+    (void)name; // Unused on Linux - kept for API consistency with Windows
+
     // Store identifier and channel globally for use in CEF initialization
     if (identifier && identifier[0]) {
         g_electrobunIdentifier = std::string(identifier);
@@ -7702,8 +7686,14 @@ ELECTROBUN_EXPORT void setWindowIcon(void* window, const char* iconPath) {
             // Try to load from ASAR archive first if available
             if (g_asarArchive) {
                 size_t fileSize = 0;
-                const uint8_t* fileData = asar_read_file(g_asarArchive, 
-                    ("views/" + viewPath).c_str(), &fileSize);
+                const uint8_t* fileData = nullptr;
+                
+                // Protect ASAR read operations with mutex
+                {
+                    std::lock_guard<std::mutex> lock(g_asarReadMutex);
+                    fileData = asar_read_file(g_asarArchive, 
+                        ("views/" + viewPath).c_str(), &fileSize);
+                }
                 
                 if (fileData && fileSize > 0) {
                     // Create pixbuf from memory
@@ -7729,7 +7719,13 @@ ELECTROBUN_EXPORT void setWindowIcon(void* window, const char* iconPath) {
                     }
                     
                     g_object_unref(loader);
-                    asar_free_buffer(fileData, fileSize);
+                    
+                    // Free ASAR buffer with mutex protection
+                    {
+                        std::lock_guard<std::mutex> lock(g_asarReadMutex);
+                        asar_free_buffer(fileData, fileSize);
+                    }
+                    
                     if (error) g_error_free(error);
                     return;
                 }
@@ -7864,40 +7860,17 @@ static KeySym getKeySym(const std::string& key) {
     return NoSymbol;
 }
 
-// Helper to parse modifiers from accelerator string
+// Parse modifiers from accelerator string for X11 shortcuts using the
+// shared cross-platform parser. Returns X11 modifier mask.
 static unsigned int parseX11Modifiers(const std::string& accelerator, std::string& outKey) {
+    auto parts = electrobun::parseAccelerator(accelerator);
+    outKey = parts.key;
+
     unsigned int modifiers = 0;
-    std::vector<std::string> parts;
-
-    // Split by '+'
-    size_t start = 0, end;
-    while ((end = accelerator.find('+', start)) != std::string::npos) {
-        parts.push_back(accelerator.substr(start, end - start));
-        start = end + 1;
-    }
-    parts.push_back(accelerator.substr(start));
-
-    // Last part is the key
-    outKey = parts.back();
-    parts.pop_back();
-
-    for (const auto& part : parts) {
-        std::string lowerPart = part;
-        std::transform(lowerPart.begin(), lowerPart.end(), lowerPart.begin(), ::tolower);
-
-        if (lowerPart == "command" || lowerPart == "cmd" ||
-            lowerPart == "commandorcontrol" || lowerPart == "cmdorctrl" ||
-            lowerPart == "control" || lowerPart == "ctrl") {
-            modifiers |= ControlMask;
-        } else if (lowerPart == "alt" || lowerPart == "option") {
-            modifiers |= Mod1Mask;
-        } else if (lowerPart == "shift") {
-            modifiers |= ShiftMask;
-        } else if (lowerPart == "super" || lowerPart == "meta" || lowerPart == "win") {
-            modifiers |= Mod4Mask;
-        }
-    }
-
+    if (parts.commandOrControl || parts.command || parts.control) modifiers |= ControlMask;
+    if (parts.alt)                                                modifiers |= Mod1Mask;
+    if (parts.shift)                                              modifiers |= ShiftMask;
+    if (parts.super)                                              modifiers |= Mod4Mask;
     return modifiers;
 }
 
@@ -8267,15 +8240,12 @@ static WebKitWebsiteDataManager* getDataManagerForPartition(const char* partitio
 
         if (isPersistent) {
             std::string partitionName = partition.substr(8);
-            std::string appIdentifier = !g_electrobunIdentifier.empty() ? g_electrobunIdentifier : "Electrobun";
-            if (!g_electrobunChannel.empty()) {
-                appIdentifier += "-" + g_electrobunChannel;
-            }
 
+            // Build paths with identifier/channel structure (consistent with CLI and updater)
             char* home = getenv("HOME");
-            std::string basePath = home ? std::string(home) : "/tmp";
-            std::string dataPath = basePath + "/.local/share/" + appIdentifier + "/WebKit/Partitions/" + partitionName;
-            std::string cachePath = basePath + "/.cache/" + appIdentifier + "/WebKit/Partitions/" + partitionName;
+            std::string homeStr = home ? std::string(home) : "/tmp";
+            std::string dataPath = buildPartitionPath(homeStr + "/.local/share", g_electrobunIdentifier, g_electrobunChannel, "WebKit", partitionName);
+            std::string cachePath = buildPartitionPath(homeStr + "/.cache", g_electrobunIdentifier, g_electrobunChannel, "WebKit", partitionName);
 
             g_mkdir_with_parents(dataPath.c_str(), 0755);
             g_mkdir_with_parents(cachePath.c_str(), 0755);

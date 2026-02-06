@@ -11,6 +11,9 @@
 #import <CommonCrypto/CommonCrypto.h>
 #import <QuartzCore/QuartzCore.h>
 #import <UserNotifications/UserNotifications.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
 
 // CEF includes
 #include "include/base/cef_ref_counted.h"
@@ -36,9 +39,27 @@
 #include <cstdint>
 #include <chrono>
 #include <map>
+#include <mutex>
 
 // Shared cross-platform utilities
 #include "../shared/glob_match.h"
+#include "../shared/callbacks.h"
+#include "../shared/permissions.h"
+#include "../shared/mime_types.h"
+#include "../shared/asar.h"
+#include "../shared/config.h"
+#include "../shared/preload_script.h"
+#include "../shared/webview_storage.h"
+#include "../shared/navigation_rules.h"
+#include "../shared/thread_safe_map.h"
+#include "../shared/shutdown_guard.h"
+#include "../shared/ffi_helpers.h"
+#include "../shared/download_event.h"
+#include "../shared/app_paths.h"
+#include "../shared/accelerator_parser.h"
+#include "../shared/chromium_flags.h"
+
+using namespace electrobun;
 
 /*
  * =============================================================================
@@ -46,18 +67,10 @@
  * =============================================================================
  */
 
-// ASAR C FFI declarations
-extern "C" {
-    typedef struct AsarArchive AsarArchive;
-
-    AsarArchive* asar_open(const char* path);
-    void asar_close(AsarArchive* archive);
-    const uint8_t* asar_read_file(AsarArchive* archive, const char* path, size_t* size_out);
-    void asar_free_buffer(const uint8_t* buffer, size_t size);
-}
-
-// Global ASAR archive handle (lazy-loaded)
+// Global ASAR archive handle (lazy-loaded) with thread-safe initialization
+// ASAR C FFI declarations are in shared/asar.h
 static AsarArchive* g_asarArchive = nullptr;
+static std::once_flag g_asarArchiveInitFlag;
 
 CGFloat OFFSCREEN_OFFSET = -20000;
 BOOL useCEF = false;
@@ -71,6 +84,211 @@ static CGFloat offsetY = 0.0;
 static id mouseDraggedMonitor = nil;
 static id mouseUpMonitor = nil;
 
+static int g_remoteDebugPort = 9222;
+
+// Menu role to selector mapping
+// This maps Electrobun role strings to their corresponding Objective-C selectors.
+// Roles are grouped by category for easier maintenance.
+static NSDictionary<NSString*, NSString*>* getMenuRoleToSelectorMap() {
+    static NSDictionary<NSString*, NSString*>* map = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        map = @{
+            // Application roles
+            @"about": @"orderFrontStandardAboutPanel:",
+            @"quit": @"terminate:",
+            @"hide": @"hide:",
+            @"hideOthers": @"hideOtherApplications:",
+            @"showAll": @"unhideAllApplications:",
+
+            // Window roles
+            @"minimize": @"performMiniaturize:",
+            @"zoom": @"performZoom:",
+            @"close": @"performClose:",
+            @"bringAllToFront": @"arrangeInFront:",
+            @"cycleThroughWindows": @"selectNextKeyView:",
+            @"enterFullScreen": @"enterFullScreen:",
+            @"exitFullScreen": @"exitFullScreen:",
+            @"toggleFullScreen": @"toggleFullScreen:",
+
+            // Standard edit roles
+            @"undo": @"undo:",
+            @"redo": @"redo:",
+            @"cut": @"cut:",
+            @"copy": @"copy:",
+            @"paste": @"paste:",
+            @"pasteAndMatchStyle": @"pasteAsPlainText:",
+            @"delete": @"delete:",
+            @"selectAll": @"selectAll:",
+
+            // Speech roles
+            @"startSpeaking": @"startSpeaking:",
+            @"stopSpeaking": @"stopSpeaking:",
+
+            // Help
+            @"showHelp": @"showHelp:",
+
+            // Movement - basic
+            @"moveForward": @"moveForward:",
+            @"moveBackward": @"moveBackward:",
+            @"moveLeft": @"moveLeft:",
+            @"moveRight": @"moveRight:",
+            @"moveUp": @"moveUp:",
+            @"moveDown": @"moveDown:",
+
+            // Movement - by word
+            @"moveWordForward": @"moveWordForward:",
+            @"moveWordBackward": @"moveWordBackward:",
+            @"moveWordLeft": @"moveWordLeft:",
+            @"moveWordRight": @"moveWordRight:",
+
+            // Movement - by line
+            @"moveToBeginningOfLine": @"moveToBeginningOfLine:",
+            @"moveToEndOfLine": @"moveToEndOfLine:",
+            @"moveToLeftEndOfLine": @"moveToLeftEndOfLine:",
+            @"moveToRightEndOfLine": @"moveToRightEndOfLine:",
+
+            // Movement - by paragraph
+            @"moveToBeginningOfParagraph": @"moveToBeginningOfParagraph:",
+            @"moveToEndOfParagraph": @"moveToEndOfParagraph:",
+            @"moveParagraphForward": @"moveParagraphForward:",
+            @"moveParagraphBackward": @"moveParagraphBackward:",
+
+            // Movement - by document
+            @"moveToBeginningOfDocument": @"moveToBeginningOfDocument:",
+            @"moveToEndOfDocument": @"moveToEndOfDocument:",
+
+            // Movement with selection - basic
+            @"moveForwardAndModifySelection": @"moveForwardAndModifySelection:",
+            @"moveBackwardAndModifySelection": @"moveBackwardAndModifySelection:",
+            @"moveLeftAndModifySelection": @"moveLeftAndModifySelection:",
+            @"moveRightAndModifySelection": @"moveRightAndModifySelection:",
+            @"moveUpAndModifySelection": @"moveUpAndModifySelection:",
+            @"moveDownAndModifySelection": @"moveDownAndModifySelection:",
+
+            // Movement with selection - by word
+            @"moveWordForwardAndModifySelection": @"moveWordForwardAndModifySelection:",
+            @"moveWordBackwardAndModifySelection": @"moveWordBackwardAndModifySelection:",
+            @"moveWordLeftAndModifySelection": @"moveWordLeftAndModifySelection:",
+            @"moveWordRightAndModifySelection": @"moveWordRightAndModifySelection:",
+
+            // Movement with selection - by line
+            @"moveToBeginningOfLineAndModifySelection": @"moveToBeginningOfLineAndModifySelection:",
+            @"moveToEndOfLineAndModifySelection": @"moveToEndOfLineAndModifySelection:",
+            @"moveToLeftEndOfLineAndModifySelection": @"moveToLeftEndOfLineAndModifySelection:",
+            @"moveToRightEndOfLineAndModifySelection": @"moveToRightEndOfLineAndModifySelection:",
+
+            // Movement with selection - by paragraph
+            @"moveToBeginningOfParagraphAndModifySelection": @"moveToBeginningOfParagraphAndModifySelection:",
+            @"moveToEndOfParagraphAndModifySelection": @"moveToEndOfParagraphAndModifySelection:",
+            @"moveParagraphForwardAndModifySelection": @"moveParagraphForwardAndModifySelection:",
+            @"moveParagraphBackwardAndModifySelection": @"moveParagraphBackwardAndModifySelection:",
+
+            // Movement with selection - by document
+            @"moveToBeginningOfDocumentAndModifySelection": @"moveToBeginningOfDocumentAndModifySelection:",
+            @"moveToEndOfDocumentAndModifySelection": @"moveToEndOfDocumentAndModifySelection:",
+
+            // Page movement
+            @"pageUp": @"pageUp:",
+            @"pageDown": @"pageDown:",
+            @"pageUpAndModifySelection": @"pageUpAndModifySelection:",
+            @"pageDownAndModifySelection": @"pageDownAndModifySelection:",
+
+            // Scrolling
+            @"scrollLineUp": @"scrollLineUp:",
+            @"scrollLineDown": @"scrollLineDown:",
+            @"scrollPageUp": @"scrollPageUp:",
+            @"scrollPageDown": @"scrollPageDown:",
+            @"scrollToBeginningOfDocument": @"scrollToBeginningOfDocument:",
+            @"scrollToEndOfDocument": @"scrollToEndOfDocument:",
+            @"centerSelectionInVisibleArea": @"centerSelectionInVisibleArea:",
+
+            // Deletion - character
+            @"deleteBackward": @"deleteBackward:",
+            @"deleteForward": @"deleteForward:",
+            @"deleteBackwardByDecomposingPreviousCharacter": @"deleteBackwardByDecomposingPreviousCharacter:",
+
+            // Deletion - word
+            @"deleteWordBackward": @"deleteWordBackward:",
+            @"deleteWordForward": @"deleteWordForward:",
+
+            // Deletion - line
+            @"deleteToBeginningOfLine": @"deleteToBeginningOfLine:",
+            @"deleteToEndOfLine": @"deleteToEndOfLine:",
+
+            // Deletion - paragraph
+            @"deleteToBeginningOfParagraph": @"deleteToBeginningOfParagraph:",
+            @"deleteToEndOfParagraph": @"deleteToEndOfParagraph:",
+
+            // Selection
+            @"selectWord": @"selectWord:",
+            @"selectLine": @"selectLine:",
+            @"selectParagraph": @"selectParagraph:",
+            @"selectToMark": @"selectToMark:",
+            @"setMark": @"setMark:",
+            @"swapWithMark": @"swapWithMark:",
+            @"deleteToMark": @"deleteToMark:",
+
+            // Text transformation
+            @"capitalizeWord": @"capitalizeWord:",
+            @"uppercaseWord": @"uppercaseWord:",
+            @"lowercaseWord": @"lowercaseWord:",
+            @"transpose": @"transpose:",
+            @"transposeWords": @"transposeWords:",
+
+            // Insertion
+            @"insertNewline": @"insertNewline:",
+            @"insertLineBreak": @"insertLineBreak:",
+            @"insertParagraphSeparator": @"insertParagraphSeparator:",
+            @"insertTab": @"insertTab:",
+            @"insertBacktab": @"insertBacktab:",
+            @"insertTabIgnoringFieldEditor": @"insertTabIgnoringFieldEditor:",
+            @"insertNewlineIgnoringFieldEditor": @"insertNewlineIgnoringFieldEditor:",
+
+            // Kill ring (Emacs-style)
+            @"yank": @"yank:",
+            @"yankAndSelect": @"yankAndSelect:",
+
+            // Completion
+            @"complete": @"complete:",
+            @"cancelOperation": @"cancelOperation:",
+
+            // Indentation
+            @"indent": @"indent:",
+        };
+    });
+    return map;
+}
+
+static bool IsPortAvailable(int port) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        return false;
+    }
+
+    int opt = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons((uint16_t)port);
+
+    int result = bind(sock, (struct sockaddr*)&addr, sizeof(addr));
+    close(sock);
+    return result == 0;
+}
+
+static int FindAvailableRemoteDebugPort(int startPort, int endPort) {
+    for (int port = startPort; port <= endPort; ++port) {
+        if (IsPortAvailable(port)) {
+            return port;
+        }
+    }
+    return 0;
+}
+
 
 // Forward declare the CEF classes
 class CefApp;
@@ -79,22 +297,62 @@ class CefLifeSpanHandler;
 class CefBrowser;
 class ElectrobunSchemeHandler;
 class ElectrobunSchemeHandlerFactory;
+class ElectrobunClient;
+
+typedef void (*RemoteDevToolsClosedCallback)(void* ctx, int target_id);
+void RemoteDevToolsClosed(void* ctx, int target_id);
+
+class RemoteDevToolsClient : public CefClient, public CefLifeSpanHandler {
+public:
+    RemoteDevToolsClient(RemoteDevToolsClosedCallback callback, void* ctx, int target_id)
+        : callback_(callback), ctx_(ctx), target_id_(target_id) {}
+
+    CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override {
+        return this;
+    }
+
+    void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
+        if (callback_) {
+            RemoteDevToolsClosedCallback cb = callback_;
+            void* ctx = ctx_;
+            int target_id = target_id_;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                cb(ctx, target_id);
+            });
+        }
+    }
+
+private:
+    RemoteDevToolsClosedCallback callback_ = nullptr;
+    void* ctx_ = nullptr;
+    int target_id_ = 0;
+
+    IMPLEMENT_REFCOUNTING(RemoteDevToolsClient);
+};
+
+@interface RemoteDevToolsWindowDelegate : NSObject <NSWindowDelegate> {
+@public
+    RemoteDevToolsClosedCallback callback;
+    void* ctx;
+    int target_id;
+}
+@end
+
+@implementation RemoteDevToolsWindowDelegate
+- (BOOL)windowShouldClose:(id)sender {
+    if (callback) {
+        callback(ctx, target_id);
+    }
+    // Prevent NSWindow from actually closing to avoid CEF teardown crashes.
+    return NO;
+}
+@end
 
 // Type definitions
-
-/** Generic bridging callback types. */
-// typedef BOOL (*DecideNavigationCallback)(uint32_t webviewId, const char* url);
-// NOTE: Bun's FFIType.true doesn't play well with objective C's YES/NO char booleans
-// so when sending booleans from JSCallbacks we have to use u32 for now
-typedef uint32_t (*DecideNavigationCallback)(uint32_t webviewId, const char* url);
-typedef void (*WebviewEventHandler)(uint32_t webviewId, const char* type, const char* url);
-typedef BOOL (*HandlePostMessage)(uint32_t webviewId, const char* message);
-typedef const char* (*HandlePostMessageWithReply)(uint32_t webviewId, const char* message);
+// Core callback types are defined in shared/callbacks.h
+// Platform-specific aliases for Objective-C compatibility
+typedef BOOL (*HandlePostMessageObjC)(uint32_t webviewId, const char* message);
 typedef void (*callAsyncJavascriptCompletionHandler)(const char *messageId, uint32_t webviewId, uint32_t hostWebviewId, const char *responseJSON);
-
-// JS Utils - DEPRECATED: Now using map-based approach instead of callbacks
-typedef const char* (*GetMimeType)(const char* filePath);
-typedef const char* (*GetHTMLForWebviewSync)(uint32_t webviewId);
 
 static dispatch_queue_t jsWorkerQueue = NULL;
 
@@ -106,90 +364,7 @@ static NSLock *webviewHTMLLock = nil;
 extern "C" const char* getWebviewHTMLContent(uint32_t webviewId);
 extern "C" void setWebviewHTMLContent(uint32_t webviewId, const char* htmlContent);
 
-// Shared MIME type detection function
-// Based on Bun runtime supported file types and web development standards
-static std::string getMimeTypeFromUrl(const std::string& url) {
-    // Web/Code Files (Bun native support)
-    if (url.find(".html") != std::string::npos || url.find(".htm") != std::string::npos) {
-        return "text/html";
-    } else if (url.find(".js") != std::string::npos || url.find(".mjs") != std::string::npos || url.find(".cjs") != std::string::npos) {
-        return "text/javascript";
-    } else if (url.find(".ts") != std::string::npos || url.find(".mts") != std::string::npos || url.find(".cts") != std::string::npos) {
-        return "text/typescript";
-    } else if (url.find(".jsx") != std::string::npos) {
-        return "text/jsx";
-    } else if (url.find(".tsx") != std::string::npos) {
-        return "text/tsx";
-    } else if (url.find(".css") != std::string::npos) {
-        return "text/css";
-    } else if (url.find(".json") != std::string::npos) {
-        return "application/json";
-    } else if (url.find(".xml") != std::string::npos) {
-        return "application/xml";
-    } else if (url.find(".md") != std::string::npos) {
-        return "text/markdown";
-    } else if (url.find(".txt") != std::string::npos) {
-        return "text/plain";
-    } else if (url.find(".toml") != std::string::npos) {
-        return "application/toml";
-    } else if (url.find(".yaml") != std::string::npos || url.find(".yml") != std::string::npos) {
-        return "application/x-yaml";
-    
-    // Image Files
-    } else if (url.find(".png") != std::string::npos) {
-        return "image/png";
-    } else if (url.find(".jpg") != std::string::npos || url.find(".jpeg") != std::string::npos) {
-        return "image/jpeg";
-    } else if (url.find(".gif") != std::string::npos) {
-        return "image/gif";
-    } else if (url.find(".webp") != std::string::npos) {
-        return "image/webp";
-    } else if (url.find(".svg") != std::string::npos) {
-        return "image/svg+xml";
-    } else if (url.find(".ico") != std::string::npos) {
-        return "image/x-icon";
-    } else if (url.find(".avif") != std::string::npos) {
-        return "image/avif";
-    
-    // Font Files
-    } else if (url.find(".woff") != std::string::npos) {
-        return "font/woff";
-    } else if (url.find(".woff2") != std::string::npos) {
-        return "font/woff2";
-    } else if (url.find(".ttf") != std::string::npos) {
-        return "font/ttf";
-    } else if (url.find(".otf") != std::string::npos) {
-        return "font/otf";
-    
-    // Media Files
-    } else if (url.find(".mp3") != std::string::npos) {
-        return "audio/mpeg";
-    } else if (url.find(".mp4") != std::string::npos) {
-        return "video/mp4";
-    } else if (url.find(".webm") != std::string::npos) {
-        return "video/webm";
-    } else if (url.find(".ogg") != std::string::npos) {
-        return "audio/ogg";
-    } else if (url.find(".wav") != std::string::npos) {
-        return "audio/wav";
-    
-    // Document Files
-    } else if (url.find(".pdf") != std::string::npos) {
-        return "application/pdf";
-    
-    // WebAssembly (Bun support)
-    } else if (url.find(".wasm") != std::string::npos) {
-        return "application/wasm";
-    
-    // Compressed Files
-    } else if (url.find(".zip") != std::string::npos) {
-        return "application/zip";
-    } else if (url.find(".gz") != std::string::npos) {
-        return "application/gzip";
-    }
-    
-    return "application/octet-stream"; // default
-}
+// MIME type detection function is in shared/mime_types.h
 
 // Deadlock prevention for callJsCallbackFromMainSync
 static BOOL isInSyncCallback = NO;
@@ -307,98 +482,16 @@ typedef struct {
     const char *titleBarStyle;
 } createNSWindowWithFrameAndStyleParams;
 
-/** Window event callbacks. */
-// typedef void (*WindowCloseHandler)(uint32_t windowId);
-// typedef void (*WindowMoveHandler)(uint32_t windowId, CGFloat x, CGFloat y);
-// typedef void (*WindowResizeHandler)(uint32_t windowId, CGFloat x, CGFloat y, CGFloat width, CGFloat height);
-typedef void (*WindowCloseHandler)(uint32_t windowId);
-typedef void (*WindowMoveHandler)(uint32_t windowId, double x, double y);
-typedef void (*WindowResizeHandler)(uint32_t windowId, double x, double y, double width, double height);
-typedef void (*WindowFocusHandler)(uint32_t windowId);
-
-
-/** Tray and menu bridging. */
-typedef void (*ZigStatusItemHandler)(uint32_t trayId, const char *action);
-typedef void (*MenuHandler)(const char *menuItemId);
-
-/** Snapshot callback. */
-typedef void (*zigSnapshotCallback)(uint32_t hostId, uint32_t webviewId, const char * dataUrl);
-
-/** URL open handler for deep linking. */
-typedef void (*URLOpenHandler)(const char *url);
+// Window, tray, menu, and snapshot callbacks are defined in shared/callbacks.h
+// Platform-specific aliases
+typedef SnapshotCallback zigSnapshotCallback;
+typedef StatusItemHandler ZigStatusItemHandler;
 static URLOpenHandler g_urlOpenHandler = nullptr;
 
-typedef struct {    
+typedef struct {
 } MenuItemConfig;
 
-// Permission cache for user media requests
-enum class PermissionType {
-    USER_MEDIA,
-    GEOLOCATION,
-    NOTIFICATIONS,
-    OTHER
-};
-
-enum class PermissionStatus {
-    UNKNOWN,
-    ALLOWED,
-    DENIED
-};
-
-struct PermissionCacheEntry {
-    PermissionStatus status;
-    std::chrono::system_clock::time_point expiry;
-};
-
-static std::map<std::pair<std::string, PermissionType>, PermissionCacheEntry> g_permissionCache;
-
-// Helper functions for permission management
-std::string getOriginFromUrl(const std::string& url) {
-    // For views:// scheme, use a constant origin since these are local files
-    if (url.find("views://") == 0) {
-        return "views://";
-    }
-    
-    // For other schemes, extract origin from URL
-    size_t protocolEnd = url.find("://");
-    if (protocolEnd == std::string::npos) return url;
-    
-    size_t domainStart = protocolEnd + 3;
-    size_t pathStart = url.find('/', domainStart);
-    
-    if (pathStart == std::string::npos) {
-        return url;
-    }
-    
-    return url.substr(0, pathStart);
-}
-
-PermissionStatus getPermissionFromCache(const std::string& origin, PermissionType type) {
-    auto key = std::make_pair(origin, type);
-    auto it = g_permissionCache.find(key);
-    
-    if (it != g_permissionCache.end()) {
-        // Check if permission hasn't expired
-        auto now = std::chrono::system_clock::now();
-        if (now < it->second.expiry) {
-            return it->second.status;
-        } else {
-            // Permission expired, remove from cache
-            g_permissionCache.erase(it);
-        }
-    }
-    
-    return PermissionStatus::UNKNOWN;
-}
-
-void cachePermission(const std::string& origin, PermissionType type, PermissionStatus status) {
-    auto key = std::make_pair(origin, type);
-    
-    // Cache permission for 24 hours
-    auto expiry = std::chrono::system_clock::now() + std::chrono::hours(24);
-    
-    g_permissionCache[key] = {status, expiry};
-}
+// Permission cache types and functions are defined in shared/permissions.h
 
 /*
  * =============================================================================
@@ -515,17 +608,16 @@ NSData* readViewsFile(const char* viewsUrl) {
 
     // Check if ASAR archive exists
     if ([[NSFileManager defaultManager] fileExistsAtPath:asarPath]) {
-        // Lazy-load ASAR archive on first use
-        if (!g_asarArchive) {
+        // Thread-safe lazy-load ASAR archive on first use
+        std::call_once(g_asarArchiveInitFlag, [asarPath]() {
             const char* asarPathCStr = [asarPath UTF8String];
             g_asarArchive = asar_open(asarPathCStr);
             if (g_asarArchive) {
                 NSLog(@"DEBUG readViewsFile: Opened ASAR archive at %@", asarPath);
             } else {
                 NSLog(@"ERROR readViewsFile: Failed to open ASAR archive at %@", asarPath);
-                // Fall through to flat file reading
             }
-        }
+        });
 
         // If ASAR archive is loaded, try to read from it
         if (g_asarArchive) {
@@ -619,6 +711,11 @@ void releaseObjCObject(id objcObject) {
 
     - (void)findInPage:(const char*)searchText forward:(BOOL)forward matchCase:(BOOL)matchCase;
     - (void)stopFindInPage;
+
+    // Developer tools methods
+    - (void)openDevTools;
+    - (void)closeDevTools;
+    - (void)toggleDevTools;
 @end
 
 // Global map to track all AbstractView instances by their webviewId
@@ -728,6 +825,92 @@ static NSMutableDictionary<NSNumber *, AbstractView *> *globalAbstractViews = ni
     - (void)menuItemClicked:(id)sender;
 @end
 
+// Convert a key name string to an NSMenuItem key equivalent string.
+// For single characters this is just the character itself. For special keys
+// (arrows, function keys, etc.) it returns the appropriate Unicode character
+// that NSMenuItem expects.
+static NSString *keyEquivalentFromString(NSString *key) {
+    if ([key length] == 1) {
+        return key;
+    }
+
+    static NSDictionary *specialKeys = nil;
+    if (!specialKeys) {
+        specialKeys = @{
+            @"return":   @"\r",
+            @"enter":    @"\r",
+            @"tab":      @"\t",
+            @"escape":   [NSString stringWithFormat:@"%C", (unichar)0x1B],
+            @"esc":      [NSString stringWithFormat:@"%C", (unichar)0x1B],
+            @"space":    @" ",
+            @"backspace": [NSString stringWithFormat:@"%C", (unichar)NSBackspaceCharacter],
+            @"delete":   [NSString stringWithFormat:@"%C", (unichar)NSDeleteCharacter],
+            @"up":       [NSString stringWithFormat:@"%C", (unichar)NSUpArrowFunctionKey],
+            @"down":     [NSString stringWithFormat:@"%C", (unichar)NSDownArrowFunctionKey],
+            @"left":     [NSString stringWithFormat:@"%C", (unichar)NSLeftArrowFunctionKey],
+            @"right":    [NSString stringWithFormat:@"%C", (unichar)NSRightArrowFunctionKey],
+            @"home":     [NSString stringWithFormat:@"%C", (unichar)NSHomeFunctionKey],
+            @"end":      [NSString stringWithFormat:@"%C", (unichar)NSEndFunctionKey],
+            @"pageup":   [NSString stringWithFormat:@"%C", (unichar)NSPageUpFunctionKey],
+            @"pagedown": [NSString stringWithFormat:@"%C", (unichar)NSPageDownFunctionKey],
+            @"f1":  [NSString stringWithFormat:@"%C", (unichar)NSF1FunctionKey],
+            @"f2":  [NSString stringWithFormat:@"%C", (unichar)NSF2FunctionKey],
+            @"f3":  [NSString stringWithFormat:@"%C", (unichar)NSF3FunctionKey],
+            @"f4":  [NSString stringWithFormat:@"%C", (unichar)NSF4FunctionKey],
+            @"f5":  [NSString stringWithFormat:@"%C", (unichar)NSF5FunctionKey],
+            @"f6":  [NSString stringWithFormat:@"%C", (unichar)NSF6FunctionKey],
+            @"f7":  [NSString stringWithFormat:@"%C", (unichar)NSF7FunctionKey],
+            @"f8":  [NSString stringWithFormat:@"%C", (unichar)NSF8FunctionKey],
+            @"f9":  [NSString stringWithFormat:@"%C", (unichar)NSF9FunctionKey],
+            @"f10": [NSString stringWithFormat:@"%C", (unichar)NSF10FunctionKey],
+            @"f11": [NSString stringWithFormat:@"%C", (unichar)NSF11FunctionKey],
+            @"f12": [NSString stringWithFormat:@"%C", (unichar)NSF12FunctionKey],
+            @"f13": [NSString stringWithFormat:@"%C", (unichar)NSF13FunctionKey],
+            @"f14": [NSString stringWithFormat:@"%C", (unichar)NSF14FunctionKey],
+            @"f15": [NSString stringWithFormat:@"%C", (unichar)NSF15FunctionKey],
+            @"f16": [NSString stringWithFormat:@"%C", (unichar)NSF16FunctionKey],
+            @"f17": [NSString stringWithFormat:@"%C", (unichar)NSF17FunctionKey],
+            @"f18": [NSString stringWithFormat:@"%C", (unichar)NSF18FunctionKey],
+            @"f19": [NSString stringWithFormat:@"%C", (unichar)NSF19FunctionKey],
+            @"f20": [NSString stringWithFormat:@"%C", (unichar)NSF20FunctionKey],
+            @"plus": @"+",
+            @"minus": @"-",
+        };
+    }
+
+    NSString *equivalent = specialKeys[key];
+    return equivalent ?: key;
+}
+
+// Convert shared AcceleratorParts to macOS NSEventModifierFlags.
+// On macOS, CommandOrControl and Command both map to the Command key.
+static NSEventModifierFlags modifierFlagsFromAccelerator(const electrobun::AcceleratorParts& parts) {
+    NSEventModifierFlags flags = 0;
+    if (parts.commandOrControl || parts.command) flags |= NSEventModifierFlagCommand;
+    if (parts.control)                           flags |= NSEventModifierFlagControl;
+    if (parts.alt)                               flags |= NSEventModifierFlagOption;
+    if (parts.shift)                             flags |= NSEventModifierFlagShift;
+    return flags;
+}
+
+// Parse an Electron-style accelerator string into an NSMenuItem key equivalent
+// and modifier mask. When the accelerator is a bare key with no modifiers
+// (e.g. "s"), Command is used as the default modifier to match macOS conventions.
+static void parseMenuAccelerator(NSString *accelerator,
+                                 NSString **outKeyEquivalent,
+                                 NSEventModifierFlags *outModifiers) {
+    auto parts = electrobun::parseAccelerator([accelerator UTF8String]);
+
+    *outModifiers = modifierFlagsFromAccelerator(parts);
+
+    // Bare key like "s" with no modifier prefix — default to Command
+    if (parts.isBareKey) {
+        *outModifiers = NSEventModifierFlagCommand;
+    }
+
+    *outKeyEquivalent = keyEquivalentFromString(
+        [NSString stringWithUTF8String:parts.key.c_str()]);
+}
 
 NSMenu *createMenuFromConfig(NSArray *menuConfig, StatusItemTarget *target) {
     NSMenu *menu = [[NSMenu alloc] init];
@@ -756,52 +939,11 @@ NSMenu *createMenuFromConfig(NSArray *menuConfig, StatusItemTarget *target) {
                                            keyEquivalent:@""];
             menuItem.representedObject = action;
             if (role) {
-                if ([role isEqualToString:@"quit"]) {
-                    menuItem.action = @selector(terminate:);
-                } else if ([role isEqualToString:@"hide"]) {
-                    menuItem.action = @selector(hide:);
-                } else if ([role isEqualToString:@"hideOthers"]) {
-                    menuItem.action = @selector(hideOtherApplications:);
-                } else if ([role isEqualToString:@"showAll"]) {
-                    menuItem.action = @selector(unhideAllApplications:);
-                } else if ([role isEqualToString:@"undo"]) {
-                    menuItem.action = @selector(undo:);
-                } else if ([role isEqualToString:@"redo"]) {
-                    menuItem.action = @selector(redo:);
-                } else if ([role isEqualToString:@"cut"]) {
-                    menuItem.action = @selector(cut:);
-                } else if ([role isEqualToString:@"copy"]) {
-                    menuItem.action = @selector(copy:);
-                } else if ([role isEqualToString:@"paste"]) {
-                    menuItem.action = @selector(paste:);
-                } else if ([role isEqualToString:@"pasteAndMatchStyle"]) {
-                    menuItem.action = @selector(pasteAsPlainText:);
-                } else if ([role isEqualToString:@"delete"]) {
-                    menuItem.action = @selector(delete:);
-                } else if ([role isEqualToString:@"selectAll"]) {
-                    menuItem.action = @selector(selectAll:);
-                } else if ([role isEqualToString:@"startSpeaking"]) {
-                    menuItem.action = @selector(startSpeaking:);
-                } else if ([role isEqualToString:@"stopSpeaking"]) {
-                    menuItem.action = @selector(stopSpeaking:);
-                } else if ([role isEqualToString:@"enterFullScreen"]) {
-                    menuItem.action = @selector(enterFullScreen:);
-                } else if ([role isEqualToString:@"exitFullScreen"]) {
-                    menuItem.action = @selector(exitFullScreen:);
-                } else if ([role isEqualToString:@"toggleFullScreen"]) {
-                    menuItem.action = @selector(toggleFullScreen:);
-                } else if ([role isEqualToString:@"minimize"]) {
-                    menuItem.action = @selector(performMiniaturize:);
-                } else if ([role isEqualToString:@"zoom"]) {
-                    menuItem.action = @selector(performZoom:);
-                } else if ([role isEqualToString:@"bringAllToFront"]) {
-                    menuItem.action = @selector(arrangeInFront:);
-                } else if ([role isEqualToString:@"close"]) {
-                    menuItem.action = @selector(performClose:);
-                } else if ([role isEqualToString:@"cycleThroughWindows"]) {
-                    menuItem.action = @selector(selectNextKeyView:);
-                } else if ([role isEqualToString:@"showHelp"]) {
-                    menuItem.action = @selector(showHelp:);
+                // Look up the selector from the role map
+                NSDictionary<NSString*, NSString*>* roleMap = getMenuRoleToSelectorMap();
+                NSString *selectorName = roleMap[role];
+                if (selectorName) {
+                    menuItem.action = NSSelectorFromString(selectorName);
                 }
                 if (!accelerator) {
                     if ([role isEqualToString:@"undo"]) {
@@ -834,11 +976,17 @@ NSMenu *createMenuFromConfig(NSArray *menuConfig, StatusItemTarget *target) {
                 menuItem.target = target;
             }
             if (accelerator) {
-                menuItem.keyEquivalent = accelerator;
                 if (modifierMask) {
+                    // Explicit modifierMask from JSON takes precedence
+                    menuItem.keyEquivalent = [accelerator lowercaseString];
                     menuItem.keyEquivalentModifierMask = [modifierMask unsignedIntegerValue];
                 } else {
-                    menuItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+                    // Parse Electron-style accelerator (e.g. "CommandOrControl+T")
+                    NSString *keyEq = nil;
+                    NSEventModifierFlags modFlags = 0;
+                    parseMenuAccelerator(accelerator, &keyEq, &modFlags);
+                    menuItem.keyEquivalent = keyEq;
+                    menuItem.keyEquivalentModifierMask = modFlags;
                 }
             }
             menuItem.enabled = enabled;
@@ -1078,6 +1226,18 @@ NSArray<NSValue *> *addOverlapRects(NSArray<NSDictionary *> *rectsArray, CGFloat
     }
 
     - (void)stopFindInPage {
+        [self doesNotRecognizeSelector:_cmd];
+    }
+
+    - (void)openDevTools {
+        [self doesNotRecognizeSelector:_cmd];
+    }
+
+    - (void)closeDevTools {
+        [self doesNotRecognizeSelector:_cmd];
+    }
+
+    - (void)toggleDevTools {
         [self doesNotRecognizeSelector:_cmd];
     }
 @end
@@ -2495,6 +2655,48 @@ runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters
         });
     }
 
+    - (void)openDevTools {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            // WKWebView doesn't have public DevTools API, but we can use private API if available
+            if ([self.webView respondsToSelector:@selector(_inspector)]) {
+                id inspector = [self.webView performSelector:@selector(_inspector)];
+                if ([inspector respondsToSelector:@selector(show)]) {
+                    [inspector performSelector:@selector(show)];
+                }
+            }
+        });
+    }
+
+    - (void)closeDevTools {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if ([self.webView respondsToSelector:@selector(_inspector)]) {
+                id inspector = [self.webView performSelector:@selector(_inspector)];
+                if ([inspector respondsToSelector:@selector(close)]) {
+                    [inspector performSelector:@selector(close)];
+                }
+            }
+        });
+    }
+
+    - (void)toggleDevTools {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if ([self.webView respondsToSelector:@selector(_inspector)]) {
+                id inspector = [self.webView performSelector:@selector(_inspector)];
+                if ([inspector respondsToSelector:@selector(isVisible)]) {
+                    BOOL isVisible = [[inspector performSelector:@selector(isVisible)] boolValue];
+                    if (isVisible) {
+                        [self closeDevTools];
+                    } else {
+                        [self openDevTools];
+                    }
+                } else {
+                    // Fallback: just try to open
+                    [self openDevTools];
+                }
+            }
+        });
+    }
+
 @end
 
 // ----------------------- CEF and NSApplication Setup (C++ and ObjC) -----------------------
@@ -2595,6 +2797,8 @@ private:
 
 ElectrobunHandler* ElectrobunHandler::g_instance = nullptr;
 
+std::vector<electrobun::ChromiumFlag> g_userChromiumFlags;
+
 class ElectrobunApp : public CefApp,
                      public CefBrowserProcessHandler,
                      public CefRenderProcessHandler {
@@ -2613,9 +2817,15 @@ public:
         command_line->AppendSwitch("enable-features=PictureInPicture");
         command_line->AppendSwitch("enable-fullscreen");
 
+        // Allow DevTools frontend (served over https) to connect to local ws://127.0.0.1:9222
+        command_line->AppendSwitchWithValue("remote-allow-origins", "*");
+        command_line->AppendSwitch("allow-insecure-localhost");
+
         // Note: CEF transparency is handled via OSR (off-screen rendering) mode
         // which is enabled when transparent:true is set in the window options
 
+        // Apply user-defined chromium flags from build.json
+        electrobun::applyChromiumFlags(g_userChromiumFlags, command_line);
     }
     void OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) override {        
         registrar->AddCustomScheme("views", 
@@ -2664,10 +2874,7 @@ private:
     DISALLOW_COPY_AND_ASSIGN(ElectrobunApp);
 };
 
-struct PreloadScript {
-    std::string code;
-    bool mainFrameOnly;
-};
+// PreloadScript struct is now defined in shared/preload_script.h
 
 class ElectrobunResponseFilter : public CefResponseFilter {
 private:
@@ -2834,6 +3041,17 @@ private:
     // Track download paths by download ID
     std::map<uint32_t, std::string> download_paths_; 
 
+    struct DevToolsHost {
+        NSWindow* window = nil;
+        CefRefPtr<CefBrowser> browser;
+        CefRefPtr<RemoteDevToolsClient> client;
+        RemoteDevToolsWindowDelegate* delegate = nil;
+        bool is_open = false;
+    };
+
+    std::map<int, DevToolsHost> devtools_hosts_;
+    std::string last_title_;
+
      // Helper function to escape JavaScript code for embedding in a string
     std::string EscapeJavaScriptString(const std::string& input) {
         std::string result;
@@ -2866,7 +3084,208 @@ private:
 
     std::vector<std::shared_ptr<const char>> messageStrings_;
 
+    void ShowDevToolsWindow(CefRefPtr<CefBrowser> browser, const CefPoint& inspect_at) {
+        if (!browser || !browser->GetHost()) {
+            return;
+        }
+
+        CefWindowInfo windowInfo;
+        CefBrowserSettings settings;
+        windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
+
+        CefWindowHandle parent = browser->GetHost()->GetWindowHandle();
+        if (parent) {
+            NSView* parentView = (__bridge NSView*)parent;
+            NSRect bounds = [parentView bounds];
+            CefRect devtools_rect(0, 0, (int)bounds.size.width, (int)bounds.size.height);
+            windowInfo.SetAsChild(parent, devtools_rect);
+        } else {
+            CefRect devtools_rect(0, 0, 900, 700);
+            windowInfo.SetAsChild(nullptr, devtools_rect);
+        }
+
+        browser->GetHost()->ShowDevTools(windowInfo, nullptr, settings, inspect_at);
+    }
+
+    void CreateRemoteDevToolsWindow(int target_id, const std::string& url) {
+        DevToolsHost& host = devtools_hosts_[target_id];
+
+        if (!host.window) {
+            NSRect frame = NSMakeRect(120, 120, 1100, 800);
+            NSWindowStyleMask style = NSWindowStyleMaskTitled |
+                                      NSWindowStyleMaskClosable |
+                                      NSWindowStyleMaskResizable |
+                                      NSWindowStyleMaskMiniaturizable;
+            host.window = [[NSWindow alloc] initWithContentRect:frame
+                                                      styleMask:style
+                                                        backing:NSBackingStoreBuffered
+                                                          defer:NO];
+            [host.window setTitle:@"DevTools"];
+
+            host.delegate = [[RemoteDevToolsWindowDelegate alloc] init];
+            host.delegate->callback = RemoteDevToolsClosed;
+            host.delegate->ctx = this;
+            host.delegate->target_id = target_id;
+            [host.window setDelegate:host.delegate];
+        }
+
+        [host.window makeKeyAndOrderFront:nil];
+        host.is_open = true;
+
+        if (!host.client) {
+            host.client = new RemoteDevToolsClient(RemoteDevToolsClosed, this, target_id);
+        }
+
+        if (host.browser) {
+            host.browser->GetMainFrame()->LoadURL(CefString(url));
+            return;
+        }
+
+        NSView* contentView = [host.window contentView];
+        NSRect bounds = [contentView bounds];
+        CefRect devtools_rect(0, 0, (int)bounds.size.width, (int)bounds.size.height);
+
+        CefWindowInfo windowInfo;
+        windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
+        windowInfo.SetAsChild((__bridge void*)contentView, devtools_rect);
+
+        CefBrowserSettings settings;
+        host.browser = CefBrowserHost::CreateBrowserSync(
+            windowInfo,
+            host.client,
+            CefString(url),
+            settings,
+            nullptr,
+            nullptr);
+        host.is_open = true;
+    }
+
+    void OpenRemoteDevToolsFrontend(CefRefPtr<CefBrowser> browser) {
+        int target_id = static_cast<int>(webview_id_);
+        std::string targetUrl;
+        if (browser && browser->GetMainFrame()) {
+            targetUrl = browser->GetMainFrame()->GetURL().ToString();
+        }
+
+        NSString* targetUrlNs = targetUrl.empty() ? nil : [NSString stringWithUTF8String:targetUrl.c_str()];
+
+        NSString* baseUrl = [NSString stringWithFormat:@"http://127.0.0.1:%d", g_remoteDebugPort];
+        NSURL* url = [NSURL URLWithString:[baseUrl stringByAppendingString:@"/json"]];
+        NSURLSessionDataTask* task = [[NSURLSession sharedSession]
+            dataTaskWithURL:url
+          completionHandler:^(NSData* data, NSURLResponse* response, NSError* error) {
+            if (error || !data) {
+                NSLog(@"[CEF] Remote DevTools: failed to fetch JSON: %@", error);
+                return;
+            }
+
+            NSError* jsonError = nil;
+            id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+            if (jsonError || ![json isKindOfClass:[NSArray class]]) {
+                NSLog(@"[CEF] Remote DevTools: invalid JSON");
+                return;
+            }
+
+            NSArray* items = (NSArray*)json;
+            if ([items count] == 0) {
+                NSLog(@"[CEF] Remote DevTools: no targets");
+                return;
+            }
+
+            NSDictionary* selected = nil;
+            NSString* targetTitleNs = nil;
+            if (!last_title_.empty()) {
+                targetTitleNs = [NSString stringWithUTF8String:last_title_.c_str()];
+            }
+
+            if (targetUrlNs || targetTitleNs) {
+                for (NSDictionary* item in items) {
+                    NSString* itemUrl = item[@"url"];
+                    NSString* itemTitle = item[@"title"];
+
+                    bool urlMatch = false;
+                    bool titleMatch = false;
+                    if (targetUrlNs && [itemUrl isKindOfClass:[NSString class]] &&
+                        [itemUrl isEqualToString:targetUrlNs]) {
+                        urlMatch = true;
+                    }
+                    if (targetTitleNs && [itemTitle isKindOfClass:[NSString class]] &&
+                        [itemTitle isEqualToString:targetTitleNs]) {
+                        titleMatch = true;
+                    }
+
+                    if ((targetUrlNs && targetTitleNs && urlMatch && titleMatch) ||
+                        (targetUrlNs && urlMatch) ||
+                        (targetTitleNs && titleMatch)) {
+                        selected = item;
+                        break;
+                    }
+                }
+            }
+            if (!selected) {
+                selected = [items objectAtIndex:0];
+            }
+
+            NSString* wsUrl = selected[@"webSocketDebuggerUrl"];
+            if (![wsUrl isKindOfClass:[NSString class]]) {
+                NSLog(@"[CEF] Remote DevTools: missing webSocketDebuggerUrl");
+                return;
+            }
+
+            // Build a local DevTools frontend URL to avoid cross-origin rejection.
+            // Example: http://127.0.0.1:9222/devtools/inspector.html?ws=127.0.0.1:9222/devtools/page/<id>
+            NSString* wsParam = [wsUrl stringByReplacingOccurrencesOfString:@"ws://" withString:@""];
+            NSString* finalUrl = [NSString stringWithFormat:@"%@/devtools/inspector.html?ws=%@&dockSide=undocked",
+                                  baseUrl, wsParam];
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                this->CreateRemoteDevToolsWindow(target_id, [finalUrl UTF8String]);
+            });
+        }];
+
+        [task resume];
+    }
+
 public:
+    bool IsRemoteDevToolsOpen(int target_id) const {
+        auto it = devtools_hosts_.find(target_id);
+        return it != devtools_hosts_.end() && it->second.is_open;
+    }
+
+    void OpenRemoteDevTools(CefRefPtr<CefBrowser> browser) {
+        OpenRemoteDevToolsFrontend(browser);
+    }
+
+    void CloseRemoteDevTools() {
+        OnRemoteDevToolsClosed(static_cast<int>(webview_id_));
+    }
+
+    void ToggleRemoteDevTools(CefRefPtr<CefBrowser> browser) {
+        int target_id = static_cast<int>(webview_id_);
+        if (IsRemoteDevToolsOpen(target_id)) {
+            OnRemoteDevToolsClosed(target_id);
+        } else {
+            OpenRemoteDevToolsFrontend(browser);
+        }
+    }
+
+    void OnRemoteDevToolsClosed(int target_id) {
+        auto it = devtools_hosts_.find(target_id);
+        if (it == devtools_hosts_.end()) {
+            return;
+        }
+        it->second.is_open = false;
+        if (it->second.window) {
+            [it->second.window orderOut:nil];
+        }
+    }
+
+    void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override {
+        if (browser && browser->GetMainFrame()) {
+            last_title_ = title.ToString();
+        }
+    }
+
     ElectrobunClient(uint32_t webviewId,
                      HandlePostMessage bunBridgeHandler,
                      HandlePostMessage internalBridgeHandler,
@@ -3081,14 +3500,20 @@ public:
                        bool is_redirect) override {
         std::string url = request->GetURL().ToString();
 
+       
         // Check if cmd key is held - if so, fire new-window-open event and block navigation
         // Use NSEvent to get current modifier flags since CEF doesn't provide them in OnBeforeBrowse
         // Note: We don't check user_gesture because SPA frameworks may trigger navigations
         // programmatically after a click, causing user_gesture to be false
         NSEventModifierFlags modifierFlags = [NSEvent modifierFlags];
-        bool isCmdClick = (modifierFlags & NSEventModifierFlagCommand) != 0;
+        bool isCmdClick = false;//(modifierFlags & NSEventModifierFlagCommand) != 0;
 
-        if (isCmdClick && !is_redirect) {
+        // Skip Cmd+click handling for initial page loads (navigating away from about:blank)
+        // This prevents keyboard shortcuts like Cmd+T from triggering double tab creation
+        std::string currentUrl = frame->GetURL().ToString();
+        bool isInitialLoad = (currentUrl == "about:blank" || currentUrl.empty());
+
+        if (isCmdClick && !is_redirect && !isInitialLoad) {
             // Debounce: ignore cmd+click navigations within 500ms of the last one
             // This prevents cascading new tabs when cmd is held during page load
             NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
@@ -3257,21 +3682,15 @@ public:
                         int command_id,
                         EventFlags event_flags) override {
         if (command_id == MENU_ID_DEV_TOOLS) {
-            CefWindowInfo windowInfo;
-            CefBrowserSettings settings;
-            
-            // Create rect for devtools window
-            CefRect devtools_rect(100, 100, 800, 600);
-            // Set as child of the parent window
-            windowInfo.SetAsChild(nullptr, devtools_rect);
-            
-            // Create point for inspect element
-            CefPoint inspect_at(0, 0);
-            
-            browser->GetHost()->ShowDevTools(windowInfo, 
-                                        browser->GetHost()->GetClient(), 
-                                        settings, 
-                                        inspect_at);
+            OpenRemoteDevToolsFrontend(browser);
+
+            CefPoint inspect_at(params->GetXCoord(), params->GetYCoord());
+            CefRefPtr<ElectrobunClient> self(this);
+            CefRefPtr<CefBrowser> browser_ref(browser);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                // Disabled for now due to crash in CEF 144 on macOS.
+                // self->ShowDevToolsWindow(browser_ref, inspect_at);
+            });
             return true;
         }
         return false;
@@ -3289,6 +3708,7 @@ public:
 
     bool OnBeforePopup(CefRefPtr<CefBrowser> browser,
                       CefRefPtr<CefFrame> frame,
+                      int popup_id,
                       const CefString& target_url,
                       const CefString& target_frame_name,
                       CefLifeSpanHandler::WindowOpenDisposition target_disposition,
@@ -3341,21 +3761,12 @@ public:
             if (event.native_key_code == 34 &&
                 (event.modifiers & EVENTFLAG_COMMAND_DOWN) &&
                 (event.modifiers & EVENTFLAG_ALT_DOWN)) {
-                CefWindowInfo windowInfo;
-                CefBrowserSettings settings;
-                
-                
-                // Create rect for devtools window
-                CefRect devtools_rect(100, 100, 800, 600);
-                // Set as child of the parent window
-                windowInfo.SetAsChild(nullptr, devtools_rect);
-                
                 CefPoint inspect_at(0, 0);
-                
-                browser->GetHost()->ShowDevTools(windowInfo, 
-                                            browser->GetHost()->GetClient(), 
-                                            settings, 
-                                            inspect_at);
+                CefRefPtr<ElectrobunClient> self(this);
+                CefRefPtr<CefBrowser> browser_ref(browser);
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self->ShowDevToolsWindow(browser_ref, inspect_at);
+                });
                 return true;
             }
             
@@ -3712,6 +4123,13 @@ public:
 // Initialize static debounce timestamp for cmd+click handling
 NSTimeInterval ElectrobunClient::lastCmdClickTime = 0;
 
+void RemoteDevToolsClosed(void* ctx, int target_id) {
+    if (!ctx) {
+        return;
+    }
+    static_cast<ElectrobunClient*>(ctx)->OnRemoteDevToolsClosed(target_id);
+}
+
 @interface CEFWebViewImpl : AbstractView
     // @property (nonatomic, strong) WKWebView *webView;
 
@@ -3757,33 +4175,62 @@ bool initializeCEF() {
     CefMainArgs main_args(argc, argv);
     g_app = new ElectrobunApp();
 
+    // Read user-defined chromium flags from build.json
+    NSString* buildJsonPath = [[NSBundle mainBundle] pathForResource:@"build" ofType:@"json"];
+    if (buildJsonPath) {
+        std::string buildJsonContent = electrobun::readFileToString([buildJsonPath UTF8String]);
+        g_userChromiumFlags = electrobun::parseChromiumFlags(buildJsonContent);
+    }
+
     CefSettings settings;
     settings.no_sandbox = true;
     settings.multi_threaded_message_loop = false; // Use single threaded message loop on macOS
     settings.windowless_rendering_enabled = true; // Required for OSR/transparent windows
+    // Remote DevTools port with simple scan for availability.
+    int selectedPort = FindAvailableRemoteDebugPort(9222, 9232);
+    if (selectedPort == 0) {
+        selectedPort = 9222;
+        NSLog(@"[CEF] Remote DevTools: no free port in 9222-9232, falling back to 9222");
+    }
+    g_remoteDebugPort = selectedPort;
+    settings.remote_debugging_port = selectedPort;
     // settings.log_severity = LOGSEVERITY_VERBOSE;
 
-    // // Set explicit path to this app's own CEF helper process
-    // // This prevents multiple apps from sharing the same helper
-    // NSString* helperPath = [[NSBundle mainBundle] pathForAuxiliaryExecutable:@"bun Helper.app/Contents/MacOS/bun Helper"];
-    // if (helperPath) {
-    //     CefString(&settings.browser_subprocess_path) = [helperPath UTF8String];
-    //     NSLog(@"[CEF] Using helper at: %@", helperPath);
-    // }
+    // Set explicit paths to avoid bundle lookup issues in newer CEF builds.
+    NSString* bundlePath = [[NSBundle mainBundle] bundlePath];
+    if (bundlePath) {
+        CefString(&settings.main_bundle_path) = [bundlePath UTF8String];
+    }
+
+    NSString* frameworkPath = [[NSBundle mainBundle]
+        pathForResource:@"Chromium Embedded Framework"
+                 ofType:@"framework"
+            inDirectory:@"Contents/Frameworks"];
+    if (frameworkPath) {
+        CefString(&settings.framework_dir_path) = [frameworkPath UTF8String];
+    }
+
+    // This prevents multiple apps from sharing the same helper.
+    NSString* helperPath =
+        [[NSBundle mainBundle] pathForAuxiliaryExecutable:@"bun Helper.app/Contents/MacOS/bun Helper"];
+    if (helperPath) {
+        CefString(&settings.browser_subprocess_path) = [helperPath UTF8String];
+        NSLog(@"[CEF] Using helper at: %@", helperPath);
+    }
     
     // Add cache path to prevent warnings and potential issues
      // Use app-specific cache directory to allow multiple Electrobun apps to run simultaneously
     NSString* appSupportPath = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
 
-    // Build app identifier from version.json (consistent with Windows/Linux)
-    std::string appIdentifier = !g_electrobunIdentifier.empty() ? g_electrobunIdentifier : "Electrobun";
-    if (!g_electrobunChannel.empty()) {
-        appIdentifier += "-" + g_electrobunChannel;
-    }
-
-    NSString* appName = [NSString stringWithUTF8String:appIdentifier.c_str()];
-    NSString* cachePath = [appSupportPath stringByAppendingPathComponent:[NSString stringWithFormat:@"%@/CEF", appName]];
-    NSLog(@"[CEF] Using app: %s", appIdentifier.c_str());
+    // Build path with identifier/channel structure (consistent with CLI and updater)
+    std::string cachePathStr = buildAppDataPath(
+        [appSupportPath UTF8String],
+        g_electrobunIdentifier,
+        g_electrobunChannel,
+        "CEF"
+    );
+    NSString* cachePath = [NSString stringWithUTF8String:cachePathStr.c_str()];
+    NSLog(@"[CEF] Using path: %s", cachePathStr.c_str());
     CefString(&settings.root_cache_path) = [cachePath UTF8String];
 
     // Set log file path for debugging
@@ -4020,7 +4467,6 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
   CefRequestContextSettings settings;
   if (!partitionIdentifier || !partitionIdentifier[0]) {
     settings.persist_session_cookies = false;
-    settings.persist_user_preferences = false;
   } else {
     std::string identifier(partitionIdentifier);
     bool isPersistent = identifier.substr(0, 8) == "persist:";
@@ -4029,26 +4475,23 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
       std::string partitionName = identifier.substr(8);
       NSString* appSupportPath = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
 
-      // Build app identifier from version.json to match root_cache_path logic
-      std::string appIdentifier = !g_electrobunIdentifier.empty() ? g_electrobunIdentifier : "Electrobun";
-      if (!g_electrobunChannel.empty()) {
-          appIdentifier += "-" + g_electrobunChannel;
-      }
-
-      NSString* appName = [NSString stringWithUTF8String:appIdentifier.c_str()];
-      NSString* cachePath = [[[[appSupportPath stringByAppendingPathComponent:appName]
-                              stringByAppendingPathComponent:@"CEF/Partitions"]
-                              stringByAppendingPathComponent:[NSString stringWithUTF8String:partitionName.c_str()]] copy];
+      // Build path with identifier/channel structure to match root_cache_path logic
+      std::string cachePathStr = buildPartitionPath(
+          [appSupportPath UTF8String],
+          g_electrobunIdentifier,
+          g_electrobunChannel,
+          "CEF",
+          partitionName
+      );
+      NSString* cachePath = [NSString stringWithUTF8String:cachePathStr.c_str()];
       NSFileManager *fileManager = [NSFileManager defaultManager];
       if (![fileManager fileExistsAtPath:cachePath]) {
         [fileManager createDirectoryAtPath:cachePath withIntermediateDirectories:YES attributes:nil error:nil];
       }
       settings.persist_session_cookies = true;
-      settings.persist_user_preferences = true;
       CefString(&settings.cache_path).FromString([cachePath UTF8String]);
     } else {
       settings.persist_session_cookies = false;
-      settings.persist_user_preferences = false;
     }
   }
 
@@ -4104,6 +4547,7 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
                 }
 
                 CefWindowInfo window_info;
+                window_info.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
 
                 NSView *contentView = window.contentView;
 
@@ -4445,6 +4889,31 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
         }
     }
 
+    - (void)openDevTools {
+        // Use existing remote debugger approach for CEF
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.browser) {
+                self.client->OpenRemoteDevTools(self.browser);
+            }
+        });
+    }
+
+    - (void)closeDevTools {
+        // Close remote debugger window
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.client->CloseRemoteDevTools();
+        });
+    }
+
+    - (void)toggleDevTools {
+        // Toggle remote debugger window
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.browser) {
+                self.client->ToggleRemoteDevTools(self.browser);
+            }
+        });
+    }
+
 @end
 
 
@@ -4523,7 +4992,10 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
  */
 
 // Note: This is executed from the main bun thread
-extern "C" void startEventLoop(const char* identifier, const char* channel) {
+// Note: `name` parameter is accepted for API consistency with Windows but not used on macOS
+extern "C" void startEventLoop(const char* identifier, const char* name, const char* channel) {
+    (void)name; // Unused on macOS - kept for API consistency with Windows/Linux
+
     // Store identifier and channel globally for use in CEF initialization
     if (identifier && identifier[0]) {
         g_electrobunIdentifier = std::string(identifier);
@@ -4933,6 +5405,24 @@ extern "C" void webviewFindInPage(AbstractView *abstractView, const char *search
 extern "C" void webviewStopFind(AbstractView *abstractView) {
     dispatch_async(dispatch_get_main_queue(), ^{
         [abstractView stopFindInPage];
+    });
+}
+
+extern "C" void webviewOpenDevTools(AbstractView *abstractView) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [abstractView openDevTools];
+    });
+}
+
+extern "C" void webviewCloseDevTools(AbstractView *abstractView) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [abstractView closeDevTools];
+    });
+}
+
+extern "C" void webviewToggleDevTools(AbstractView *abstractView) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [abstractView toggleDevTools];
     });
 }
 
@@ -5901,34 +6391,12 @@ static GlobalShortcutCallback g_globalShortcutCallback = nullptr;
 static NSMutableDictionary<NSString*, id> *g_globalShortcuts = nil;
 static NSLock *g_globalShortcutsLock = nil;
 
-// Helper to parse modifier flags from accelerator string
+// Helper to parse modifier flags from accelerator string using the shared
+// cross-platform parser from accelerator_parser.h.
 static NSEventModifierFlags parseModifiers(NSString *accelerator, NSString **outKey) {
-    NSEventModifierFlags modifiers = 0;
-    NSMutableArray *parts = [[accelerator componentsSeparatedByString:@"+"] mutableCopy];
-
-    // The last part is the key
-    *outKey = [[parts lastObject] lowercaseString];
-    [parts removeLastObject];
-
-    for (NSString *part in parts) {
-        NSString *lowerPart = [part lowercaseString];
-        if ([lowerPart isEqualToString:@"command"] ||
-            [lowerPart isEqualToString:@"cmd"] ||
-            [lowerPart isEqualToString:@"commandorcontrol"] ||
-            [lowerPart isEqualToString:@"cmdorctrl"]) {
-            modifiers |= NSEventModifierFlagCommand;
-        } else if ([lowerPart isEqualToString:@"control"] ||
-                   [lowerPart isEqualToString:@"ctrl"]) {
-            modifiers |= NSEventModifierFlagControl;
-        } else if ([lowerPart isEqualToString:@"alt"] ||
-                   [lowerPart isEqualToString:@"option"]) {
-            modifiers |= NSEventModifierFlagOption;
-        } else if ([lowerPart isEqualToString:@"shift"]) {
-            modifiers |= NSEventModifierFlagShift;
-        }
-    }
-
-    return modifiers;
+    auto parts = electrobun::parseAccelerator([accelerator UTF8String]);
+    *outKey = [NSString stringWithUTF8String:parts.key.c_str()];
+    return modifierFlagsFromAccelerator(parts);
 }
 
 // Helper to get key code from key string
@@ -6563,5 +7031,3 @@ extern "C" void sessionClearStorageData(const char* partitionIdentifier, const c
 extern "C" void setWindowIcon(void* window, const char* iconPath) {
     // Not supported on macOS - macOS windows use the app bundle icon
 }
-
-

@@ -1,13 +1,12 @@
 // Test executor - runs tests in the bun context
 
-import { BrowserWindow, BrowserView } from "electrobun/bun";
+import { BrowserWindow } from "electrobun/bun";
 import type {
   TestDefinition,
   TestResult,
   TestContext,
   TestWindow,
   WindowOptions,
-  TestStatus,
   InteractiveResult,
 } from "./types";
 
@@ -139,7 +138,7 @@ export class TestExecutor {
 
       log: (message: string) => {
         logs.push(message);
-        const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+        const timestamp = new Date().toISOString().split('T')[1]!.split('.')[0]!;
         console.log(`  [${timestamp}] ${message}`);
         this.emit({ type: 'test-log', testId, message });
       },
@@ -185,7 +184,7 @@ export class TestExecutor {
         }
       } catch (e) {
         // Window might already be closed or destroyed
-        console.debug(`Cleanup: Window ${win.id} already closed or invalid:`, e.message);
+        console.debug(`Cleanup: Window ${win.id} already closed or invalid:`, (e as Error).message);
       }
     }
     this.testWindows.delete(testId);

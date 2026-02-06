@@ -89,6 +89,26 @@ const menuConfigs: MenuConfig[] = [
       },
     ],
   },
+  {
+    id: "menu5",
+    title: "Custom Accelerators",
+    menu: [
+      { label: "Save", action: "save", accelerator: "s" },
+      { label: "New", action: "new", accelerator: "n" },
+      { label: "Open", action: "open", accelerator: "o" },
+      { type: "separator" },
+      { label: "Undo", role: "undo" },
+      { label: "Redo", role: "redo" },
+      { type: "separator" },
+      {
+        label: "More Options",
+        submenu: [
+          { label: "Option A", action: "opt-a", accelerator: "a" },
+          { label: "Option B", action: "opt-b", accelerator: "b" },
+        ],
+      },
+    ],
+  },
 ];
 
 const rpc = Electroview.defineRPC<any>({
@@ -138,7 +158,7 @@ function showContextMenu(menuId: string) {
   const config = menuConfigs.find((c) => c.id === menuId);
   if (!config) return;
 
-  electrobun.rpc?.request.showContextMenu({ menu: config.menu });
+  (electrobun.rpc as any)?.request.showContextMenu({ menu: config.menu });
   addLogEntry(`Showing: ${config.title}`);
 }
 
@@ -152,7 +172,7 @@ function setActiveButton(menuId: string) {
 document.addEventListener("DOMContentLoaded", () => {
   // Done button
   document.getElementById("doneBtn")?.addEventListener("click", () => {
-    electrobun.rpc?.request.closeWindow({});
+    (electrobun.rpc as any)?.request.closeWindow({});
   });
 
   // Clear log button

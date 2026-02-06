@@ -8,9 +8,26 @@
     <link rel="stylesheet" href="views://test-runner/index.css">
 </head>
 <body>
+    <div class="update-banner" id="update-banner" style="display: none;">
+        <span class="update-message" id="update-message"></span>
+        <button class="update-btn" id="update-btn" style="display: none;">Update Now</button>
+        <button class="update-history-toggle" id="update-history-toggle">Show History</button>
+    </div>
+    <div class="update-history-panel" id="update-history-panel" style="display: none;">
+        <div class="update-history-header">
+            <span>Update Status History</span>
+            <button class="update-history-clear" id="update-history-clear">Clear</button>
+        </div>
+        <div class="update-history-list" id="update-history-list">
+            <!-- Status entries will be added here -->
+        </div>
+    </div>
     <div class="container">
         <header>
-            <h1>Electrobun Integration Tests</h1>
+            <div class="header-row">
+                <h1>Electrobun Integration Tests</h1>
+                <span class="version-badge" id="version-badge">v0.0.0</span>
+            </div>
             <div class="build-config-bar" id="build-config-bar">
                 <span class="build-config-item">
                     <span class="build-config-label">Default Renderer:</span>
@@ -20,6 +37,21 @@
                 <span class="build-config-item">
                     <span class="build-config-label">Available:</span>
                     <span class="build-config-value" id="available-renderers">loading...</span>
+                </span>
+                <span class="build-config-separator">|</span>
+                <span class="build-config-item">
+                    <span class="build-config-label">Chromium:</span>
+                    <span class="build-config-value" id="chromium-version">loading...</span>
+                </span>
+                <span class="build-config-separator">|</span>
+                <span class="build-config-item">
+                    <span class="build-config-label">Bun:</span>
+                    <span class="build-config-value" id="bun-version">loading...</span>
+                </span>
+                <span class="build-config-separator">|</span>
+                <span class="build-config-item">
+                    <span class="build-config-label">User-Agent:</span>
+                    <span class="build-config-value" id="user-agent-value">loading...</span>
                 </span>
             </div>
             <div class="summary" id="summary">

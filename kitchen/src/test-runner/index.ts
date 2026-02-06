@@ -1,5 +1,5 @@
 import Electrobun, { Electroview } from "electrobun/view";
-import type { TestRunnerRPC, TestInfo } from "./rpc";
+import type { TestRunnerRPC, TestInfo, UpdateInfo, UpdateStatusEntry } from "./rpc";
 import type { TestResult, TestStatus } from "../test-framework/types";
 
 // RPC setup
@@ -20,7 +20,7 @@ const rpc = Electroview.defineRPC<TestRunnerRPC>({
       testLog: ({ testId, message }) => {
         console.log(`[${testId}] ${message}`);
       },
-      allCompleted: ({ results }) => {
+      allCompleted: ({ results: _results }) => {
         setButtonsEnabled(true);
         updateSummary();
         console.log('All tests completed');
@@ -38,6 +38,13 @@ const rpc = Electroview.defineRPC<TestRunnerRPC>({
         updateBuildConfigUI(config);
         console.log(`Build config: defaultRenderer=${config.defaultRenderer}, available=[${config.availableRenderers.join(', ')}]`);
       },
+      updateStatus: (info) => {
+        updateUpdateUI(info);
+        console.log(`Update status: ${info.status}, current=${info.currentVersion}, new=${info.newVersion || 'n/a'}`);
+      },
+      updateStatusEntry: (entry) => {
+        addStatusEntryToUI(entry);
+      },
     },
   },
 });
@@ -48,6 +55,7 @@ const electrobun = new Electrobun.Electroview({ rpc });
 let tests: TestInfo[] = [];
 let testResults: Map<string, TestResult> = new Map();
 let currentInteractiveTestId: string | null = null;
+let statusHistoryVisible = false;
 
 // DOM elements - will be initialized in init()
 let testList: HTMLElement;
@@ -60,16 +68,20 @@ let btnRunInteractive: HTMLButtonElement;
 let modal: HTMLElement;
 let modalTitle: HTMLElement;
 let modalInstructions: HTMLElement;
-let modalButtons: HTMLElement;
 let btnStart: HTMLButtonElement;
 let btnPass: HTMLButtonElement;
 let btnFail: HTMLButtonElement;
 let btnRetest: HTMLButtonElement;
 let notesInput: HTMLInputElement;
+let historyToggle: HTMLButtonElement;
+let historyPanel: HTMLElement;
+let historyList: HTMLElement;
+let historyClear: HTMLButtonElement;
 
 // Modal mode
 type ModalMode = 'legacy' | 'ready' | 'verify';
-let currentModalMode: ModalMode = 'legacy';
+// @ts-expect-error - reserved for tracking modal state
+let _currentModalMode: ModalMode = 'legacy';
 
 // Initialize
 async function init() {
@@ -84,12 +96,15 @@ async function init() {
   modal = document.getElementById('interactive-modal')!;
   modalTitle = document.getElementById('modal-title')!;
   modalInstructions = document.getElementById('modal-instructions')!;
-  modalButtons = document.getElementById('modal-buttons')!;
   btnStart = document.getElementById('btn-start')! as HTMLButtonElement;
   btnPass = document.getElementById('btn-pass')! as HTMLButtonElement;
   btnFail = document.getElementById('btn-fail')! as HTMLButtonElement;
   btnRetest = document.getElementById('btn-retest')! as HTMLButtonElement;
   notesInput = document.getElementById('notes-input')! as HTMLInputElement;
+  historyToggle = document.getElementById('update-history-toggle')! as HTMLButtonElement;
+  historyPanel = document.getElementById('update-history-panel')!;
+  historyList = document.getElementById('update-history-list')!;
+  historyClear = document.getElementById('update-history-clear')! as HTMLButtonElement;
 
   if (!testList || !btnRunAll) {
     console.error('DOM elements not found, retrying in 100ms...');
@@ -105,11 +120,25 @@ async function init() {
   btnFail.addEventListener('click', () => submitVerification('fail'));
   btnRetest.addEventListener('click', () => submitVerification('retest'));
 
+  // Update button handler
+  const updateBtn = document.getElementById('update-btn');
+  if (updateBtn) {
+    updateBtn.addEventListener('click', applyUpdate);
+  }
+
+  // History panel handlers
+  if (historyToggle) {
+    historyToggle.addEventListener('click', toggleHistoryPanel);
+  }
+  if (historyClear) {
+    historyClear.addEventListener('click', clearStatusHistory);
+  }
+
   // Use event delegation for run buttons (set up once)
   testList.addEventListener('click', async (e) => {
     const target = e.target as HTMLElement;
     if (target.classList.contains('run-btn')) {
-      const testId = target.dataset.testId;
+      const testId = target.dataset['testId'];
       if (testId) {
         await runSingleTest(testId);
       }
@@ -310,7 +339,7 @@ async function runInteractiveTests() {
 
 function showInteractiveModal(testId: string, instructions: string[], mode: ModalMode) {
   currentInteractiveTestId = testId;
-  currentModalMode = mode;
+  _currentModalMode =mode;
   const test = tests.find(t => t.id === testId);
 
   modalTitle.textContent = test?.name || 'Interactive Test';
@@ -343,7 +372,7 @@ function showInteractiveModal(testId: string, instructions: string[], mode: Moda
 
 function showVerificationModal(testId: string) {
   currentInteractiveTestId = testId;
-  currentModalMode = 'verify';
+  _currentModalMode ='verify';
   const test = tests.find(t => t.id === testId);
 
   modalTitle.textContent = `Verify: ${test?.name || 'Test'}`;
@@ -407,7 +436,7 @@ async function submitVerification(action: 'pass' | 'fail' | 'retest') {
 }
 
 // Build Config UI
-function updateBuildConfigUI(config: { defaultRenderer: string; availableRenderers: string[] }) {
+function updateBuildConfigUI(config: { defaultRenderer: string; availableRenderers: string[]; cefVersion?: string; bunVersion?: string }) {
   const defaultRendererEl = document.getElementById('default-renderer');
   const availableRenderersEl = document.getElementById('available-renderers');
 
@@ -417,6 +446,186 @@ function updateBuildConfigUI(config: { defaultRenderer: string; availableRendere
   if (availableRenderersEl) {
     availableRenderersEl.textContent = config.availableRenderers.join(', ');
   }
+
+  const chromiumVersionEl = document.getElementById('chromium-version');
+  if (chromiumVersionEl) {
+    if (config.cefVersion) {
+      // Extract chromium version from CEF version string like "144.0.12+g1a1008c+chromium-144.0.7559.110"
+      const chromiumMatch = config.cefVersion.match(/chromium-([\d.]+)/);
+      chromiumVersionEl.textContent = chromiumMatch ? chromiumMatch[1]! : config.cefVersion;
+    } else {
+      const chromeMatch = navigator.userAgent.match(/Chrome\/(\S+)/);
+      chromiumVersionEl.textContent = chromeMatch ? chromeMatch[1]! : 'N/A';
+    }
+  }
+
+  const bunVersionEl = document.getElementById('bun-version');
+  if (bunVersionEl) {
+    bunVersionEl.textContent = config.bunVersion || 'N/A';
+  }
+
+  const userAgentEl = document.getElementById('user-agent-value');
+  if (userAgentEl) {
+    userAgentEl.textContent = navigator.userAgent;
+  }
+}
+
+// Update UI
+function updateUpdateUI(info: UpdateInfo) {
+  const banner = document.getElementById('update-banner');
+  const message = document.getElementById('update-message');
+  const btn = document.getElementById('update-btn') as HTMLButtonElement;
+  const versionBadge = document.getElementById('version-badge');
+
+  if (!banner || !message || !btn) return;
+
+  // Always show current version
+  if (versionBadge) {
+    versionBadge.textContent = `v${info.currentVersion}`;
+  }
+
+  // Reset classes
+  banner.className = 'update-banner';
+
+  switch (info.status) {
+    case 'checking':
+      banner.style.display = 'flex';
+      banner.classList.add('checking');
+      message.textContent = 'Checking for updates...';
+      btn.style.display = 'none';
+      break;
+
+    case 'update-available':
+      banner.style.display = 'flex';
+      message.textContent = `Update available: v${info.newVersion}`;
+      btn.style.display = 'none';
+      break;
+
+    case 'downloading':
+      banner.style.display = 'flex';
+      banner.classList.add('downloading');
+      message.textContent = `Downloading update v${info.newVersion}...`;
+      btn.style.display = 'none';
+      break;
+
+    case 'update-ready':
+      banner.style.display = 'flex';
+      banner.classList.add('ready');
+      message.textContent = `Update v${info.newVersion} ready to install`;
+      btn.style.display = 'inline-block';
+      btn.textContent = 'Update Now';
+      break;
+
+    case 'no-update':
+      banner.style.display = 'flex';
+      banner.classList.add('checking'); // Use neutral gray styling
+      message.textContent = 'No update available';
+      btn.style.display = 'none';
+      break;
+
+    case 'error':
+      banner.style.display = 'flex';
+      banner.classList.add('error');
+      message.textContent = `Update error: ${info.error || 'Unknown error'}`;
+      btn.style.display = 'none';
+      break;
+  }
+}
+
+async function applyUpdate() {
+  try {
+    await electrobun.rpc?.request.applyUpdate({});
+  } catch (err) {
+    console.error('Failed to apply update:', err);
+  }
+}
+
+// Status History Panel
+async function toggleHistoryPanel() {
+  statusHistoryVisible = !statusHistoryVisible;
+
+  if (statusHistoryVisible) {
+    historyPanel.style.display = 'flex';
+    historyToggle.textContent = 'Hide History';
+    // Load existing history
+    try {
+      const history = await electrobun.rpc?.request.getUpdateStatusHistory({});
+      if (history) {
+        historyList.innerHTML = '';
+        for (const entry of history) {
+          addStatusEntryToUI(entry);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load status history:', err);
+    }
+  } else {
+    historyPanel.style.display = 'none';
+    historyToggle.textContent = 'Show History';
+  }
+}
+
+async function clearStatusHistory() {
+  try {
+    await electrobun.rpc?.request.clearUpdateStatusHistory({});
+    historyList.innerHTML = '';
+  } catch (err) {
+    console.error('Failed to clear status history:', err);
+  }
+}
+
+function addStatusEntryToUI(entry: UpdateStatusEntry) {
+  if (!historyList) return;
+
+  const entryEl = document.createElement('div');
+  entryEl.className = 'status-entry';
+
+  const time = new Date(entry.timestamp);
+  const timeStr = time.toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }) + '.' + String(time.getMilliseconds()).padStart(3, '0');
+
+  // Build details string if present
+  let detailsStr = '';
+  if (entry.details) {
+    const parts: string[] = [];
+    if (entry.details.progress !== undefined) {
+      parts.push(`${entry.details.progress}%`);
+    }
+    if (entry.details.bytesDownloaded !== undefined) {
+      const mb = (entry.details.bytesDownloaded / 1024 / 1024).toFixed(1);
+      parts.push(`${mb}MB`);
+    }
+    if (entry.details.patchNumber !== undefined) {
+      parts.push(`patch #${entry.details.patchNumber}`);
+    }
+    if (entry.details.totalPatchesApplied !== undefined && entry.details.totalPatchesApplied > 0) {
+      parts.push(`${entry.details.totalPatchesApplied} patches`);
+    }
+    if (entry.details.usedPatchPath !== undefined) {
+      parts.push(entry.details.usedPatchPath ? 'patch path' : 'full download');
+    }
+    if (entry.details.currentHash) {
+      parts.push(entry.details.currentHash.slice(0, 8));
+    }
+    if (parts.length > 0) {
+      detailsStr = ` [${parts.join(', ')}]`;
+    }
+  }
+
+  entryEl.innerHTML = `
+    <span class="timestamp">${timeStr}</span>
+    <span class="status-badge ${entry.status}">${entry.status}</span>
+    <span class="message">${escapeHtml(entry.message)}${detailsStr ? `<span class="details">${detailsStr}</span>` : ''}</span>
+  `;
+
+  historyList.appendChild(entryEl);
+
+  // Auto-scroll to bottom
+  historyList.scrollTop = historyList.scrollHeight;
 }
 
 // Helpers

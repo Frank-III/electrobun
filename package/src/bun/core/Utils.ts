@@ -1,12 +1,16 @@
 import { ffi, native } from "../proc/native";
+import { electrobunEventEmitter } from "../events/eventEmitter";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { OS } from "../../shared/platform";
 
-// TODO: move this to a more appropriate namespace
 export const moveToTrash = (path: string) => {
-  return ffi.request.moveToTrash({ path });
+	return ffi.request.moveToTrash({ path });
 };
 
 export const showItemInFolder = (path: string) => {
-  return ffi.request.showItemInFolder({ path });
+	return ffi.request.showItemInFolder({ path });
 };
 
 /**
@@ -27,7 +31,7 @@ export const showItemInFolder = (path: string) => {
  * openExternal("slack://open");
  */
 export const openExternal = (url: string): boolean => {
-  return ffi.request.openExternal({ url });
+	return ffi.request.openExternal({ url });
 };
 
 /**
@@ -46,26 +50,26 @@ export const openExternal = (url: string): boolean => {
  * openPath("/Users/me/Downloads");
  */
 export const openPath = (path: string): boolean => {
-  return ffi.request.openPath({ path });
+	return ffi.request.openPath({ path });
 };
 
 export type NotificationOptions = {
-  /**
-   * The title of the notification (required)
-   */
-  title: string;
-  /**
-   * The main body text of the notification
-   */
-  body?: string;
-  /**
-   * A subtitle displayed below the title (macOS only, shown as additional line on other platforms)
-   */
-  subtitle?: string;
-  /**
-   * If true, the notification will not play a sound
-   */
-  silent?: boolean;
+	/**
+	 * The title of the notification (required)
+	 */
+	title: string;
+	/**
+	 * The main body text of the notification
+	 */
+	body?: string;
+	/**
+	 * A subtitle displayed below the title (macOS only, shown as additional line on other platforms)
+	 */
+	subtitle?: string;
+	/**
+	 * If true, the notification will not play a sound
+	 */
+	silent?: boolean;
 };
 
 /**
@@ -103,65 +107,85 @@ export type NotificationOptions = {
  * });
  */
 export const showNotification = (options: NotificationOptions): void => {
-  const { title, body, subtitle, silent } = options;
-  ffi.request.showNotification({ title, body, subtitle, silent });
+	const { title, body, subtitle, silent } = options;
+	ffi.request.showNotification({ title, body, subtitle, silent });
 };
+
+let isQuitting = false;
 
 export const quit = () => {
-  // Use native killApp for graceful shutdown
-  native.symbols.killApp();
+	if (isQuitting) return;
+	isQuitting = true;
+
+	const beforeQuitEvent = electrobunEventEmitter.events.app.beforeQuit({});
+	electrobunEventEmitter.emitEvent(beforeQuitEvent);
+
+	if (
+		beforeQuitEvent.responseWasSet &&
+		beforeQuitEvent.response?.allow === false
+	) {
+		isQuitting = false;
+		return;
+	}
+
+	native.symbols.killApp();
+	process.exit();
 };
 
+// Override process.exit so that calling it triggers proper native cleanup
+const originalProcessExit = process.exit;
+process.exit = ((code?: number) => {
+	if (isQuitting) {
+		originalProcessExit(code);
+		return;
+	}
+	quit();
+}) as typeof process.exit;
+
 export const openFileDialog = async (
-  opts: {
-    startingFolder?: string;
-    allowedFileTypes?: string;
-    canChooseFiles?: boolean;
-    canChooseDirectory?: boolean;
-    allowsMultipleSelection?: boolean;
-  } = {}
+	opts: {
+		startingFolder?: string;
+		allowedFileTypes?: string;
+		canChooseFiles?: boolean;
+		canChooseDirectory?: boolean;
+		allowsMultipleSelection?: boolean;
+	} = {},
 ): Promise<string[]> => {
-  const optsWithDefault = {
-    ...{
-      startingFolder: "~/",
-      allowedFileTypes: "*",
-      canChooseFiles: true,
-      canChooseDirectory: true,
-      allowsMultipleSelection: true,
-    },
-    ...opts,
-  };
+	const optsWithDefault = {
+		...{
+			startingFolder: "~/",
+			allowedFileTypes: "*",
+			canChooseFiles: true,
+			canChooseDirectory: true,
+			allowsMultipleSelection: true,
+		},
+		...opts,
+	};
 
-  // todo: extend the timeout for this one (this version of rpc-anywhere doesn't seem to be able to set custom timeouts per request)
-  // we really want it to be infinity since the open file dialog blocks everything anyway.
-  // todo: there's the timeout between bun and zig, and the timeout between browser and bun since user likely requests
-  // from a browser context
-  const result = await ffi.request.openFileDialog({
-    startingFolder: optsWithDefault.startingFolder,
-    allowedFileTypes: optsWithDefault.allowedFileTypes,
-    canChooseFiles: optsWithDefault.canChooseFiles,
-    canChooseDirectory: optsWithDefault.canChooseDirectory,
-    allowsMultipleSelection: optsWithDefault.allowsMultipleSelection,
-  });
+	const result = await ffi.request.openFileDialog({
+		startingFolder: optsWithDefault.startingFolder,
+		allowedFileTypes: optsWithDefault.allowedFileTypes,
+		canChooseFiles: optsWithDefault.canChooseFiles,
+		canChooseDirectory: optsWithDefault.canChooseDirectory,
+		allowsMultipleSelection: optsWithDefault.allowsMultipleSelection,
+	});
 
-  const filePaths = result.split(",");
-
-  // todo: it's nested like this due to zig union types. needs a zig refactor and revisit
-  return filePaths;
+	const filePaths = result.split(",");
+	return filePaths;
 };
 
 export type MessageBoxOptions = {
-  type?: "info" | "warning" | "error" | "question";
-  title?: string;
-  message?: string;
-  detail?: string;
-  buttons?: string[];
-  defaultId?: number;
-  cancelId?: number;
+	type?: "info" | "warning" | "error" | "question";
+	title?: string;
+	message?: string;
+	detail?: string;
+	buttons?: string[];
+	defaultId?: number;
+	cancelId?: number;
 };
 
 export type MessageBoxResponse = {
-  response: number; // Index of the clicked button
+	response: number; // Index of the clicked button
 };
 
 /**
@@ -192,29 +216,29 @@ export type MessageBoxResponse = {
  * }
  */
 export const showMessageBox = async (
-  opts: MessageBoxOptions = {}
+	opts: MessageBoxOptions = {},
 ): Promise<MessageBoxResponse> => {
-  const {
-    type = "info",
-    title = "",
-    message = "",
-    detail = "",
-    buttons = ["OK"],
-    defaultId = 0,
-    cancelId = -1,
-  } = opts;
+	const {
+		type = "info",
+		title = "",
+		message = "",
+		detail = "",
+		buttons = ["OK"],
+		defaultId = 0,
+		cancelId = -1,
+	} = opts;
 
-  const response = ffi.request.showMessageBox({
-    type,
-    title,
-    message,
-    detail,
-    buttons,
-    defaultId,
-    cancelId,
-  });
+	const response = ffi.request.showMessageBox({
+		type,
+		title,
+		message,
+		detail,
+		buttons,
+		defaultId,
+		cancelId,
+	});
 
-  return { response };
+	return { response };
 };
 
 // ============================================================================
@@ -226,7 +250,7 @@ export const showMessageBox = async (
  * @returns The clipboard text, or null if no text is available
  */
 export const clipboardReadText = (): string | null => {
-  return ffi.request.clipboardReadText();
+	return ffi.request.clipboardReadText();
 };
 
 /**
@@ -234,7 +258,7 @@ export const clipboardReadText = (): string | null => {
  * @param text - The text to write to the clipboard
  */
 export const clipboardWriteText = (text: string): void => {
-  ffi.request.clipboardWriteText({ text });
+	ffi.request.clipboardWriteText({ text });
 };
 
 /**
@@ -242,7 +266,7 @@ export const clipboardWriteText = (text: string): void => {
  * @returns PNG image data as Uint8Array, or null if no image is available
  */
 export const clipboardReadImage = (): Uint8Array | null => {
-  return ffi.request.clipboardReadImage();
+	return ffi.request.clipboardReadImage();
 };
 
 /**
@@ -250,14 +274,14 @@ export const clipboardReadImage = (): Uint8Array | null => {
  * @param pngData - PNG image data as Uint8Array
  */
 export const clipboardWriteImage = (pngData: Uint8Array): void => {
-  ffi.request.clipboardWriteImage({ pngData });
+	ffi.request.clipboardWriteImage({ pngData });
 };
 
 /**
  * Clear the system clipboard.
  */
 export const clipboardClear = (): void => {
-  ffi.request.clipboardClear();
+	ffi.request.clipboardClear();
 };
 
 /**
@@ -265,5 +289,183 @@ export const clipboardClear = (): void => {
  * @returns Array of format names (e.g., ["text", "image", "files", "html"])
  */
 export const clipboardAvailableFormats = (): string[] => {
-  return ffi.request.clipboardAvailableFormats();
+	return ffi.request.clipboardAvailableFormats();
+};
+
+// ============================================================================
+// Paths API — cross-platform OS directories and app-scoped directories
+// ============================================================================
+
+const home = homedir();
+
+function getLinuxXdgUserDirs(): Record<string, string> {
+	try {
+		const content = readFileSync(
+			join(home, ".config", "user-dirs.dirs"),
+			"utf-8",
+		);
+		const dirs: Record<string, string> = {};
+		for (const line of content.split("\n")) {
+			const trimmed = line.trim();
+			if (trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+			const eqIdx = trimmed.indexOf("=");
+			const key = trimmed.slice(0, eqIdx);
+			let value = trimmed.slice(eqIdx + 1);
+			// Strip surrounding quotes
+			if (value.startsWith('"') && value.endsWith('"')) {
+				value = value.slice(1, -1);
+			}
+			// Substitute $HOME
+			value = value.replace(/\$HOME/g, home);
+			dirs[key] = value;
+		}
+		return dirs;
+	} catch {
+		return {};
+	}
+}
+
+let _xdgUserDirs: Record<string, string> | undefined;
+function xdgUserDir(key: string, fallbackName: string): string {
+	if (OS !== "linux") return "";
+	if (!_xdgUserDirs) _xdgUserDirs = getLinuxXdgUserDirs();
+	return _xdgUserDirs[key] || join(home, fallbackName);
+}
+
+let _versionInfo: { identifier: string; channel: string } | undefined;
+function getVersionInfo(): { identifier: string; channel: string } {
+	if (_versionInfo) return _versionInfo;
+	try {
+		const resourcesDir = "Resources";
+		const raw = readFileSync(join("..", resourcesDir, "version.json"), "utf-8");
+		const parsed = JSON.parse(raw);
+		_versionInfo = { identifier: parsed.identifier, channel: parsed.channel };
+		return _versionInfo;
+	} catch (error) {
+		console.error("Failed to read version.json", error);
+		throw error;
+	}
+}
+
+function getAppDataDir(): string {
+	switch (OS) {
+		case "macos":
+			return join(home, "Library", "Application Support");
+		case "win":
+			return process.env["LOCALAPPDATA"] || join(home, "AppData", "Local");
+		case "linux":
+			return process.env["XDG_DATA_HOME"] || join(home, ".local", "share");
+	}
+}
+
+function getCacheDir(): string {
+	switch (OS) {
+		case "macos":
+			return join(home, "Library", "Caches");
+		case "win":
+			return process.env["LOCALAPPDATA"] || join(home, "AppData", "Local");
+		case "linux":
+			return process.env["XDG_CACHE_HOME"] || join(home, ".cache");
+	}
+}
+
+function getLogsDir(): string {
+	switch (OS) {
+		case "macos":
+			return join(home, "Library", "Logs");
+		case "win":
+			return process.env["LOCALAPPDATA"] || join(home, "AppData", "Local");
+		case "linux":
+			return process.env["XDG_STATE_HOME"] || join(home, ".local", "state");
+	}
+}
+
+function getConfigDir(): string {
+	switch (OS) {
+		case "macos":
+			return join(home, "Library", "Application Support");
+		case "win":
+			return process.env["APPDATA"] || join(home, "AppData", "Roaming");
+		case "linux":
+			return process.env["XDG_CONFIG_HOME"] || join(home, ".config");
+	}
+}
+
+function getUserDir(
+	macName: string,
+	winName: string,
+	xdgKey: string,
+	fallbackName: string,
+): string {
+	switch (OS) {
+		case "macos":
+			return join(home, macName);
+		case "win": {
+			const userProfile = process.env["USERPROFILE"] || home;
+			return join(userProfile, winName);
+		}
+		case "linux":
+			return xdgUserDir(xdgKey, fallbackName);
+	}
+}
+
+export const paths = {
+	get home(): string {
+		return home;
+	},
+	get appData(): string {
+		return getAppDataDir();
+	},
+	get config(): string {
+		return getConfigDir();
+	},
+	get cache(): string {
+		return getCacheDir();
+	},
+	get temp(): string {
+		return tmpdir();
+	},
+	get logs(): string {
+		return getLogsDir();
+	},
+	get documents(): string {
+		return getUserDir(
+			"Documents",
+			"Documents",
+			"XDG_DOCUMENTS_DIR",
+			"Documents",
+		);
+	},
+	get downloads(): string {
+		return getUserDir(
+			"Downloads",
+			"Downloads",
+			"XDG_DOWNLOAD_DIR",
+			"Downloads",
+		);
+	},
+	get desktop(): string {
+		return getUserDir("Desktop", "Desktop", "XDG_DESKTOP_DIR", "Desktop");
+	},
+	get pictures(): string {
+		return getUserDir("Pictures", "Pictures", "XDG_PICTURES_DIR", "Pictures");
+	},
+	get music(): string {
+		return getUserDir("Music", "Music", "XDG_MUSIC_DIR", "Music");
+	},
+	get videos(): string {
+		return getUserDir("Movies", "Videos", "XDG_VIDEOS_DIR", "Videos");
+	},
+	get userData(): string {
+		const { identifier, channel } = getVersionInfo();
+		return join(getAppDataDir(), identifier, channel);
+	},
+	get userCache(): string {
+		const { identifier, channel } = getVersionInfo();
+		return join(getCacheDir(), identifier, channel);
+	},
+	get userLogs(): string {
+		const { identifier, channel } = getVersionInfo();
+		return join(getLogsDir(), identifier, channel);
+	},
 };
