@@ -30,7 +30,7 @@ const Kbd: ParentComponent<KbdProps> = (props) => {
 		"children",
 		"ref"
 	]);
-	return <kbd ref={local.ref as HTMLElement | ((el: HTMLElement) => void) | undefined} class={cn("pointer-events-none inline-flex items-center gap-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground/60", local.class)} {...others}>
+	return <kbd ref={local.ref} class={cn("pointer-events-none inline-flex items-center gap-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground/60", local.class)} {...others}>
       {renderShortcut(local.children)}
     </kbd>;
 };
