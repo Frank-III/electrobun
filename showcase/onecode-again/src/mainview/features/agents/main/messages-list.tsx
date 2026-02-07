@@ -233,8 +233,7 @@ interface NonStreamingMessageItemProps {
 function NonStreamingMessageItem(props: NonStreamingMessageItemProps) {
 	// Subscribe to this specific message via Jotai - only re-renders when THIS message changes
 	const message = messageAtomFamily(props.messageId)[0];
-	if (!message()) return null;
-	return <AssistantMessageItem message={message()} isLastMessage={false} isStreaming={false} status="ready" subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />;
+	return <Show when={message()}>{(msg) => <AssistantMessageItem message={msg()} isLastMessage={false} isStreaming={false} status="ready" subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />}</Show>;
 }
 // For the last message - subscribes to streaming status AND message via Jotai
 // Passes message as prop to AssistantMessageItem
@@ -251,8 +250,7 @@ function StreamingMessageItem(props: StreamingMessageItemProps) {
 	// Subscribe to streaming status
 	const isStreaming = isStreamingAtom;
 	const status = chatStatusAtom[0];
-	if (!message()) return null;
-	return <AssistantMessageItem message={message()} isLastMessage={true} isStreaming={isStreaming()} status={status()} subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />;
+	return <Show when={message()}>{(msg) => <AssistantMessageItem message={msg()} isLastMessage={true} isStreaming={isStreaming()} status={status()} subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />}</Show>;
 }
 // Combined hook - get message AND isLast in one memo (Solid)
 function useMessageWithLastStatus(messageId: string) {
@@ -270,12 +268,9 @@ export function MessageItemWrapper(props: MessageItemWrapperProps) {
 	// StreamingMessageItem and NonStreamingMessageItem will subscribe to message themselves
 	const isLast = isLastMessageAtomFamily(props.messageId);
 	// Only the last message subscribes to streaming status
-	if (isLast()) {
-		// StreamingMessageItem subscribes to messageAtomFamily internally
-		return <StreamingMessageItem messageId={props.messageId} subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />;
-	}
-	// NonStreamingMessageItem subscribes to messageAtomFamily internally
-	return <NonStreamingMessageItem messageId={props.messageId} subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />;
+	return <Show when={isLast()} fallback={<NonStreamingMessageItem messageId={props.messageId} subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />}>
+		<StreamingMessageItem messageId={props.messageId} subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} />
+	</Show>;
 }
 // ============================================================================
 // MEMOIZED ASSISTANT MESSAGES - Only re-renders when message IDs change

@@ -53,15 +53,6 @@ export class RemoteChatTransport implements RpcChatTransport {
 
     const streamId = generateStreamId()
     const subId = this.config.subChatId.slice(-8)
-    console.log(`[RemoteTransport] START`, {
-      streamId,
-      subId,
-      chatId: this.config.chatId,
-      sandboxUrl: this.config.sandboxUrl,
-      mode: this.config.mode,
-      model: this.config.model || "default",
-      messageCount: options.messages.length,
-    })
 
     // Build headers - only include x-model if model is specified
     const headers: Record<string, string> = {
@@ -94,13 +85,6 @@ export class RemoteChatTransport implements RpcChatTransport {
         }),
       }
     )
-
-    console.log(`[RemoteTransport] Stream fetch started`, {
-      streamId,
-      subId,
-      ok: result.ok,
-      status: result.status,
-    })
 
     if (!result.ok) {
       console.error(`[RemoteTransport] ERROR`, { subId, status: result.status, error: result.error })
@@ -138,7 +122,6 @@ export class RemoteChatTransport implements RpcChatTransport {
   ): ReadableStream<UIMessageChunk> {
     const decoder = new TextDecoder()
     let buffer = ""
-    let chunkCount = 0
     let cleanupChunk: (() => void) | null = null
     let cleanupDone: (() => void) | null = null
     let cleanupError: (() => void) | null = null
@@ -159,7 +142,6 @@ export class RemoteChatTransport implements RpcChatTransport {
           const data = line.slice(6).trim()
 
           if (data === "[DONE]") {
-            console.log(`[RemoteTransport] FINISH sub=${subId} chunks=${chunkCount}`)
             streamDone = true
             if (resolveNext) {
               resolveNext({ done: true })
@@ -170,14 +152,6 @@ export class RemoteChatTransport implements RpcChatTransport {
 
           try {
             const chunk = JSON.parse(data) as UIMessageChunk
-            chunkCount++
-            if (chunkCount <= 3) {
-              console.log(`[RemoteTransport] Chunk #${chunkCount}`, {
-                subId,
-                type: chunk.type,
-                preview: JSON.stringify(chunk).slice(0, 200),
-              })
-            }
 
             if (resolveNext) {
               resolveNext({ done: false, chunk })
@@ -196,7 +170,6 @@ export class RemoteChatTransport implements RpcChatTransport {
     cleanupChunk = window.desktopApi!.onStreamChunk(streamId, processBytes)
 
     cleanupDone = window.desktopApi!.onStreamDone(streamId, () => {
-      console.log(`[RemoteTransport] DONE sub=${subId} chunks=${chunkCount}`)
       streamDone = true
       if (resolveNext) {
         resolveNext({ done: true })
@@ -216,8 +189,12 @@ export class RemoteChatTransport implements RpcChatTransport {
     // Handle abort
     if (abortSignal) {
       abortSignal.addEventListener("abort", () => {
-        console.log(`[RemoteTransport] ABORT sub=${subId} chunks=${chunkCount}`)
         streamDone = true
+        if (resolveNext) {
+          resolveNext({ done: true })
+          resolveNext = null
+        }
+        rejectNext = null
         cleanup()
       })
     }
@@ -264,7 +241,6 @@ export class RemoteChatTransport implements RpcChatTransport {
         }
       },
       cancel: () => {
-        console.log(`[RemoteTransport] CANCEL sub=${subId} chunks=${chunkCount}`)
         cleanup()
       },
     })

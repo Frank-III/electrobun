@@ -103,11 +103,11 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	const [local] = splitProps(merged, ["onClose", "isMobile", "onBackToChats", "isSidebarOpen", "isLoading", "agentName"]);
 	// SolidJS fine-grained reactivity handles this - no useShallow needed
 	const subChatStore = useAgentSubChatStore();
-	const activeSubChatId = subChatStore.activeSubChatId;
-	const openSubChatIds = subChatStore.openSubChatIds;
-	const pinnedSubChatIds = subChatStore.pinnedSubChatIds;
-	const allSubChats = subChatStore.allSubChats;
-	const parentChatId = subChatStore.chatId;
+	const activeSubChatId = createMemo(() => subChatStore.activeSubChatId);
+	const openSubChatIds = createMemo(() => subChatStore.openSubChatIds);
+	const pinnedSubChatIds = createMemo(() => subChatStore.pinnedSubChatIds);
+	const allSubChats = createMemo(() => subChatStore.allSubChats);
+	const parentChatId = createMemo(() => subChatStore.chatId);
 	const togglePinSubChat = subChatStore.togglePinSubChat;
 	const [loadingSubChats] = loadingSubChatsAtom;
 	const subChatFiles = subChatFilesAtom[0];
@@ -117,7 +117,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	// Fetch agent chats for navigation after archive
 	const agentChatsQuery = useQuery(() => ({
 		queryKey: ["chats", "list"] as const,
-		queryFn: () => desktopRpc.chats.list.query(),
+		queryFn: async () => (await desktopRpc.chats.list.query()) ?? [],
 		enabled: !!selectedTeamId(),
 	}));
 	const agentChats = () => agentChatsQuery.data ?? [];
@@ -161,10 +161,10 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	const defaultAgentMode = defaultAgentModeAtom[0];
 	// Pending plan approvals from DB - only for open sub-chats
 	const pendingPlanApprovalsQuery = useQuery(() => ({
-		queryKey: ["chats", "getPendingPlanApprovals", openSubChatIds] as const,
-		queryFn: () => desktopRpc.chats.getPendingPlanApprovals({ openSubChatIds }),
+		queryKey: ["chats", "getPendingPlanApprovals", openSubChatIds()] as const,
+		queryFn: async () => (await desktopRpc.chats.getPendingPlanApprovals({ openSubChatIds: openSubChatIds() })) ?? [],
 		refetchInterval: 5e3,
-		enabled: openSubChatIds.length > 0,
+		enabled: openSubChatIds().length > 0,
 		placeholderData: (prev) => prev,
 	}));
 	const pendingPlanApprovals = createMemo(() => {
@@ -206,7 +206,9 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	const chatSourceMode = chatSourceModeAtom[0];
 	// Map open IDs to metadata and sort by updated_at (most recent first)
 	const openSubChats = createMemo(() => {
-		const chats = openSubChatIds.map((id) => allSubChats.find((sc) => sc.id === id)).filter((sc): sc is SubChatMeta => !!sc).sort((a, b) => {
+		const openIds = openSubChatIds();
+		const all = allSubChats();
+		const chats = openIds.map((id) => all.find((sc) => sc.id === id)).filter((sc): sc is SubChatMeta => !!sc).sort((a, b) => {
 			const aT = new Date(a.updated_at || a.created_at || "0").getTime();
 			const bT = new Date(b.updated_at || b.created_at || "0").getTime();
 			return bT - aT;
@@ -216,8 +218,9 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	// Filter and separate pinned/unpinned sub-chats
 	const pinnedAndUnpinned = createMemo(() => {
 		const filtered = searchQuery().trim() ? openSubChats().filter((chat) => chat.name.toLowerCase().includes(searchQuery().toLowerCase())) : openSubChats();
-		const pinned = filtered.filter((chat) => pinnedSubChatIds.includes(chat.id));
-		const unpinned = filtered.filter((chat) => !pinnedSubChatIds.includes(chat.id));
+		const pinnedIds = pinnedSubChatIds();
+		const pinned = filtered.filter((chat) => pinnedIds.includes(chat.id));
+		const unpinned = filtered.filter((chat) => !pinnedIds.includes(chat.id));
 		return {
 			pinnedChats: pinned,
 			unpinnedChats: unpinned
@@ -310,7 +313,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	const handleArchiveSubChat = (subChatId: string) => {
 		// If this is the last open subchat, show confirmation dialog
 		if (openSubChats().length === 1) {
-			const subChat = allSubChats.find((sc) => sc.id === subChatId);
+			const subChat = allSubChats().find((sc) => sc.id === subChatId);
 			if (subChat) {
 				setSubChatToArchive(subChat);
 				setArchiveAgentDialogOpen(true);
@@ -320,22 +323,22 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 		// Archive = remove from open tabs (but keep in allSubChats for history)
 		useAgentSubChatStore.getState().removeFromOpenSubChats(subChatId);
 		// Add to unified undo stack for Cmd+Z
-		if (parentChatId) {
+		if (parentChatId()) {
 			const timeoutId = setTimeout(() => {
 				setUndoStack((prev) => prev.filter((item) => !(item.type === "subchat" && item.subChatId === subChatId)));
 			}, 1e4);
 			setUndoStack((prev) => [...prev, {
 				type: "subchat",
 				subChatId,
-				chatId: parentChatId,
+				chatId: parentChatId()!,
 				timeoutId
 			}]);
 		}
 	};
 	const handleConfirmArchiveAgent = () => {
-		if (parentChatId) {
+		if (parentChatId()) {
 			// Archive the parent agent chat
-			archiveChatMutation.mutate({ id: parentChatId });
+			archiveChatMutation.mutate({ id: parentChatId()! });
 		}
 		setArchiveAgentDialogOpen(false);
 		setSubChatToArchive(null);
@@ -382,7 +385,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 		const idsToClose = filteredSubChats().slice(currentIndex + 1).map((c) => c.id);
 		idsToClose.forEach((id) => state.removeFromOpenSubChats(id));
 		// Add each to unified undo stack for Cmd+Z
-		if (parentChatId) {
+		if (parentChatId()) {
 			const newItems: UndoItem[] = idsToClose.map((id) => {
 				const timeoutId = setTimeout(() => {
 					setUndoStack((prev) => prev.filter((item) => !(item.type === "subchat" && item.subChatId === id)));
@@ -390,7 +393,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 				return {
 					type: "subchat" as const,
 					subChatId: id,
-					chatId: parentChatId,
+					chatId: parentChatId()!,
 					timeoutId
 				};
 			});
@@ -403,7 +406,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 		idsToClose.forEach((id) => state.removeFromOpenSubChats(id));
 		state.setActiveSubChat(subChatId);
 		// Add each to unified undo stack for Cmd+Z
-		if (parentChatId) {
+		if (parentChatId()) {
 			const newItems: UndoItem[] = idsToClose.map((id) => {
 				const timeoutId = setTimeout(() => {
 					setUndoStack((prev) => prev.filter((item) => !(item.type === "subchat" && item.subChatId === id)));
@@ -411,7 +414,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 				return {
 					type: "subchat" as const,
 					subChatId: id,
-					chatId: parentChatId,
+					chatId: parentChatId()!,
 					timeoutId
 				};
 			});
@@ -457,7 +460,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 		}
 	};
 	const handleCreateNew = async () => {
-		if (!parentChatId) return;
+		if (!parentChatId()) return;
 		const store = useAgentSubChatStore.getState();
 		let newId: string;
 		if (chatSourceMode() === "sandbox") {
@@ -467,7 +470,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 		} else {
 			// Local mode: create sub-chat in DB first to get the real ID
 			const newSubChat = await desktopRpc.chats.createSubChat.mutate({
-				chatId: parentChatId,
+				chatId: parentChatId()!,
 				name: "New Chat",
 				mode: defaultAgentMode()
 			});
@@ -497,7 +500,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 		state.setActiveSubChat(subChat.id);
 	};
 	// Sort sub-chats by most recent first for history
-	const sortedSubChats = createMemo(() => [...allSubChats].sort((a, b) => {
+	const sortedSubChats = createMemo(() => [...allSubChats()].sort((a, b) => {
 		const aT = new Date(a.updated_at || a.created_at || "0").getTime();
 		const bT = new Date(b.updated_at || b.created_at || "0").getTime();
 		return bT - aT;
@@ -517,12 +520,12 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	// Check if all selected sub-chats are pinned
 	const areAllSelectedPinned = createMemo(() => {
 		if (selectedSubChatIds().size === 0) return false;
-		return Array.from(selectedSubChatIds()).every((id: string) => pinnedSubChatIds.includes(id));
+		return Array.from(selectedSubChatIds()).every((id: string) => pinnedSubChatIds().includes(id));
 	});
 	// Check if all selected sub-chats are unpinned
 	const areAllSelectedUnpinned = createMemo(() => {
 		if (selectedSubChatIds().size === 0) return false;
-		return Array.from(selectedSubChatIds()).every((id: string) => !pinnedSubChatIds.includes(id));
+		return Array.from(selectedSubChatIds()).every((id: string) => !pinnedSubChatIds().includes(id));
 	});
 	// Show pin option only if all selected have same pin state
 	const canShowPinOption = () => areAllSelectedPinned() || areAllSelectedUnpinned();
@@ -531,7 +534,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 		const idsToPin = Array.from(selectedSubChatIds()) as string[];
 		if (idsToPin.length > 0) {
 			idsToPin.forEach((id: string) => {
-				if (!pinnedSubChatIds.includes(id)) {
+				if (!pinnedSubChatIds().includes(id)) {
 					togglePinSubChat(id);
 				}
 			});
@@ -543,7 +546,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 		const idsToUnpin = Array.from(selectedSubChatIds()) as string[];
 		if (idsToUnpin.length > 0) {
 			idsToUnpin.forEach((id: string) => {
-				if (pinnedSubChatIds.includes(id)) {
+				if (pinnedSubChatIds().includes(id)) {
 					togglePinSubChat(id);
 				}
 			});
@@ -555,10 +558,10 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 		const idsToArchive = Array.from(selectedSubChatIds()) as string[];
 		if (idsToArchive.length > 0) {
 			// Check if closing all open tabs
-			const remainingOpenIds = openSubChatIds.filter((id) => !idsToArchive.includes(id));
+			const remainingOpenIds = openSubChatIds().filter((id) => !idsToArchive.includes(id));
 			if (remainingOpenIds.length === 0) {
 				// Closing all tabs - show archive agent confirmation
-				const firstSubChat = allSubChats.find((sc) => idsToArchive.includes(sc.id));
+				const firstSubChat = allSubChats().find((sc) => idsToArchive.includes(sc.id));
 				if (firstSubChat) {
 					setSubChatToArchive(firstSubChat);
 					setArchiveAgentDialogOpen(true);
@@ -570,7 +573,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 				idsToArchive.forEach((id: string) => state.removeFromOpenSubChats(id));
 				clearSubChatSelection();
 				// Add each to unified undo stack for Cmd+Z
-				if (parentChatId) {
+				if (parentChatId()) {
 					const newItems: UndoItem[] = idsToArchive.map((id: string) => {
 						const timeoutId = setTimeout(() => {
 							setUndoStack((prev) => prev.filter((item) => !(item.type === "subchat" && item.subChatId === id)));
@@ -578,7 +581,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 						return {
 							type: "subchat" as const,
 							subChatId: id,
-							chatId: parentChatId,
+							chatId: parentChatId()!,
 							timeoutId
 						};
 					});
@@ -601,8 +604,9 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 			if (clickedIndex === -1) return;
 			// Find the anchor: use active sub-chat
 			let anchorIndex = -1;
-			if (activeSubChatId) {
-				anchorIndex = filteredSubChats().findIndex((c) => c.id === activeSubChatId);
+			const activeId = activeSubChatId();
+			if (activeId) {
+				anchorIndex = filteredSubChats().findIndex((c) => c.id === activeId);
 			}
 			// If no active sub-chat, try to use the first selected item
 			if (anchorIndex === -1 && selectedSubChatIds().size > 0) {
@@ -677,7 +681,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	]);
 	// Clear selection when parent chat changes (only on change, not initial mount)
 	createEffect(on(
-		() => parentChatId,
+		() => parentChatId(),
 		() => untrack(() => clearSubChatSelection()),
 		{ defer: true }
 	));
@@ -685,13 +689,13 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
 	const draftsCache = useSubChatDraftsCache();
 	// Get draft for a sub-chat
 	const getDraftText = (subChatId: string): string | null => {
-		if (!parentChatId) return null;
-		const key = getSubChatDraftKey(parentChatId, subChatId);
+		if (!parentChatId()) return null;
+		const key = getSubChatDraftKey(parentChatId()!, subChatId);
 		return draftsCache()[key] || null;
 	};
 	// History and Close buttons - reusable element
 	const headerButtons = () => <Show when={local.onClose}><div class="flex items-center gap-1">
-      <SidebarSearchHistoryPopover sortedSubChats={sortedSubChats()} loadingSubChats={loadingSubChats()} subChatUnseenChanges={subChatUnseenChanges} pendingQuestionsMap={pendingQuestionsMap()} allSubChatsLength={allSubChats.length} onSelect={handleSelectFromHistory} />
+      <SidebarSearchHistoryPopover sortedSubChats={sortedSubChats()} loadingSubChats={loadingSubChats()} subChatUnseenChanges={subChatUnseenChanges} pendingQuestionsMap={pendingQuestionsMap()} allSubChatsLength={allSubChats().length} onSelect={handleSelectFromHistory} />
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
           <Button variant="ghost" size="icon" onClick={local.onClose} tabIndex={-1} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground flex-shrink-0 rounded-md" aria-label="Close sidebar">
@@ -816,8 +820,8 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
                       <div class="list-none p-0 m-0 mb-3">
 					  <For each={pinnedChats()}>{(subChat) => {
 	const isSubChatLoading = loadingChatIds().has(subChat.id);
-		const isActive = activeSubChatId === subChat.id;
-		const isPinned = pinnedSubChatIds.includes(subChat.id);
+		const isActive = activeSubChatId() === subChat.id;
+		const isPinned = pinnedSubChatIds().includes(subChat.id);
 		const globalIndex = filteredSubChats().findIndex((c) => c.id === subChat.id);
 		const isFocused = focusedChatIndex() === globalIndex && focusedChatIndex() >= 0;
 		const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
@@ -913,7 +917,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
                                 </div>
                               </ContextMenuTrigger>
                               {		/* Multi-select context menu */}
-                              <Show when={isMultiSelectMode() && selectedSubChatIds().has(subChat.id)} fallback={<SubChatContextMenu subChat={subChat} isPinned={isPinned} onTogglePin={togglePinSubChat} onRename={handleRenameClick} onArchive={handleArchiveSubChat} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={onCloseOtherChats} isOnlyChat={openSubChats().length === 1} currentIndex={globalIndex} totalCount={filteredSubChats().length} chatId={parentChatId} />}><ContextMenuContent class="w-48">
+                              <Show when={isMultiSelectMode() && selectedSubChatIds().has(subChat.id)} fallback={<SubChatContextMenu subChat={subChat} isPinned={isPinned} onTogglePin={togglePinSubChat} onRename={handleRenameClick} onArchive={handleArchiveSubChat} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={onCloseOtherChats} isOnlyChat={openSubChats().length === 1} currentIndex={globalIndex} totalCount={filteredSubChats().length} chatId={parentChatId() ?? null} />}><ContextMenuContent class="w-48">
                                   <Show when={canShowPinOption()}><>
                                       <ContextMenuItem onClick={areAllSelectedPinned() ? handleBulkUnpin : handleBulkPin}>
                                         {areAllSelectedPinned() ? `Unpin ${selectedSubChatIds().size} ${pluralize(selectedSubChatIds().size, "chat")}` : `Pin ${selectedSubChatIds().size} ${pluralize(selectedSubChatIds().size, "chat")}`}
@@ -940,8 +944,8 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
                       <div class="list-none p-0 m-0">
 					  <For each={unpinnedChats()}>{(subChat) => {
 	const isSubChatLoading = loadingChatIds().has(subChat.id);
-		const isActive = activeSubChatId === subChat.id;
-		const isPinned = pinnedSubChatIds.includes(subChat.id);
+		const isActive = activeSubChatId() === subChat.id;
+		const isPinned = pinnedSubChatIds().includes(subChat.id);
 		const globalIndex = filteredSubChats().findIndex((c) => c.id === subChat.id);
 		const isFocused = focusedChatIndex() === globalIndex && focusedChatIndex() >= 0;
 		const timeAgo = formatTimeAgo(subChat.updated_at || subChat.created_at);
@@ -1037,7 +1041,7 @@ export function AgentsSubChatsSidebar(props: AgentsSubChatsSidebarProps) {
                                 </div>
                               </ContextMenuTrigger>
                               {		/* Multi-select context menu */}
-                              <Show when={isMultiSelectMode() && selectedSubChatIds().has(subChat.id)} fallback={<SubChatContextMenu subChat={subChat} isPinned={isPinned} onTogglePin={togglePinSubChat} onRename={handleRenameClick} onArchive={handleArchiveSubChat} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={onCloseOtherChats} isOnlyChat={openSubChats().length === 1} currentIndex={globalIndex} totalCount={filteredSubChats().length} chatId={parentChatId} />}><ContextMenuContent class="w-48">
+                              <Show when={isMultiSelectMode() && selectedSubChatIds().has(subChat.id)} fallback={<SubChatContextMenu subChat={subChat} isPinned={isPinned} onTogglePin={togglePinSubChat} onRename={handleRenameClick} onArchive={handleArchiveSubChat} onArchiveAllBelow={handleArchiveAllBelow} onArchiveOthers={onCloseOtherChats} isOnlyChat={openSubChats().length === 1} currentIndex={globalIndex} totalCount={filteredSubChats().length} chatId={parentChatId() ?? null} />}><ContextMenuContent class="w-48">
                                   <Show when={canShowPinOption()}><>
                                       <ContextMenuItem onClick={areAllSelectedPinned() ? handleBulkUnpin : handleBulkPin}>
                                         {areAllSelectedPinned() ? `Unpin ${selectedSubChatIds().size} ${pluralize(selectedSubChatIds().size, "chat")}` : `Pin ${selectedSubChatIds().size} ${pluralize(selectedSubChatIds().size, "chat")}`}

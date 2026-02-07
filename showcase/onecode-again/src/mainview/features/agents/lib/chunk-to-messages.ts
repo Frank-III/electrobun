@@ -48,15 +48,47 @@ export function reduceChunk(state: ChunkReducerState, chunk: UIMessageChunk): Ch
     }
     case "text-end":
       return { ...state, currentTextId: null };
-    case "tool-input-available": {
+    case "tool-input-start": {
       if (!state.current) return state;
+      // Create a placeholder part immediately so UI shows tool loading
       state.current.parts.push({
         type: `tool-${chunk.toolName}`,
         toolCallId: chunk.toolCallId,
         toolName: chunk.toolName,
-        input: chunk.input,
-        state: "input-available",
+        input: {},
+        state: "input-streaming",
       });
+      return { ...state };
+    }
+    case "tool-input-delta": {
+      // Progressive input streaming - accumulate raw text for display
+      if (!state.current) return state;
+      const deltaPart = state.current.parts.find(
+        (p) => (p as { toolCallId?: string }).toolCallId === chunk.toolCallId
+      ) as (UIMessagePart & { inputText?: string }) | undefined;
+      if (deltaPart) {
+        deltaPart.inputText = (deltaPart.inputText ?? "") + chunk.inputTextDelta;
+      }
+      return { ...state };
+    }
+    case "tool-input-available": {
+      if (!state.current) return state;
+      // Update existing part (from tool-input-start) or create new one
+      const existingPart = state.current.parts.find(
+        (p) => (p as { toolCallId?: string }).toolCallId === chunk.toolCallId
+      ) as (UIMessagePart & { toolCallId?: string; toolName?: string; input?: unknown; state?: string }) | undefined;
+      if (existingPart) {
+        existingPart.input = chunk.input;
+        existingPart.state = "input-available";
+      } else {
+        state.current.parts.push({
+          type: `tool-${chunk.toolName}`,
+          toolCallId: chunk.toolCallId,
+          toolName: chunk.toolName,
+          input: chunk.input,
+          state: "input-available",
+        });
+      }
       return { ...state };
     }
     case "tool-output-available": {

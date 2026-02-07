@@ -9,7 +9,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const lib = b.addLibrary(.{
+    // Build libelectrobun_vt (VT-only library for software terminal emulation)
+    const vt_lib = b.addLibrary(.{
         .name = "electrobun_vt",
         .linkage = .dynamic,
         .root_module = b.createModule(.{
@@ -21,6 +22,5 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-
-    b.installArtifact(lib);
+    b.installArtifact(vt_lib);
 }

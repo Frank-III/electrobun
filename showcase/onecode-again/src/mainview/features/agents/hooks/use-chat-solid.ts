@@ -4,7 +4,7 @@
  */
 import { createSignal, createEffect, onCleanup } from "solid-js";
 import type { RpcChat } from "../lib/rpc-chat";
-import type { UIMessage } from "../../../../shared/chat-rpc";
+import type { ChatStatus, UIMessage } from "../../../../shared/chat-rpc";
 
 export type UseChatSolidOptions<UI_MESSAGE extends UIMessage = UIMessage> = {
   chat: RpcChat;
@@ -21,7 +21,7 @@ export type UseChatSolidReturn<UI_MESSAGE extends UIMessage = UIMessage> = {
   regenerate: RpcChat["regenerate"];
   stop: RpcChat["stop"];
   error: () => Error | undefined;
-  status: () => string;
+  status: () => ChatStatus;
 };
 
 export function useChatSolid<UI_MESSAGE extends UIMessage = UIMessage>(
@@ -30,15 +30,19 @@ export function useChatSolid<UI_MESSAGE extends UIMessage = UIMessage>(
   const { chat, resume = false, experimental_throttle: throttleWaitMs } = options;
 
   const [messages, setMessagesSignal] = createSignal<UI_MESSAGE[]>(chat.messages as UI_MESSAGE[]);
-  const [status, setStatusSignal] = createSignal<string>(chat.status);
+  const [status, setStatusSignal] = createSignal<ChatStatus>(chat.status);
   const [error, setErrorSignal] = createSignal<Error | undefined>(chat.error);
 
   createEffect(() => {
     const unregisterMessages = chat["~registerMessagesCallback"](
-      () => setMessagesSignal(chat.messages as UI_MESSAGE[]),
+      () => {
+        setMessagesSignal(chat.messages as UI_MESSAGE[]);
+      },
       throttleWaitMs
     );
-    const unregisterStatus = chat["~registerStatusCallback"](() => setStatusSignal(chat.status));
+    const unregisterStatus = chat["~registerStatusCallback"](() => {
+      setStatusSignal(chat.status);
+    });
     const unregisterError = chat["~registerErrorCallback"](() => setErrorSignal(chat.error));
     onCleanup(() => {
       unregisterMessages();

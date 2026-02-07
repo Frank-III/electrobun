@@ -5,7 +5,7 @@
  * Use with @tanstack/solid-query for caching; no tRPC dependency.
  */
 import { getRpc } from "./rpc";
-import type { AgentModel, WorktreeConfig } from "../../shared/rpc-schema";
+import type { AgentModel, GitHubStatus, WorktreeConfig } from "../../shared/rpc-schema";
 import type { ToolInput } from "../../shared/chat-rpc";
 
 // MCP Config types
@@ -41,19 +41,19 @@ interface McpOAuthResult {
   error?: string;
 }
 
-// PR Status types
-interface PrStatusResponse {
-  pr: {
-    number: number;
-    title: string;
-    url: string;
-    state: string;
-    reviewDecision?: string;
-  } | null;
-}
-
 function rpc() {
   return getRpc();
+}
+
+const EMPTY_CLAUDE_INTEGRATION = {
+  isConnected: false,
+  connectedAt: null,
+  accountId: null,
+  displayName: null,
+} as const;
+
+async function getClaudeCodeIntegrationSafe() {
+  return (await rpc().claudeCodeGetIntegration({})) ?? EMPTY_CLAUDE_INTEGRATION;
 }
 
 /** Query: () => promise. Mutation: { mutate: (input) => promise }. */
@@ -70,7 +70,7 @@ function mutation<TInput, TOutput>(fn: (input: TInput) => Promise<TOutput>) {
 
 export const desktopRpc = {
   projects: {
-    list: query(() => rpc().projectsList({})),
+    list: query(async () => (await rpc().projectsList({})) ?? []),
     get: (input: { id: string }) => rpc().projectsGet(input),
     openFolder: mutation(() => rpc().projectsOpenFolder({})),
     cloneFromGitHub: mutation((input: { repoUrl: string }) =>
@@ -96,13 +96,13 @@ export const desktopRpc = {
     getLaunchDirectory: () => rpc().projectsGetLaunchDirectory({}),
   },
   chats: {
-    list: query((input?: { projectId?: string }) =>
-      rpc().chatsList(input ?? {}),
+    list: query(async (input?: { projectId?: string }) =>
+      (await rpc().chatsList(input ?? {})) ?? [],
     ),
-    listArchived: query((input?: { projectId?: string }) =>
-      rpc().chatsListArchived(input ?? {}),
+    listArchived: query(async (input?: { projectId?: string }) =>
+      (await rpc().chatsListArchived(input ?? {})) ?? [],
     ),
-    get: (input: { id: string }) => rpc().chatsGet(input),
+    get: async (input: { id: string }) => (await rpc().chatsGet(input)) ?? null,
     create: mutation(
       (input: Parameters<ReturnType<typeof getRpc>["chatsCreate"]>[0]) =>
         rpc().chatsCreate(input),
@@ -118,7 +118,7 @@ export const desktopRpc = {
       rpc().chatsArchiveBatch(input),
     ),
     restore: mutation((input: { id: string }) => rpc().chatsRestore(input)),
-    getSubChat: (input: { id: string }) => rpc().chatsGetSubChat(input),
+    getSubChat: async (input: { id: string }) => (await rpc().chatsGetSubChat(input)) ?? null,
     createSubChat: mutation(
       (input: { chatId: string; name?: string; mode?: "plan" | "agent" }) =>
         rpc().chatsCreateSubChat(input),
@@ -142,7 +142,8 @@ export const desktopRpc = {
       (input: { subChatId: string; sdkMessageUuid: string }) =>
         rpc().chatsRollbackToMessage(input),
     ),
-    getPrStatus: (input: { chatId: string }): Promise<PrStatusResponse> => rpc().chatsGetPrStatus(input) as Promise<PrStatusResponse>,
+    getPrStatus: async (input: { chatId: string }): Promise<GitHubStatus | null> =>
+      (await rpc().chatsGetPrStatus(input)) ?? null,
     getPrContext: (input: { chatId: string }) => rpc().chatsGetPrContext(input),
     updatePrInfo: mutation(
       (input: { chatId: string; prUrl: string; prNumber: number }) =>
@@ -152,12 +153,12 @@ export const desktopRpc = {
       (input: { chatId: string; method?: "merge" | "squash" | "rebase" }) =>
         rpc().chatsMergePr(input),
     ),
-    getFileStats: (input: {
+    getFileStats: async (input: {
       openSubChatIds?: string[];
       chatIds?: string[];
-    }) => rpc().chatsGetFileStats(input),
-    getPendingPlanApprovals: (input: { openSubChatIds: string[] }) =>
-      rpc().chatsGetPendingPlanApprovals(input),
+    }) => (await rpc().chatsGetFileStats(input)) ?? [],
+    getPendingPlanApprovals: async (input: { openSubChatIds: string[] }) =>
+      (await rpc().chatsGetPendingPlanApprovals(input)) ?? [],
     getDiff: (input: { chatId: string }) => rpc().chatsGetDiff(input),
     getParsedDiff: (input: { chatId: string }) =>
       rpc().chatsGetParsedDiff(input),
@@ -185,24 +186,30 @@ export const desktopRpc = {
       rpc().chatsGetChatStats(input),
   },
   changes: {
-    getStatus: (input: {
+    getStatus: async (input: {
       worktreePath: string;
       defaultBranch?: string;
-    }) => rpc().changesGetStatus(input),
-    getBranches: (input: { worktreePath: string }) =>
-      rpc().changesGetBranches(input),
+    }) => (await rpc().changesGetStatus(input)) ?? ({ staged: [], unstaged: [], untracked: [] } as const),
+    getBranches: async (input: { worktreePath: string }) =>
+      (await rpc().changesGetBranches(input)) ?? ({
+        current: "",
+        local: [],
+        remote: [],
+        defaultBranch: "main",
+        checkedOutBranches: {},
+      } as const),
     fetchRemote: mutation((input: { worktreePath: string }) =>
       rpc().changesFetchRemote(input),
     ),
-    getCommitFiles: (input: {
+    getCommitFiles: async (input: {
       worktreePath: string;
       commitHash: string;
-    }) => rpc().changesGetCommitFiles(input),
-    getCommitFileDiff: (input: {
+    }) => (await rpc().changesGetCommitFiles(input)) ?? [],
+    getCommitFileDiff: async (input: {
       worktreePath: string;
       commitHash: string;
       filePath: string;
-    }) => rpc().changesGetCommitFileDiff(input),
+    }) => (await rpc().changesGetCommitFileDiff(input)) ?? "",
     commit: mutation(
       (input: { worktreePath: string; message: string }) =>
         rpc().changesCommit(input),
@@ -226,10 +233,10 @@ export const desktopRpc = {
       (input: { worktreePath: string; filePath: string }) =>
         rpc().changesDiscardChanges(input),
     ),
-    getHistory: (input: { worktreePath: string; limit?: number }) =>
-      rpc().changesGetHistory(input),
-    isWorktreeRegistered: (input: { worktreePath: string }) =>
-      rpc().changesIsWorktreeRegistered(input),
+    getHistory: async (input: { worktreePath: string; limit?: number }) =>
+      (await rpc().changesGetHistory(input)) ?? [],
+    isWorktreeRegistered: async (input: { worktreePath: string }) =>
+      (await rpc().changesIsWorktreeRegistered(input)) ?? false,
     fetch: mutation((input: { worktreePath: string }) =>
       rpc().changesFetch(input),
     ),
@@ -263,8 +270,8 @@ export const desktopRpc = {
       (input: { worktreePath: string; filePaths: string[] }) =>
         rpc().changesDeleteMultipleUntracked(input),
     ),
-    getGitHubStatus: (input: { worktreePath: string }) =>
-      rpc().changesGetGitHubStatus(input),
+    getGitHubStatus: async (input: { worktreePath: string }) =>
+      (await rpc().changesGetGitHubStatus(input)) ?? null,
     stageFile: mutation((input: { worktreePath: string; filePath: string }) =>
       rpc().changesStageFile(input),
     ),
@@ -285,19 +292,24 @@ export const desktopRpc = {
     ),
   },
   files: {
-    readFile: (input: { filePath: string }) => rpc().filesRead(input),
-    search: (input: {
+    readFile: async (input: { filePath: string }) =>
+      (await rpc().filesRead(input)) ?? "",
+    search: async (input: {
       projectPath: string;
       query?: string;
       limit?: number;
-    }) => rpc().filesSearch(input),
+    }) => (await rpc().filesSearch(input)) ?? [],
     writePastedText: mutation(
       (input: { subChatId: string; text: string; filename?: string }) =>
         rpc().filesWritePastedText(input),
     ),
   },
   ollama: {
-    getStatus: () => rpc().ollamaGetStatus({}),
+    getStatus: async () =>
+      (await rpc().ollamaGetStatus({})) ?? {
+        ollama: { available: false, models: [] },
+        internet: { online: true, checked: Date.now() },
+      },
     isOfflineModeAvailable: () => rpc().ollamaIsOfflineModeAvailable({}),
     getModels: () => rpc().ollamaGetModels({}),
     generateChatName: (input: { userMessage: string; model?: string }) =>
@@ -315,14 +327,25 @@ export const desktopRpc = {
       (input: { audioBase64: string; format: string; language?: string }) =>
         rpc().voiceTranscribe(input),
     ),
-    isAvailable: () => rpc().voiceIsAvailable({}),
+    isAvailable: async () =>
+      (await rpc().voiceIsAvailable({})) ?? { available: false, method: null },
     setOpenAIKey: mutation((input: { key: string }) =>
       rpc().voiceSetOpenAIKey(input),
     ),
     hasOpenAIKey: () => rpc().voiceHasOpenAIKey({}),
   },
   worktreeConfig: {
-    get: (input: { projectId: string }) => rpc().worktreeConfigGet(input),
+    get: async (input: { projectId: string }) =>
+      (await rpc().worktreeConfigGet(input)) ?? {
+        config: null,
+        path: null,
+        source: null,
+        available: {
+          cursor: { exists: false, path: "" },
+          onecode: { exists: false, path: "" },
+        },
+        projectPath: input.projectId,
+      },
     save: mutation(
       (input: {
         projectId: string;
@@ -330,11 +353,15 @@ export const desktopRpc = {
         target?: string;
       }) => rpc().worktreeConfigSave(input),
     ),
-    getAvailablePaths: (input: { projectId: string }) =>
-      rpc().worktreeConfigGetAvailablePaths(input),
+    getAvailablePaths: async (input: { projectId: string }) =>
+      (await rpc().worktreeConfigGetAvailablePaths(input)) ?? {
+        cursor: { exists: false, path: "" },
+        onecode: { exists: false, path: "" },
+      },
   },
   claudeSettings: {
-    getIncludeCoAuthoredBy: () => rpc().claudeSettingsGetIncludeCoAuthoredBy({}),
+    getIncludeCoAuthoredBy: async () =>
+      (await rpc().claudeSettingsGetIncludeCoAuthoredBy({})) ?? false,
     setIncludeCoAuthoredBy: mutation((input: { enabled: boolean }) =>
       rpc().claudeSettingsSetIncludeCoAuthoredBy(input),
     ),
@@ -360,7 +387,7 @@ export const desktopRpc = {
   claudeCode: {
     hasExistingCliConfig: () => rpc().claudeCodeHasExistingCliConfig({}),
     getSystemToken: () => rpc().claudeCodeGetSystemToken({}),
-    getIntegration: () => rpc().claudeCodeGetIntegration({}),
+    getIntegration: async () => getClaudeCodeIntegrationSafe(),
     startAuth: mutation(() => rpc().claudeCodeStartAuth({})),
     submitCode: mutation((input: { sandboxUrl: string; sessionId: string; code: string }) =>
       rpc().claudeCodeSubmitCode(input),
@@ -381,6 +408,12 @@ export const desktopRpc = {
     isMaximized: () => rpc().windowIsMaximized({}),
     toggleFullscreen: mutation(() => rpc().windowToggleFullscreen({})),
     isFullscreen: () => rpc().windowIsFullscreen({}),
+    setTrafficLightVisibility: mutation((input: { visible: boolean }) =>
+      rpc().windowSetTrafficLightVisibility(input),
+    ),
+    setTrafficLightPosition: mutation((input: { x: number; y: number }) =>
+      rpc().windowSetTrafficLightPosition(input),
+    ),
     setTitle: mutation((input: { title: string }) => rpc().setWindowTitle(input)),
   },
   notifications: {
@@ -417,20 +450,20 @@ export const desktopRpc = {
     list: () => rpc().ghosttyTabsList({}),
   },
   commands: {
-    list: (input?: { projectPath?: string }) =>
-      rpc().commandsList(input ?? {}),
-    getContent: (input: { path: string }) =>
-      rpc().commandsGetContent(input),
+    list: async (input?: { projectPath?: string }) =>
+      (await rpc().commandsList(input ?? {})) ?? [],
+    getContent: async (input: { path: string }) =>
+      (await rpc().commandsGetContent(input)) ?? { content: "" },
   },
   skills: {
-    list: (input?: { cwd?: string }) => rpc().skillsList(input ?? {}),
-    listEnabled: (input?: { cwd?: string }) =>
-      rpc().skillsListEnabled(input ?? {}),
+    list: async (input?: { cwd?: string }) => (await rpc().skillsList(input ?? {})) ?? [],
+    listEnabled: async (input?: { cwd?: string }) =>
+      (await rpc().skillsListEnabled(input ?? {})) ?? [],
   },
   agents: {
-    list: (input?: { cwd?: string }) => rpc().agentsList(input ?? {}),
-    listEnabled: (input?: { cwd?: string }) =>
-      rpc().agentsListEnabled(input ?? {}),
+    list: async (input?: { cwd?: string }) => (await rpc().agentsList(input ?? {})) ?? [],
+    listEnabled: async (input?: { cwd?: string }) =>
+      (await rpc().agentsListEnabled(input ?? {})) ?? [],
     get: (input: { name: string; cwd?: string }) => rpc().agentsGet(input),
     create: mutation(
       (input: {
@@ -483,9 +516,19 @@ export const desktopRpc = {
     ),
   },
   debug: {
-    getSystemInfo: () => rpc().debugGetSystemInfo({}),
-    getDbStats: () => rpc().debugGetDbStats({}),
-    getOfflineSimulation: () => rpc().debugGetOfflineSimulation({}),
+    getSystemInfo: async () =>
+      (await rpc().debugGetSystemInfo({})) ?? {
+        version: "unknown",
+        platform: "unknown",
+        arch: "unknown",
+        isDev: false,
+        userDataPath: "",
+        protocolRegistered: false,
+      },
+    getDbStats: async () =>
+      (await rpc().debugGetDbStats({})) ?? { projects: 0, chats: 0, subChats: 0 },
+    getOfflineSimulation: async () =>
+      (await rpc().debugGetOfflineSimulation({})) ?? { enabled: false },
     setOfflineSimulation: mutation((input: { enabled: boolean }) =>
       rpc().debugSetOfflineSimulation(input),
     ),
@@ -516,7 +559,7 @@ export const desktopRpc = {
   anthropicAccounts: {
     list: async () => {
       // Get integration status to check if connected
-      const integration = await rpc().claudeCodeGetIntegration({});
+      const integration = await getClaudeCodeIntegrationSafe();
       if (!integration.isConnected) {
         return [];
       }
@@ -528,7 +571,7 @@ export const desktopRpc = {
       }];
     },
     getActive: async () => {
-      const integration = await rpc().claudeCodeGetIntegration({});
+      const integration = await getClaudeCodeIntegrationSafe();
       if (!integration.isConnected) {
         return null;
       }

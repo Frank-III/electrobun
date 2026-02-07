@@ -248,6 +248,16 @@ export class BrowserWindow<T extends RPCWithTransport = RPCWithTransport> {
 		return ffi.request.isWindowFullScreen({ winId: this.id });
 	}
 
+	// macOS: show/hide and position native window controls ("traffic lights").
+	// No-op on other platforms.
+	setTrafficLightVisibility(visible: boolean) {
+		return ffi.request.setTrafficLightVisibility({ winId: this.id, visible });
+	}
+
+	setTrafficLightPosition(x: number, y: number) {
+		return ffi.request.setTrafficLightPosition({ winId: this.id, x, y });
+	}
+
 	setAlwaysOnTop(alwaysOnTop: boolean) {
 		return ffi.request.setWindowAlwaysOnTop({ winId: this.id, alwaysOnTop });
 	}
@@ -288,6 +298,62 @@ export class BrowserWindow<T extends RPCWithTransport = RPCWithTransport> {
 	getSize(): { width: number; height: number } {
 		const frame = this.getFrame();
 		return { width: frame.width, height: frame.height };
+	}
+
+	// Ghostty native view management
+	// Creates an NSView as a subview of the window's ContainerView for hosting
+	// a ghostty terminal surface. Returns the native view ID and a pointer to
+	// the NSView (as a BigUint64Array element).
+	ghosttyCreateNativeView(
+		x: number,
+		y: number,
+		width: number,
+		height: number,
+	): { nativeViewId: number; nsViewPtr: Pointer } {
+		const outViewPtrBuf = new BigUint64Array(1);
+		const nativeViewId = ffi.request.ghosttyCreateNativeView(
+			this.ptr,
+			x,
+			y,
+			width,
+			height,
+			outViewPtrBuf,
+		);
+		const nsViewPtr = Number(outViewPtrBuf[0]) as unknown as Pointer;
+		return { nativeViewId, nsViewPtr };
+	}
+
+	ghosttyResizeNativeView(
+		surfaceId: number,
+		x: number,
+		y: number,
+		width: number,
+		height: number,
+	) {
+		ffi.request.ghosttyResizeNativeView(
+			this.ptr,
+			surfaceId,
+			x,
+			y,
+			width,
+			height,
+		);
+	}
+
+	ghosttyDestroyNativeView(surfaceId: number) {
+		ffi.request.ghosttyDestroyNativeView(surfaceId);
+	}
+
+	ghosttyFocusNativeView(surfaceId: number) {
+		ffi.request.ghosttyFocusNativeView(this.ptr, surfaceId);
+	}
+
+	ghosttyGetScaleFactor(): number {
+		return ffi.request.ghosttyGetScaleFactor(this.ptr);
+	}
+
+	ghosttySetSurfacePtr(surfaceId: number, surfacePtr: Pointer, libghosttyPath: string) {
+		ffi.request.ghosttySetSurfacePtr(surfaceId, surfacePtr, libghosttyPath);
 	}
 
 	// todo (yoav): move this to a class that also has off, append, prepend, etc.

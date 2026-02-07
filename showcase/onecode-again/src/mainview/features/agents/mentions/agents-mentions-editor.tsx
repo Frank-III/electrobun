@@ -1,5 +1,5 @@
 import { cn } from "../../../lib/utils";
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show, type JSX } from "solid-js";
 import { debounce } from "@solid-primitives/scheduled";
 import { createFileIconElement } from "./agents-file-mention";
 // Threshold for skipping expensive trigger detection (characters)
@@ -1163,10 +1163,10 @@ interface UndoState {
 					{props.placeholder}
 				</div>
 			</Show>
-          <div ref={el => editorRef = el} contentEditable={!props.disabled} spellcheck={false} onInput={handleInput} onKeyDown={(e: KeyboardEvent) => handleKeyDown(e)} onPaste={(e: ClipboardEvent) => {
+          <div ref={el => editorRef = el} contentEditable={!props.disabled} spellcheck={false} style={{ "-webkit-app-region": "no-drag" } as JSX.CSSProperties} onInput={handleInput} onKeyDown={(e: KeyboardEvent) => handleKeyDown(e)} onPaste={(e: ClipboardEvent) => {
 		// Save state for undo before paste (immediate, not debounced)
 		immediateSaveUndoState();
 		props.onPaste?.(e);
-	}} onFocus={props.onFocus} onBlur={props.onBlur} class={cn("min-h-[24px] outline-none whitespace-pre-wrap break-words text-sm relative", props.disabled && "opacity-50 cursor-not-allowed", props.class)} />
+	}} onFocus={props.onFocus} onBlur={props.onBlur} class={cn("min-h-[24px] outline-none whitespace-pre-wrap break-words text-sm relative select-text cursor-text", props.disabled && "opacity-50 cursor-not-allowed", props.class)} />
         </div>;
 }

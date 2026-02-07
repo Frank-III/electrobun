@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Show } from "solid-js";
+import { createMemo, createSignal, mergeProps, Show } from "solid-js";
 import { loadingSubChatsAtom } from "../atoms";
 import { Plus, ChevronDown, Play, AlignJustify, FolderDown } from "lucide-solid";
 import { IconSpinner, PlanIcon, AgentIcon, DiffIcon, CustomTerminalIcon, IconTextUndo } from "../../../components/ui/icons";
@@ -30,7 +30,8 @@ interface MobileChatHeaderProps {
 	onOpenLocally?: () => void;
 	showOpenLocally?: boolean;
 }
-export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, canOpenPreview = false, onOpenDiff, canOpenDiff = false, diffStats, onOpenTerminal, canOpenTerminal = false, isArchived = false, onRestore, onOpenLocally, showOpenLocally = false }: MobileChatHeaderProps) {
+export function MobileChatHeader(rawProps: MobileChatHeaderProps) {
+	const props = mergeProps({ canOpenPreview: false, canOpenDiff: false, canOpenTerminal: false, isArchived: false, showOpenLocally: false }, rawProps);
 	const subChatStore = useAgentSubChatStore();
 	const activeSubChatId = createMemo(() => subChatStore.activeSubChatId);
 	const allSubChats = createMemo(() => subChatStore.allSubChats);
@@ -44,7 +45,7 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
 		const id = activeSubChatId();
 		return id ? loadingSubChats().has(id) : false;
 	});
-	const mode = activeSubChat()?.mode || "agent";
+	const mode = () => activeSubChat()?.mode || "agent";
 	// Sort sub-chats by most recent first for history
 	const sortedSubChats = createMemo(() => [...allSubChats()].sort((a, b) => {
 		const aT = new Date(a.updated_at || a.created_at || "0").getTime();
@@ -65,7 +66,7 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
 	};
 	return <div class="flex items-center gap-1.5 h-7 w-full min-w-0" style={{ "-webkit-app-region": "drag" }}>
       {	/* Burger button - opens all projects */}
-      <Show when={onBackToChats}><Button variant="ghost" size="icon" onClick={onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="All projects" style={{ "-webkit-app-region": "no-drag" }}>
+      <Show when={props.onBackToChats}><Button variant="ghost" size="icon" onClick={props.onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="All projects" style={{ "-webkit-app-region": "no-drag" }}>
           <AlignJustify class="h-4 w-4" />
         </Button></Show>
 
@@ -85,14 +86,14 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
             <button class={cn("flex items-center gap-1.5 h-7 px-2 rounded-md text-sm", "bg-muted/50 hover:bg-muted transition-colors", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", "min-w-0 max-w-[50vw] shrink")} style={{ "-webkit-app-region": "no-drag" }}>
               {	/* Icon */}
               <div class="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
-                <Show when={isLoading} fallback={<Show when={mode === "plan"} fallback={<AgentIcon class="w-3.5 h-3.5 text-muted-foreground" />}><PlanIcon class="w-3.5 h-3.5 text-muted-foreground" /></Show>}>
+                <Show when={isLoading()} fallback={<Show when={mode() === "plan"} fallback={<AgentIcon class="w-3.5 h-3.5 text-muted-foreground" />}><PlanIcon class="w-3.5 h-3.5 text-muted-foreground" /></Show>}>
                   <IconSpinner class="w-3.5 h-3.5 text-muted-foreground" />
                 </Show>
               </div>
 
               { /* Name */}
               <span class="truncate text-left">
-                {activeSubChat?.name || "New Chat"}
+                {activeSubChat()?.name || "New Chat"}
               </span>
 
               { /* Chevron */}
@@ -106,35 +107,35 @@ export function MobileChatHeader({ onCreateNew, onBackToChats, onOpenPreview, ca
       { /* Action buttons - always on the right */}
       <div class="flex items-center gap-1 flex-shrink-0" style={{ "-webkit-app-region": "no-drag" }}>
         { /* Open Locally - only for sandbox chats */}
-        <Show when={showOpenLocally && onOpenLocally}><Button variant="default" size="sm" onClick={onOpenLocally} class="h-7 px-2.5 gap-1.5 text-xs font-medium">
+        <Show when={props.showOpenLocally && props.onOpenLocally}><Button variant="default" size="sm" onClick={props.onOpenLocally} class="h-7 px-2.5 gap-1.5 text-xs font-medium">
             <FolderDown class="h-3.5 w-3.5" />
             Open Locally
           </Button></Show>
 
         { /* Create new */}
-        <Button variant="ghost" size="icon" onClick={onCreateNew} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md">
+        <Button variant="ghost" size="icon" onClick={props.onCreateNew} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md">
           <Plus class="h-4 w-4" />
         </Button>
 
         { /* Terminal button */}
-        <Show when={onOpenTerminal && canOpenTerminal}><Button variant="ghost" size="icon" onClick={onOpenTerminal} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md">
+        <Show when={props.onOpenTerminal && props.canOpenTerminal}><Button variant="ghost" size="icon" onClick={props.onOpenTerminal} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md">
             <CustomTerminalIcon class="h-4 w-4" />
           </Button></Show>
 
         { /* Diff button */}
-        <Show when={onOpenDiff && canOpenDiff}><Button variant="ghost" size="icon" onClick={onOpenDiff} disabled={!diffStats?.hasChanges || diffStats?.isLoading} class={cn("h-7 w-7 p-0 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md", diffStats?.hasChanges && !diffStats?.isLoading ? "hover:bg-foreground/10" : "text-muted-foreground")}>
-            <Show when={diffStats?.isLoading} fallback={<DiffIcon class="h-4 w-4" />}>
+        <Show when={props.onOpenDiff && props.canOpenDiff}><Button variant="ghost" size="icon" onClick={props.onOpenDiff} disabled={!props.diffStats?.hasChanges || props.diffStats?.isLoading} class={cn("h-7 w-7 p-0 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md", props.diffStats?.hasChanges && !props.diffStats?.isLoading ? "hover:bg-foreground/10" : "text-muted-foreground")}>
+            <Show when={props.diffStats?.isLoading} fallback={<DiffIcon class="h-4 w-4" />}>
               <IconSpinner class="h-4 w-4" />
             </Show>
           </Button></Show>
 
         { /* Preview button */}
-        <Show when={onOpenPreview && canOpenPreview}><Button variant="ghost" size="icon" onClick={onOpenPreview} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md">
+        <Show when={props.onOpenPreview && props.canOpenPreview}><Button variant="ghost" size="icon" onClick={props.onOpenPreview} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md">
             <Play class="h-4 w-4" />
           </Button></Show>
 
         { /* Restore button - only when viewing archived workspace */}
-        <Show when={isArchived && onRestore}><Button variant="ghost" onClick={onRestore} class="h-7 px-2 gap-1.5 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md flex items-center">
+        <Show when={props.isArchived && props.onRestore}><Button variant="ghost" onClick={props.onRestore} class="h-7 px-2 gap-1.5 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md flex items-center">
             <IconTextUndo class="h-4 w-4" />
             <span class="text-xs">Restore</span>
           </Button></Show>

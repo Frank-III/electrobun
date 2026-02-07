@@ -9,6 +9,9 @@ type TerminalListenerMap = {
   [K in TerminalMessageKey]: Set<(payload: TerminalMessages[K]) => void>;
 };
 
+const shouldLogBunInfo =
+  typeof window !== "undefined" && window.localStorage.getItem("DEBUG_BUN_LOGS") === "1";
+
 const terminalListeners: TerminalListenerMap = {
   data: new Set(),
   exit: new Set(),
@@ -20,7 +23,9 @@ const terminalListeners: TerminalListenerMap = {
 const chatListeners = new Map<string, Set<(chunk: UIMessageChunk) => void>>();
 
 const rpc = Electroview.defineRPC<AppRPC>({
-  maxRequestTime: 10000,
+  // Worktree setup and initial chat hydration can legitimately exceed 10s.
+  // Keep RPC requests alive long enough to avoid false timeout->null flows.
+  maxRequestTime: 120000,
   handlers: {
     requests: {},
     messages: {
@@ -39,7 +44,7 @@ const rpc = Electroview.defineRPC<AppRPC>({
       log: ({ level, message }) => {
         if (level === "error") {
           console.error(`[bun] ${message}`);
-        } else {
+        } else if (shouldLogBunInfo) {
           console.log(`[bun] ${message}`);
         }
       },
@@ -59,7 +64,7 @@ const rpc = Electroview.defineRPC<AppRPC>({
 });
 
 // Initialize Electroview with the typed RPC
-const electroview = new Electrobun.Electroview<AppRPC>({ rpc });
+const electroview = new Electrobun.Electroview({ rpc });
 
 // Export the typed request client directly
 export const rpcRequest = rpc.request;

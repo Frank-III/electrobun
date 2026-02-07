@@ -1,6 +1,7 @@
 import path from "node:path";
+import { rmSync } from "node:fs";
 import { $ } from "bun";
-import { solidTransformPlugin } from "./solid-plugin";
+import { solidTransformPlugins } from "./solid-plugin";
 
 const isMinify = process.argv.includes("--minify");
 const isWatch = process.argv.includes("--watch");
@@ -36,6 +37,9 @@ async function buildCSS() {
 
 async function buildJS() {
   console.log(`[build-ui] Building JS ${isMinify ? "(minified)" : "(dev)"}...`);
+
+  // Ensure stale chunks/maps cannot survive across incremental desktop builds.
+  rmSync(outdir, { recursive: true, force: true });
   
   const result = await Bun.build({
     entrypoints: [path.resolve(projectRoot, "src/mainview/main.tsx")],
@@ -45,9 +49,10 @@ async function buildJS() {
     splitting: true,
     sourcemap: isMinify ? "none" : "linked",
     minify: isMinify,
-    plugins: [solidTransformPlugin()],
+    plugins: solidTransformPlugins(),
     define: {
       "process.env.NODE_ENV": JSON.stringify(isMinify ? "production" : "development"),
+      "process.env.DEBUG": JSON.stringify(""),
       "import.meta.env.DEV": JSON.stringify(!isMinify),
       "import.meta.env.PROD": JSON.stringify(isMinify),
       "import.meta.env.MODE": JSON.stringify(isMinify ? "production" : "development"),

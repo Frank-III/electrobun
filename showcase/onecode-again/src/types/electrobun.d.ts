@@ -9,36 +9,99 @@ declare module "electrobun/*" {
 }
 
 declare module "electrobun/view" {
-  type RequestMap<T> = T extends { requests: infer R } ? R : Record<string, never>;
-  type RequestClient<T> = {
-    [K in keyof RequestMap<T>]: RequestMap<T>[K] extends { params?: infer P; response: infer R }
+  type RPCTransport = {
+    send?: (data: unknown) => void;
+    registerHandler?: (handler: (msg: unknown) => void) => void;
+    unregisterHandler?: () => void;
+  };
+
+  export type RPCWithTransport = {
+    setTransport: (transport: RPCTransport) => void;
+  };
+
+  type SideRequests<T> = T extends { requests: infer R } ? R : Record<string, never>;
+  type SideMessages<T> = T extends { messages: infer M } ? M : Record<string, never>;
+  type BunSide<T> = T extends { bun: infer B } ? B : { requests: Record<string, never>; messages: Record<string, never> };
+  type WebviewSide<T> = T extends { webview: infer W } ? W : { requests: Record<string, never>; messages: Record<string, never> };
+
+  type RequestFn<TRequest> = TRequest extends { response: infer R }
+    ? TRequest extends { params?: infer P }
       ? undefined extends P
         ? (params?: P) => Promise<R>
         : (params: P) => Promise<R>
-      : RequestMap<T>[K] extends { params: infer P; response: infer R }
+      : TRequest extends { params: infer P }
         ? (params: P) => Promise<R>
-        : never;
+        : () => Promise<R>
+    : never;
+
+  type RequestHandlerFn<TRequest> = TRequest extends { response: infer R }
+    ? TRequest extends { params?: infer P }
+      ? undefined extends P
+        ? (params?: P) => R | Promise<R>
+        : (params: P) => R | Promise<R>
+      : TRequest extends { params: infer P }
+        ? (params: P) => R | Promise<R>
+        : () => R | Promise<R>
+    : never;
+
+  type MessageSenderFn<TPayload> = void extends TPayload
+    ? () => void
+    : undefined extends TPayload
+      ? (payload?: TPayload) => void
+      : (payload: TPayload) => void;
+
+  type RequestClient<TRequests> = {
+    [K in keyof TRequests]: RequestFn<TRequests[K]>;
   };
 
-  type MessageMap<T> = T extends { messages: infer M } ? M : Record<string, never>;
-  type MessageHandlers<T> = {
-    [K in keyof MessageMap<T>]: (payload: MessageMap<T>[K]) => void;
+  type RequestHandlers<TRequests> = Partial<{
+    [K in keyof TRequests]: RequestHandlerFn<TRequests[K]>;
+  }>;
+
+  type MessageSenders<TMessages> = {
+    [K in keyof TMessages]-?: MessageSenderFn<TMessages[K]>;
   };
 
-  export type RPCDefinition<T> = {
-    maxRequestTime?: number;
-    handlers: {
-      requests: Partial<RequestClient<T extends { bun: infer B } ? B : never>>;
-      messages: Partial<MessageHandlers<T extends { webview: infer W } ? W : never>>;
-    };
-    /** Request client for invoking bun-side procedures (available after defineRPC initializes) */
-    request: RequestClient<T extends { bun: infer B } ? B : never>;
+  type MessageHandlers<TMessages> = Partial<{
+    [K in keyof TMessages]: (payload: TMessages[K]) => void;
+  }> & {
+    "*"?: (messageName: keyof TMessages, payload: TMessages[keyof TMessages]) => void;
   };
 
-  export class Electroview<T> {
-    rpc?: { request: RequestClient<T extends { bun: infer B } ? B : never> };
-    constructor(options: { rpc: RPCDefinition<T> });
-    static defineRPC<T>(config: Omit<RPCDefinition<T>, 'request'>): RPCDefinition<T>;
+  type AddMessageListener<TMessages> = {
+    (message: "*", listener: (messageName: keyof TMessages, payload: TMessages[keyof TMessages]) => void): void;
+    <K extends keyof TMessages>(message: K, listener: (payload: TMessages[K]) => void): void;
+  };
+
+  type RemoveMessageListener<TMessages> = {
+    (message: "*", listener: (messageName: keyof TMessages, payload: TMessages[keyof TMessages]) => void): void;
+    <K extends keyof TMessages>(message: K, listener: (payload: TMessages[K]) => void): void;
+  };
+
+  type RPCDefinition<TRequests, TSendMessages, TReceiveMessages> = {
+    setTransport: (transport: RPCTransport) => void;
+    request: RequestClient<TRequests>;
+    send: MessageSenders<TSendMessages>;
+    addMessageListener: AddMessageListener<TReceiveMessages>;
+    removeMessageListener: RemoveMessageListener<TReceiveMessages>;
+  };
+
+  export type WebviewRPCDefinition<TSchema> = RPCDefinition<
+    SideRequests<BunSide<TSchema>>,
+    SideMessages<BunSide<TSchema>>,
+    SideMessages<WebviewSide<TSchema>>
+  >;
+
+  export class Electroview<T extends RPCWithTransport = RPCWithTransport> {
+    rpc?: T;
+    constructor(options: { rpc: T });
+    static defineRPC<TSchema>(config: {
+      maxRequestTime?: number;
+      handlers: {
+        requests?: RequestHandlers<SideRequests<WebviewSide<TSchema>>>;
+        messages?: MessageHandlers<SideMessages<WebviewSide<TSchema>>>;
+      };
+    }): WebviewRPCDefinition<TSchema>;
   }
 
   const Electrobun: {
@@ -50,46 +113,109 @@ declare module "electrobun/view" {
 
 declare module "electrobun/bun" {
   export type RPCSchema<T> = T;
-
-  type RequestMap<T> = T extends { requests: infer R } ? R : Record<string, never>;
-  type RequestHandlers<T> = {
-    [K in keyof RequestMap<T>]: (
-      params: RequestMap<T>[K] extends { params: infer P } ? P : never
-    ) => Promise<RequestMap<T>[K] extends { response: infer R } ? R : never> | (RequestMap<T>[K] extends { response: infer R } ? R : never);
+  export type RPCTransport = {
+    send?: (data: unknown) => void;
+    registerHandler?: (handler: (msg: unknown) => void) => void;
+    unregisterHandler?: () => void;
+  };
+  export type RPCWithTransport = {
+    setTransport: (transport: RPCTransport) => void;
   };
 
-  type MessageMap<T> = T extends { messages: infer M } ? M : Record<string, never>;
-  type MessageHandlers<T> = {
-    [K in keyof MessageMap<T>]: (payload: MessageMap<T>[K]) => void;
-  } & {
-    "*": (messageName: string, payload: unknown) => void;
+  type SideRequests<T> = T extends { requests: infer R } ? R : Record<string, never>;
+  type SideMessages<T> = T extends { messages: infer M } ? M : Record<string, never>;
+  type BunSide<T> = T extends { bun: infer B } ? B : { requests: Record<string, never>; messages: Record<string, never> };
+  type WebviewSide<T> = T extends { webview: infer W } ? W : { requests: Record<string, never>; messages: Record<string, never> };
+
+  type RequestFn<TRequest> = TRequest extends { response: infer R }
+    ? TRequest extends { params?: infer P }
+      ? undefined extends P
+        ? (params?: P) => Promise<R>
+        : (params: P) => Promise<R>
+      : TRequest extends { params: infer P }
+        ? (params: P) => Promise<R>
+        : () => Promise<R>
+    : never;
+
+  type RequestHandlerFn<TRequest> = TRequest extends { response: infer R }
+    ? TRequest extends { params?: infer P }
+      ? undefined extends P
+        ? (params?: P) => R | Promise<R>
+        : (params: P) => R | Promise<R>
+      : TRequest extends { params: infer P }
+        ? (params: P) => R | Promise<R>
+        : () => R | Promise<R>
+    : never;
+
+  type MessageSenderFn<TPayload> = void extends TPayload
+    ? () => void
+    : undefined extends TPayload
+      ? (payload?: TPayload) => void
+      : (payload: TPayload) => void;
+
+  type RequestClient<TRequests> = {
+    [K in keyof TRequests]: RequestFn<TRequests[K]>;
   };
 
-  export class BrowserView<T> {
-    rpc?: { 
-      send: T extends { webview: { messages: infer M } } 
-        ? { [K in keyof M]: (payload: M[K]) => void }
-        : Record<string, (payload: unknown) => void>;
-    };
+  type RequestHandlers<TRequests> = Partial<{
+    [K in keyof TRequests]: RequestHandlerFn<TRequests[K]>;
+  }>;
+
+  type MessageSenders<TMessages> = {
+    [K in keyof TMessages]-?: MessageSenderFn<TMessages[K]>;
+  };
+
+  type MessageHandlers<TMessages> = Partial<{
+    [K in keyof TMessages]: (payload: TMessages[K]) => void;
+  }> & {
+    "*"?: (messageName: keyof TMessages, payload: TMessages[keyof TMessages]) => void;
+  };
+
+  type AddMessageListener<TMessages> = {
+    (message: "*", listener: (messageName: keyof TMessages, payload: TMessages[keyof TMessages]) => void): void;
+    <K extends keyof TMessages>(message: K, listener: (payload: TMessages[K]) => void): void;
+  };
+
+  type RemoveMessageListener<TMessages> = {
+    (message: "*", listener: (messageName: keyof TMessages, payload: TMessages[keyof TMessages]) => void): void;
+    <K extends keyof TMessages>(message: K, listener: (payload: TMessages[K]) => void): void;
+  };
+
+  type RPCDefinition<TRequests, TSendMessages, TReceiveMessages> = {
+    setTransport: (transport: RPCTransport) => void;
+    request: RequestClient<TRequests>;
+    send: MessageSenders<TSendMessages>;
+    addMessageListener: AddMessageListener<TReceiveMessages>;
+    removeMessageListener: RemoveMessageListener<TReceiveMessages>;
+  };
+
+  export type BunRPCDefinition<TSchema> = RPCDefinition<
+    SideRequests<WebviewSide<TSchema>>,
+    SideMessages<WebviewSide<TSchema>>,
+    SideMessages<BunSide<TSchema>>
+  >;
+
+  export class BrowserView<T extends RPCWithTransport = RPCWithTransport> {
+    rpc?: T;
     on(event: "dom-ready", handler: () => void): void;
-    static defineRPC<T>(config: {
+    static defineRPC<TSchema>(config: {
       maxRequestTime?: number;
       handlers: {
-        requests: Partial<RequestHandlers<T extends { bun: infer B } ? B : never>>;
-        messages: Partial<MessageHandlers<T extends { webview: infer W } ? W : never>>;
+        requests?: RequestHandlers<SideRequests<BunSide<TSchema>>>;
+        messages?: MessageHandlers<SideMessages<BunSide<TSchema>>>;
       };
-    }): unknown;
+    }): BunRPCDefinition<TSchema>;
   }
 
-  export class BrowserWindow<T = unknown> {
+  export class BrowserWindow<T extends RPCWithTransport = RPCWithTransport> {
     id: number;
     webview?: BrowserView<T>;
     constructor(options: {
       title?: string;
       url?: string;
       frame?: { width: number; height: number; x?: number; y?: number };
-      titleBarStyle?: "hiddenInset" | "default";
-      rpc?: unknown;
+      titleBarStyle?: "hidden" | "hiddenInset" | "default";
+      rpc?: T;
     });
     minimize(): void;
     maximize(): void;
@@ -97,6 +223,9 @@ declare module "electrobun/bun" {
     isMaximized(): boolean;
     setFullScreen(value: boolean): void;
     isFullScreen(): boolean;
+    setTitle(title: string): void;
+    setTrafficLightVisibility(visible: boolean): void;
+    setTrafficLightPosition(x: number, y: number): void;
     close(): void;
     on(event: "close", handler: () => void): void;
   }
@@ -131,6 +260,8 @@ declare module "electrobun/bun" {
     openPath: (path: string) => boolean;
     showItemInFolder: (path: string) => void;
     moveToTrash: (path: string) => boolean;
+    clipboardReadText: () => string | null;
+    clipboardWriteText: (text: string) => void;
     clipboard: {
       writeText: (text: string) => void;
       readText: () => Promise<string>;

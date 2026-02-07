@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js"
+import { createSignal, untrack } from "solid-js"
 import { ReactiveSet } from "@solid-primitives/set"
 import { createPersistedSignal } from "./signal-storage"
 import { createKeyedSignalFamily, createSignalMap } from "./signal-map"
@@ -285,12 +285,12 @@ export const diffSidebarOpenAtomFamily = createSignalMap((chatId) => {
   }
 
   const set = (value: boolean | ((prev: boolean) => boolean)) => {
-    const currentValue = get()
+    const currentValue = untrack(() => get())
     const isOpen = typeof value === "function" ? (value as (prev: boolean) => boolean)(currentValue) : value
-    const currentRuntime = diffSidebarOpenRuntimeAtom[0]()
+    const currentRuntime = untrack(() => diffSidebarOpenRuntimeAtom[0]())
     diffSidebarOpenRuntimeAtom[1]({ ...currentRuntime, [chatId]: isOpen })
 
-    const current = diffSidebarOpenStorageAtom[0]()
+    const current = untrack(() => diffSidebarOpenStorageAtom[0]())
     diffSidebarOpenStorageAtom[1]({ ...current, [chatId]: isOpen })
   }
 
@@ -643,7 +643,7 @@ const planEditRefetchTriggerStorageAtom = createSignal<Record<string, number>>({
 export const planEditRefetchTriggerAtomFamily = createSignalMap((chatId) => {
   const get = () => planEditRefetchTriggerStorageAtom[0]()[chatId] ?? 0
   const set = (value?: number | ((prev: number) => number)) => {
-    const current = planEditRefetchTriggerStorageAtom[0]()
+    const current = untrack(() => planEditRefetchTriggerStorageAtom[0]())
     const prev = current[chatId] ?? 0
     const next =
       value === undefined

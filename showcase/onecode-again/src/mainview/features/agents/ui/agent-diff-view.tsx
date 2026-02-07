@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, ErrorBoundary, For, onCleanup, Show, splitProps, type Component, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, ErrorBoundary, For, mergeProps, onCleanup, Show, splitProps, type Component, type JSX } from "solid-js";
 // Solid-compatible stubs for React APIs used in this file (no actual deferral; can be refined later)
 function useDeferredValue<T>(value: T | (() => T)): T | (() => T) {
 	// If it's an accessor (function), return a memo so consumers stay reactive
@@ -263,7 +263,8 @@ interface FileDiffCardProps {
 	showViewed?: boolean;
 }
 
-function FileDiffCard({ file, isLight, isCollapsed, toggleCollapsed, isFullExpanded, toggleFullExpanded, hasContent, isLoadingContent, diffMode, worktreePath, onDiscardFile, isViewed, onToggleViewed, showViewed = true }: FileDiffCardProps) {
+function FileDiffCard(rawProps: FileDiffCardProps) {
+	const props = mergeProps({ showViewed: true }, rawProps);
 	const [diffCardRef, setDiffCardRef] = createSignal<HTMLDivElement | null>(null);
 	const [pierreContainerRef, setPierreContainerRef] = createSignal<HTMLDivElement | null>(null);
 	// RPC for file operations
@@ -273,10 +274,10 @@ function FileDiffCard({ file, isLight, isCollapsed, toggleCollapsed, isFullExpan
 	// Mount Pierre FileDiff (Vanilla JS) into container; re-run when file, theme, or mode change. Re-render when isFullExpanded toggles to get collapsed state.
 	createEffect(() => {
 		const container = pierreContainerRef();
-		const diffText = file.diffText;
-		const style = diffMode === "split" ? "split" : "unified";
-		const theme = isLight ? "pierre-light" : "pierre-dark";
-		const fullExpanded = isFullExpanded;
+		const diffText = props.file.diffText;
+		const style = props.diffMode === "split" ? "split" : "unified";
+		const theme = props.isLight ? "pierre-light" : "pierre-dark";
+		const fullExpanded = props.isFullExpanded;
 		if (!container || !diffText) return;
 		let instance: InstanceType<typeof FileDiff> | null = null;
 		try {
@@ -301,39 +302,39 @@ function FileDiffCard({ file, isLight, isCollapsed, toggleCollapsed, isFullExpan
 		});
 	});
 	// Extract filename and directory from path
-	const displayPath = file.newPath && file.newPath !== "/dev/null" ? file.newPath : file.oldPath && file.oldPath !== "/dev/null" ? file.oldPath : file.key;
-	const fileName = displayPath.split("/").pop() || displayPath;
-	const dirPath = displayPath.includes("/") ? displayPath.substring(0, displayPath.lastIndexOf("/")) : null;
-	const isNewFile = file.oldPath === "/dev/null" && file.newPath;
-	const isDeletedFile = file.newPath === "/dev/null" && file.oldPath;
+	const displayPath = createMemo(() => props.file.newPath && props.file.newPath !== "/dev/null" ? props.file.newPath : props.file.oldPath && props.file.oldPath !== "/dev/null" ? props.file.oldPath : props.file.key);
+	const fileName = createMemo(() => displayPath().split("/").pop() || displayPath());
+	const dirPath = createMemo(() => displayPath().includes("/") ? displayPath().substring(0, displayPath().lastIndexOf("/")) : null);
+	const isNewFile = createMemo(() => props.file.oldPath === "/dev/null" && props.file.newPath);
+	const isDeletedFile = createMemo(() => props.file.newPath === "/dev/null" && props.file.oldPath);
 	// Absolute path for file operations
-	const absolutePath = worktreePath ? `${worktreePath}/${displayPath}` : null;
+	const absolutePath = createMemo(() => props.worktreePath ? `${props.worktreePath}/${displayPath()}` : null);
 	const handleCopyPath = async () => {
-		if (absolutePath) {
-			await navigator.clipboard.writeText(absolutePath);
-			toast.success("Copied to clipboard", { description: absolutePath });
+		if (absolutePath()) {
+			await navigator.clipboard.writeText(absolutePath()!);
+			toast.success("Copied to clipboard", { description: absolutePath()! });
 		}
 	};
 	const handleCopyRelativePath = async () => {
-		await navigator.clipboard.writeText(displayPath);
-		toast.success("Copied to clipboard", { description: displayPath });
+		await navigator.clipboard.writeText(displayPath());
+		toast.success("Copied to clipboard", { description: displayPath() });
 	};
 	const handleRevealInFinder = () => {
-		if (absolutePath) {
-			openInFinderMutation({ path: absolutePath });
+		if (absolutePath()) {
+			openInFinderMutation({ path: absolutePath()! });
 		}
 	};
 	const handleOpenInEditor = () => {
-		if (absolutePath && worktreePath) {
+		if (absolutePath() && props.worktreePath) {
 			openInEditorMutation({
-				path: absolutePath,
-				cwd: worktreePath
+				path: absolutePath()!,
+				cwd: props.worktreePath
 			});
 		}
 	};
 	const handleDiscard = () => {
-		if (onDiscardFile) {
-			onDiscardFile(displayPath);
+		if (props.onDiscardFile) {
+			props.onDiscardFile(displayPath());
 		}
 	};
 	const headerContent = <header class={cn(
@@ -342,96 +343,96 @@ function FileDiffCard({ file, isLight, isCollapsed, toggleCollapsed, isFullExpan
 		"sticky top-0 z-10",
 		"border-b transition-colors",
 		"hover:bg-accent/50",
-		isCollapsed ? "border-b-transparent" : "border-b-border"
-	)} onClick={() => toggleCollapsed(file.key)} role="button" tabIndex={0} onKeyDown={(e) => {
+		props.isCollapsed ? "border-b-transparent" : "border-b-border"
+	)} onClick={() => props.toggleCollapsed(props.file.key)} role="button" tabIndex={0} onKeyDown={(e) => {
 		if (e.key === "Enter" || e.key === " ") {
 			e.preventDefault();
-			toggleCollapsed(file.key);
+			props.toggleCollapsed(props.file.key);
 		}
-	}} aria-expanded={!isCollapsed}>
+	}} aria-expanded={!props.isCollapsed}>
         <div class="flex items-center gap-2">
           {	/* Collapse toggle + file info */}
           <div class="flex-1 flex items-center gap-2 text-left min-w-0 min-h-[22px]">
             { /* Icon container with hover swap */}
             {(() => {
- const FileIcon = getFileIconByExtension(fileName) as Component<{ class?: string }> | null;
+ const FileIcon = getFileIconByExtension(fileName()) as Component<{ class?: string }> | null;
 		return <div class="relative w-3.5 h-3.5 shrink-0">
                   {FileIcon ? <FileIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-all duration-200", "group-hover:opacity-0 group-hover:scale-75")} /> : null}
-                  <ChevronDown class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-all duration-200", "opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100", isCollapsed && "-rotate-90")} />
+                  <ChevronDown class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-all duration-200", "opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100", props.isCollapsed && "-rotate-90")} />
                 </div>;
 	})()}
 
             {	/* File name + path + status */}
             <div class="flex items-center gap-2 min-w-0 flex-1">
               <span class="font-medium text-foreground shrink-0">
-                {fileName}
+                {fileName()}
               </span>
-                            <Show when={dirPath}><span class="text-muted-foreground truncate text-[11px] min-w-0">
-                  {dirPath}
+                            <Show when={dirPath()}><span class="text-muted-foreground truncate text-[11px] min-w-0">
+                  {dirPath()}
                 </span></Show>
-                            <Show when={isNewFile}><span class="shrink-0 text-[11px] text-emerald-600 dark:text-emerald-400">
+                            <Show when={isNewFile()}><span class="shrink-0 text-[11px] text-emerald-600 dark:text-emerald-400">
                   (new)
                 </span></Show>
-                            <Show when={isDeletedFile}><span class="shrink-0 text-[11px] text-red-600 dark:text-red-400">
+                            <Show when={isDeletedFile()}><span class="shrink-0 text-[11px] text-red-600 dark:text-red-400">
                   (deleted)
                 </span></Show>
             </div>
 
             { /* Stats */}
             <span class="shrink-0 font-mono text-[11px] tabular-nums whitespace-nowrap">
-                            <Show when={file.additions > 0}><span class="mr-1.5 text-emerald-600 dark:text-emerald-400">
-                  +{file.additions}
+                            <Show when={props.file.additions > 0}><span class="mr-1.5 text-emerald-600 dark:text-emerald-400">
+                  +{props.file.additions}
                 </span></Show>
-                            <Show when={file.deletions > 0}><span class="text-red-600 dark:text-red-400">
-                  -{file.deletions}
+                            <Show when={props.file.deletions > 0}><span class="text-red-600 dark:text-red-400">
+                  -{props.file.deletions}
                 </span></Show>
             </span>
           </div>
 
           { /* Expand/Collapse full file button - only show if content is available */}
-                    <Show when={!isCollapsed && !file.isBinary && hasContent}><Tooltip>
+                    <Show when={!props.isCollapsed && !props.file.isBinary && props.hasContent}><Tooltip>
               <TooltipTrigger asChild>
                 <button type="button" onClick={(e) => {
  e.stopPropagation();
-		toggleFullExpanded(file.key);
-	}} class={cn("shrink-0 p-1 rounded-md hover:bg-accent transition-[background-color,transform] duration-150 ease-out active:scale-95", isFullExpanded && "bg-accent")} aria-pressed={isFullExpanded}>
+		props.toggleFullExpanded(props.file.key);
+	}} class={cn("shrink-0 p-1 rounded-md hover:bg-accent transition-[background-color,transform] duration-150 ease-out active:scale-95", props.isFullExpanded && "bg-accent")} aria-pressed={props.isFullExpanded}>
                   <div class="relative w-3.5 h-3.5">
-                    <ExpandIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isFullExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
-                    <CollapseIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", isFullExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
+                    <ExpandIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", props.isFullExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100")} />
+                    <CollapseIcon class={cn("absolute inset-0 w-3.5 h-3.5 text-muted-foreground transition-[opacity,transform] duration-200 ease-out", props.isFullExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75")} />
                   </div>
                 </button>
               </TooltipTrigger>
               <TooltipContent side="left">
-                {isFullExpanded ? "Show changes only" : "Show full file"}
+                {props.isFullExpanded ? "Show changes only" : "Show full file"}
               </TooltipContent>
             </Tooltip></Show>
           {	/* Show loading spinner while content is being fetched */}
-                    <Show when={!isCollapsed && !file.isBinary && !hasContent && isLoadingContent}><div class="shrink-0 p-1">
+                    <Show when={!props.isCollapsed && !props.file.isBinary && !props.hasContent && props.isLoadingContent}><div class="shrink-0 p-1">
                 <IconSpinner class="w-3.5 h-3.5 text-muted-foreground" />
               </div></Show>
 
           { /* Viewed checkbox with label - GitHub style (hidden for sandboxes) */}
-                    <Show when={showViewed}><Tooltip>
+                    <Show when={props.showViewed}><Tooltip>
               <TooltipTrigger asChild>
                 <button type="button" onClick={(e) => {
  e.stopPropagation();
-		onToggleViewed(file.key, file.diffText);
-	}} class={cn("shrink-0 h-6 pl-1 pr-1.5 rounded-md flex items-center gap-1 transition-all duration-150 text-xs font-medium", isViewed ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground")} aria-pressed={isViewed}>
-                  <div class={cn("size-4 rounded flex items-center justify-center transition-all duration-150", isViewed ? "bg-primary text-primary-foreground" : "border border-muted-foreground/40")}>
-                    <Show when={isViewed}><Check class="size-3" stroke-width={2.5} /></Show>
+		props.onToggleViewed(props.file.key, props.file.diffText);
+	}} class={cn("shrink-0 h-6 pl-1 pr-1.5 rounded-md flex items-center gap-1 transition-all duration-150 text-xs font-medium", props.isViewed ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground")} aria-pressed={props.isViewed}>
+                  <div class={cn("size-4 rounded flex items-center justify-center transition-all duration-150", props.isViewed ? "bg-primary text-primary-foreground" : "border border-muted-foreground/40")}>
+                    <Show when={props.isViewed}><Check class="size-3" stroke-width={2.5} /></Show>
                   </div>
                   <span>Viewed</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {isViewed ? "Mark as unviewed" : "Mark as viewed"}
+                {props.isViewed ? "Mark as unviewed" : "Mark as viewed"}
                 <Kbd>V</Kbd>
               </TooltipContent>
             </Tooltip></Show>
         </div>
       </header>;
-	return <div ref={diffCardRef} class="bg-background rounded-lg border border-border overflow-clip" data-diff-file-path={file.newPath || file.oldPath}>
-            <Show when={worktreePath} fallback={headerContent}><ContextMenu>
+	return <div ref={diffCardRef} class="bg-background rounded-lg border border-border overflow-clip" data-diff-file-path={props.file.newPath || props.file.oldPath}>
+            <Show when={props.worktreePath} fallback={headerContent}><ContextMenu>
           <ContextMenuTrigger asChild>
             {headerContent}
           </ContextMenuTrigger>
@@ -454,11 +455,11 @@ function FileDiffCard({ file, isLight, isCollapsed, toggleCollapsed, isFullExpan
               Open in Editor
             </ContextMenuItem>
             <ContextMenuSeparator />
-            <ContextMenuItem onClick={() => onToggleViewed(file.key, file.diffText)} class="text-xs justify-between">
-              {isViewed ? "Mark as unviewed" : "Mark as viewed"}
+            <ContextMenuItem onClick={() => props.onToggleViewed(props.file.key, props.file.diffText)} class="text-xs justify-between">
+              {props.isViewed ? "Mark as unviewed" : "Mark as viewed"}
               <Kbd>V</Kbd>
             </ContextMenuItem>
-            <Show when={onDiscardFile && !isDeletedFile}>
+            <Show when={props.onDiscardFile && !isDeletedFile()}>
                 <ContextMenuSeparator />
                 <ContextMenuItem onClick={handleDiscard} class="text-xs data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-400">
                   Discard Changes
@@ -468,9 +469,9 @@ function FileDiffCard({ file, isLight, isCollapsed, toggleCollapsed, isFullExpan
         </ContextMenu></Show>
 
       {	/* Content area */}
-      <Show when={!isCollapsed}><div>
-          <Show when={file.isBinary} fallback={
-            <Show when={file.isValid} fallback={<div class="flex items-center gap-2 px-3 py-2 text-xs text-yellow-600 dark:text-yellow-500 bg-yellow-50 dark:bg-yellow-950/30">
+      <Show when={!props.isCollapsed}><div>
+          <Show when={props.file.isBinary} fallback={
+            <Show when={props.file.isValid} fallback={<div class="flex items-center gap-2 px-3 py-2 text-xs text-yellow-600 dark:text-yellow-500 bg-yellow-50 dark:bg-yellow-950/30">
               <AlertTriangle class="h-3.5 w-3.5 flex-shrink-0" />
               <span>
                 Diff format appears truncated or corrupted. Unable to render

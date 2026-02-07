@@ -1,5 +1,6 @@
 import { BrowserView, BrowserWindow, Utils, Updater } from "electrobun/bun";
-import type { AppRPC, WebviewMessageSender } from "../shared/rpc-schema";
+import type { AppRPC } from "../shared/rpc-schema";
+import type { UIMessageChunk } from "../shared/chat-rpc";
 import { createAgentsHandlers } from "./agents";
 import { createChatStreamHandlers } from "./chat-stream";
 import { createClaudeSettingsHandlers } from "./claude-settings";
@@ -22,8 +23,23 @@ import { createVoiceHandlers } from "./voice";
 import { createWorktreeConfigHandlers } from "./worktree-config-handlers";
 import { createClaudeCodeHandlers } from "./claude-code";
 
-let mainWindow: BrowserWindow | null = null;
-let sendToWebview: { send: WebviewMessageSender } | null = null;
+type AppRPCBridge = ReturnType<typeof BrowserView.defineRPC<AppRPC>>;
+
+let mainWindow: BrowserWindow<AppRPCBridge> | null = null;
+let sendToWebview: Pick<AppRPCBridge, "send"> | null = null;
+let warnedMissingWebviewForChatChunk = false;
+const shouldLogWebviewMessages = process.env.DEBUG_WEBVIEW_RPC === "1";
+const MAX_BUFFERED_CHAT_CHUNKS = 2_000;
+const bufferedChatChunks: Array<{ subChatId: string; chunk: UIMessageChunk }> = [];
+
+function flushBufferedChatChunks() {
+  if (!sendToWebview || bufferedChatChunks.length === 0) return;
+  for (const payload of bufferedChatChunks) {
+    sendToWebview.send.chatChunk(payload);
+  }
+  bufferedChatChunks.length = 0;
+  warnedMissingWebviewForChatChunk = false;
+}
 
 await initDatabase();
 parseLaunchDirectory();
@@ -58,6 +74,23 @@ const gitWatcherHandlers = createGitWatcherHandlers((event) => {
 const voiceHandlers = createVoiceHandlers();
 const claudeCodeHandlers = createClaudeCodeHandlers();
 const chatStreamHandlers = createChatStreamHandlers((subChatId, chunk) => {
+  const ct = (chunk as { type?: string }).type;
+  if (ct === "start" || ct === "finish" || ct === "error") {
+    console.log("[bun:chat] emitChunk type=", ct, "subChatId=", subChatId, "sendToWebview=", !!sendToWebview);
+  }
+  if (!sendToWebview) {
+    if (bufferedChatChunks.length >= MAX_BUFFERED_CHAT_CHUNKS) {
+      bufferedChatChunks.shift();
+    }
+    bufferedChatChunks.push({ subChatId, chunk });
+    if (!warnedMissingWebviewForChatChunk) {
+      warnedMissingWebviewForChatChunk = true;
+      console.error("[bun:chat] sendToWebview is NULL! Buffering chat chunks until webview is ready.");
+    }
+    return;
+  }
+  flushBufferedChatChunks();
+  warnedMissingWebviewForChatChunk = false;
   sendToWebview?.send?.chatChunk({ subChatId, chunk });
 });
 
@@ -97,9 +130,13 @@ const rpc = BrowserView.defineRPC<AppRPC>({
         mainWindow.setFullScreen(!mainWindow.isFullScreen());
       },
       windowIsFullscreen: () => ({ isFullscreen: mainWindow?.isFullScreen() ?? false }),
+      windowSetTrafficLightVisibility: ({ visible }) => {
+        mainWindow?.setTrafficLightVisibility?.(visible);
+      },
+      windowSetTrafficLightPosition: ({ x, y }) => {
+        mainWindow?.setTrafficLightPosition?.(x, y);
+      },
       setWindowTitle: ({ title }) => {
-        // NOTE: BrowserWindow.setTitle may not exist in current Electrobun version
-        // @ts-expect-error - setTitle may be added in future version
         mainWindow?.setTitle?.(title);
       },
       showNotification: ({ title, body }) => {
@@ -278,7 +315,9 @@ const rpc = BrowserView.defineRPC<AppRPC>({
     },
     messages: {
       "*": (name, payload) => {
-        console.log(`[webview] ${name}`, payload);
+        if (shouldLogWebviewMessages) {
+          console.log(`[webview] ${name}`, payload);
+        }
       },
     },
   },
@@ -293,7 +332,8 @@ mainWindow = new BrowserWindow({
 });
 
 mainWindow.webview?.on("dom-ready", () => {
-  sendToWebview = mainWindow?.webview?.rpc as { send: WebviewMessageSender } | null ?? null;
+  sendToWebview = mainWindow?.webview?.rpc ?? null;
+  flushBufferedChatChunks();
 });
 
 mainWindow.on("close", () => {

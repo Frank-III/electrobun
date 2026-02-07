@@ -1,4 +1,4 @@
-import { For, type JSX, type Component } from "solid-js";
+import { For, Show, type JSX, type Component } from "solid-js";
 import { userMessageIdsAtom, currentSubChatIdAtom } from "../stores/message-store";
 import { IsolatedMessageGroup } from "./isolated-message-group";
 // ============================================================================
@@ -46,7 +46,7 @@ interface IsolatedMessagesSectionProps {
 function areSectionPropsEqual(prev: IsolatedMessagesSectionProps, next: IsolatedMessagesSectionProps): boolean {
 	return prev.subChatId === next.subChatId && prev.chatId === next.chatId && prev.isMobile === next.isMobile && prev.sandboxSetupStatus === next.sandboxSetupStatus && prev.stickyTopClass === next.stickyTopClass && prev.sandboxSetupError === next.sandboxSetupError && prev.onRetrySetup === next.onRetrySetup && prev.UserBubbleComponent === next.UserBubbleComponent && prev.ToolCallComponent === next.ToolCallComponent && prev.MessageGroupWrapper === next.MessageGroupWrapper && prev.toolRegistry === next.toolRegistry;
 }
-export function IsolatedMessagesSection({ subChatId, chatId, isMobile, sandboxSetupStatus, stickyTopClass, sandboxSetupError, onRetrySetup, UserBubbleComponent, ToolCallComponent, MessageGroupWrapper, toolRegistry }: IsolatedMessagesSectionProps) {
+export function IsolatedMessagesSection(props: IsolatedMessagesSectionProps) {
 	// CRITICAL: Check if global atoms are synced for THIS subChat FIRST
 	// With keep-alive tabs, multiple ChatViewInner instances exist simultaneously.
 	// Global atoms (messageIdsAtom, etc.) contain data from the ACTIVE tab only.
@@ -54,18 +54,16 @@ export function IsolatedMessagesSection({ subChatId, chatId, isMobile, sandboxSe
 	// but that happens AFTER this component renders. So on first render after activation,
 	// we might read stale data from the previous active tab.
 	//
-	// Solution: Check currentSubChatIdAtom BEFORE reading userMessageIdsAtom.
-	// If it doesn't match our subChatId, return empty to avoid showing wrong messages.
-	// The useLayoutEffect will sync and update currentSubChatIdAtom, which triggers
-	// a re-render of this component (since we're subscribed to it).
+	// Solution: Use <Show> to reactively check currentSubChatIdAtom.
+	// If it doesn't match our subChatId, render nothing.
+	// When currentSubChatIdAtom updates (after sync effect), the Show re-evaluates
+	// and renders the messages.
 	const currentSubChatId = currentSubChatIdAtom[0];
 	// Subscribe to user message IDs - but only use them if we're the active chat
 	const userMsgIds = userMessageIdsAtom;
-	if (currentSubChatId() !== subChatId) {
-		// Data not synced yet - render nothing, we'll re-render when currentSubChatIdAtom updates
-		return null;
-	}
-	return <>
-      <For each={userMsgIds()}>{(userMsgId) => <IsolatedMessageGroup userMsgId={userMsgId} subChatId={subChatId} chatId={chatId} isMobile={isMobile} sandboxSetupStatus={sandboxSetupStatus} stickyTopClass={stickyTopClass} sandboxSetupError={sandboxSetupError} onRetrySetup={onRetrySetup} UserBubbleComponent={UserBubbleComponent} ToolCallComponent={ToolCallComponent} MessageGroupWrapper={MessageGroupWrapper} toolRegistry={toolRegistry} />}</For>
-    </>;
+
+	// Use <Show> for reactive condition check - this re-evaluates when currentSubChatId changes
+	return <Show when={currentSubChatId() === props.subChatId} fallback={null}>
+      <For each={userMsgIds()}>{(userMsgId) => <IsolatedMessageGroup userMsgId={userMsgId} subChatId={props.subChatId} chatId={props.chatId} isMobile={props.isMobile} sandboxSetupStatus={props.sandboxSetupStatus} stickyTopClass={props.stickyTopClass} sandboxSetupError={props.sandboxSetupError} onRetrySetup={props.onRetrySetup} UserBubbleComponent={props.UserBubbleComponent} ToolCallComponent={props.ToolCallComponent} MessageGroupWrapper={props.MessageGroupWrapper} toolRegistry={props.toolRegistry} />}</For>
+    </Show>;
 }

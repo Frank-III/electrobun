@@ -34,8 +34,7 @@ const EASING_CURVE = [
 	.19
 ] as const;
 const INTERACTION_DELAY_MS = 250;
-export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProjects, allProjects, remoteSubChatId }: OpenLocallyDialogProps) {
-	const [mounted, setMounted] = createSignal(false);
+export function OpenLocallyDialog(props: OpenLocallyDialogProps) {
 	let openAtRef = 0;
 	const setSelectedChatId = selectedAgentChatIdAtom[1];
 	const setChatSourceMode = chatSourceModeAtom[1];
@@ -61,7 +60,7 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 			});
 			setChatSourceMode("local");
 			setSelectedChatId(result.chatId);
-			onClose();
+			props.onClose();
 		},
 		onError: (error: Error) => {
 			toast.error(`Import failed: ${error.message}`);
@@ -85,7 +84,7 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 			});
 			setChatSourceMode("local");
 			setSelectedChatId(result.chatId);
-			onClose();
+			props.onClose();
 		},
 		onError: (error: Error) => {
 			toast.error(`Clone failed: ${error.message}`);
@@ -93,23 +92,20 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 	}));
 	const isAnyLoading = importMutation.isPending || locateMutation.isPending || pickDestMutation.isPending || cloneMutation.isPending;
 	createEffect(() => {
-		setMounted(true);
-	});
-	createEffect(() => {
-		if (isOpen) {
+		if (props.isOpen) {
 			openAtRef = performance.now();
 			setSelectedProjectId(null);
 		}
 	});
 	// Keyboard support
 	createEffect(() => {
-		if (!isOpen) return;
+		if (!props.isOpen) return;
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
 				event.preventDefault();
 				const canInteract = performance.now() - openAtRef > INTERACTION_DELAY_MS;
 				if (canInteract && !isAnyLoading) {
-					onClose();
+					props.onClose();
 				}
 			}
 		};
@@ -119,12 +115,12 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 	const handleClose = () => {
 		const canInteract = performance.now() - openAtRef > INTERACTION_DELAY_MS;
 		if (!canInteract || isAnyLoading) return;
-		onClose();
+		props.onClose();
 	};
 	// Handler: Locate existing project
 	const handleLocateProject = async () => {
-		if (!remoteChat?.meta?.repository) return;
-		const [owner, repo] = remoteChat.meta.repository.split("/");
+		if (!props.remoteChat?.meta?.repository) return;
+		const [owner, repo] = props.remoteChat.meta.repository.split("/");
 		if (!owner || !repo) return;
 		const result = await locateMutation.mutateAsync({
 			expectedOwner: owner,
@@ -133,11 +129,11 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 		if (result.success && result.project) {
 			// Now import into this project
 			importMutation.mutate({
-				sandboxId: remoteChat.sandbox_id!,
-				remoteChatId: remoteChat.id,
-				remoteSubChatId: remoteSubChatId ?? undefined,
+				sandboxId: props.remoteChat.sandbox_id!,
+				remoteChatId: props.remoteChat.id,
+				remoteSubChatId: props.remoteSubChatId ?? undefined,
 				projectId: result.project.id,
-				chatName: remoteChat.name
+				chatName: props.remoteChat.name
 			});
 		} else if (!result.success) {
 			// Narrow to failure type
@@ -150,8 +146,8 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 	};
 	// Handler: Clone from sandbox
 	const handleCloneFromSandbox = async () => {
-		if (!remoteChat?.meta?.repository || !remoteChat.sandbox_id) return;
-		const [, repo] = remoteChat.meta.repository.split("/");
+		if (!props.remoteChat?.meta?.repository || !props.remoteChat.sandbox_id) return;
+		const [, repo] = props.remoteChat.meta.repository.split("/");
 		if (!repo) return;
 		// Pick destination
 		const destResult = await pickDestMutation.mutateAsync({ suggestedName: repo });
@@ -159,32 +155,30 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 		// Clone
 		toast.info("Cloning repository... this may take a while");
 		cloneMutation.mutate({
-			sandboxId: remoteChat.sandbox_id,
-			remoteChatId: remoteChat.id,
-			remoteSubChatId: remoteSubChatId ?? undefined,
-			chatName: remoteChat.name,
+			sandboxId: props.remoteChat.sandbox_id,
+			remoteChatId: props.remoteChat.id,
+			remoteSubChatId: props.remoteSubChatId ?? undefined,
+			chatName: props.remoteChat.name,
 			targetPath: destResult.targetPath
 		});
 	};
 	// Handler: Select project from list
 	const handleSelectProject = () => {
-		if (!selectedProjectId() || !remoteChat?.sandbox_id) return;
+		if (!selectedProjectId() || !props.remoteChat?.sandbox_id) return;
 		importMutation.mutate({
-			sandboxId: remoteChat.sandbox_id,
-			remoteChatId: remoteChat.id,
-			remoteSubChatId: remoteSubChatId ?? undefined,
+			sandboxId: props.remoteChat.sandbox_id,
+			remoteChatId: props.remoteChat.id,
+			remoteSubChatId: props.remoteSubChatId ?? undefined,
 			projectId: selectedProjectId()!,
-			chatName: remoteChat.name
+			chatName: props.remoteChat.name
 		});
 	};
-	if (!mounted()) return null;
-	if (typeof document === "undefined") return null;
-	const mode = matchingProjects.length === 0 ? "no-projects" : "multiple-projects";
-	const repository = remoteChat?.meta?.repository;
+	const mode = () => props.matchingProjects.length === 0 ? "no-projects" : "multiple-projects";
+	const repository = () => props.remoteChat?.meta?.repository;
 	return (
 		<Portal mount={document.body}>
 			<Presence exitBeforeEnter>
-				<Show when={isOpen && remoteChat}>
+				<Show when={props.isOpen && props.remoteChat}>
 					{/* Overlay */}
 					<Motion.div
 						initial={{ opacity: 0 }}
@@ -209,19 +203,19 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 						>
 							<div class="bg-background rounded-2xl border shadow-2xl overflow-hidden" data-canvas-dialog>
 								<Show
-									when={mode === "no-projects"}
+									when={mode() === "no-projects"}
 									fallback={
 										<>
 											<div class="p-6">
 												<h2 class="text-lg font-semibold mb-2">Multiple copies found</h2>
 												<p class="text-sm text-muted-foreground mb-5">
 													You have{" "}
-													<code class="px-1.5 py-0.5 bg-muted rounded text-foreground text-xs">{repository}</code>{" "}
+													<code class="px-1.5 py-0.5 bg-muted rounded text-foreground text-xs">{repository()}</code>{" "}
 													in multiple locations. Which one should we use?
 												</p>
 
 												<div class="space-y-2">
-													<For each={matchingProjects}>
+													<For each={props.matchingProjects}>
 														{(project) => (
 															<button
 																type="button"
@@ -258,7 +252,7 @@ export function OpenLocallyDialog({ isOpen, onClose, remoteChat, matchingProject
 										<h2 class="text-lg font-semibold mb-2">Project not found locally</h2>
 										<p class="text-sm text-muted-foreground mb-5">
 											This sandbox is working on{" "}
-											<code class="px-1.5 py-0.5 bg-muted rounded text-foreground text-xs">{repository}</code>
+											<code class="px-1.5 py-0.5 bg-muted rounded text-foreground text-xs">{repository()}</code>
 											, but we couldn't find it on your machine.
 										</p>
 

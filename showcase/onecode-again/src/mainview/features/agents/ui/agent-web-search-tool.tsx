@@ -46,10 +46,8 @@ export function AgentWebSearchTool(props: AgentWebSearchToolProps) {
 	const resultCount = createMemo(() => results().length);
 	const hasResults = createMemo(() => resultCount() > 0);
 	// Show interrupted state if search was interrupted without completing
-	if (isInterrupted && !hasResults()) {
-		return <AgentToolInterrupted toolName="Search" subtitle={truncatedQuery} />;
-	}
-	return <div class="rounded-lg border border-border bg-muted/30 overflow-hidden mx-2">
+	return <Show when={!(isInterrupted && !hasResults())} fallback={<AgentToolInterrupted toolName="Search" subtitle={truncatedQuery} />}>
+	<div class="rounded-lg border border-border bg-muted/30 overflow-hidden mx-2">
       {	/* Header - clickable to toggle expand */}
 		<div onClick={() => hasResults() && !isPending && setIsExpanded((prev) => !prev)} class={cn("flex items-center justify-between px-2.5 h-7", hasResults() && !isPending && "cursor-pointer hover:bg-muted/50 transition-colors duration-150")}>
         <div class="flex items-center gap-1.5 text-xs truncate flex-1 min-w-0">
@@ -104,5 +102,6 @@ export function AgentWebSearchTool(props: AgentWebSearchToolProps) {
           </a>}</For>
         </div>
       </Show>
-    </div>;
+    </div>
+	</Show>;
 }

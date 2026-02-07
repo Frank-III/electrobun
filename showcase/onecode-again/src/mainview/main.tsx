@@ -1,4 +1,25 @@
 // SolidJS Entry Point
+import { initLoopCatcher } from "./lib/debug-effects";
+const isDevelopment = import.meta.env?.MODE !== "production";
+const UI_BUILD_MARKER = "2026-02-07-chat-hang-fix-r3";
+
+console.info("[UI BUILD]", UI_BUILD_MARKER);
+
+if (isDevelopment) {
+	// Opt-in diagnostics only (avoid noisy loop logs by default).
+	try {
+		const shouldBootDebug = localStorage.getItem("__DBG_BOOT__") === "1";
+		if (shouldBootDebug) {
+			initLoopCatcher();
+		} else {
+			localStorage.removeItem("__DBG_ENABLED__");
+			localStorage.removeItem("__DBG_TRACE__");
+		}
+	} catch {
+		// ignore
+	}
+}
+
 import { render } from "solid-js/web";
 import { App } from "./App";
 // CSS is loaded via <link> in index.html (built separately by Tailwind CLI)

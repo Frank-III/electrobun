@@ -1,15 +1,11 @@
 import { defineConfig } from "vitest/config"
-import solidPlugin from "vite-plugin-solid"
+import solidPlugin from "vite-plugin-solid-oxc"
 
 export default defineConfig({
   plugins: [solidPlugin()],
   test: {
-    environment: "jsdom",
     globals: true,
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
-    transformMode: {
-      web: [/\.[jt]sx?$/],
-    },
     deps: {
       optimizer: {
         web: {

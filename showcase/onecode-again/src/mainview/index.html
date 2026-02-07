@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:* http://localhost:* https://21st.dev https://*.21st.dev; img-src 'self' data: blob: https:; media-src 'self' blob:;" />
     <title>1Code</title>
-    <link rel="stylesheet" href="./main.css" />
+    <link rel="stylesheet" href="./ui/main.css" />
     <!-- Prevent theme flash: set color mode dataset before app boot -->
     <script>
       (function() {
@@ -88,6 +88,15 @@
         document.getElementById("root").innerHTML = "<pre style='color:red;padding:20px'>Error: " + msg + "</pre>";
       };
     </script>
-    <script type="module" src="./main.js"></script>
+    <script>
+      // Some transitive browser bundles still read process.env.* at runtime.
+      // Ensure `process` exists in WebView so this cannot crash app boot.
+      if (typeof globalThis.process === "undefined") {
+        globalThis.process = { env: {} };
+      } else if (!globalThis.process.env) {
+        globalThis.process.env = {};
+      }
+    </script>
+    <script type="module" src="./ui/main.js"></script>
   </body>
 </html>

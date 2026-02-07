@@ -5,11 +5,11 @@ import type { TerminalProps } from "./types";
 
 type Frame = { x: number; y: number; width: number; height: number };
 
-export function Terminal({ paneId, cwd, initialCwd, isActive }: TerminalProps) {
+export function Terminal(props: TerminalProps) {
   let containerRef: HTMLDivElement | undefined;
   const [store, setStore] = useTerminalStore();
-  const [terminalCwd, setTerminalCwd] = createSignal(initialCwd || cwd);
-  const active = () => isActive ?? true;
+  const [terminalCwd, setTerminalCwd] = createSignal(props.initialCwd || props.cwd);
+  const active = () => props.isActive ?? true;
   let isCreated = false;
 
   const toFrame = (rect: DOMRect): Frame => ({
@@ -21,7 +21,7 @@ export function Terminal({ paneId, cwd, initialCwd, isActive }: TerminalProps) {
 
   const sendResize = (frame: Frame) => {
     desktopRpc.ghosttyTabs.resize.mutate({
-      tabId: paneId,
+      tabId: props.paneId,
       frame,
     });
   };
@@ -40,9 +40,9 @@ export function Terminal({ paneId, cwd, initialCwd, isActive }: TerminalProps) {
       if (!nextFrame) return;
       if (!isCreated) {
         desktopRpc.ghosttyTabs.create.mutate({
-          tabId: paneId,
+          tabId: props.paneId,
           frame: nextFrame,
-          cwd: terminalCwd() || cwd,
+          cwd: terminalCwd() || props.cwd,
         });
         isCreated = true;
         return;
@@ -54,9 +54,9 @@ export function Terminal({ paneId, cwd, initialCwd, isActive }: TerminalProps) {
     const initialFrame = measureFrame();
     if (initialFrame && !isCreated) {
       desktopRpc.ghosttyTabs.create.mutate({
-        tabId: paneId,
+        tabId: props.paneId,
         frame: initialFrame,
-        cwd: terminalCwd() || cwd,
+        cwd: terminalCwd() || props.cwd,
       });
       isCreated = true;
     }
@@ -68,17 +68,17 @@ export function Terminal({ paneId, cwd, initialCwd, isActive }: TerminalProps) {
 
   createEffect(() => {
     if (active()) {
-      desktopRpc.ghosttyTabs.focus.mutate({ tabId: paneId });
+      desktopRpc.ghosttyTabs.focus.mutate({ tabId: props.paneId });
     }
   });
 
   createEffect(() => {
-    setStore("cwdByPaneId", paneId, terminalCwd());
+    setStore("cwdByPaneId", props.paneId, terminalCwd());
   });
 
   onCleanup(() => {
     if (isCreated) {
-      desktopRpc.ghosttyTabs.close.mutate({ tabId: paneId });
+      desktopRpc.ghosttyTabs.close.mutate({ tabId: props.paneId });
     }
   });
 

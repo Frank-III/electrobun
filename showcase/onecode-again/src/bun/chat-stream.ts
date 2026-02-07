@@ -50,6 +50,8 @@ export const pendingToolApprovals = new Map<
 >();
 
 const PLAN_MODE_BLOCKED_TOOLS = new Set(["Bash", "NotebookEdit"]);
+const STREAM_STALL_TIMEOUT_MS = 120_000;
+const DEBUG_CHAT_STREAM = process.env.DEBUG_CHAT_STREAM === "1";
 
 function parseMentions(prompt: string): {
   cleanedPrompt: string;
@@ -128,15 +130,23 @@ export function createChatStreamHandlers(
         model,
         images,
         historyEnabled = false,
+        maxThinkingTokens,
         customConfig,
         selectedOllamaModel,
         offlineModeEnabled = false,
         enableTasks = true,
       } = params;
 
+      if (DEBUG_CHAT_STREAM) {
+        console.log("[chat-stream] chatStart called: subChatId=", subChatId, "mode=", mode, "historyEnabled=", historyEnabled);
+      }
+
       // Abort any existing session for this subChatId
       const existingController = activeSessions.get(subChatId);
       if (existingController) {
+        if (DEBUG_CHAT_STREAM) {
+          console.log("[chat-stream] aborting existing session for", subChatId);
+        }
         existingController.abort();
       }
 
@@ -157,6 +167,7 @@ export function createChatStreamHandlers(
         model,
         images,
         historyEnabled,
+        maxThinkingTokens,
         customConfig,
         selectedOllamaModel,
         offlineModeEnabled,
@@ -226,6 +237,7 @@ async function runChatStream(options: {
   model?: string;
   images?: ImageAttachment[];
   historyEnabled: boolean;
+  maxThinkingTokens?: number;
   customConfig?: CustomClaudeConfig;
   selectedOllamaModel?: string;
   offlineModeEnabled: boolean;
@@ -244,6 +256,7 @@ async function runChatStream(options: {
     model,
     images,
     historyEnabled,
+    maxThinkingTokens,
     customConfig,
     offlineModeEnabled,
     enableTasks,
@@ -262,6 +275,25 @@ async function runChatStream(options: {
     }
   };
 
+  let stallTimeout: ReturnType<typeof setTimeout> | null = null;
+  const clearStallTimeout = () => {
+    if (stallTimeout) {
+      clearTimeout(stallTimeout);
+      stallTimeout = null;
+    }
+  };
+  const resetStallTimeout = () => {
+    clearStallTimeout();
+    stallTimeout = setTimeout(() => {
+      if (abortController.signal.aborted) return;
+      safeEmit({
+        type: "error",
+        errorText: `Stream stalled for ${Math.round(STREAM_STALL_TIMEOUT_MS / 1000)}s with no new events. Stopping.`,
+      });
+      abortController.abort();
+    }, STREAM_STALL_TIMEOUT_MS);
+  };
+
   try {
     const db = await getDatabase();
 
@@ -269,10 +301,13 @@ async function runChatStream(options: {
     const existing = db.select().from(subChats).where(eq(subChats.id, subChatId)).get();
     const existingMessages = JSON.parse(existing?.messages || "[]");
     const existingSessionId = existing?.sessionId || null;
+    if (DEBUG_CHAT_STREAM) {
+      console.log("[chat-stream] DB messages:", existingMessages.length, "roles:", existingMessages.map((m: any) => m.role), "sessionId:", existingSessionId);
+    }
 
     // Get resumeSessionAt UUID
     const lastAssistantMsg = [...existingMessages].reverse().find((m: { role: string }) => m.role === "assistant");
-    const resumeAtUuid = lastAssistantMsg?.metadata?.shouldResume ? lastAssistantMsg?.metadata?.sdkMessageUuid || null : null;
+    const resumeAtUuid = historyEnabled && lastAssistantMsg?.metadata?.shouldResume ? lastAssistantMsg?.metadata?.sdkMessageUuid || null : null;
 
     // Check for duplicate message
     const lastMsg = existingMessages[existingMessages.length - 1];
@@ -458,7 +493,13 @@ async function runChatStream(options: {
 
     claudeEnv.CLAUDE_CONFIG_DIR = isolatedConfigDir;
 
-    const resumeSessionId = existingSessionId || undefined;
+    // Only resume if we have a valid conversation history (at least one assistant message).
+    // Without assistant messages, the SDK session state won't match and may hang.
+    const hasAssistantResponse = existingMessages.some((m: { role: string }) => m.role === "assistant");
+    const resumeSessionId = historyEnabled && hasAssistantResponse ? existingSessionId || undefined : undefined;
+    if (DEBUG_CHAT_STREAM) {
+      console.log("[chat-stream] hasAssistantResponse=", hasAssistantResponse, "resumeSessionId=", resumeSessionId ?? "none");
+    }
 
     // Read AGENTS.md from project root if it exists
     let agentsMdContent: string | undefined;
@@ -467,7 +508,9 @@ async function runChatStream(options: {
       const agentsMdPath = path.join(lookupPath, "AGENTS.md");
       agentsMdContent = await fs.readFile(agentsMdPath, "utf-8");
       if (agentsMdContent.trim()) {
-        console.log(`[chat-stream] Found AGENTS.md at ${agentsMdPath} (${agentsMdContent.length} chars)`);
+        if (DEBUG_CHAT_STREAM) {
+          console.log(`[chat-stream] Found AGENTS.md at ${agentsMdPath} (${agentsMdContent.length} chars)`);
+        }
       } else {
         agentsMdContent = undefined;
       }
@@ -487,9 +530,7 @@ async function runChatStream(options: {
           preset: "claude_code" as const,
         };
 
-    // Accumulation state - parts and metadata are typed for SDK message processing
-    type ResponsePart = { type: string; text?: string; toolCallId?: string; toolName?: string };
-    const parts: ResponsePart[] = [];
+    // Accumulation state for streamed text/metadata
     let currentText = "";
     
     type StreamMetadata = {
@@ -501,8 +542,92 @@ async function runChatStream(options: {
     };
     const metadata: StreamMetadata = {};
 
+    type StreamEventPayload = {
+      type?: string;
+      index?: number;
+      content_block?: { type?: string; text?: string; thinking?: string; id?: string; name?: string };
+      delta?: { type?: string; text?: string; thinking?: string; partial_json?: string };
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
+
+    const STREAM_BLOCK_FALLBACK_INDEX = -1;
+    const streamingTextBlockIds = new Map<number, string>();
+    const streamingReasoningBlockIds = new Map<number, string>();
+    let sawTextStreamEvent = false;
+
+    // Tool call streaming state
+    let currentToolCallId: string | null = null;
+    let currentToolName: string | null = null;
+    let accumulatedToolInput = "";
+    const emittedToolIds = new Set<string>();
+    let currentParentToolUseId: string | null = null;
+    const toolIdMapping = new Map<string, string>();
+
+    // Compact tracking
+    let lastCompactId: string | null = null;
+    let compactCounter = 0;
+
+    const normalizeStreamBlockIndex = (index: number | undefined): number =>
+      typeof index === "number" ? index : STREAM_BLOCK_FALLBACK_INDEX;
+
+    const ensureTextStreamBlock = (index: number | undefined): string => {
+      const normalized = normalizeStreamBlockIndex(index);
+      let textId = streamingTextBlockIds.get(normalized);
+      if (!textId) {
+        textId = crypto.randomUUID();
+        streamingTextBlockIds.set(normalized, textId);
+        safeEmit({ type: "text-start", id: textId });
+      }
+      return textId;
+    };
+
+    const ensureReasoningStreamBlock = (index: number | undefined): string => {
+      const normalized = normalizeStreamBlockIndex(index);
+      let reasoningId = streamingReasoningBlockIds.get(normalized);
+      if (!reasoningId) {
+        reasoningId = crypto.randomUUID();
+        streamingReasoningBlockIds.set(normalized, reasoningId);
+      }
+      return reasoningId;
+    };
+
+    // Helper: close any open text stream blocks
+    const closeOpenTextBlocks = () => {
+      for (const textId of streamingTextBlockIds.values()) {
+        safeEmit({ type: "text-end", id: textId });
+      }
+      streamingTextBlockIds.clear();
+    };
+
+    // Helper: finish current streaming tool input and emit tool-input-available
+    const finishCurrentToolInput = () => {
+      if (!currentToolCallId) return;
+      emittedToolIds.add(currentToolCallId);
+
+      let parsedInput: ToolInput = {};
+      if (accumulatedToolInput) {
+        try {
+          parsedInput = JSON.parse(accumulatedToolInput);
+        } catch {
+          parsedInput = { _raw: accumulatedToolInput, _parseError: true };
+        }
+      }
+
+      safeEmit({
+        type: "tool-input-available",
+        toolCallId: currentToolCallId,
+        toolName: currentToolName || "unknown",
+        input: parsedInput,
+      });
+      currentToolCallId = null;
+      currentToolName = null;
+      accumulatedToolInput = "";
+    };
+
     // Run the query
-    console.log(`[chat-stream] Starting query for ${subChatId} mode=${mode}`);
+    if (DEBUG_CHAT_STREAM) {
+      console.log(`[chat-stream] Starting query for ${subChatId} mode=${mode}`);
+    }
 
     // Use type assertion for SDK compatibility - the SDK types are complex and the runtime behavior is correct
     const queryResult = claudeQuery({
@@ -516,6 +641,7 @@ async function runChatStream(options: {
         permissionMode: mode === "plan" ? ("plan" as const) : ("bypassPermissions" as const),
         ...(mode !== "plan" && { allowDangerouslySkipPermissions: true }),
         includePartialMessages: true,
+        ...(typeof maxThinkingTokens === "number" ? { maxThinkingTokens } : {}),
         settingSources: ["project" as const, "user" as const],
         canUseTool: async (
           toolName: string,
@@ -536,10 +662,17 @@ async function runChatStream(options: {
           if (toolName === "AskUserQuestion") {
             const { toolUseID } = opts;
             type AskUserQuestionInput = { questions: Array<{ question: string; header: string; options: Array<{ label: string; description: string }>; multiSelect: boolean }> };
+            const askUserQuestionInput = toolInput as AskUserQuestionInput;
+            safeEmit({
+              type: "tool-input-available",
+              toolCallId: toolUseID,
+              toolName,
+              input: toolInput,
+            });
             safeEmit({
               type: "ask-user-question",
               toolUseId: toolUseID,
-              questions: (toolInput as AskUserQuestionInput).questions,
+              questions: askUserQuestionInput.questions,
             });
 
             const response = await new Promise<{ approved: boolean; message?: string; updatedInput?: ToolInput }>((resolve) => {
@@ -559,13 +692,25 @@ async function runChatStream(options: {
             });
 
             if (!response.approved) {
-              safeEmit({ type: "ask-user-question-result", toolUseId: toolUseID, result: response.message || "Skipped" });
+              const resultMessage = response.message || "Skipped";
+              safeEmit({ type: "tool-output-error", toolCallId: toolUseID, errorText: resultMessage });
+              safeEmit({ type: "ask-user-question-result", toolUseId: toolUseID, result: resultMessage });
               return { behavior: "deny", message: response.message || "Skipped" };
             }
 
-            const resultPayload: UserQuestionResult = response.updatedInput ? { answers: (response.updatedInput as { answers: Array<{ question: string; answer: string | string[] }> }).answers } : "Approved";
+            const rawAnswers = (response.updatedInput as { answers?: Array<{ question: string; answer: string | string[] }> | Record<string, string | string[]> } | undefined)?.answers;
+            const normalizedAnswers = Array.isArray(rawAnswers)
+              ? rawAnswers
+              : rawAnswers && typeof rawAnswers === "object"
+                ? Object.entries(rawAnswers).map(([question, answer]) => ({ question, answer }))
+                : [];
+            const normalizedUpdatedInput = rawAnswers && !Array.isArray(rawAnswers)
+              ? { ...response.updatedInput, answers: normalizedAnswers }
+              : response.updatedInput;
+            const resultPayload: UserQuestionResult = { answers: normalizedAnswers };
+            safeEmit({ type: "tool-output-available", toolCallId: toolUseID, output: resultPayload });
             safeEmit({ type: "ask-user-question-result", toolUseId: toolUseID, result: resultPayload });
-            return { behavior: "allow", updatedInput: response.updatedInput };
+            return { behavior: "allow", updatedInput: normalizedUpdatedInput };
           }
 
           return { behavior: "allow", updatedInput: toolInput };
@@ -573,11 +718,11 @@ async function runChatStream(options: {
         stderr: (data: string) => {
           console.error("[claude stderr]", data);
         },
+        // Claude Agent SDK: `continue` and `resume` are mutually exclusive.
         ...(resumeSessionId && {
           resume: resumeSessionId,
-          ...(resumeAtUuid ? { resumeSessionAt: resumeAtUuid } : { continue: true }),
+          ...(resumeAtUuid ? { resumeSessionAt: resumeAtUuid } : {}),
         }),
-        ...(!resumeSessionId && { continue: true }),
         ...(model && { model }),
       } as Parameters<typeof claudeQuery>[0]["options"],
     });
@@ -586,53 +731,291 @@ async function runChatStream(options: {
     safeEmit({ type: "start", messageId: crypto.randomUUID() });
 
     // Process the stream
+    resetStallTimeout();
     for await (const message of queryResult) {
       if (abortController.signal.aborted) {
         break;
       }
+      resetStallTimeout();
 
       // Transform SDK messages to UI chunks
-      const msgType = (message as { type: string }).type;
+      const msgAny = message as Record<string, any>;
+      const msgType = msgAny.type as string;
+
+      // Track parent_tool_use_id for nested tools (e.g. Explore agent)
+      if (msgAny.parent_tool_use_id !== undefined) {
+        currentParentToolUseId = msgAny.parent_tool_use_id || null;
+      }
+
+      // Detect SDK error messages BEFORE the switch
+      if (msgType === "error" || msgAny.error) {
+        const errorMsg = msgAny.error?.message || msgAny.message || "Unknown SDK error";
+        safeEmit({ type: "error", errorText: String(errorMsg) });
+        continue;
+      }
 
       switch (msgType) {
-        case "assistant":
-          // Text content
-          const textContent = (message as { message?: { content?: Array<{ type: string; text?: string }> } }).message?.content;
+        case "stream_event": {
+          const streamEvent = (message as { event?: StreamEventPayload }).event;
+          if (!streamEvent) break;
+
+          switch (streamEvent.type) {
+            case "content_block_start": {
+              if (streamEvent.content_block?.type === "text") {
+                sawTextStreamEvent = true;
+                const textId = ensureTextStreamBlock(streamEvent.index);
+                if (streamEvent.content_block.text) {
+                  safeEmit({ type: "text-delta", id: textId, delta: streamEvent.content_block.text });
+                  currentText += streamEvent.content_block.text;
+                }
+              } else if (streamEvent.content_block?.type === "thinking") {
+                const reasoningId = ensureReasoningStreamBlock(streamEvent.index);
+                if (streamEvent.content_block.thinking) {
+                  safeEmit({ type: "reasoning", id: reasoningId, text: streamEvent.content_block.thinking });
+                }
+              } else if (streamEvent.content_block?.type === "tool_use") {
+                // Close open text blocks and pending tool input
+                closeOpenTextBlocks();
+                finishCurrentToolInput();
+
+                const originalId = streamEvent.content_block.id || crypto.randomUUID();
+                const compositeId = currentParentToolUseId ? `${currentParentToolUseId}:${originalId}` : originalId;
+                currentToolCallId = compositeId;
+                currentToolName = streamEvent.content_block.name || "unknown";
+                accumulatedToolInput = "";
+                toolIdMapping.set(originalId, compositeId);
+
+                safeEmit({
+                  type: "tool-input-start",
+                  toolCallId: compositeId,
+                  toolName: currentToolName,
+                });
+              }
+              break;
+            }
+
+            case "content_block_delta": {
+              if (streamEvent.delta?.type === "text_delta" && streamEvent.delta.text) {
+                sawTextStreamEvent = true;
+                const textId = ensureTextStreamBlock(streamEvent.index);
+                safeEmit({ type: "text-delta", id: textId, delta: streamEvent.delta.text });
+                currentText += streamEvent.delta.text;
+              } else if (streamEvent.delta?.type === "thinking_delta" && streamEvent.delta.thinking) {
+                const reasoningId = ensureReasoningStreamBlock(streamEvent.index);
+                safeEmit({ type: "reasoning-delta", id: reasoningId, delta: streamEvent.delta.thinking });
+              } else if (streamEvent.delta?.type === "input_json_delta" && currentToolCallId) {
+                const partialJson = streamEvent.delta.partial_json || "";
+                accumulatedToolInput += partialJson;
+                safeEmit({
+                  type: "tool-input-delta",
+                  toolCallId: currentToolCallId,
+                  inputTextDelta: partialJson,
+                });
+              }
+              break;
+            }
+
+            case "content_block_stop": {
+              const normalized = normalizeStreamBlockIndex(streamEvent.index);
+              const textId = streamingTextBlockIds.get(normalized);
+              if (textId) {
+                safeEmit({ type: "text-end", id: textId });
+                streamingTextBlockIds.delete(normalized);
+              }
+              streamingReasoningBlockIds.delete(normalized);
+              // Finish any streaming tool input
+              if (currentToolCallId) {
+                finishCurrentToolInput();
+              }
+              break;
+            }
+
+            case "message_delta": {
+              if (streamEvent.usage) {
+                if (typeof streamEvent.usage.input_tokens === "number") {
+                  metadata.inputTokens = streamEvent.usage.input_tokens;
+                }
+                if (typeof streamEvent.usage.output_tokens === "number") {
+                  metadata.outputTokens = streamEvent.usage.output_tokens;
+                }
+              }
+              break;
+            }
+          }
+          break;
+        }
+
+        case "assistant": {
+          const assistantMessage = message as {
+            message?: {
+              content?: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }>;
+              stop_reason?: string | null;
+            };
+          };
+          const textContent = assistantMessage.message?.content;
+          const isFinalAssistantMessage = assistantMessage.message?.stop_reason !== null && assistantMessage.message?.stop_reason !== undefined;
+
           if (textContent) {
             for (const block of textContent) {
-              if (block.type === "text" && block.text) {
+              // Text blocks - only emit as fallback when no streaming occurred
+              if (block.type === "text" && block.text && !sawTextStreamEvent && isFinalAssistantMessage) {
                 const textId = crypto.randomUUID();
                 safeEmit({ type: "text-start", id: textId });
                 safeEmit({ type: "text-delta", id: textId, delta: block.text });
                 safeEmit({ type: "text-end", id: textId });
                 currentText += block.text;
               }
+
+              // Tool use blocks - emit if not already emitted via streaming
+              if (block.type === "tool_use" && block.id) {
+                if (emittedToolIds.has(block.id)) continue;
+                emittedToolIds.add(block.id);
+
+                const compositeId = currentParentToolUseId ? `${currentParentToolUseId}:${block.id}` : block.id;
+                toolIdMapping.set(block.id, compositeId);
+
+                safeEmit({
+                  type: "tool-input-available",
+                  toolCallId: compositeId,
+                  toolName: block.name || "unknown",
+                  input: (block.input || {}) as ToolInput,
+                });
+              }
             }
           }
           break;
+        }
 
-        case "result":
+        case "user": {
+          // Tool results - emitted by SDK when a tool completes
+          const userMsg = message as {
+            message?: { content?: Array<{ type: string; tool_use_id?: string; content?: unknown; is_error?: boolean }> };
+            tool_use_result?: unknown;
+          };
+          if (userMsg.message?.content && Array.isArray(userMsg.message.content)) {
+            for (const block of userMsg.message.content) {
+              if (block.type === "tool_result" && block.tool_use_id) {
+                const compositeId = toolIdMapping.get(block.tool_use_id) || block.tool_use_id;
+
+                if (block.is_error) {
+                  safeEmit({
+                    type: "tool-output-error",
+                    toolCallId: compositeId,
+                    errorText: String(block.content),
+                  });
+                } else {
+                  let output = userMsg.tool_use_result;
+                  if (!output && typeof block.content === "string") {
+                    try {
+                      const parsed = JSON.parse(block.content);
+                      if (parsed && typeof parsed === "object") output = parsed;
+                    } catch { /* not JSON, use raw */ }
+                  }
+                  output = output || block.content;
+
+                  safeEmit({
+                    type: "tool-output-available",
+                    toolCallId: compositeId,
+                    output: output as import("../shared/chat-rpc").ToolOutput,
+                  });
+                }
+              }
+            }
+          }
+          break;
+        }
+
+        case "system": {
+          // Session init - MCP servers, tools, plugins, skills
+          const sysMsg = message as {
+            subtype?: string;
+            status?: string;
+            tools?: string[];
+            mcp_servers?: Array<{ name: string; status: string; serverInfo?: { name: string; version: string }; error?: string }>;
+            plugins?: Array<{ name: string; path: string }>;
+            skills?: string[];
+          };
+
+          if (sysMsg.subtype === "init") {
+            const mcpServers = (sysMsg.mcp_servers || []).map((s) => ({
+              name: s.name,
+              status: (["connected", "failed", "pending", "needs-auth"].includes(s.status) ? s.status : "pending") as import("../shared/chat-rpc").MCPServerStatus,
+              ...(s.serverInfo && { serverInfo: s.serverInfo }),
+              ...(s.error && { error: s.error }),
+            }));
+            safeEmit({
+              type: "session-init",
+              tools: sysMsg.tools || [],
+              mcpServers,
+              plugins: sysMsg.plugins || [],
+              skills: sysMsg.skills || [],
+            });
+          }
+
+          // Compacting status
+          if (sysMsg.subtype === "status" && sysMsg.status === "compacting") {
+            lastCompactId = `compact-${Date.now()}-${compactCounter++}`;
+            safeEmit({
+              type: "system-Compact",
+              toolCallId: lastCompactId,
+              state: "input-streaming",
+            });
+          }
+
+          // Compact boundary - mark complete
+          if (sysMsg.subtype === "compact_boundary") {
+            let compactId = lastCompactId;
+            if (!compactId) {
+              compactId = `compact-${Date.now()}-${compactCounter++}`;
+              safeEmit({
+                type: "system-Compact",
+                toolCallId: compactId,
+                state: "input-streaming",
+              });
+            }
+            safeEmit({
+              type: "system-Compact",
+              toolCallId: compactId,
+              state: "output-available",
+            });
+            lastCompactId = null;
+          }
+          break;
+        }
+
+        case "result": {
           // Extract metadata
           const result = message as {
             result?: string;
             session_id?: string;
+            usage?: { input_tokens?: number; output_tokens?: number };
             input_tokens?: number;
             output_tokens?: number;
             cost_usd?: number;
+            total_cost_usd?: number;
             duration_ms?: number;
           };
           metadata.sessionId = result.session_id;
-          metadata.inputTokens = result.input_tokens;
-          metadata.outputTokens = result.output_tokens;
-          metadata.totalCostUsd = result.cost_usd;
+          metadata.inputTokens = result.usage?.input_tokens ?? result.input_tokens;
+          metadata.outputTokens = result.usage?.output_tokens ?? result.output_tokens;
+          metadata.totalCostUsd = result.total_cost_usd ?? result.cost_usd;
           metadata.durationMs = result.duration_ms;
           break;
+        }
 
         default:
-          // Log unknown message types for debugging
-          console.log(`[chat-stream] Unknown message type: ${msgType}`);
+          if (DEBUG_CHAT_STREAM) {
+            if (DEBUG_CHAT_STREAM) {
+              console.log(`[chat-stream] Unknown message type: ${msgType}`);
+            }
+          }
       }
     }
+    clearStallTimeout();
+
+    // Ensure any open streamed text/tool blocks are closed before finishing.
+    closeOpenTextBlocks();
+    finishCurrentToolInput();
 
     // Save session ID if new
     if (metadata.sessionId && metadata.sessionId !== existingSessionId) {
@@ -643,6 +1026,9 @@ async function runChatStream(options: {
     }
 
     // Emit finish with metadata
+    if (DEBUG_CHAT_STREAM) {
+      console.log("[chat-stream] emitting finish for", subChatId, "sessionId=", metadata.sessionId, "tokens:", metadata.inputTokens, "/", metadata.outputTokens);
+    }
     safeEmit({
       type: "finish",
       messageMetadata: {
@@ -656,10 +1042,19 @@ async function runChatStream(options: {
     });
 
   } catch (error) {
-    console.error("[chat-stream] Stream error:", error);
-    emit({ type: "error", errorText: error instanceof Error ? error.message : String(error) });
+    clearStallTimeout();
+    const isAbortError = error instanceof Error && (error.name === "AbortError" || /aborted/i.test(error.message));
+    console.error("[chat-stream] Stream error for", subChatId, ":", error);
+    if (!isAbortError) {
+      emit({ type: "error", errorText: error instanceof Error ? error.message : String(error) });
+    }
     emit({ type: "finish" });
   } finally {
-    activeSessions.delete(subChatId);
+    clearStallTimeout();
+    // Only clear if this stream still owns the active controller.
+    // A newer stream for the same subChatId may have replaced it already.
+    if (activeSessions.get(subChatId) === abortController) {
+      activeSessions.delete(subChatId);
+    }
   }
 }

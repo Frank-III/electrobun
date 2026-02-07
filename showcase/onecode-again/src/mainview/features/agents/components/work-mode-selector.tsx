@@ -28,36 +28,33 @@ const workModeOptions = [
 		soon: true
 	}
 ];
-export function WorkModeSelector({ value, onChange, disabled }: WorkModeSelectorProps) {
+export function WorkModeSelector(props: WorkModeSelectorProps) {
 	const [open, setOpen] = createSignal(false);
-	const selectedOption = workModeOptions.find((opt) => opt.id === value) || workModeOptions[1];
-	const Icon = selectedOption.icon;
+	const selectedOption = () => workModeOptions.find((opt) => opt.id === props.value) || workModeOptions[1];
 	return <Popover open={open()} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" class={cn("flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", disabled && "opacity-50 pointer-events-none")} disabled={disabled}>
-          <Icon class="w-4 h-4" />
-          <span>{selectedOption.label}</span>
+        <button type="button" class={cn("flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-[background-color,color] duration-150 ease-out rounded-md hover:bg-muted/50 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", props.disabled && "opacity-50 pointer-events-none")} disabled={props.disabled}>
+          {(() => { const Icon = selectedOption().icon; return <Icon class="w-4 h-4" />; })()}
+          <span>{selectedOption().label}</span>
           <IconChevronDown class="h-3 w-3 shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
       <PopoverContent class="w-[160px] min-w-[160px]" align="start">
         <For each={workModeOptions}>{(option) => {
 		const OptionIcon = option.icon;
-		const isSelected = value === option.id;
 		const isDisabled = "disabled" in option && option.disabled;
 		const isSoon = "soon" in option && option.soon;
 		return <button onClick={() => {
 			if (isDisabled) return;
-			// Cast is safe because disabled options are filtered out above
-			onChange(option.id as WorkMode);
+			props.onChange(option.id as WorkMode);
 			setOpen(false);
-		}} disabled={isDisabled} class={cn("flex items-center gap-1.5 min-h-[32px] py-[5px] px-1.5 mx-1 w-[calc(100%-8px)] text-sm text-left rounded-md cursor-default select-none outline-none transition-colors", isDisabled ? "opacity-50 cursor-not-allowed" : isSelected ? "dark:bg-neutral-800 text-foreground" : "dark:hover:bg-neutral-800 hover:text-foreground")}>
+		}} disabled={isDisabled} class={cn("flex items-center gap-1.5 min-h-[32px] py-[5px] px-1.5 mx-1 w-[calc(100%-8px)] text-sm text-left rounded-md cursor-default select-none outline-none transition-colors", isDisabled ? "opacity-50 cursor-not-allowed" : props.value === option.id ? "dark:bg-neutral-800 text-foreground" : "dark:hover:bg-neutral-800 hover:text-foreground")}>
               <OptionIcon class="h-4 w-4 text-muted-foreground shrink-0" />
               <span class="flex-1">{option.label}</span>
               <Show when={isSoon}><span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
                   Soon
                 </span></Show>
-              <Show when={isSelected && !isDisabled}><CheckIcon class="h-4 w-4 shrink-0" /></Show>
+              <Show when={props.value === option.id && !isDisabled}><CheckIcon class="h-4 w-4 shrink-0" /></Show>
             </button>;
 	}}</For>
       </PopoverContent>

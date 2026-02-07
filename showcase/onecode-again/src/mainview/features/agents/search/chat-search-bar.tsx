@@ -10,7 +10,7 @@ interface ChatSearchBarProps {
 	class?: string;
 	topOffset?: string;
 }
-export function ChatSearchBar({ messages, class: cls, topOffset }: ChatSearchBarProps) {
+export function ChatSearchBar(props: ChatSearchBarProps) {
 	const [isOpen] = chatSearchOpenAtom;
 	const [inputValue, setInputValue] = chatSearchInputAtom;
 	const [, setSearchQuery] = chatSearchQueryAtom;
@@ -48,7 +48,7 @@ export function ChatSearchBar({ messages, class: cls, topOffset }: ChatSearchBar
 			return;
 		}
 		// Extract and search
-		const extracted = extractSearchableText(messages);
+		const extracted = extractSearchableText(props.messages);
 		const matches = findMatches(extracted, value);
 		setMatches(matches);
 		setCurrentIndex(0);
@@ -93,7 +93,7 @@ export function ChatSearchBar({ messages, class: cls, topOffset }: ChatSearchBar
 		}
 	};
 	return <Show when={isOpen()}>
-    <div class={cn("absolute right-3 left-3 z-50", "flex items-center gap-1 px-2 py-1.5", "bg-popover border border-border rounded-lg shadow-lg", "animate-in fade-in-0 slide-in-from-top-2 duration-150", "max-w-[340px] ml-auto cursor-text",cls)} style={{ top: topOffset ? topOffset : "0px" }} onClick={handleContainerClick}>
+    <div class={cn("absolute right-3 left-3 z-50", "flex items-center gap-1 px-2 py-1.5", "bg-popover border border-border rounded-lg shadow-lg", "animate-in fade-in-0 slide-in-from-top-2 duration-150", "max-w-[340px] ml-auto cursor-text", props.class)} style={{ top: props.topOffset ? props.topOffset : "0px" }} onClick={handleContainerClick}>
       {	/* Search input - grows to fill space, shrinks on narrow screens */}
       <input ref={(el) => inputRef = el} type="text" value={inputValue()} onInput={(e) => setInputValue((e.currentTarget as HTMLInputElement).value)} onKeyDown={handleKeyDown} placeholder="Search..." class={cn("flex-1 min-w-[80px] h-7 px-2 text-sm bg-transparent", "border-none outline-none", "placeholder:text-muted-foreground/60")} autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck={false} />
 

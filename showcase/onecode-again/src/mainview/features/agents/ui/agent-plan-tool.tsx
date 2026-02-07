@@ -63,10 +63,11 @@ const ComplexityBadge = (props: {
 	complexity?: "low" | "medium" | "high";
 }) => {
 	const [local] = splitProps(props, ["complexity"]);
-	if (!local.complexity) return null;
-	return <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-      {local.complexity}
-    </span>;
+	return <Show when={local.complexity}>
+		<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+			{local.complexity}
+		</span>
+	</Show>;
 };
 export function AgentPlanTool(props: AgentPlanToolProps) {
 	const [local] = splitProps(props, ["part", "chatStatus"]);
@@ -74,9 +75,7 @@ export function AgentPlanTool(props: AgentPlanToolProps) {
 	const { isPending } = getToolStatus(local.part, local.chatStatus);
 	const plan = local.part.input?.plan;
 	const action = local.part.input?.action || "create";
-	if (!plan) {
-		return null;
-	}
+	if (!plan) return null;
 	const steps = plan.steps || [];
 	const completedCount = steps.filter((s) => s.status === "completed").length;
 	const inProgressCount = steps.filter((s) => s.status === "in_progress").length;

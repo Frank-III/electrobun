@@ -108,10 +108,10 @@ export interface AgentsHotkeysManagerConfig {
   setSettingsDialogOpen?: (open: boolean) => void
   setSettingsActiveTab?: (tab: SettingsTab) => void
   toggleChatSearch?: () => void
-  selectedChatId?: string | null
-  customHotkeysConfig?: CustomHotkeysConfig
+  selectedChatId?: () => string | null
+  customHotkeysConfig?: () => CustomHotkeysConfig
   // Feature flags
-  betaKanbanEnabled?: boolean
+  betaKanbanEnabled?: () => boolean
 }
 
 export interface UseAgentsHotkeysOptions {
@@ -140,7 +140,7 @@ export function useAgentsHotkeys(
     setSettingsDialogOpen: config.setSettingsDialogOpen,
     setSettingsActiveTab: config.setSettingsActiveTab,
     toggleChatSearch: config.toggleChatSearch,
-    selectedChatId: config.selectedChatId,
+    selectedChatId: config.selectedChatId?.(),
   })
 
   const handleHotkeyAction = async (actionId: string) => {
@@ -173,7 +173,7 @@ export function useAgentsHotkeys(
 
   // Get the resolved hotkey for a shortcut, respecting custom bindings
   const getHotkeyForAction = (shortcutId: ShortcutActionId): string | null => {
-    const customConfig = config.customHotkeysConfig || { version: 1, bindings: {} }
+    const customConfig = config.customHotkeysConfig?.() || { version: 1, bindings: {} }
     return getResolvedHotkey(shortcutId, customConfig)
   }
 
@@ -228,7 +228,7 @@ export function useAgentsHotkeys(
       }
 
       // Check open-kanban hotkey (only if feature is enabled)
-      if (config.betaKanbanEnabled) {
+      if (config.betaKanbanEnabled?.()) {
         const openKanbanHotkey = getHotkeyForAction("open-kanban")
         if (openKanbanHotkey && matchesHotkey(e, openKanbanHotkey)) {
           e.preventDefault()

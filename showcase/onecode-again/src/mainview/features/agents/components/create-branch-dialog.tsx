@@ -27,14 +27,14 @@ interface CreateBranchDialogProps {
 	defaultBranch: string;
 	onBranchCreated: (branchName: string) => void;
 }
-export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, defaultBranch, onBranchCreated }: CreateBranchDialogProps) {
+export function CreateBranchDialog(props: CreateBranchDialogProps) {
 	const [branchName, setBranchName] = createSignal("");
-	const [baseBranch, setBaseBranch] = createSignal(defaultBranch);
+	const [baseBranch, setBaseBranch] = createSignal(props.defaultBranch);
 	const [baseBranchOpen, setBaseBranchOpen] = createSignal(false);
 	const [baseBranchSearch, setBaseBranchSearch] = createSignal("");
 	// Reset baseBranch when defaultBranch changes
 	createEffect(() => {
-		setBaseBranch(defaultBranch);
+		setBaseBranch(props.defaultBranch);
 	});
 	createEffect(() => {
 		if (!baseBranchOpen()) {
@@ -42,10 +42,10 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
 		}
 	});
 	const filteredBaseBranches = createMemo(() => {
-		let filtered = branches;
+		let filtered = props.branches;
 		if (baseBranchSearch().trim()) {
 			const search = baseBranchSearch().toLowerCase();
-			filtered = branches.filter((b) => b.name.toLowerCase().includes(search));
+			filtered = props.branches.filter((b) => b.name.toLowerCase().includes(search));
 		}
 		return filtered.slice(0, 50);
 	});
@@ -56,11 +56,11 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
 			desktopRpc.changes.createBranch.mutate(input),
 		onSuccess: (data) => {
 			toast.success(`Branch '${data.branchName}' created successfully`);
-			queryClient?.invalidateQueries({ queryKey: ["changes", "getBranches", projectPath] });
-			onBranchCreated(data.branchName);
-			onOpenChange(false);
+			queryClient?.invalidateQueries({ queryKey: ["changes", "getBranches", props.projectPath] });
+			props.onBranchCreated(data.branchName);
+			props.onOpenChange(false);
 			setBranchName("");
-			setBaseBranch(defaultBranch);
+			setBaseBranch(props.defaultBranch);
 		},
 		onError: (error) => {
 			toast.error(`Failed to create branch: ${error.message}`);
@@ -79,12 +79,12 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
 			return;
 		}
 		createBranchMutation.mutate({
-			projectPath,
+			projectPath: props.projectPath,
 			branchName: name,
 			baseBranch: base,
 		});
 	};
-	return <Dialog open={open} onOpenChange={onOpenChange}>
+	return <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <CanvasDialogContent class="sm:max-w-[350px] overflow-visible">
         <CanvasDialogHeader>
           <DialogTitle>Create a Branch</DialogTitle>
@@ -148,7 +148,7 @@ export function CreateBranchDialog({ open, onOpenChange, projectPath, branches, 
         </CanvasDialogBody>
 
         <CanvasDialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={createBranchMutation.isPending} class="transition-transform duration-150 active:scale-[0.97] rounded-md">
+          <Button type="button" variant="outline" onClick={() => props.onOpenChange(false)} disabled={createBranchMutation.isPending} class="transition-transform duration-150 active:scale-[0.97] rounded-md">
             Cancel
           </Button>
           <Button type="button" onClick={(e) => handleSubmit(e)} disabled={!branchName().trim() || createBranchMutation.isPending} class="transition-transform duration-150 active:scale-[0.97] rounded-md">

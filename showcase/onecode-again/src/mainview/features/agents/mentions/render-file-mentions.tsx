@@ -10,28 +10,28 @@ function base64ToUtf8(base64: string): string {
 	return new TextDecoder().decode(bytes);
 }
 // Text selection icon - "A" with text cursor
-function TextSelectIcon({ class: cls }: {
+function TextSelectIcon(props: {
 	class?: string;
 }) {
-	return <svg viewBox="0 0 24 24" fill="none" class={cls}>
+	return <svg viewBox="0 0 24 24" fill="none" class={props.class}>
       <path fill-rule="evenodd" clip-rule="evenodd" d="M8.50027 4C8.91147 4 9.28067 4.25166 9.43107 4.63435L14.9311 18.6343C15.133 19.1484 14.88 19.7288 14.366 19.9308C13.8519 20.1327 13.2715 19.8797 13.0695 19.3657L11.3545 15H5.64607L3.93107 19.3657C3.72907 19.8797 3.14867 20.1327 2.63462 19.9308C2.12058 19.7288 1.86757 19.1484 2.06952 18.6343L7.56947 4.63435C7.71987 4.25166 8.08907 4 8.50027 4ZM6.43177 13H10.5688L8.50027 7.73484L6.43177 13Z" fill="currentColor" />
       <path d="M17 2C16.4477 2 16 2.44772 16 3C16 3.55228 16.4477 4 17 4H18V20H17C16.4477 20 16 20.4477 16 21C16 21.5523 16.4477 22 17 22H21C21.5523 22 22 21.5523 22 21C22 20.4477 21.5523 20 21 20H20V4H21C21.5523 4 22 3.55228 22 3C22 2.44772 21.5523 2 21 2H17Z" fill="currentColor" />
     </svg>;
 }
 // Code selection icon - cursor arrow with text cursor
-function CodeSelectIcon({ class: cls }: {
+function CodeSelectIcon(props: {
 	class?: string;
 }) {
-	return <svg viewBox="0 0 24 24" fill="none" class={cls}>
+	return <svg viewBox="0 0 24 24" fill="none" class={props.class}>
       <path d="M14 2C13.4477 2 13 2.44772 13 3C13 3.55228 13.4477 4 14 4H15V20H14C13.4477 20 13 20.4477 13 21C13 21.5523 13.4477 22 14 22H18C18.5523 22 19 21.5523 19 21C19 20.4477 18.5523 20 18 20H17V4H18C18.5523 4 19 3.55228 19 3C19 2.44772 18.5523 2 18 2H14Z" fill="currentColor" />
       <path d="M4.29287 5.29289C4.68338 4.90237 5.31638 4.90237 5.70698 5.29289L11.707 11.2929C12.0974 11.6834 12.0975 12.3165 11.707 12.707L5.70698 18.707C5.31648 19.0975 4.68338 19.0974 4.29287 18.707C3.90237 18.3164 3.90237 17.6834 4.29287 17.2929L9.58587 11.9999L4.29287 6.70696C3.90237 6.31643 3.90237 5.68342 4.29287 5.29289Z" fill="currentColor" />
     </svg>;
 }
 // Custom folder icon matching design
-function FolderOpenIcon({ class: cls }: {
+function FolderOpenIcon(props: {
 	class?: string;
 }) {
-	return <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={cls}>
+	return <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={props.class}>
       <path d="M4 8V6C4 4.89543 4.89543 4 6 4H14C15.1046 4 16 4.89543 16 6M4 8H8.17548C8.70591 8 9.21462 8.21071 9.58969 8.58579L11.4181 10.4142C11.7932 10.7893 12.3019 11 12.8323 11H16M4 8C3.44987 8 3.00391 8.44597 3.00391 8.99609V18C3.00391 19.1046 3.89934 20 5.00391 20H19.0039C20.1085 20 21.0039 19.1046 21.0039 18V12.0039C21.0039 11.4495 20.5544 11 20 11M16 11V6M16 11H20M16 6H18C19.1046 6 20 6.89543 20 8V11" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
     </svg>;
 }
@@ -199,54 +199,54 @@ function parseMention(id: string): ParsedMention | null {
 /**
 * Component to render a single file/folder/skill/agent/tool/quote/diff mention chip (matching canvas style)
 */
-function MentionChip({ mention }: {
+function MentionChip(props: {
 	mention: ParsedMention;
 }) {
 	// Quote and diff mentions render as block cards
-	if (mention.type === "quote") {
-		// Get a short title from the label
-		const title = mention.label.split("\n")[0]?.slice(0, 20) || mention.label.slice(0, 20);
-		const displayTitle = title.length < mention.label.length ? `${title}...` : title;
-		return <span class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/50 cursor-default min-w-[120px] max-w-[200px] align-middle">
-        {		/* Icon container */}
-        <span class="flex items-center justify-center size-8 rounded-md bg-muted shrink-0">
-          <TextSelectIcon class="size-4 text-muted-foreground" />
-        </span>
-        { /* Text content */}
-        <span class="flex flex-col min-w-0">
-          <span class="text-sm font-medium text-foreground truncate">
-            {displayTitle}
-          </span>
-          <span class="text-xs text-muted-foreground">
-            Selected Text
-          </span>
-        </span>
-      </span>;
- }
-	if (mention.type === "diff") {
-		const fileName = mention.path.split("/").pop() || mention.path;
-		return <span class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/50 cursor-default min-w-[120px] max-w-[200px] align-middle">
-        {		/* Icon container */}
-        <span class="flex items-center justify-center size-8 rounded-md bg-muted shrink-0">
-          <CodeSelectIcon class="size-4 text-muted-foreground" />
-        </span>
-        { /* Text content */}
-        <span class="flex flex-col min-w-0">
-          <span class="text-sm font-medium text-foreground truncate">
-            {fileName}
-          </span>
-          <span class="text-xs text-muted-foreground">
-            {mention.lineNumber ? `Line ${mention.lineNumber}` : "Code selection"}
-          </span>
-        </span>
-      </span>;
- }
-	const Icon = mention.type === "skill" ? SkillIcon : mention.type === "agent" ? CustomAgentIcon : mention.type === "tool" ? OriginalMCPIcon : mention.type === "folder" ? FolderOpenIcon : getFileIconByExtension(mention.label) ?? FilesIcon;
-	const title = mention.type === "skill" ? `Skill: ${mention.label}` : mention.type === "agent" ? `Agent: ${mention.label}` : mention.type === "tool" ? `MCP Tool: ${mention.path}` : `${mention.repository}:${mention.path}`;
-	return <span class="inline-flex items-center gap-1 px-[6px] rounded-[6px] text-sm align-middle bg-black/[0.04] dark:bg-white/[0.08] text-foreground/80 select-none" title={title}>
-      <Icon class={mention.type === "tool" ? "h-3.5 w-3.5 text-muted-foreground flex-shrink-0" : "h-3 w-3 text-muted-foreground flex-shrink-0"} />
-      <span>{mention.label}</span>
-    </span>;
+	const quoteTitle = createMemo(() => {
+		const label = props.mention.label;
+		const t = label.split("\n")[0]?.slice(0, 20) || label.slice(0, 20);
+		return t.length < label.length ? `${t}...` : t;
+	});
+	const diffFileName = createMemo(() => props.mention.path.split("/").pop() || props.mention.path);
+	const Icon = createMemo(() => props.mention.type === "skill" ? SkillIcon : props.mention.type === "agent" ? CustomAgentIcon : props.mention.type === "tool" ? OriginalMCPIcon : props.mention.type === "folder" ? FolderOpenIcon : getFileIconByExtension(props.mention.label) ?? FilesIcon);
+	const chipTitle = createMemo(() => props.mention.type === "skill" ? `Skill: ${props.mention.label}` : props.mention.type === "agent" ? `Agent: ${props.mention.label}` : props.mention.type === "tool" ? `MCP Tool: ${props.mention.path}` : `${props.mention.repository}:${props.mention.path}`);
+	return <Show when={props.mention.type === "quote"} fallback={
+		<Show when={props.mention.type === "diff"} fallback={
+			<span class="inline-flex items-center gap-1 px-[6px] rounded-[6px] text-sm align-middle bg-black/[0.04] dark:bg-white/[0.08] text-foreground/80 select-none" title={chipTitle()}>
+				{(() => { const I = Icon(); return <I class={props.mention.type === "tool" ? "h-3.5 w-3.5 text-muted-foreground flex-shrink-0" : "h-3 w-3 text-muted-foreground flex-shrink-0"} />; })()}
+				<span>{props.mention.label}</span>
+			</span>
+		}>
+			<span class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/50 cursor-default min-w-[120px] max-w-[200px] align-middle">
+				<span class="flex items-center justify-center size-8 rounded-md bg-muted shrink-0">
+					<CodeSelectIcon class="size-4 text-muted-foreground" />
+				</span>
+				<span class="flex flex-col min-w-0">
+					<span class="text-sm font-medium text-foreground truncate">
+						{diffFileName()}
+					</span>
+					<span class="text-xs text-muted-foreground">
+						{props.mention.lineNumber ? `Line ${props.mention.lineNumber}` : "Code selection"}
+					</span>
+				</span>
+			</span>
+		</Show>
+	}>
+		<span class="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/50 cursor-default min-w-[120px] max-w-[200px] align-middle">
+			<span class="flex items-center justify-center size-8 rounded-md bg-muted shrink-0">
+				<TextSelectIcon class="size-4 text-muted-foreground" />
+			</span>
+			<span class="flex flex-col min-w-0">
+				<span class="text-sm font-medium text-foreground truncate">
+					{quoteTitle()}
+				</span>
+				<span class="text-xs text-muted-foreground">
+					Selected Text
+				</span>
+			</span>
+		</span>
+	</Show>;
 }
 /**
 * Render text with ultrathink highlighting
@@ -303,12 +303,12 @@ export function useRenderFileMentions(text: string): Accessor<JSX.Element[]> {
 /**
 * Component to render text with file mentions
 */
-export function RenderFileMentions({ text, class: cls }: {
+export function RenderFileMentions(props: {
 	text: string;
 	class?: string;
 }) {
-	const nodes = useRenderFileMentions(text);
-	return <span class={cls}>{nodes()}</span>;
+	const nodes = createMemo(() => useRenderFileMentions(props.text)());
+	return <span class={props.class}>{nodes()}</span>;
 }
 /**
 * Extract all file/folder mentions from text
@@ -381,30 +381,32 @@ function formatSize(bytes: number): string {
 * Component to render a single text mention block (quote/diff/pasted)
 * Used for displaying above message bubbles, not inline
 */
-export function TextMentionBlock({ mention }: {
+export function TextMentionBlock(props: {
 	mention: ParsedMention;
 }) {
-	if (mention.type !== "quote" && mention.type !== "diff" && mention.type !== "pasted") return null;
-	const displayTitle = mention.type === "quote" ? mention.label.split("\n")[0]?.slice(0, 20) || mention.label.slice(0, 20) : mention.type === "pasted" ? mention.label.split("\n")[0]?.slice(0, 20) || mention.label.slice(0, 20) : mention.path?.split("/").pop() || "Code";
-	const title = displayTitle.length < 20 ? displayTitle : `${displayTitle}...`;
-	const subtitle = mention.type === "quote" ? "Selected Text" : mention.type === "pasted" ? `Pasted Text · ${formatSize(mention.size || 0)}` : mention.lineNumber ? `Line ${mention.lineNumber}` : "Code selection";
-	return <HoverCard openDelay={300} closeDelay={100}>
+	const isVisible = createMemo(() => props.mention.type === "quote" || props.mention.type === "diff" || props.mention.type === "pasted");
+	const displayTitle = createMemo(() => {
+		const m = props.mention;
+		const dt = m.type === "quote" ? m.label.split("\n")[0]?.slice(0, 20) || m.label.slice(0, 20) : m.type === "pasted" ? m.label.split("\n")[0]?.slice(0, 20) || m.label.slice(0, 20) : m.path?.split("/").pop() || "Code";
+		return dt.length < 20 ? dt : `${dt}...`;
+	});
+	const subtitle = createMemo(() => props.mention.type === "quote" ? "Selected Text" : props.mention.type === "pasted" ? `Pasted Text · ${formatSize(props.mention.size || 0)}` : props.mention.lineNumber ? `Line ${props.mention.lineNumber}` : "Code selection");
+	return <Show when={isVisible()}>
+		<HoverCard openDelay={300} closeDelay={100}>
       <HoverCardTrigger asChild>
         <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/50 cursor-default min-w-[120px] max-w-[200px]">
-          {	/* Icon container */}
           <div class="flex items-center justify-center size-8 rounded-md bg-muted shrink-0">
-            <Show when={mention.type === "quote" || mention.type === "pasted"} fallback={<CodeSelectIcon class="size-4 text-muted-foreground" />}>
+            <Show when={props.mention.type === "quote" || props.mention.type === "pasted"} fallback={<CodeSelectIcon class="size-4 text-muted-foreground" />}>
               <TextSelectIcon class="size-4 text-muted-foreground" />
             </Show>
           </div>
 
-          { /* Text content */}
           <div class="flex flex-col min-w-0">
             <span class="text-sm font-medium text-foreground truncate">
-              {title}
+              {displayTitle()}
             </span>
             <span class="text-xs text-muted-foreground">
-              {subtitle}
+              {subtitle()}
             </span>
           </div>
         </div>
@@ -412,29 +414,31 @@ export function TextMentionBlock({ mention }: {
       <HoverCardContent side="top" align="start" class="w-80 max-h-48 overflow-y-auto">
         <div class="flex flex-col gap-1">
           <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Show when={mention.type === "quote" || mention.type === "pasted"} fallback={<CodeSelectIcon class="size-3" />}>
+            <Show when={props.mention.type === "quote" || props.mention.type === "pasted"} fallback={<CodeSelectIcon class="size-3" />}>
               <TextSelectIcon class="size-3" />
             </Show>
             <span>
-              {mention.type === "quote" ? "Selected text" : mention.type === "pasted" ? `Pasted text · ${formatSize(mention.size || 0)}` : `${mention.path}${mention.lineNumber ? `:${mention.lineNumber}` : ""}`}
+              {props.mention.type === "quote" ? "Selected text" : props.mention.type === "pasted" ? `Pasted text · ${formatSize(props.mention.size || 0)}` : `${props.mention.path}${props.mention.lineNumber ? `:${props.mention.lineNumber}` : ""}`}
             </span>
           </div>
           <pre class="text-sm whitespace-pre-wrap break-words font-mono">
-            {mention.fullText || mention.label}
+            {props.mention.fullText || props.mention.label}
           </pre>
         </div>
       </HoverCardContent>
-    </HoverCard>;
- }
+    </HoverCard>
+	</Show>;
+}
 /**
 * Component to render multiple text mention blocks
 */
-export function TextMentionBlocks({ mentions }: {
+export function TextMentionBlocks(props: {
 	mentions: ParsedMention[];
 }) {
-	const textMentions = mentions.filter((m) => m.type === "quote" || m.type === "diff" || m.type === "pasted");
-	if (textMentions.length === 0) return null;
-  return <div class="flex flex-wrap gap-1.5">
-      <For each={textMentions}>{(mention) => <TextMentionBlock mention={mention} />}</For>
-    </div>;
+	const textMentions = createMemo(() => props.mentions.filter((m) => m.type === "quote" || m.type === "diff" || m.type === "pasted"));
+	return <Show when={textMentions().length > 0}>
+		<div class="flex flex-wrap gap-1.5">
+			<For each={textMentions()}>{(mention) => <TextMentionBlock mention={mention} />}</For>
+		</div>
+	</Show>;
 }

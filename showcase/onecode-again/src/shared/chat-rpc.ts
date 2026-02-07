@@ -9,6 +9,9 @@ export type ToolOutput = string | number | boolean | null | ToolOutput[] | { [ke
 export type UserQuestionAnswer = { question: string; answer: string | string[] };
 export type UserQuestionResult = string | UserQuestionAnswer[] | { answers: UserQuestionAnswer[] };
 
+// Chat lifecycle status
+export type ChatStatus = "ready" | "submitted" | "streaming" | "error";
+
 // Message shape consumed by UI (role, parts). No dependency on "ai" package.
 export type UIMessagePart = { type: string; text?: string; [key: string]: unknown };
 export type UIMessage = {
@@ -123,6 +126,7 @@ export type ChatRequests = {
       model?: string;
       images?: ImageAttachment[];
       historyEnabled?: boolean;
+      maxThinkingTokens?: number;
       customConfig?: CustomClaudeConfig;
       selectedOllamaModel?: string;
       offlineModeEnabled?: boolean;

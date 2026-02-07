@@ -119,6 +119,19 @@ export const native = (() => {
 				args: [FFIType.ptr],
 				returns: FFIType.void,
 			},
+			// macOS only: control native window buttons (traffic lights)
+			...(process.platform === "darwin"
+				? {
+						setTrafficLightVisibility: {
+							args: [FFIType.ptr, FFIType.bool],
+							returns: FFIType.void,
+						},
+						setTrafficLightPosition: {
+							args: [FFIType.ptr, FFIType.f64, FFIType.f64],
+							returns: FFIType.void,
+						},
+					}
+				: {}),
 			isWindowMinimized: {
 				args: [FFIType.ptr],
 				returns: FFIType.bool,
@@ -517,6 +530,54 @@ export const native = (() => {
 				],
 				returns: FFIType.void,
 			},
+
+			// Ghostty native view management
+			ghosttyCreateNativeView: {
+				args: [
+					FFIType.ptr, // window pointer
+					FFIType.f64, // x
+					FFIType.f64, // y
+					FFIType.f64, // width
+					FFIType.f64, // height
+					FFIType.ptr, // outViewPtr (pointer to pointer)
+				],
+				returns: FFIType.u32, // surfaceId (0 on failure)
+			},
+			ghosttyResizeNativeView: {
+				args: [
+					FFIType.ptr, // window pointer
+					FFIType.u32, // surfaceId
+					FFIType.f64, // x
+					FFIType.f64, // y
+					FFIType.f64, // width
+					FFIType.f64, // height
+				],
+				returns: FFIType.void,
+			},
+			ghosttyDestroyNativeView: {
+				args: [FFIType.u32], // surfaceId
+				returns: FFIType.void,
+			},
+			ghosttyFocusNativeView: {
+				args: [
+					FFIType.ptr, // window pointer
+					FFIType.u32, // surfaceId
+				],
+				returns: FFIType.void,
+			},
+			ghosttyGetScaleFactor: {
+				args: [FFIType.ptr], // window pointer
+				returns: FFIType.f64, // scale factor (2.0 for Retina)
+			},
+			ghosttySetSurfacePtr: {
+				args: [
+					FFIType.u32, // surfaceId
+					FFIType.ptr, // surfacePtr (ghostty_surface_t)
+					FFIType.cstring, // libghosttyPath
+				],
+				returns: FFIType.void,
+			},
+
 			killApp: {
 				args: [],
 				returns: FFIType.void,
@@ -703,6 +764,30 @@ export const ffi = {
 			}
 
 			native.symbols.restoreWindow(windowPtr);
+		},
+
+		setTrafficLightVisibility: (params: { winId: number; visible: boolean }) => {
+			const { winId, visible } = params;
+			const windowPtr = BrowserWindow.getById(winId)?.ptr;
+
+			if (!windowPtr) {
+				throw `Can't set traffic light visibility. Window no longer exists`;
+			}
+
+			// Only available on macOS builds that export the symbol.
+			(native.symbols as any).setTrafficLightVisibility?.(windowPtr, visible);
+		},
+
+		setTrafficLightPosition: (params: { winId: number; x: number; y: number }) => {
+			const { winId, x, y } = params;
+			const windowPtr = BrowserWindow.getById(winId)?.ptr;
+
+			if (!windowPtr) {
+				throw `Can't set traffic light position. Window no longer exists`;
+			}
+
+			// Only available on macOS builds that export the symbol.
+			(native.symbols as any).setTrafficLightPosition?.(windowPtr, x, y);
 		},
 
 		isWindowMinimized: (params: { winId: number }): boolean => {
@@ -1371,15 +1456,68 @@ export const ffi = {
 			return formatsStr.split(",").filter((f) => f.length > 0);
 		},
 
-		// ffifunc: (params: {}): void => {
-		//   const {
+		// Ghostty native view management
+		ghosttyCreateNativeView: (
+			windowPtr: Pointer,
+			x: number,
+			y: number,
+			width: number,
+			height: number,
+			outViewPtrBuf: BigUint64Array,
+		): number => {
+			return native.symbols.ghosttyCreateNativeView(
+				windowPtr,
+				x,
+				y,
+				width,
+				height,
+				ptr(outViewPtrBuf),
+			);
+		},
 
-		//   } = params;
+		ghosttyResizeNativeView: (
+			windowPtr: Pointer,
+			surfaceId: number,
+			x: number,
+			y: number,
+			width: number,
+			height: number,
+		): void => {
+			native.symbols.ghosttyResizeNativeView(
+				windowPtr,
+				surfaceId,
+				x,
+				y,
+				width,
+				height,
+			);
+		},
 
-		//   native.symbols.ffifunc(
+		ghosttyDestroyNativeView: (surfaceId: number): void => {
+			native.symbols.ghosttyDestroyNativeView(surfaceId);
+		},
 
-		//   );
-		// },
+		ghosttyFocusNativeView: (windowPtr: Pointer, surfaceId: number): void => {
+			native.symbols.ghosttyFocusNativeView(windowPtr, surfaceId);
+		},
+
+		ghosttyGetScaleFactor: (windowPtr: Pointer): number => {
+			return native.symbols.ghosttyGetScaleFactor(windowPtr);
+		},
+
+		ghosttySetSurfacePtr: (
+			surfaceId: number,
+			surfacePtr: Pointer,
+			libghosttyPath: string,
+		): void => {
+			const encoder = new TextEncoder();
+			const pathBuf = encoder.encode(libghosttyPath + "\0");
+			native.symbols.ghosttySetSurfacePtr(
+				surfaceId,
+				surfacePtr,
+				ptr(pathBuf),
+			);
+		},
 	},
 	// Internal functions for menu data management
 	internal: {

@@ -1,5 +1,5 @@
 import { Motion, Presence } from "solid-motionone";
-import { Show } from "solid-js";
+import { Show, mergeProps } from "solid-js";
 import { createEffect, createSignal, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
 import { Button } from "../../../components/ui/button";
@@ -18,30 +18,26 @@ const EASING_CURVE = [
 	.19
 ] as const;
 const INTERACTION_DELAY_MS = 250;
-export function AgentsRenameSubChatDialog({ isOpen, onClose, onSave, currentName, isLoading = false }: AgentsRenameSubChatDialogProps) {
-	const [mounted, setMounted] = createSignal(false);
-	const [name, setName] = createSignal(currentName);
+export function AgentsRenameSubChatDialog(rawProps: AgentsRenameSubChatDialogProps) {
+	const props = mergeProps({ isLoading: false }, rawProps);
+	const [name, setName] = createSignal(props.currentName);
 	const [isSaving, setIsSaving] = createSignal(false);
 	let openAtRef = 0;
 	let inputRef: HTMLInputElement | undefined;
 	createEffect(() => {
-		setMounted(true);
-	});
-	createEffect(() => {
-		if (isOpen) {
+		if (props.isOpen) {
 			openAtRef = performance.now();
-			setName(currentName);
+			setName(props.currentName);
 		}
 	});
-	const handleAnimationComplete = () => {
-		// Focus and select input after animation completes (only if still open)
-		if (isOpen) {
+	createEffect(() => {
+		if (props.isOpen) {
 			inputRef?.focus();
 			inputRef?.select();
 		}
-	};
+	});
 	createEffect(() => {
-		if (!isOpen) return;
+		if (!props.isOpen) return;
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
 				event.preventDefault();
@@ -58,28 +54,26 @@ export function AgentsRenameSubChatDialog({ isOpen, onClose, onSave, currentName
 	const handleClose = () => {
 		const canInteract = performance.now() - openAtRef > INTERACTION_DELAY_MS;
 		if (!canInteract || isSaving()) return;
-		onClose();
+		props.onClose();
 	};
 	const handleSave = async () => {
 		const trimmedName = name().trim();
-		if (!trimmedName || trimmedName === currentName) {
+		if (!trimmedName || trimmedName === props.currentName) {
 			handleClose();
 			return;
 		}
 		setIsSaving(true);
 		try {
-			await onSave(trimmedName);
+			await props.onSave(trimmedName);
 			handleClose();
 		} catch {} finally {
 			setIsSaving(false);
 		}
 	};
-	if (!mounted()) return null;
-	if (typeof document === "undefined") return null;
 	return (
 		<Portal mount={document.body}>
 			<Presence exitBeforeEnter>
-				<Show when={isOpen}>
+				<Show when={props.isOpen}>
 					{/* Overlay */}
 					<Motion.div
 						initial={{ opacity: 0 }}
@@ -112,22 +106,22 @@ export function AgentsRenameSubChatDialog({ isOpen, onClose, onSave, currentName
 										onInput={(e) => setName(e.currentTarget.value)}
 										placeholder="Chat name"
 										class="w-full h-11 text-sm"
-										disabled={isSaving() || isLoading}
+										disabled={isSaving() || props.isLoading}
 									/>
 								</div>
 
 								{/* Footer with buttons */}
 								<div class="bg-muted p-4 flex justify-between border-t border-border rounded-b-xl">
-									<Button onClick={handleClose} variant="ghost" disabled={isSaving() || isLoading} class="rounded-md">
+									<Button onClick={handleClose} variant="ghost" disabled={isSaving() || props.isLoading} class="rounded-md">
 										Cancel
 									</Button>
 									<Button
 										onClick={handleSave}
 										variant="default"
-										disabled={!name().trim() || name().trim() === currentName || isSaving() || isLoading}
+										disabled={!name().trim() || name().trim() === props.currentName || isSaving() || props.isLoading}
 										class="rounded-md"
 									>
-										{isSaving() || isLoading ? "Saving..." : "Save"}
+										{isSaving() || props.isLoading ? "Saving..." : "Save"}
 									</Button>
 								</div>
 							</div>

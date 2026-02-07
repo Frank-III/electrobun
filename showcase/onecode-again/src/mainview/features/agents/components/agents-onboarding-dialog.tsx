@@ -66,9 +66,10 @@ export function AgentsOnboardingDialog() {
 		window.addEventListener("keydown", handleKeyDown);
 		onCleanup(() => window.removeEventListener("keydown", handleKeyDown));
 	});
-	if (!mounted()) return null;
+	// typeof document check is static (SSR guard) - safe as non-reactive
 	if (typeof document === "undefined") return null;
 	return (
+		<Show when={mounted()}>
 		<Portal mount={document.body}>
 			<Presence exitBeforeEnter>
 				<Show when={isOpen()}>
@@ -134,5 +135,6 @@ export function AgentsOnboardingDialog() {
 				</Show>
 			</Presence>
 		</Portal>
+		</Show>
 	);
 }

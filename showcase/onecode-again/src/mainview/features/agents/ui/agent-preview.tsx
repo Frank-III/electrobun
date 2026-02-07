@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, onCleanup, Show, type Accessor } from "solid-js";
+import { createSignal, createEffect, createMemo, onCleanup, Show, mergeProps, type Accessor } from "solid-js";
 import { Button } from "../../../components/ui/button";
 import { RotateCw } from "lucide-solid";
 import { ExternalLinkIcon, IconDoubleChevronRight, IconChatBubble } from "../../../components/ui/icons";
@@ -23,7 +23,8 @@ interface AgentPreviewProps {
 	onClose?: () => void;
 	isMobile?: boolean;
 }
-export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader = false, onClose, isMobile = false }: AgentPreviewProps) {
+export function AgentPreview(rawProps: AgentPreviewProps) {
+	const props = mergeProps({ hideHeader: false, isMobile: false }, rawProps);
 	const [isLoaded, setIsLoaded] = createSignal(false);
 	const [reloadKey, setReloadKey] = createSignal(0);
 	const [isRefreshing, setIsRefreshing] = createSignal(false);
@@ -31,10 +32,10 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 	const [frameRef, setFrameRef] = createSignal<HTMLDivElement | null>(null);
 	const [resizeCleanupRef, setResizeCleanupRef] = createSignal<(() => void) | null>(null);
 	// Persisted state from Jotai atoms (per chatId)
-	const [persistedPath, setPersistedPath] = previewPathAtomFamily(chatId);
-	const [viewportMode, setViewportMode] = viewportModeAtomFamily(chatId);
-	const [scale, setScale] = previewScaleAtomFamily(chatId);
-	const [device, setDevice] = mobileDeviceAtomFamily(chatId);
+	const [persistedPath, setPersistedPath] = previewPathAtomFamily(props.chatId);
+	const [viewportMode, setViewportMode] = viewportModeAtomFamily(props.chatId);
+	const [scale, setScale] = previewScaleAtomFamily(props.chatId);
+	const [device, setDevice] = mobileDeviceAtomFamily(props.chatId);
 	// Local state for resizing
 	const [isResizing, setIsResizing] = createSignal(false);
 	const [maxWidth, setMaxWidth] = createSignal<number>(AGENTS_PREVIEW_CONSTANTS.MAX_WIDTH);
@@ -46,7 +47,7 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 	// Listen for reload events from external header
 	createEffect(() => {
 		const handleReload = (e: CustomEvent) => {
-			if (e.detail?.chatId === chatId) {
+			if (e.detail?.chatId === props.chatId) {
 				setReloadKey((prev) => prev + 1);
 				setIsRefreshing(true);
 				setTimeout(() => setIsRefreshing(false), 400);
@@ -58,7 +59,7 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 	// Listen for navigation events from external header
 	createEffect(() => {
 		const handleNavigate = (e: CustomEvent) => {
-			if (e.detail?.chatId === chatId && e.detail?.path) {
+			if (e.detail?.chatId === props.chatId && e.detail?.path) {
 				setLoadedPath(e.detail.path);
 				setCurrentPath(e.detail.path);
 				setPersistedPath(e.detail.path);
@@ -71,7 +72,7 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 	// Dispatch path updates to header
 	createEffect(() => {
 		window.dispatchEvent(new CustomEvent("agent-preview-path-update", { detail: {
-			chatId,
+			chatId: props.chatId,
 			path: currentPath()
 		} }));
 	});
@@ -81,7 +82,7 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 		setCurrentPath(persistedPath());
 	});
 	// Compute base host and preview URL
-	const previewBaseUrl = createMemo(() => getSandboxPreviewUrl(sandboxId, port, "agents"));
+	const previewBaseUrl = createMemo(() => getSandboxPreviewUrl(props.sandboxId, props.port, "agents"));
 	const baseHost = createMemo(() => {
 		return new URL(previewBaseUrl()).host;
 	});
@@ -218,13 +219,13 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
 		setScale(newScale);
 	};
 
-	return <div class={cn("flex flex-col bg-tl-background", isMobile ? "h-full w-full" : "h-full")}>
+	return <div class={cn("flex flex-col bg-tl-background", props.isMobile ? "h-full w-full" : "h-full")}>
       {	/* Mobile Header */}
-      <Show when={isMobile && !hideHeader}>
+      <Show when={props.isMobile && !props.hideHeader}>
         <div class="flex-shrink-0 bg-background/95 backdrop-blur border-b h-11 min-h-[44px] max-h-[44px]" data-mobile-preview-header style={{ "-webkit-app-region": "drag" }}>
           <div class="flex h-full items-center px-2 gap-2" style={{ "-webkit-app-region": "no-drag" }}>
             { /* Chat button */}
-            <Button variant="ghost" size="icon" onClick={onClose} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md">
+            <Button variant="ghost" size="icon" onClick={props.onClose} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md">
               <IconChatBubble class="h-4 w-4" />
               <span class="sr-only">Back to chat</span>
             </Button>
@@ -249,7 +250,7 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
       </Show>
 
       { /* Desktop Header */}
-      <Show when={!isMobile && !hideHeader}>
+      <Show when={!props.isMobile && !props.hideHeader}>
         <div class="flex items-center justify-between px-3 h-10 bg-tl-background flex-shrink-0">
           { /* Left: Refresh + Viewport Toggle + Scale */}
           <div class="flex items-center gap-1 flex-1">
@@ -273,8 +274,8 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
               <ExternalLinkIcon class="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
 
-            <Show when={onClose}>
-              <Button variant="ghost" class="h-7 w-7 p-0 hover:bg-muted transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md" onClick={onClose}>
+            <Show when={props.onClose}>
+              <Button variant="ghost" class="h-7 w-7 p-0 hover:bg-muted transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] rounded-md" onClick={props.onClose}>
                 <IconDoubleChevronRight class="h-4 w-4 text-muted-foreground" />
               </Button>
             </Show>
@@ -283,13 +284,13 @@ export function AgentPreview({ chatId, sandboxId, port, repository, hideHeader =
       </Show>
 
       { /* Device presets bar - only visible in mobile viewport mode (not on actual mobile devices) */}
-      <Show when={!isMobile && !hideHeader && viewportMode() === "mobile"}>
+      <Show when={!props.isMobile && !props.hideHeader && viewportMode() === "mobile"}>
         <DevicePresetsBar selectedPreset={device().preset} width={device().width} height={device().height} onPresetChange={handlePresetChange} onWidthChange={handleWidthChange} maxWidth={maxWidth()} />
       </Show>
 
       { /* Content area */}
-      <div class={cn("flex-1 relative flex items-center justify-center overflow-hidden", isMobile ? "w-full h-full" : "px-1 pb-1")}>
-        <Show when={isMobile} fallback={
+      <div class={cn("flex-1 relative flex items-center justify-center overflow-hidden", props.isMobile ? "w-full h-full" : "px-1 pb-1")}>
+        <Show when={props.isMobile} fallback={
           <>
             { /* Left resize handle - only in mobile viewport mode (not on actual mobile devices) */}
             <Show when={viewportMode() === "mobile"}>

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, mergeProps, onCleanup, Show } from "solid-js";
 import { For } from "solid-js";
 import { useTheme } from "../../lib/hooks/use-theme";
 import { fullThemeDataAtom } from "@/lib/atoms";
@@ -51,12 +51,13 @@ function getNextTerminalName(terminals: TerminalInstance[]): string {
 	const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
 	return `Terminal ${maxNumber + 1}`;
 }
-export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClose }: TerminalSidebarProps) {
+export function TerminalSidebar(rawProps: TerminalSidebarProps) {
+	const props = mergeProps({ isMobileFullscreen: false }, rawProps);
 	const [store, setStore] = useTerminalStore();
-	const isOpen = () => store.sidebarOpenByChatId[chatId] ?? false;
+	const isOpen = () => store.sidebarOpenByChatId[props.chatId] ?? false;
 	const setIsOpen = (value: boolean | ((prev: boolean) => boolean)) => {
 		const next = typeof value === "function" ? value(isOpen()) : value;
-		setStore("sidebarOpenByChatId", chatId, next);
+		setStore("sidebarOpenByChatId", props.chatId, next);
 	};
 	const terminalCwds = () => store.cwdByPaneId;
 	const getSidebarWidth = () => store.sidebarWidth;
@@ -66,7 +67,7 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
 	};
 	// Theme detection for terminal background
 	const { resolvedTheme } = useTheme();
-	const isDark = resolvedTheme() === "dark";
+	const isDark = () => resolvedTheme() === "dark";
 	// Resolved hotkey for tooltip
 	const toggleTerminalHotkey = useResolvedHotkeyDisplay("toggle-terminal");
 	const [fullThemeData] = fullThemeDataAtom;
@@ -79,12 +80,12 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
 		if (themeData?.colors?.["editor.background"]) {
 			return themeData.colors["editor.background"];
 		}
-		return getDefaultTerminalBg(isDark);
+		return getDefaultTerminalBg(isDark());
 	});
 	// Get terminals for this chat
-	const terminals = createMemo(() => store.terminalsByChatId[chatId] || []);
+	const terminals = createMemo(() => store.terminalsByChatId[props.chatId] || []);
 	// Get active terminal ID for this chat
-	const activeTerminalId = createMemo(() => store.activeTerminalIdByChatId[chatId] ?? null);
+	const activeTerminalId = createMemo(() => store.activeTerminalIdByChatId[props.chatId] ?? null);
 	// Get the active terminal instance
 	const activeTerminal = createMemo(() => terminals().find((t) => t.id === activeTerminalId()) || null);
 	const renderTerminalStack = () => (
@@ -93,7 +94,7 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
 				const isActive = () => terminal.id === activeTerminalId();
 				return (
 					<div class="absolute inset-0" classList={{ "opacity-0 pointer-events-none": !isActive(), "opacity-100": isActive() }}>
-						<Terminal paneId={terminal.paneId} cwd={cwd} initialCwd={cwd} isActive={isActive()} />
+						<Terminal paneId={terminal.paneId} cwd={props.cwd} initialCwd={props.cwd} isActive={isActive()} />
 					</div>
 				);
 			}}</For>
@@ -103,7 +104,7 @@ export function TerminalSidebar({ chatId, cwd, isMobileFullscreen = false, onClo
 const killTerminal = (paneId: string) => desktopRpc.ghosttyTabs.close.mutate({ tabId: paneId });
 	// Create a new terminal - stable callback
 	const createTerminal = () => {
-		const currentChatId = chatId;
+		const currentChatId = props.chatId;
 		const currentTerminals = terminals();
 		const id = generateTerminalId();
 		const paneId = generatePaneId(currentChatId, id);
@@ -119,7 +120,7 @@ const killTerminal = (paneId: string) => desktopRpc.ghosttyTabs.close.mutate({ t
 	};
 	// Select a terminal - stable callback
 	const selectTerminal = (id: string) => {
-		setStore("activeTerminalIdByChatId", chatId, id);
+		setStore("activeTerminalIdByChatId", props.chatId, id);
 	};
 	// Close a terminal - stable callback
 	const closeTerminal = (id: string) => {
@@ -129,17 +130,17 @@ const killTerminal = (paneId: string) => desktopRpc.ghosttyTabs.close.mutate({ t
 		if (!terminal) return;
 		killTerminal(terminal.paneId);
 		const newTerminals = currentTerminals.filter((t) => t.id !== id);
-		setStore("terminalsByChatId", chatId, newTerminals);
+		setStore("terminalsByChatId", props.chatId, newTerminals);
 		if (currentActiveId === id) {
-			setStore("activeTerminalIdByChatId", chatId, newTerminals[newTerminals.length - 1]?.id ?? null);
+			setStore("activeTerminalIdByChatId", props.chatId, newTerminals[newTerminals.length - 1]?.id ?? null);
 		}
 	};
 	// Rename a terminal - stable callback
 	const renameTerminal = (id: string, name: string) => {
-		const current = store.terminalsByChatId[chatId] || [];
+		const current = store.terminalsByChatId[props.chatId] || [];
 		setStore(
 			"terminalsByChatId",
-			chatId,
+			props.chatId,
 			current.map((t) => (t.id === id ? { ...t, name } : t))
 		);
 	};
@@ -150,8 +151,8 @@ const killTerminal = (paneId: string) => desktopRpc.ghosttyTabs.close.mutate({ t
 			if (terminal.id !== id) killTerminal(terminal.paneId);
 		});
 		const remainingTerminal = currentTerminals.find((t) => t.id === id);
-		setStore("terminalsByChatId", chatId, remainingTerminal ? [remainingTerminal] : []);
-		setStore("activeTerminalIdByChatId", chatId, id);
+		setStore("terminalsByChatId", props.chatId, remainingTerminal ? [remainingTerminal] : []);
+		setStore("activeTerminalIdByChatId", props.chatId, id);
 	};
 	// Close terminals to the right - stable callback
 	const closeTerminalsToRight = (id: string) => {
@@ -160,10 +161,10 @@ const killTerminal = (paneId: string) => desktopRpc.ghosttyTabs.close.mutate({ t
 		if (index === -1) return;
 		currentTerminals.slice(index + 1).forEach((terminal) => killTerminal(terminal.paneId));
 		const remainingTerminals = currentTerminals.slice(0, index + 1);
-		setStore("terminalsByChatId", chatId, remainingTerminals);
+		setStore("terminalsByChatId", props.chatId, remainingTerminals);
 		const currentActiveId = activeTerminalId();
 		if (currentActiveId && !remainingTerminals.find((t) => t.id === currentActiveId)) {
-			setStore("activeTerminalIdByChatId", chatId, remainingTerminals[remainingTerminals.length - 1]?.id ?? null);
+			setStore("activeTerminalIdByChatId", props.chatId, remainingTerminals[remainingTerminals.length - 1]?.id ?? null);
 		}
 	};
 	// Close sidebar callback - stable
@@ -209,81 +210,80 @@ const killTerminal = (paneId: string) => desktopRpc.ghosttyTabs.close.mutate({ t
 	// Handle mobile close - also close the sidebar atom to prevent re-opening as desktop sidebar
 	const handleMobileClose = () => {
 		setIsOpen(false);
-		onClose?.();
+		props.onClose?.();
 	};
-	// Mobile fullscreen layout
-	if (isMobileFullscreen) {
-		return <div class="flex flex-col h-full w-full bg-background">
-        {		/* Mobile header with back button and tabs */}
-        <div class="flex items-center gap-1.5 px-2 py-2 flex-shrink-0 border-b" style={{
- "background-color": terminalBg(),
-			"-webkit-app-region": "drag",
-			"border-bottom-width": "0.5px"
+	return <Show when={props.isMobileFullscreen} fallback={
+		<ResizableSidebar isOpen={isOpen()} onClose={closeSidebar} width={getSidebarWidth} setWidth={setSidebarWidth} side="right" minWidth={300} maxWidth={800} animationDuration={SIDEBAR_ANIMATION_DURATION_SECONDS} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-background border-l" style={{
+			"border-left-width": "0.5px",
+			overflow: "hidden"
 		}}>
-          {		/* Back button */}
-          <Button variant="ghost" size="icon" onClick={handleMobileClose} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="Back to chat" style={{ "-webkit-app-region": "no-drag" }}>
-            <AlignJustify class="h-4 w-4" />
-          </Button>
+			<div class="flex flex-col h-full min-w-0 overflow-hidden">
+				{ /* Header with tabs */}
+				<div class="flex items-center gap-1 pl-1 pr-2 py-1.5 flex-shrink-0" style={{ "background-color": terminalBg() }}>
+					{ /* Close button - on the left */}
+					<div class="flex items-center flex-shrink-0">
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button variant="ghost" size="icon" onClick={closeSidebar} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground flex-shrink-0 rounded-md" aria-label="Close terminal">
+									<IconDoubleChevronRight class="h-4 w-4" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom">
+								Close terminal
+								<Show when={toggleTerminalHotkey}><Kbd>{toggleTerminalHotkey}</Kbd></Show>
+							</TooltipContent>
+						</Tooltip>
+					</div>
 
-          { /* Terminal Tabs - directly after back button, inherits drag from parent */}
-          <div class="flex items-center gap-1 flex-1 min-w-0">
-            <Show when={terminals().length > 0}>
-              <TerminalTabs terminals={terminals()} activeTerminalId={activeTerminalId()} cwds={terminalCwds()} initialCwd={cwd} terminalBg={terminalBg()} onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />
-            </Show>
-          </div>
-        </div>
+					{ /* Terminal Tabs */}
+					<Show when={terminals().length > 0}>
+						<TerminalTabs terminals={terminals()} activeTerminalId={activeTerminalId()} cwds={terminalCwds()} initialCwd={props.cwd} terminalBg={terminalBg()} onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />
+					</Show>
+				</div>
 
-		{ /* Terminal Content */}
-		<div class="flex-1 min-h-0 min-w-0 overflow-hidden" style={{ "background-color": terminalBg() }}>
-		  <Show when={activeTerminal() && canRenderTerminal()} fallback={<div class="flex items-center justify-center h-full text-muted-foreground text-sm">
-			  {!canRenderTerminal() ? "" : "No terminal open"}
-			</div>}>
-			<div class="h-full">
-			  {renderTerminalStack()}
+				{ /* Terminal Content */}
+				<div class="flex-1 min-h-0 min-w-0 overflow-hidden" style={{ "background-color": terminalBg() }}>
+					<Show when={activeTerminal() && canRenderTerminal()} fallback={<div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+						{!canRenderTerminal() ? "" : "No terminal open"}
+					</div>}>
+						<div class="h-full">
+							{renderTerminalStack()}
+						</div>
+					</Show>
+				</div>
 			</div>
-		  </Show>
-		</div>
-      </div>;
-	}
-	// Desktop sidebar layout
-	return <ResizableSidebar isOpen={isOpen()} onClose={closeSidebar} width={getSidebarWidth} setWidth={setSidebarWidth} side="right" minWidth={300} maxWidth={800} animationDuration={SIDEBAR_ANIMATION_DURATION_SECONDS} initialWidth={0} exitWidth={0} showResizeTooltip={true} class="bg-background border-l" style={{
-		"border-left-width": "0.5px",
-		overflow: "hidden"
-	}}>
-      <div class="flex flex-col h-full min-w-0 overflow-hidden">
-        {	/* Header with tabs */}
-        <div class="flex items-center gap-1 pl-1 pr-2 py-1.5 flex-shrink-0" style={{ "background-color": terminalBg() }}>
-          { /* Close button - on the left */}
-          <div class="flex items-center flex-shrink-0">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={closeSidebar} class="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground flex-shrink-0 rounded-md" aria-label="Close terminal">
-                  <IconDoubleChevronRight class="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                Close terminal
-                <Show when={toggleTerminalHotkey}><Kbd>{toggleTerminalHotkey}</Kbd></Show>
-              </TooltipContent>
-            </Tooltip>
-          </div>
+		</ResizableSidebar>
+	}>
+		<div class="flex flex-col h-full w-full bg-background">
+			{ /* Mobile header with back button and tabs */}
+			<div class="flex items-center gap-1.5 px-2 py-2 flex-shrink-0 border-b" style={{
+				"background-color": terminalBg(),
+				"-webkit-app-region": "drag",
+				"border-bottom-width": "0.5px"
+			}}>
+				{ /* Back button */}
+				<Button variant="ghost" size="icon" onClick={handleMobileClose} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="Back to chat" style={{ "-webkit-app-region": "no-drag" }}>
+					<AlignJustify class="h-4 w-4" />
+				</Button>
 
-          { /* Terminal Tabs */}
-          <Show when={terminals().length > 0}>
-            <TerminalTabs terminals={terminals()} activeTerminalId={activeTerminalId()} cwds={terminalCwds()} initialCwd={cwd} terminalBg={terminalBg()} onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />
-          </Show>
-        </div>
-
-		{ /* Terminal Content */}
-		<div class="flex-1 min-h-0 min-w-0 overflow-hidden" style={{ "background-color": terminalBg() }}>
-		  <Show when={activeTerminal() && canRenderTerminal()} fallback={<div class="flex items-center justify-center h-full text-muted-foreground text-sm">
-			  {!canRenderTerminal() ? "" : "No terminal open"}
-			</div>}>
-			<div class="h-full">
-			  {renderTerminalStack()}
+				{ /* Terminal Tabs - directly after back button, inherits drag from parent */}
+				<div class="flex items-center gap-1 flex-1 min-w-0">
+					<Show when={terminals().length > 0}>
+						<TerminalTabs terminals={terminals()} activeTerminalId={activeTerminalId()} cwds={terminalCwds()} initialCwd={props.cwd} terminalBg={terminalBg()} onSelectTerminal={selectTerminal} onCloseTerminal={closeTerminal} onCloseOtherTerminals={closeOtherTerminals} onCloseTerminalsToRight={closeTerminalsToRight} onCreateTerminal={createTerminal} onRenameTerminal={renameTerminal} />
+					</Show>
+				</div>
 			</div>
-		  </Show>
+
+			{ /* Terminal Content */}
+			<div class="flex-1 min-h-0 min-w-0 overflow-hidden" style={{ "background-color": terminalBg() }}>
+				<Show when={activeTerminal() && canRenderTerminal()} fallback={<div class="flex items-center justify-center h-full text-muted-foreground text-sm">
+					{!canRenderTerminal() ? "" : "No terminal open"}
+				</div>}>
+					<div class="h-full">
+						{renderTerminalStack()}
+					</div>
+				</Show>
+			</div>
 		</div>
-      </div>
-    </ResizableSidebar>;
+	</Show>;
 }

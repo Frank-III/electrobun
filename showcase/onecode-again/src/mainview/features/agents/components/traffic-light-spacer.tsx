@@ -1,5 +1,6 @@
 import { createEffect, createSignal, Show, type JSX } from "solid-js";
 import { cn } from "../../../lib/utils";
+import { desktopRpc } from "../../../lib/desktop-rpc";
 /**
 * Hybrid traffic lights component for macOS desktop app
 * - Shows native macOS traffic lights when hovered
@@ -17,17 +18,22 @@ export function TrafficLights(props: {
 	const isFullscreen = () => props.isFullscreen ?? null;
 	const isDesktop = () => props.isDesktop ?? false;
 	const cls = () => props.class ?? "";
-	const [prevHoveredRef, setPrevHoveredRef] = createSignal(isHovered());
-	// Note: Electrobun doesn't support setTrafficLightVisibility (macOS-specific)
-	// Traffic lights are always visible in Electrobun windows
+	let hostRef: HTMLDivElement | undefined;
+	const updateNativePosition = () => {
+		if (!hostRef) return;
+		const rect = hostRef.getBoundingClientRect();
+		// Align native controls to the DOM position (points ~= CSS pixels).
+		desktopRpc.window.setTrafficLightPosition.mutate({ x: rect.left, y: rect.top });
+	};
 	createEffect(() => {
-		// No-op: Electrobun doesn't support traffic light visibility control
+		if (!isDesktop() || isFullscreen() === true) return;
+		requestAnimationFrame(() => updateNativePosition());
 	});
 	// NOTE: Removed mount effect that hides native lights
 	// Native lights are shown by default (main process), and AgentsLayout controls visibility
 	// Only show in desktop app, hide in fullscreen (Show for reactivity)
 	const placeholder = () => (
-		<div class={cn("relative", cls())} style={{ "-webkit-app-region": "no-drag" } as JSX.CSSProperties} data-sidebar-content>
+		<div ref={el => hostRef = el} class={cn("relative", cls())} style={{ "-webkit-app-region": "no-drag" } as JSX.CSSProperties} data-sidebar-content>
 			<div class="flex items-center gap-2" data-sidebar-content>
 				<div class="w-3 h-3" />
 				<div class="w-3 h-3" />
@@ -36,7 +42,7 @@ export function TrafficLights(props: {
 		</div>
 	);
 	const mutedCircles = () => (
-		<div class={cn("relative", cls())} style={{ "-webkit-app-region": "no-drag" } as JSX.CSSProperties} data-sidebar-content>
+		<div ref={el => hostRef = el} class={cn("relative", cls())} style={{ "-webkit-app-region": "no-drag" } as JSX.CSSProperties} data-sidebar-content>
 			<div class="flex items-center gap-2" data-sidebar-content>
 				<div class="w-3 h-3 rounded-full border border-foreground/20 bg-transparent" aria-hidden="true" />
 				<div class="w-3 h-3 rounded-full border border-foreground/20 bg-transparent" aria-hidden="true" />
@@ -87,10 +93,10 @@ export function TrafficLightSpacer(props: {
 /**
 * Wrapper to make child elements non-draggable within a draggable region
 */
-export function NoDrag({ children }: {
+export function NoDrag(props: {
 	children: JSX.Element;
 }) {
 	return <div style={{ "-webkit-app-region": "no-drag" } as JSX.CSSProperties}>
-      {children}
+      {props.children}
     </div>;
 }

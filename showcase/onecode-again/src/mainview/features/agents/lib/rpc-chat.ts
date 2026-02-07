@@ -2,7 +2,7 @@
  * RPC-based chat state. Consumes UIMessageChunk stream from backend (Claude Agent SDK).
  * No @ai-sdk/react or "ai" package.
  */
-import type { UIMessage, UIMessageChunk } from "../../../../shared/chat-rpc";
+import type { ChatStatus, UIMessage, UIMessageChunk, UIMessagePart } from "../../../../shared/chat-rpc";
 import { initialReducerState, reduceChunk } from "./chunk-to-messages";
 
 export type RpcChatTransport = {
@@ -47,7 +47,7 @@ export function createRpcChat(options: CreateRpcChatOptions): RpcChat {
   const { id, messages: initialMessages, transport, chatId, onError = noop, onFinish = noop } = options;
 
   let messages: UIMessage[] = Array.isArray(initialMessages) ? [...initialMessages] : [];
-  let status: string = "ready";
+  let status: ChatStatus = "ready";
   let error: Error | undefined;
   let abortController: AbortController | null = null;
 
@@ -98,7 +98,7 @@ export function createRpcChat(options: CreateRpcChatOptions): RpcChat {
       notifyMessages();
     },
 
-    async sendMessage(opts: { role: "user"; parts: Array<{ type: string; text?: string; [k: string]: unknown }> }) {
+    async sendMessage(opts: { role: "user"; parts: UIMessagePart[] }) {
       const userMsg: UIMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -137,8 +137,6 @@ export function createRpcChat(options: CreateRpcChatOptions): RpcChat {
               notifyError();
             }
             if ((value as UIMessageChunk).type === "finish") {
-              messages = state.messages;
-              notifyMessages();
               break;
             }
           }
@@ -170,10 +168,21 @@ export function createRpcChat(options: CreateRpcChatOptions): RpcChat {
     },
 
     async regenerate() {
-      const withoutLastAssistant = messages.slice(0, -1);
-      const lastUser = [...withoutLastAssistant].reverse().find((m) => m.role === "user");
-      if (!lastUser) return;
-      messages = withoutLastAssistant;
+      if (messages.length === 0) return;
+
+      // Scan backwards for the last user message
+      let lastUserIdx = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === "user") {
+          lastUserIdx = i;
+          break;
+        }
+      }
+      if (lastUserIdx === -1) return;
+
+      const lastUser = messages[lastUserIdx];
+      // Strip everything after (and including) the last user message, then re-send it
+      messages = messages.slice(0, lastUserIdx);
       notifyMessages();
       await api.sendMessage({ role: "user", parts: lastUser.parts });
     },
@@ -194,10 +203,10 @@ export function createRpcChat(options: CreateRpcChatOptions): RpcChat {
 export type RpcChat = {
   id: string;
   messages: UIMessage[];
-  status: string;
+  status: ChatStatus;
   error: Error | undefined;
   setMessages: (next: UIMessage[] | ((prev: UIMessage[]) => UIMessage[])) => void;
-  sendMessage: (opts: { role: "user"; parts: Array<{ type: string; text?: string; [k: string]: unknown }> }) => Promise<void>;
+  sendMessage: (opts: { role: "user"; parts: UIMessagePart[] }) => Promise<void>;
   regenerate: () => Promise<void>;
   stop: () => () => void;
   resumeStream: () => void;

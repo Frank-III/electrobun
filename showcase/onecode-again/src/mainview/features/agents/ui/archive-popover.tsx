@@ -1,5 +1,5 @@
 import type { JSX } from "solid-js";
-import { createEffect, createMemo, createSignal, Show, For, Switch, Match } from "solid-js";
+import { createEffect, createMemo, createSignal, Show, For, Switch, Match, mergeProps } from "solid-js";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/solid-query";
 import { desktopRpc } from "../../../lib/desktop-rpc";
 import { archivePopoverOpenAtom, archiveSearchQueryAtom, selectedAgentChatIdAtom, selectedChatIsRemoteAtom } from "../atoms";
@@ -19,16 +19,14 @@ function GitHubAvatar(props: {
 	const [hasError, setHasError] = createSignal(false);
 	const handleLoad = () => setIsLoaded(true);
 	const handleError = () => setHasError(true);
-	if (hasError()) {
-		return <GitHubLogo class={cn(cls(), "text-muted-foreground flex-shrink-0")} />;
-	}
-return <div class={cn(cls(), "relative flex-shrink-0")}>
-      { /* Placeholder background while loading */}
-      <Show when={!isLoaded()}>
-        <div class="absolute inset-0 rounded-sm bg-muted" />
-      </Show>
-      <img src={`https://github.com/${props.gitOwner}.png?size=64`} alt={props.gitOwner} class={cn(cls(), "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
-    </div>;
+	return <Show when={!hasError()} fallback={<GitHubLogo class={cn(cls(), "text-muted-foreground flex-shrink-0")} />}>
+		<div class={cn(cls(), "relative flex-shrink-0")}>
+			<Show when={!isLoaded()}>
+				<div class="absolute inset-0 rounded-sm bg-muted" />
+			</Show>
+			<img src={`https://github.com/${props.gitOwner}.png?size=64`} alt={props.gitOwner} class={cn(cls(), "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
+		</div>
+	</Show>;
  }
 // Format relative time - moved outside component to avoid recreation
 const formatTime = (dateInput: Date | string | number) => {
@@ -80,39 +78,39 @@ interface ArchiveChatItemProps {
 	onRestore: (id: string) => void;
 	setRef: (index: number, el: HTMLDivElement | null) => void;
 }
-function ArchiveChatItem({ chat, index, isSelected, isCurrentChat, showIcon, projectsMap, stats, onSelect, onRestore, setRef }: ArchiveChatItemProps) {
-	const branch = chat.branch;
+function ArchiveChatItem(props: ArchiveChatItemProps) {
+	const branch = createMemo(() => props.chat.branch);
 	// For local chats, use projectsMap; for remote chats, use chat properties directly
-	const project = chat.projectId ? projectsMap.get(chat.projectId) : null;
-	const gitOwner = chat.gitOwner || project?.gitOwner;
-	const gitRepo = chat.repository || project?.gitRepo;
-	const gitProvider = chat.gitProvider || project?.gitProvider;
-	const isGitHubRepo = gitProvider === "github" && !!gitOwner;
-	const repoName = gitRepo || project?.name;
-	const displayText = branch ? repoName ? `${repoName} • ${branch}` : branch : repoName || "Local project";
+	const project = createMemo(() => props.chat.projectId ? props.projectsMap.get(props.chat.projectId) : null);
+	const gitOwner = createMemo(() => props.chat.gitOwner || project()?.gitOwner);
+	const gitRepo = createMemo(() => props.chat.repository || project()?.gitRepo);
+	const gitProvider = createMemo(() => props.chat.gitProvider || project()?.gitProvider);
+	const isGitHubRepo = createMemo(() => gitProvider() === "github" && !!gitOwner());
+	const repoName = createMemo(() => gitRepo() || project()?.name);
+	const displayText = createMemo(() => branch() ? repoName() ? `${repoName()} • ${branch()}` : branch() : repoName() || "Local project");
 	const handleClick = () => {
-		onSelect(chat.id);
+		props.onSelect(props.chat.id);
 	};
 	const handleRestore = (e: MouseEvent) => {
 		e.stopPropagation();
-		onRestore(chat.id);
+		props.onRestore(props.chat.id);
 	};
 	const handleRef = (el: HTMLDivElement | null) => {
-		setRef(index, el);
+		props.setRef(props.index, el);
 	};
-	return <div ref={handleRef} onClick={handleClick} class={cn("w-[calc(100%-8px)] mx-1 text-left min-h-[32px] py-[5px] px-1.5 rounded-md transition-colors duration-75 cursor-pointer group relative", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", isSelected || isCurrentChat ? "dark:bg-neutral-800 bg-accent text-foreground" : "text-muted-foreground dark:hover:bg-neutral-800 hover:bg-accent hover:text-foreground")}>
+	return <div ref={handleRef} onClick={handleClick} class={cn("w-[calc(100%-8px)] mx-1 text-left min-h-[32px] py-[5px] px-1.5 rounded-md transition-colors duration-75 cursor-pointer group relative", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", props.isSelected || props.isCurrentChat ? "dark:bg-neutral-800 bg-accent text-foreground" : "text-muted-foreground dark:hover:bg-neutral-800 hover:bg-accent hover:text-foreground")}>
       <div class="flex items-start gap-2.5">
-        <Show when={showIcon}>
+        <Show when={props.showIcon}>
             <div class="pt-0.5">
-              <Show when={isGitHubRepo && gitOwner} fallback={<GitHubLogo class={cn("h-4 w-4 flex-shrink-0 transition-colors duration-75", isSelected ? "text-foreground" : "text-muted-foreground")} />}>
-                <GitHubAvatar gitOwner={gitOwner!} />
+              <Show when={isGitHubRepo() && gitOwner()} fallback={<GitHubLogo class={cn("h-4 w-4 flex-shrink-0 transition-colors duration-75", props.isSelected ? "text-foreground" : "text-muted-foreground")} />}>
+                <GitHubAvatar gitOwner={gitOwner()!} />
               </Show>
             </div>
           </Show>
         <div class="flex-1 min-w-0 flex flex-col gap-0.5">
           <div class="flex items-center gap-1">
             <span class="truncate block text-sm leading-tight flex-1">
-              {chat.name || <span class="text-muted-foreground/50">
+              {props.chat.name || <span class="text-muted-foreground/50">
                   New workspace
                 </span>}
             </span>
@@ -123,18 +121,18 @@ function ArchiveChatItem({ chat, index, isSelected, isCurrentChat, showIcon, pro
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-1 text-[11px] text-muted-foreground/60 truncate min-w-0">
               { /* Cloud icon for remote chats */}
-              <Show when={chat.isRemote}>
+              <Show when={props.chat.isRemote}>
                 <CloudIcon class="h-2.5 w-2.5 flex-shrink-0" />
               </Show>
-              <span class="truncate">{displayText}</span>
+              <span class="truncate">{displayText()}</span>
             </div>
             <div class="flex items-center gap-1.5 flex-shrink-0 text-[11px]">
-              <Show when={stats && (stats.additions > 0 || stats.deletions > 0)}>
-                  <span class="text-green-600 dark:text-green-400">+{stats!.additions}</span>
-                  <span class="text-red-600 dark:text-red-400">-{stats!.deletions}</span>
+              <Show when={props.stats && (props.stats.additions > 0 || props.stats.deletions > 0)}>
+                  <span class="text-green-600 dark:text-green-400">+{props.stats!.additions}</span>
+                  <span class="text-red-600 dark:text-red-400">-{props.stats!.deletions}</span>
                 </Show>
               <span class="text-muted-foreground/60">
-                {formatTime(chat.updatedAt ?? new Date())}
+                {formatTime(props.chat.updatedAt ?? new Date())}
               </span>
             </div>
           </div>
@@ -146,7 +144,7 @@ function ArchiveChatItem({ chat, index, isSelected, isCurrentChat, showIcon, pro
 interface ArchivePopoverProps {
 	trigger: JSX.Element;
 }
-export function ArchivePopover({ trigger }: ArchivePopoverProps) {
+export function ArchivePopover(props: ArchivePopoverProps) {
 	const [open, setOpen] = archivePopoverOpenAtom;
 	const [searchQuery, setSearchQuery] = archiveSearchQueryAtom;
 	const [selectedIndex, setSelectedIndex] = createSignal(0);
@@ -161,7 +159,7 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	// Local archived chats (always fetch)
 	const localArchivedQuery = useQuery(() => ({
 		queryKey: ["chats", "listArchived"] as const,
-		queryFn: () => desktopRpc.chats.listArchived.query(),
+		queryFn: async () => (await desktopRpc.chats.listArchived.query()) ?? [],
 		enabled: open(),
 	}));
 	// Remote archived chats (always fetch)
@@ -171,7 +169,7 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	// Fetch all projects for git info (for local chats)
 	const projectsQuery = useQuery(() => ({
 		queryKey: ["projects", "list"] as const,
-		queryFn: () => desktopRpc.projects.list.query(),
+		queryFn: async () => (await desktopRpc.projects.list.query()) ?? [],
 	}));
 	// Collect chat IDs for file stats query (only local chats)
 	const archivedChatIds = createMemo(() => {
@@ -182,7 +180,7 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 	// Fetch file stats for archived local chats
 	const fileStatsQuery = useQuery(() => ({
 		queryKey: ["chats", "getFileStats", archivedChatIds()] as const,
-		queryFn: () => desktopRpc.chats.getFileStats({ chatIds: archivedChatIds() }),
+		queryFn: async () => (await desktopRpc.chats.getFileStats({ chatIds: archivedChatIds() })) ?? [],
 		enabled: open() && archivedChatIds().length > 0,
 	}));
 	// Create map for quick project lookup by id
@@ -384,7 +382,7 @@ export function ArchivePopover({ trigger }: ArchivePopoverProps) {
 		setSearchQuery(e.currentTarget.value);
 	};
 	return <Popover open={open()} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverTrigger asChild>{props.trigger}</PopoverTrigger>
       <PopoverContent ref={setPopoverContentRef} side="right" align="end" sideOffset={8} forceDark={false} class="w-[250px] h-[400px] p-0 flex flex-col overflow-hidden" onKeyDown={handleKeyDown} tabIndex={-1}>
         {	/* Search */}
         <div class="p-1 border-b">

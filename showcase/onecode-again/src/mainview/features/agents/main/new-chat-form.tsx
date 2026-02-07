@@ -1,6 +1,6 @@
 import type { JSX } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import { createSignal, createEffect, createMemo, onCleanup, Show, For } from "solid-js";
+import { createSignal, createEffect, createMemo, mergeProps, onCleanup, Show, For } from "solid-js";
 import { AlignJustify, Plus, Zap } from "lucide-solid";
 import { Portal } from "solid-js/web";
 import { Button } from "../../../components/ui/button";
@@ -106,7 +106,8 @@ interface NewChatFormProps {
 	isMobileFullscreen?: boolean;
 	onBackToChats?: () => void;
 }
-export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewChatFormProps = {}) {
+export function NewChatForm(rawProps: NewChatFormProps) {
+	const props = mergeProps({ isMobileFullscreen: false }, rawProps);
 	// UNCONTROLLED: just track if editor has content for send button
 	const [hasContent, setHasContent] = createSignal(false);
 	const [selectedTeamId] = selectedTeamIdAtom;
@@ -125,7 +126,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	// Fetch projects to validate selectedProject exists
 	const projectsQuery = useQuery(() => ({
 		queryKey: ["projects", "list"] as const,
-		queryFn: () => desktopRpc.projects.list.query(),
+		queryFn: async () => (await desktopRpc.projects.list.query()) ?? [],
 	}));
 	const projectsList = () => projectsQuery.data;
 	const isLoadingProjects = () => projectsQuery.isLoading;
@@ -282,7 +283,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	const [modeDropdownOpen, setModeDropdownOpen] = createSignal(false);
 	const [isModelDropdownOpen, setIsModelDropdownOpen] = createSignal(false);
 	// Voice input state
-	const customHotkeys = customHotkeysAtom[0]();
+	const customHotkeys = customHotkeysAtom[0];
 	const { isRecording: isVoiceRecording, audioLevel: voiceAudioLevel, startRecording, stopRecording, cancelRecording } = useVoiceRecording();
 	const [isTranscribing, setIsTranscribing] = createSignal(false);
 	const transcribeMutation = useMutation(() => ({
@@ -343,7 +344,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	};
 	// Voice hotkey listener (push-to-talk: hold to record, release to transcribe)
 	createEffect(() => {
-		const voiceHotkey = getResolvedHotkey("voice-input", customHotkeys);
+		const voiceHotkey = getResolvedHotkey("voice-input", customHotkeys());
 		if (!voiceHotkey) return;
 		// Parse hotkey once
 		const parts = voiceHotkey.split("+").map((p) => p.toLowerCase());
@@ -608,7 +609,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 	// Auto-focus input when NewChatForm is shown (when clicking "New Chat")
 	// Skip on mobile to prevent keyboard from opening automatically
 	createEffect(() => {
-		if (isMobileFullscreen) return;
+		if (props.isMobileFullscreen) return;
 		// Small delay to ensure DOM is ready and animations complete
 		const timeoutId = setTimeout(() => {
 			editorRef()?.focus();
@@ -758,7 +759,7 @@ export function NewChatForm({ isMobileFullscreen = false, onBackToChats }: NewCh
 		const hasText = message.trim().length > 0;
 		const hasImages = images().filter((img) => !img.isLoading && img.url).length > 0;
 		const hasPastedTexts = pastedTexts().length > 0;
-		if (!hasText && !hasImages && !hasPastedTexts || !selectedProject) {
+		if ((!hasText && !hasImages && !hasPastedTexts) || !selectedProject()) {
 			return;
 		}
 		// Check if message is a slash command with arguments (e.g. "/hello world")
@@ -1216,8 +1217,8 @@ type MessagePart = {
       {	/* Header - Simple burger on mobile, AgentsHeaderControls on desktop */}
       <div class="flex-shrink-0 flex items-center justify-between bg-background p-1.5">
         <div class="flex-1 min-w-0 flex items-center gap-2">
-          <Show when={isMobileFullscreen} fallback={<AgentsHeaderControls isSidebarOpen={sidebarOpen()} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} hasUnseenChanges={hasAnyUnseenChanges} />}>
-            <Button variant="ghost" size="icon" onClick={onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="All projects">
+          <Show when={props.isMobileFullscreen} fallback={<AgentsHeaderControls isSidebarOpen={sidebarOpen()} onToggleSidebar={() => setSidebarOpen((prev) => !prev)} hasUnseenChanges={hasAnyUnseenChanges} />}>
+            <Button variant="ghost" size="icon" onClick={props.onBackToChats} class="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md" aria-label="All projects">
               <AlignJustify class="h-4 w-4" />
             </Button>
           </Show>
@@ -1248,7 +1249,7 @@ type MessagePart = {
                 <PromptInput class={cn("border bg-input-background relative z-10 p-2 rounded-xl transition-[border-color,box-shadow] duration-150", isDragOver() && "ring-2 ring-primary/50 border-primary/50", isFocused() && !isDragOver() && "ring-2 ring-primary/50")} maxHeight={240} onSubmit={handleSend} contextItems={contextItems()}>
                   <PromptInputContextItems />
                   <div class="relative">
-                    <AgentsMentionsEditor ref={setEditorRef} onTrigger={handleMentionTrigger} onCloseTrigger={handleCloseTrigger} onSlashTrigger={handleSlashTrigger} onCloseSlashTrigger={handleCloseSlashTrigger} onContentChange={handleContentChange} onSubmit={handleSend} onShiftTab={toggleMode} placeholder="Plan, @ for context, / for commands" class={cn("bg-transparent max-h-[240px] overflow-y-auto p-1", isMobileFullscreen ? "min-h-[56px]" : "min-h-[44px]")} onPaste={handlePaste} disabled={createChatMutation.isPending} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} />
+                    <AgentsMentionsEditor ref={setEditorRef} onTrigger={handleMentionTrigger} onCloseTrigger={handleCloseTrigger} onSlashTrigger={handleSlashTrigger} onCloseSlashTrigger={handleCloseSlashTrigger} onContentChange={handleContentChange} onSubmit={handleSend} onShiftTab={toggleMode} placeholder="Plan, @ for context, / for commands" class={cn("bg-transparent max-h-[240px] overflow-y-auto p-1", props.isMobileFullscreen ? "min-h-[56px]" : "min-h-[44px]")} onPaste={handlePaste} disabled={createChatMutation.isPending} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} />
                   </div>
                   <PromptInputActions class="w-full">
                     <div class="flex items-center gap-0.5 flex-1 min-w-0">
@@ -1390,8 +1391,7 @@ type MessagePart = {
                               <ClaudeCodeIcon class="h-3.5 w-3.5" />
                               <span>
                                 <Show when={!hasCustomClaudeConfig} fallback="Custom Model">
-                                    {selectedModel()?.name}{" "}
-                                    <span class="text-muted-foreground">4.5</span>
+                                    {selectedModel()?.name}
                                 </Show>
                               </span>
                               <IconChevronDown class="h-3 w-3 shrink-0 opacity-50" />
@@ -1407,8 +1407,7 @@ type MessagePart = {
                                   <div class="flex items-center gap-1.5">
                                     <ClaudeCodeIcon class="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                                     <span>
-                                      {model.name}{" "}
-                                      <span class="text-muted-foreground">4.5</span>
+                                      {model.name}
                                     </span>
                                   </div>
                                   <Show when={isSelected}><CheckIcon class="h-3.5 w-3.5 shrink-0" /></Show>

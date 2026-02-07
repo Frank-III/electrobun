@@ -1,7 +1,7 @@
 import { cn } from "../../../lib/utils";
 import { useQuery } from "@tanstack/solid-query";
 import { desktopRpc } from "../../../lib/desktop-rpc";
-import { createEffect, createMemo, createSignal, onCleanup, Show, For } from "solid-js";
+import { createEffect, createMemo, createSignal, Match, mergeProps, onCleanup, Show, Switch, For } from "solid-js";
 import { debounce } from "@solid-primitives/scheduled";
 import { Portal, render } from "solid-js/web";
 import type { FileMentionOption } from "./agents-mentions-editor";
@@ -11,10 +11,10 @@ import { FilesIcon, IconSpinner, SkillIcon, CustomAgentIcon, OriginalMCPIcon } f
 import { ChevronRight } from "lucide-solid";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../../components/ui/tooltip";
 // Custom folder icon matching design
-function FolderOpenIcon({ class: cls }: {
+function FolderOpenIcon(props: {
 	class?: string;
 }) {
-	return <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={cls}>
+	return <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class={props.class}>
       <path d="M4 8V6C4 4.89543 4.89543 4 6 4H14C15.1046 4 16 4.89543 16 6M4 8H8.17548C8.70591 8 9.21462 8.21071 9.58969 8.58579L11.4181 10.4142C11.7932 10.7893 12.3019 11 12.8323 11H16M4 8C3.44987 8 3.00391 8.44597 3.00391 8.99609V18C3.00391 19.1046 3.89934 20 5.00391 20H19.0039C20.1085 20 21.0039 19.1046 21.0039 18V12.0039C21.0039 11.4495 20.5544 11 20 11M16 11V6M16 11H20M16 6H18C19.1046 6 20 6.89543 20 8V11" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
     </svg>;
 }
@@ -234,12 +234,12 @@ export function getFileIconByExtension(filename: string, returnNullForUnknown = 
 	}
 }
 // Tool icon component (MCP icon) - slightly larger for visibility
-function ToolIcon({ class: cls }: {
+function ToolIcon(props: {
 	class?: string;
 }) {
 	// Override size to h-3.5 w-3.5 for better visibility
-	const sizeClass = cls?.replace(/h-3\b/, "h-3.5").replace(/w-3\b/, "w-3.5") || cls;
-	return <OriginalMCPIcon class={sizeClass} />;
+	const sizeClass = () => props.class?.replace(/h-3\b/, "h-3.5").replace(/w-3\b/, "w-3.5") || props.class;
+	return <OriginalMCPIcon class={sizeClass()} />;
 }
 /**
 * Format MCP tool name for display
@@ -295,43 +295,45 @@ export function createFileIconElement(filename: string, type?: "file" | "folder"
 	return clonedSvg;
 }
 // Folder icon component for consistency with file icons
-function FolderIcon({ class: cls }: {
+function FolderIcon(props: {
 	class?: string;
 }) {
-	return <FolderOpenIcon class={cls} />;
+	return <FolderOpenIcon class={props.class} />;
 }
 // Skill icon component (local wrapper for getOptionIcon)
-function SkillIconWrapper({ class: cls }: {
+function SkillIconWrapper(props: {
 	class?: string;
 }) {
-	return <SkillIcon class={cls} />;
+	return <SkillIcon class={props.class} />;
 }
-function CustomAgentIconWrapper({ class: cls }: {
+function CustomAgentIconWrapper(props: {
 	class?: string;
 }) {
-	return <CustomAgentIcon class={cls} />;
+	return <CustomAgentIcon class={props.class} />;
 }
 // ToolIconWrapper removed - use ToolIcon instead (they were identical)
 // Category icon component
-function CategoryIcon({ class: cls, categoryId }: {
+function CategoryIcon(props: {
 	class?: string;
 	categoryId: string;
 }) {
-	if (categoryId === "files") {
-		return <FilesIcon class={cls} />;
-	}
-	if (categoryId === "skills") {
-		return <SkillIcon class={cls} />;
-	}
-	if (categoryId === "agents") {
-		return <CustomAgentIcon class={cls} />;
-	}
-	if (categoryId === "tools") {
-		// Override size to h-3.5 w-3.5 for better visibility
-		const sizeClass = cls?.replace(/h-3\b/, "h-3.5").replace(/w-3\b/, "w-3.5") || cls;
-		return <OriginalMCPIcon class={sizeClass} />;
-	}
-	return <FilesIcon class={cls} />;
+	const toolSizeClass = () => props.class?.replace(/h-3\b/, "h-3.5").replace(/w-3\b/, "w-3.5") || props.class;
+	return (
+		<Switch fallback={<FilesIcon class={props.class} />}>
+			<Match when={props.categoryId === "files"}>
+				<FilesIcon class={props.class} />
+			</Match>
+			<Match when={props.categoryId === "skills"}>
+				<SkillIcon class={props.class} />
+			</Match>
+			<Match when={props.categoryId === "agents"}>
+				<CustomAgentIcon class={props.class} />
+			</Match>
+			<Match when={props.categoryId === "tools"}>
+				<OriginalMCPIcon class={toolSizeClass()} />
+			</Match>
+		</Switch>
+	);
 }
 /**
 * Get icon component for a file, folder, skill, agent, tool, or category option
@@ -343,10 +345,10 @@ export function getOptionIcon(option: {
 }) {
 	if (option.type === "category") {
 		// Return a wrapper component for categories
-		return function CategoryIconWrapper({ class: cls }: {
+		return function CategoryIconWrapper(wrapperProps: {
 			class?: string;
 		}) {
-			return <CategoryIcon class={cls} categoryId={option.id || ""} />;
+			return <CategoryIcon class={wrapperProps.class} categoryId={option.id || ""} />;
 		};
 	}
 	if (option.type === "skill") {
@@ -509,28 +511,29 @@ function renderTooltipContent(option: FileMentionOption) {
     </div>;
 }
 // Memoized to prevent re-renders when parent re-renders
-export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, position, teamId, repository, sandboxId, branch, projectPath, changedFiles = [], showingFilesList = false, showingSkillsList = false, showingAgentsList = false, showingToolsList = false }: AgentsFileMentionProps) {
+export function AgentsFileMention(rawProps: AgentsFileMentionProps) {
+	const props = mergeProps({ changedFiles: [] as ChangedFile[], showingFilesList: false, showingSkillsList: false, showingAgentsList: false, showingToolsList: false }, rawProps);
 	let dropdownRef: HTMLDivElement | undefined;
 	const [selectedIndex, setSelectedIndex] = createSignal(0);
 	let placementValue: "above" | "below" | null = null;
-	const [debouncedSearchText, setDebouncedSearchText] = createSignal(searchText);
+	const [debouncedSearchText, setDebouncedSearchText] = createSignal(props.searchText);
 	const [hoverIndex, setHoverIndex] = createSignal<number | null>(null);
 	// Get session info (MCP servers, tools) from atom
 	const sessionInfo = sessionInfoAtom[0];
 	// Fetch skills from filesystem (cached for 5 minutes)
 	const skillsQuery = useQuery(() => ({
-		queryKey: ["skills", "listEnabled", isOpen],
+		queryKey: ["skills", "listEnabled", props.isOpen],
 		queryFn: () => desktopRpc.skills.listEnabled({}),
-		enabled: isOpen,
+		enabled: props.isOpen,
 		staleTime: 5 * 60 * 1e3,
 	}));
 	const skills = () => skillsQuery.data ?? [];
 	const isFetchingSkills = () => skillsQuery.isFetching;
 	// Fetch custom agents from filesystem (cached for 5 minutes)
 	const customAgentsQuery = useQuery(() => ({
-		queryKey: ["agents", "listEnabled", isOpen],
+		queryKey: ["agents", "listEnabled", props.isOpen],
 		queryFn: () => desktopRpc.agents.listEnabled({}),
-		enabled: isOpen,
+		enabled: props.isOpen,
 		staleTime: 5 * 60 * 1e3,
 	}));
 	const customAgents = () => customAgentsQuery.data ?? [];
@@ -538,7 +541,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	// Debounce search text (300ms to match canvas implementation)
 	const updateDebouncedSearch = debounce((text: string) => setDebouncedSearchText(text), 300);
 	createEffect(() => {
-		updateDebouncedSearch(searchText);
+		updateDebouncedSearch(props.searchText);
 		onCleanup(() => updateDebouncedSearch.clear());
 	});
 	// For multi-word search, send only first word to API (server filters by that),
@@ -550,14 +553,14 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	});
 	// Fetch files from API (desktop: desktopRpc.files.search)
 	const fileSearchQuery = useQuery(() => ({
-		queryKey: ["files", "search", projectPath ?? "", apiSearchQuery(), 50] as const,
+		queryKey: ["files", "search", props.projectPath ?? "", apiSearchQuery(), 50] as const,
 		queryFn: () =>
 			desktopRpc.files.search({
-				projectPath: projectPath ?? "",
+				projectPath: props.projectPath ?? "",
 				query: apiSearchQuery(),
 				limit: 50,
 			}),
-		enabled: isOpen && (!!projectPath || !!(teamId && (!!repository || !!sandboxId || !!branch))),
+		enabled: props.isOpen && (!!props.projectPath || !!(props.teamId && (!!props.repository || !!props.sandboxId || !!props.branch))),
 		staleTime: 5e3,
 		refetchOnWindowFocus: false,
 		placeholderData: (prev) => prev ?? [],
@@ -568,9 +571,9 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	const error = () => fileSearchQuery.error;
 	// Convert changed files to options (shown at top in separate group)
 	const changedFileOptions = createMemo(() => {
-		if (!changedFiles.length) return [];
+		if (!props.changedFiles.length) return [];
 		const searchLower = debouncedSearchText().toLowerCase();
-		const mapped: FileMentionOption[] = changedFiles.filter((file) => matchesMultiWordSearch(file.filePath, searchLower)).map((file) => {
+		const mapped: FileMentionOption[] = props.changedFiles.filter((file) => matchesMultiWordSearch(file.filePath, searchLower)).map((file) => {
 			// Use displayPath (relative path) for UI display, filePath only for internal ID
 			const displayPath = file.displayPath || file.filePath;
 			const pathParts = displayPath.split("/");
@@ -580,7 +583,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 				id: `changed:${file.filePath}`,
 				label: fileName,
 				path: displayPath,
-				repository: repository || "",
+				repository: props.repository || "",
 				truncatedPath: dirPath,
 				additions: file.additions,
 				deletions: file.deletions,
@@ -592,7 +595,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	});
 	// Convert API results to options with truncated path
 	// Exclude files that are already in changedFileOptions
-	const changedFilePaths = createMemo(() => new Set(changedFiles.map((f) => f.filePath)));
+	const changedFilePaths = createMemo(() => new Set(props.changedFiles.map((f) => f.filePath)));
 	const repoFileOptions = createMemo((): FileMentionOption[] => {
 		const searchLower = debouncedSearchText().toLowerCase();
 		const mapped: FileMentionOption[] = fileResults().filter((file: any) => !changedFilePaths().has(file.path)).filter((file: any) => matchesMultiWordSearch(file.path, searchLower)).map((file: any) => {
@@ -690,7 +693,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	const hasTools = () => allToolOptions().length > 0;
 	const hasOnlyFiles = () => !hasSkills() && !hasAgents() && !hasTools();
 	// Determine if we're in a subpage view (or showing files directly when no skills/agents/tools)
-	const isInSubpage = () => showingFilesList || showingSkillsList || showingAgentsList || showingToolsList || hasOnlyFiles();
+	const isInSubpage = () => props.showingFilesList || props.showingSkillsList || props.showingAgentsList || props.showingToolsList || hasOnlyFiles();
 	// Filter category options based on available data
 	const availableCategoryOptions = createMemo(() => {
 		return CATEGORY_OPTIONS.filter((category) => {
@@ -708,7 +711,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	// If no skills, agents, or tools, skip root view and show files directly
 	const options = createMemo((): FileMentionOption[] => {
 		// SUBPAGE: Files (or if no skills/agents/tools, show files directly)
-		if (showingFilesList || hasOnlyFiles()) {
+		if (props.showingFilesList || hasOnlyFiles()) {
 			const allFiles: FileMentionOption[] = [...changedFileOptions(), ...repoFileOptions()];
 			if (debouncedSearchText()) {
 				return sortFilesByRelevance(allFiles, debouncedSearchText());
@@ -716,15 +719,15 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 			return allFiles;
 		}
 		// SUBPAGE: Skills
-		if (showingSkillsList) {
+		if (props.showingSkillsList) {
 			return skillOptions();
 		}
 		// SUBPAGE: Agents
-		if (showingAgentsList) {
+		if (props.showingAgentsList) {
 			return agentOptions();
 		}
 		// SUBPAGE: MCP Tools
-		if (showingToolsList) {
+		if (props.showingToolsList) {
 			return toolOptions();
 		}
 		// ROOT VIEW
@@ -746,17 +749,17 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 		return [...changedFileOptions(), ...availableCategoryOptions()];
 	});
 	// Track previous values for smarter selection reset
-	let prevIsOpenRef = isOpen;
+	let prevIsOpenRef = props.isOpen;
 	let prevSearchRef = debouncedSearchText();
-	let prevShowingFilesListRef = showingFilesList;
-	let prevShowingSkillsListRef = showingSkillsList;
-	let prevShowingAgentsListRef = showingAgentsList;
-	let prevShowingToolsListRef = showingToolsList;
+	let prevShowingFilesListRef = props.showingFilesList;
+	let prevShowingSkillsListRef = props.showingSkillsList;
+	let prevShowingAgentsListRef = props.showingAgentsList;
+	let prevShowingToolsListRef = props.showingToolsList;
 	// CONSOLIDATED: Single useLayoutEffect for selection management (was 3 separate)
 	createEffect(() => {
-		const didJustOpen = isOpen && !prevIsOpenRef;
+		const didJustOpen = props.isOpen && !prevIsOpenRef;
 		const didSearchChange = debouncedSearchText() !== prevSearchRef;
-		const didSubpageChange = showingFilesList !== prevShowingFilesListRef || showingSkillsList !== prevShowingSkillsListRef || showingAgentsList !== prevShowingAgentsListRef || showingToolsList !== prevShowingToolsListRef;
+		const didSubpageChange = props.showingFilesList !== prevShowingFilesListRef || props.showingSkillsList !== prevShowingSkillsListRef || props.showingAgentsList !== prevShowingAgentsListRef || props.showingToolsList !== prevShowingToolsListRef;
 		// Reset to 0 when opening, search changes, or subpage changes
 		if (didJustOpen || didSearchChange || didSubpageChange) {
 			setSelectedIndex(0);
@@ -764,22 +767,22 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 			setSelectedIndex(Math.max(0, options().length - 1));
 		}
 		// Update refs
-		prevIsOpenRef = isOpen;
+		prevIsOpenRef = props.isOpen;
 		prevSearchRef = debouncedSearchText();
-		prevShowingFilesListRef = showingFilesList;
-		prevShowingSkillsListRef = showingSkillsList;
-		prevShowingAgentsListRef = showingAgentsList;
-		prevShowingToolsListRef = showingToolsList;
+		prevShowingFilesListRef = props.showingFilesList;
+		prevShowingSkillsListRef = props.showingSkillsList;
+		prevShowingAgentsListRef = props.showingAgentsList;
+		prevShowingToolsListRef = props.showingToolsList;
 	});
 	// Reset placement when closed
 	createEffect(() => {
-		if (!isOpen) {
+		if (!props.isOpen) {
 			placementValue = null;
 		}
 	});
 	// Keyboard navigation
 	createEffect(() => {
-		if (!isOpen) return;
+		if (!props.isOpen) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
 			switch (e.key) {
 				case "ArrowDown":
@@ -800,14 +803,14 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 					e.stopPropagation();
 					e.stopImmediatePropagation();
 					if (options()[selectedIndex()]) {
-						onSelect(options()[selectedIndex()]);
+						props.onSelect(options()[selectedIndex()]);
 					}
 					break;
 				case "Escape":
 					e.preventDefault();
 					e.stopPropagation();
 					e.stopImmediatePropagation();
-					onClose();
+					props.onClose();
 					break;
 			}
 		};
@@ -816,7 +819,7 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	});
 	// Auto-scroll selected item into view
 	createEffect(() => {
-		if (!isOpen || !dropdownRef) return;
+		if (!props.isOpen || !dropdownRef) return;
 		// Account for header element
 		const headerOffset = 1;
 		if (selectedIndex() === 0) {
@@ -834,183 +837,197 @@ export function AgentsFileMention({ isOpen, onClose, onSelect, searchText, posit
 	});
 	// Click outside
 	createEffect(() => {
-		if (!isOpen) return;
+		if (!props.isOpen) return;
 		const handleClickOutside = (e: MouseEvent) => {
 			if (dropdownRef && !dropdownRef.contains(e.target as Node)) {
-				onClose();
+				props.onClose();
 			}
 		};
 		document.addEventListener("mousedown", handleClickOutside);
 		onCleanup(() => document.removeEventListener("mousedown", handleClickOutside));
 	});
-	if (!isOpen) return null;
 	// Calculate dropdown dimensions (matching canvas style)
 	// Narrower dropdown when showing only categories (no changed files)
-	const hasChangedFiles = changedFileOptions().length > 0;
-	const isRootView = !showingFilesList && !showingSkillsList && !showingAgentsList && !showingToolsList && !hasOnlyFiles();
+	const hasChangedFiles = () => changedFileOptions().length > 0;
+	const isRootView = () => !props.showingFilesList && !props.showingSkillsList && !props.showingAgentsList && !props.showingToolsList && !hasOnlyFiles();
 	// Narrow dropdown for root view (categories only) and skills/agents/tools subpages
 	// Wide dropdown for files (showingFilesList or hasOnlyFiles)
-	const useNarrowWidth = isRootView && !hasChangedFiles && !debouncedSearchText() || showingSkillsList || showingAgentsList || showingToolsList;
-	const dropdownWidth = useNarrowWidth ? 200 : 320;
+	const useNarrowWidth = () => isRootView() && !hasChangedFiles() && !debouncedSearchText() || props.showingSkillsList || props.showingAgentsList || props.showingToolsList;
+	const dropdownWidth = () => useNarrowWidth() ? 200 : 320;
 	const itemHeight = 28;
 	const headerHeight = 28;
 	// Only add header height when header is actually shown (in subpages or when searching)
-	const showsHeader = !isRootView || !!debouncedSearchText();
+	const showsHeader = () => !isRootView() || !!debouncedSearchText();
 	const paddingHeight = 8;
-	const requestedHeight = Math.min(options().length * itemHeight + (showsHeader ? headerHeight : 0) + paddingHeight, 200);
+	const requestedHeight = () => Math.min(options().length * itemHeight + (showsHeader() ? headerHeight : 0) + paddingHeight, 200);
 	const gap = 8;
 	// Decide placement like Radix Popover (auto-flip top/bottom)
 	const safeMargin = 10;
 	const lineHeight = 20;
-	const availableBelow = window.innerHeight - (position.top + lineHeight) - safeMargin;
-	const availableAbove = position.top - safeMargin;
+	const availableBelow = () => window.innerHeight - (props.position.top + lineHeight) - safeMargin;
+	const availableAbove = () => props.position.top - safeMargin;
 	// Compute desired placement, but lock it for the duration of the open state
 	// Prefer above if there's more space above, or if below doesn't fit
-	if (placementValue === null) {
-		const condition1 = availableAbove >= requestedHeight && availableBelow < requestedHeight;
-		const condition2 = availableAbove > availableBelow && availableAbove >= requestedHeight;
-		const shouldPlaceAbove = condition1 || condition2;
-		placementValue = shouldPlaceAbove ? "above" : "below";
-	}
-	const placeAbove = placementValue === "above";
+	const computePlacement = () => {
+		if (placementValue === null) {
+			const condition1 = availableAbove() >= requestedHeight() && availableBelow() < requestedHeight();
+			const condition2 = availableAbove() > availableBelow() && availableAbove() >= requestedHeight();
+			const shouldPlaceAbove = condition1 || condition2;
+			placementValue = shouldPlaceAbove ? "above" : "below";
+		}
+		return placementValue;
+	};
+	const placeAbove = () => computePlacement() === "above";
 	// Compute final top based on placement
 	// Use line height for better positioning relative to cursor
-	let finalTop = placeAbove ? position.top - gap : position.top + lineHeight + gap;
+	const computedTop = () => {
+		let finalTop = placeAbove() ? props.position.top - gap : props.position.top + lineHeight + gap;
+		return finalTop;
+	};
 	// Position is already aligned to editor left edge, no offset needed
-	let finalLeft = position.left;
-	// Adjust horizontal overflow
-	if (finalLeft + dropdownWidth > window.innerWidth - safeMargin) {
-		finalLeft = window.innerWidth - dropdownWidth - safeMargin;
-	}
-	if (finalLeft < safeMargin) {
-		finalLeft = safeMargin;
-	}
+	const computedLeft = () => {
+		let finalLeft = props.position.left;
+		// Adjust horizontal overflow
+		if (finalLeft + dropdownWidth() > window.innerWidth - safeMargin) {
+			finalLeft = window.innerWidth - dropdownWidth() - safeMargin;
+		}
+		if (finalLeft < safeMargin) {
+			finalLeft = safeMargin;
+		}
+		return finalLeft;
+	};
 	// Compute actual maxHeight based on available space on the chosen side
-	const computedMaxHeight = Math.max(80, Math.min(requestedHeight, placeAbove ? availableAbove - gap : availableBelow - gap));
-	const transformY = placeAbove ? "translateY(-100%)" : "translateY(0)";
-	const opts = options();
+	const computedMaxHeight = () => Math.max(80, Math.min(requestedHeight(), placeAbove() ? availableAbove() - gap : availableBelow() - gap));
+	const transformY = () => placeAbove() ? "translateY(-100%)" : "translateY(0)";
 	return (
-		<Portal mount={document.body}>
-			<TooltipProvider delayDuration={300}>
-				<div
-					ref={el => dropdownRef = el}
-					class="fixed z-[99999] overflow-y-auto rounded-[10px] border border-border bg-popover py-1 text-xs text-popover-foreground shadow-lg dark [&::-webkit-scrollbar]:hidden"
-					style={{
-						top: `${finalTop}px`,
-						left: `${finalLeft}px`,
-						width: `${dropdownWidth}px`,
-						"max-height": `${computedMaxHeight}px`,
-						transform: transformY,
-						"scrollbar-width": "none"
-					}}
-				>
-					{/* Initial loading state (no previous data) */}
-					<Show when={isLoading() && opts.length === 0}>
-						<div class="flex items-center gap-1.5 h-7 px-1.5 mx-1 text-xs text-muted-foreground">
-							<IconSpinner class="h-3.5 w-3.5" />
-							<span>Loading files...</span>
-						</div>
-					</Show>
+		<Show when={props.isOpen}>
+			{(() => {
+				const opts = options();
+				return (
+					<Portal mount={document.body}>
+						<TooltipProvider delayDuration={300}>
+							<div
+								ref={el => dropdownRef = el}
+								class="fixed z-[99999] overflow-y-auto rounded-[10px] border border-border bg-popover py-1 text-xs text-popover-foreground shadow-lg dark [&::-webkit-scrollbar]:hidden"
+								style={{
+									top: `${computedTop()}px`,
+									left: `${computedLeft()}px`,
+									width: `${dropdownWidth()}px`,
+									"max-height": `${computedMaxHeight()}px`,
+									transform: transformY(),
+									"scrollbar-width": "none"
+								}}
+							>
+								{/* Initial loading state (no previous data) */}
+								<Show when={isLoading() && opts.length === 0}>
+									<div class="flex items-center gap-1.5 h-7 px-1.5 mx-1 text-xs text-muted-foreground">
+										<IconSpinner class="h-3.5 w-3.5" />
+										<span>Loading files...</span>
+									</div>
+								</Show>
 
-					{/* Error state */}
-					<Show when={error()}>
-						<div class="h-7 px-1.5 mx-1 flex items-center text-xs text-muted-foreground">
-							Error loading files
-						</div>
-					</Show>
+								{/* Error state */}
+								<Show when={error()}>
+									<div class="h-7 px-1.5 mx-1 flex items-center text-xs text-muted-foreground">
+										Error loading files
+									</div>
+								</Show>
 
-					{/* Empty state (only show when not fetching) */}
-					<Show when={!isLoading() && !isFetching() && !error() && opts.length === 0}>
-						<div class="h-7 px-1.5 mx-1 flex items-center text-xs text-muted-foreground">
-							{debouncedSearchText() ? `No files matching "${debouncedSearchText()}"` : "No files found"}
-						</div>
-					</Show>
+								{/* Empty state (only show when not fetching) */}
+								<Show when={!isLoading() && !isFetching() && !error() && opts.length === 0}>
+									<div class="h-7 px-1.5 mx-1 flex items-center text-xs text-muted-foreground">
+										{debouncedSearchText() ? `No files matching "${debouncedSearchText()}"` : "No files found"}
+									</div>
+								</Show>
 
-					{/* File list */}
-					<Show when={!isLoading() && !error() && opts.length > 0}>
-						{/* Header - only show in subpages or when searching, not in root view */}
-						<Show when={isInSubpage() || debouncedSearchText()}>
-							<div class="px-2.5 py-1.5 mx-1 text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-								<span>
-									{showingFilesList || hasOnlyFiles() ? "Files & Folders" : showingSkillsList ? "Skills" : showingAgentsList ? "Agents" : showingToolsList ? "MCP Tools" : "Results"}
-								</span>
-								<Show when={isFetching() && !isLoading()}>
-									<IconSpinner class="h-2.5 w-2.5" />
+								{/* File list */}
+								<Show when={!isLoading() && !error() && opts.length > 0}>
+									{/* Header - only show in subpages or when searching, not in root view */}
+									<Show when={isInSubpage() || debouncedSearchText()}>
+										<div class="px-2.5 py-1.5 mx-1 text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+											<span>
+												{props.showingFilesList || hasOnlyFiles() ? "Files & Folders" : props.showingSkillsList ? "Skills" : props.showingAgentsList ? "Agents" : props.showingToolsList ? "MCP Tools" : "Results"}
+											</span>
+											<Show when={isFetching() && !isLoading()}>
+												<IconSpinner class="h-2.5 w-2.5" />
+											</Show>
+										</div>
+									</Show>
+									<For each={opts}>
+										{(option, index) => {
+											const isSelected = () => selectedIndex() === index();
+											const OptionIcon = getOptionIcon(option);
+											const isCategory = option.type === "category";
+											const showTooltip = !isCategory && option.path;
+											const itemContent = (
+												<div
+													data-option-index={index()}
+													onClick={() => props.onSelect(option)}
+													onMouseEnter={() => {
+														setHoverIndex(index());
+														setSelectedIndex(index());
+													}}
+													onMouseLeave={() => {
+														setHoverIndex((prev) => prev === index() ? null : prev);
+													}}
+													class={cn(
+														"group inline-flex w-[calc(100%-8px)] mx-1 items-center whitespace-nowrap outline-none",
+														"h-7 px-1.5 justify-start text-xs rounded-md",
+														"transition-colors cursor-pointer select-none gap-1.5",
+														isSelected() ? "dark:bg-neutral-800 bg-accent text-foreground" : "text-muted-foreground dark:hover:bg-neutral-800 hover:bg-accent hover:text-foreground"
+													)}
+												>
+													<OptionIcon class="h-3 w-3 text-muted-foreground flex-shrink-0" />
+													<span class="flex items-center gap-1 w-full min-w-0">
+														<span class={cn("shrink-0 whitespace-nowrap", isCategory && "font-medium")}>
+															{option.label}
+														</span>
+														{/* Diff stats for changed files */}
+														<Show when={option.additions || option.deletions}>
+															<span class="shrink-0 flex items-center gap-1 text-[10px] font-mono">
+																<Show when={option.additions}>
+																	<span class="text-green-500">+{option.additions}</span>
+																</Show>
+																<Show when={option.deletions}>
+																	<span class="text-red-500">-{option.deletions}</span>
+																</Show>
+															</span>
+														</Show>
+														{/* Show truncated path for files only, not for skills/agents (they show in tooltip) */}
+														<Show when={option.truncatedPath && !isCategory && option.type !== "skill" && option.type !== "agent"}>
+															<span
+																class="text-muted-foreground flex-1 min-w-0 ml-2 font-mono overflow-hidden text-[10px]"
+																style={{ direction: "rtl", "text-align": "left", "white-space": "nowrap" }}
+															>
+																<span style={{ direction: "ltr" }}>{option.truncatedPath}</span>
+															</span>
+														</Show>
+													</span>
+													{/* ChevronRight for category items (navigate to subpage) */}
+													<Show when={isCategory}>
+														<ChevronRight class="ml-auto h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+													</Show>
+												</div>
+											);
+											if (showTooltip) {
+												return (
+													<Tooltip open={isSelected()}>
+														<TooltipTrigger asChild>{itemContent}</TooltipTrigger>
+														<TooltipContent side="left" align="start" sideOffset={8} collisionPadding={16} avoidCollisions class="overflow-hidden">
+															{renderTooltipContent(option)}
+														</TooltipContent>
+													</Tooltip>
+												);
+											}
+											return <div>{itemContent}</div>;
+										}}
+									</For>
 								</Show>
 							</div>
-						</Show>
-						<For each={opts}>
-							{(option, index) => {
-								const isSelected = () => selectedIndex() === index();
-								const OptionIcon = getOptionIcon(option);
-								const isCategory = option.type === "category";
-								const showTooltip = !isCategory && option.path;
-								const itemContent = (
-									<div
-										data-option-index={index()}
-										onClick={() => onSelect(option)}
-										onMouseEnter={() => {
-											setHoverIndex(index());
-											setSelectedIndex(index());
-										}}
-										onMouseLeave={() => {
-											setHoverIndex((prev) => prev === index() ? null : prev);
-										}}
-										class={cn(
-											"group inline-flex w-[calc(100%-8px)] mx-1 items-center whitespace-nowrap outline-none",
-											"h-7 px-1.5 justify-start text-xs rounded-md",
-											"transition-colors cursor-pointer select-none gap-1.5",
-											isSelected() ? "dark:bg-neutral-800 bg-accent text-foreground" : "text-muted-foreground dark:hover:bg-neutral-800 hover:bg-accent hover:text-foreground"
-										)}
-									>
-										<OptionIcon class="h-3 w-3 text-muted-foreground flex-shrink-0" />
-										<span class="flex items-center gap-1 w-full min-w-0">
-											<span class={cn("shrink-0 whitespace-nowrap", isCategory && "font-medium")}>
-												{option.label}
-											</span>
-											{/* Diff stats for changed files */}
-											<Show when={option.additions || option.deletions}>
-												<span class="shrink-0 flex items-center gap-1 text-[10px] font-mono">
-													<Show when={option.additions}>
-														<span class="text-green-500">+{option.additions}</span>
-													</Show>
-													<Show when={option.deletions}>
-														<span class="text-red-500">-{option.deletions}</span>
-													</Show>
-												</span>
-											</Show>
-											{/* Show truncated path for files only, not for skills/agents (they show in tooltip) */}
-											<Show when={option.truncatedPath && !isCategory && option.type !== "skill" && option.type !== "agent"}>
-												<span
-													class="text-muted-foreground flex-1 min-w-0 ml-2 font-mono overflow-hidden text-[10px]"
-													style={{ direction: "rtl", "text-align": "left", "white-space": "nowrap" }}
-												>
-													<span style={{ direction: "ltr" }}>{option.truncatedPath}</span>
-												</span>
-											</Show>
-										</span>
-										{/* ChevronRight for category items (navigate to subpage) */}
-										<Show when={isCategory}>
-											<ChevronRight class="ml-auto h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-										</Show>
-									</div>
-								);
-								if (showTooltip) {
-									return (
-										<Tooltip open={isSelected()}>
-											<TooltipTrigger asChild>{itemContent}</TooltipTrigger>
-											<TooltipContent side="left" align="start" sideOffset={8} collisionPadding={16} avoidCollisions class="overflow-hidden">
-												{renderTooltipContent(option)}
-											</TooltipContent>
-										</Tooltip>
-									);
-								}
-								return <div>{itemContent}</div>;
-							}}
-						</For>
-					</Show>
-				</div>
-			</TooltipProvider>
-		</Portal>
+						</TooltipProvider>
+					</Portal>
+				);
+			})()}
+		</Show>
 	);
 }

@@ -20,11 +20,6 @@ function getStatusLabel(state: PrState, reviewDecision?: ReviewDecision): string
 }
 export function PrStatusBar(props: PrStatusBarProps) {
 	const [local] = splitProps(props, ["chatId", "prUrl", "prNumber"]);
-	console.log("[PrStatusBar] Rendered with props:", {
-		chatId: local.chatId,
-		prUrl: local.prUrl,
-		prNumber: local.prNumber
-	});
 	// Poll PR status every 30 seconds
 	const prStatusQuery = useQuery(() => ({
 		queryKey: ["chats", "getPrStatus", local.chatId],

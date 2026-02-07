@@ -88,12 +88,12 @@ export function KanbanView() {
 	// Fetch all chats (workspaces)
 	const chatsQuery = useQuery(() => ({
 		queryKey: ["chats", "list"] as const,
-		queryFn: () => desktopRpc.chats.list.query(),
+		queryFn: async () => (await desktopRpc.chats.list.query()) ?? [],
 	}));
 	// Fetch projects for metadata
 	const projectsQuery = useQuery(() => ({
 		queryKey: ["projects", "list"] as const,
-		queryFn: () => desktopRpc.projects.list.query(),
+		queryFn: async () => (await desktopRpc.projects.list.query()) ?? [],
 	}));
 	// Create projects map
 	type Project = { id: string; name: string; path: string; [k: string]: unknown };
@@ -139,7 +139,7 @@ export function KanbanView() {
 	// Pending plan approvals from DB
 	const pendingPlanApprovalsQuery = useQuery(() => ({
 		queryKey: ["chats", "getPendingPlanApprovals", allOpenSubChatIds()] as const,
-		queryFn: () => desktopRpc.chats.getPendingPlanApprovals({ openSubChatIds: allOpenSubChatIds() }),
+		queryFn: async () => (await desktopRpc.chats.getPendingPlanApprovals({ openSubChatIds: allOpenSubChatIds() })) ?? [],
 		refetchInterval: 5e3,
 		enabled: allOpenSubChatIds().length > 0,
 		placeholderData: (prev) => prev,
@@ -147,7 +147,7 @@ export function KanbanView() {
 	// File stats from DB
 	const fileStatsQuery = useQuery(() => ({
 		queryKey: ["chats", "getFileStats", allOpenSubChatIds()] as const,
-		queryFn: () => desktopRpc.chats.getFileStats({ openSubChatIds: allOpenSubChatIds() }),
+		queryFn: async () => (await desktopRpc.chats.getFileStats({ openSubChatIds: allOpenSubChatIds() })) ?? [],
 		refetchInterval: 5e3,
 		enabled: allOpenSubChatIds().length > 0,
 		placeholderData: (prev) => prev,

@@ -105,6 +105,19 @@ const [store, setStore] = createStore<AgentSubChatState>({
 // Actions object for imperative access (like getState() pattern)
 const actions = {
   setChatId: (chatId: string | null) => {
+    // Idempotence for null as well: avoid clearing state repeatedly when
+    // callers re-emit "no chat selected" during route/layout transitions.
+    if (!chatId && store.chatId === null) {
+      return
+    }
+
+    // Idempotence: callers may invoke setChatId multiple times during routing/mount
+    // (e.g., layout + chat view initialization). Re-applying the same chatId would
+    // wipe `allSubChats` and can reset active/open state back to localStorage values.
+    // Bail early when the chatId is already active.
+    if (chatId && store.chatId === chatId) {
+      return
+    }
     if (!chatId) {
       setStore({
         chatId: null,

@@ -25,6 +25,10 @@ function getFallbackName(userMessage: string): string {
   return trimmed.substring(0, 25) + "...";
 }
 
+const DEBUG_CHAT_RPC = process.env.DEBUG_CHAT_RPC === "1";
+const MAX_MESSAGES_BYTES_PER_SUBCHAT = 250_000;
+const MAX_MESSAGES_BYTES_PER_CHAT_GET = 1_000_000;
+
 export function createChatsHandlers() {
   return {
     chatsList: async ({ projectId }: { projectId?: string }) => {
@@ -58,6 +62,9 @@ export function createChatsHandlers() {
     chatsGet: async ({ id }: { id: string }) => {
       const db = await getDatabase();
       const chat = db.select().from(chats).where(eq(chats.id, id)).get();
+      if (DEBUG_CHAT_RPC) {
+        console.log("[chatsGet] id=", id, "found=", !!chat);
+      }
       if (!chat) return null;
 
       const chatSubChats = db
@@ -67,13 +74,103 @@ export function createChatsHandlers() {
         .orderBy(subChats.createdAt)
         .all();
 
+      if (DEBUG_CHAT_RPC) {
+        console.log("[chatsGet] subChats count=", chatSubChats.length);
+        for (const sc of chatSubChats) {
+          const msgLen = sc.messages?.length ?? 0;
+          let parsedCount = 0;
+          let roles: string[] = [];
+          try {
+            const parsed = JSON.parse(sc.messages || "[]");
+            parsedCount = parsed.length;
+            roles = parsed.map((m: any) => m.role);
+          } catch {}
+          console.log("[chatsGet] subChat id=", sc.id, "messagesJsonLen=", msgLen, "parsedMsgCount=", parsedCount, "roles=", roles, "sessionId=", sc.sessionId);
+        }
+      }
+
       const project = db
         .select()
         .from(projects)
         .where(eq(projects.id, chat.projectId))
         .get();
+      // Return a plain JSON-safe payload to avoid runtime RPC serialization stalls
+      // when transferring nested DB rows to the webview.
+      let totalMessagesBytes = 0;
+      const normalizedSubChats = chatSubChats.map((sc) => {
+        const rawMessages =
+          typeof sc.messages === "string"
+            ? sc.messages
+            : JSON.stringify(sc.messages ?? []);
+        const exceedsPerSubChatBudget =
+          rawMessages.length > MAX_MESSAGES_BYTES_PER_SUBCHAT;
+        const exceedsChatBudget =
+          totalMessagesBytes + rawMessages.length > MAX_MESSAGES_BYTES_PER_CHAT_GET;
+        const messagesOmitted = exceedsPerSubChatBudget || exceedsChatBudget;
+        const messages = messagesOmitted ? "[]" : rawMessages;
 
-      return { ...chat, subChats: chatSubChats, project };
+        if (!messagesOmitted) {
+          totalMessagesBytes += rawMessages.length;
+        }
+
+        if (DEBUG_CHAT_RPC && messagesOmitted) {
+          console.log(
+            "[chatsGet] omitted large subChat payload:",
+            sc.id,
+            "rawLen=",
+            rawMessages.length,
+            "totalBudgetUsed=",
+            totalMessagesBytes,
+          );
+        }
+
+        return {
+          id: sc.id,
+          name: sc.name ?? null,
+          chatId: sc.chatId,
+          sessionId: sc.sessionId ?? null,
+          streamId: sc.streamId ?? null,
+          mode: sc.mode,
+          messages,
+          messagesOmitted,
+          createdAt: sc.createdAt ? new Date(sc.createdAt).toISOString() : null,
+          updatedAt: sc.updatedAt ? new Date(sc.updatedAt).toISOString() : null,
+        };
+      });
+
+      const normalizedProject = project
+        ? {
+            id: project.id,
+            name: project.name,
+            path: project.path,
+            createdAt: project.createdAt
+              ? new Date(project.createdAt).toISOString()
+              : null,
+            updatedAt: project.updatedAt
+              ? new Date(project.updatedAt).toISOString()
+              : null,
+            gitRemoteUrl: project.gitRemoteUrl ?? null,
+            gitProvider: project.gitProvider ?? null,
+            gitOwner: project.gitOwner ?? null,
+            gitRepo: project.gitRepo ?? null,
+          }
+        : null;
+
+      return {
+        id: chat.id,
+        name: chat.name ?? null,
+        projectId: chat.projectId,
+        createdAt: chat.createdAt ? new Date(chat.createdAt).toISOString() : null,
+        updatedAt: chat.updatedAt ? new Date(chat.updatedAt).toISOString() : null,
+        archivedAt: chat.archivedAt ? new Date(chat.archivedAt).toISOString() : null,
+        worktreePath: chat.worktreePath ?? null,
+        branch: chat.branch ?? null,
+        baseBranch: chat.baseBranch ?? null,
+        prUrl: chat.prUrl ?? null,
+        prNumber: chat.prNumber ?? null,
+        subChats: normalizedSubChats,
+        project: normalizedProject,
+      };
     },
 
     chatsCreate: async ({
@@ -180,11 +277,33 @@ export function createChatsHandlers() {
       }
 
       return {
-        ...chat,
+        id: chat.id,
+        name: chat.name ?? null,
+        projectId: chat.projectId,
+        createdAt: chat.createdAt ? new Date(chat.createdAt).toISOString() : null,
+        updatedAt: chat.updatedAt ? new Date(chat.updatedAt).toISOString() : null,
+        archivedAt: chat.archivedAt ? new Date(chat.archivedAt).toISOString() : null,
         worktreePath,
         branch: worktreeBranch,
         baseBranch: worktreeBaseBranch,
-        subChats: [subChat],
+        prUrl: chat.prUrl ?? null,
+        prNumber: chat.prNumber ?? null,
+        subChats: [
+          {
+            id: subChat.id,
+            name: subChat.name ?? null,
+            chatId: subChat.chatId,
+            sessionId: subChat.sessionId ?? null,
+            streamId: subChat.streamId ?? null,
+            mode: subChat.mode,
+            messages:
+              typeof subChat.messages === "string"
+                ? subChat.messages
+                : JSON.stringify(subChat.messages ?? []),
+            createdAt: subChat.createdAt ? new Date(subChat.createdAt).toISOString() : null,
+            updatedAt: subChat.updatedAt ? new Date(subChat.updatedAt).toISOString() : null,
+          },
+        ],
       };
     },
 
@@ -292,13 +411,27 @@ export function createChatsHandlers() {
     },
 
     chatsUpdateSubChatMessages: async ({ id, messages }: { id: string; messages: string }) => {
+      if (DEBUG_CHAT_RPC) {
+        let parsedCount = 0;
+        let roles: string[] = [];
+        try {
+          const parsed = JSON.parse(messages);
+          parsedCount = parsed.length;
+          roles = parsed.map((m: any) => m.role);
+        } catch {}
+        console.log("[chatsUpdateSubChatMessages] id=", id, "msgCount=", parsedCount, "roles=", roles, "jsonLen=", messages.length);
+      }
       const db = await getDatabase();
-      return db
+      const result = db
         .update(subChats)
         .set({ messages, updatedAt: new Date() })
         .where(eq(subChats.id, id))
         .returning()
         .get();
+      if (DEBUG_CHAT_RPC) {
+        console.log("[chatsUpdateSubChatMessages] updated=", !!result);
+      }
+      return result;
     },
 
     chatsUpdateSubChatSession: async ({ id, sessionId }: { id: string; sessionId: string | null }) => {

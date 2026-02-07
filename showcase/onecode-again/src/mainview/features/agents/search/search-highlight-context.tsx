@@ -1,4 +1,4 @@
-import { createContext, createMemo, useContext, type ParentProps } from "solid-js";
+import { createContext, createMemo, Show, useContext, type ParentProps } from "solid-js";
 import { chatSearchOpenAtom, chatSearchQueryAtom, highlightRangesAtomFamily, type HighlightRange } from "./chat-search-atoms";
 // ============================================================================
 // CONTEXT TYPES
@@ -23,17 +23,16 @@ const CLOSED_SEARCH_VALUE: SearchHighlightContextValue = {
 export function SearchHighlightProvider(props: ParentProps) {
 	// Only subscribe to isOpen first - this is the gate
 	const [isOpen] = chatSearchOpenAtom;
-	// When search is closed, render with static empty context
-	// This prevents any subscriptions to query/matches/currentMatch
-	if (!isOpen()) {
-		return <SearchHighlightContext.Provider value={CLOSED_SEARCH_VALUE}>
-        {props.children}
-      </SearchHighlightContext.Provider>;
-	}
-	// Search is open - render the active provider
-	return <SearchHighlightProviderActive>
-      {props.children}
-    </SearchHighlightProviderActive>;
+	// Use Show for proper SolidJS reactivity (if/return doesn't re-run)
+	return <Show when={isOpen()} fallback={
+		<SearchHighlightContext.Provider value={CLOSED_SEARCH_VALUE}>
+			{props.children}
+		</SearchHighlightContext.Provider>
+	}>
+		<SearchHighlightProviderActive>
+			{props.children}
+		</SearchHighlightProviderActive>
+	</Show>;
 }
 // Separate component for when search is active
 // This isolates the subscriptions to query/matches/currentMatch

@@ -5449,6 +5449,63 @@ extern "C" void restoreWindow(NSWindow *window) {
     });
 }
 
+static void setTrafficLightButtonHidden(NSWindow *window, NSWindowButton buttonType, bool hidden) {
+    if (!window) return;
+    NSButton *button = [window standardWindowButton:buttonType];
+    if (button) {
+        [button setHidden:hidden];
+    }
+}
+
+// Show/hide the native macOS window controls (traffic lights).
+extern "C" void setTrafficLightVisibility(NSWindow *window, bool visible) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        const bool hidden = !visible;
+        setTrafficLightButtonHidden(window, NSWindowCloseButton, hidden);
+        setTrafficLightButtonHidden(window, NSWindowMiniaturizeButton, hidden);
+        setTrafficLightButtonHidden(window, NSWindowZoomButton, hidden);
+    });
+}
+
+// Position the native macOS traffic lights relative to the titlebar view.
+// xFromLeft/yFromTop are in points from the top-left of the titlebar superview.
+extern "C" void setTrafficLightPosition(NSWindow *window, double xFromLeft, double yFromTop) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!window) return;
+
+        NSButton *close = [window standardWindowButton:NSWindowCloseButton];
+        NSButton *mini = [window standardWindowButton:NSWindowMiniaturizeButton];
+        NSButton *zoom = [window standardWindowButton:NSWindowZoomButton];
+        if (!close || !mini || !zoom) return;
+
+        NSView *superview = close.superview;
+        if (!superview) return;
+
+        NSRect closeFrame = close.frame;
+        NSRect miniFrame = mini.frame;
+        NSRect zoomFrame = zoom.frame;
+
+        const CGFloat dxMini = miniFrame.origin.x - closeFrame.origin.x;
+        const CGFloat dxZoom = zoomFrame.origin.x - closeFrame.origin.x;
+        const CGFloat superHeight = superview.bounds.size.height;
+        const CGFloat newY = superHeight - (CGFloat)yFromTop - closeFrame.size.height;
+
+        closeFrame.origin.x = (CGFloat)xFromLeft;
+        closeFrame.origin.y = newY;
+        close.frame = closeFrame;
+
+        miniFrame.origin.x = (CGFloat)xFromLeft + dxMini;
+        miniFrame.origin.y = newY;
+        mini.frame = miniFrame;
+
+        zoomFrame.origin.x = (CGFloat)xFromLeft + dxZoom;
+        zoomFrame.origin.y = newY;
+        zoom.frame = zoomFrame;
+
+        [superview setNeedsLayout:YES];
+    });
+}
+
 extern "C" bool isWindowMinimized(NSWindow *window) {
     __block bool result = false;
     dispatch_sync(dispatch_get_main_queue(), ^{
@@ -6897,4 +6954,513 @@ extern "C" void sessionClearStorageData(const char* partitionIdentifier, const c
 // Window icon - Linux only, no-op for macOS (macOS uses app bundle icon)
 extern "C" void setWindowIcon(void* window, const char* iconPath) {
     // Not supported on macOS - macOS windows use the app bundle icon
+}
+
+/*
+ * =============================================================================
+ * GHOSTTY NATIVE VIEW MANAGEMENT
+ *
+ * These functions manage NSViews that host ghostty terminal surfaces.
+ * The ghostty library renders into these views via Metal.
+ *
+ * GhosttyTerminalView is a custom NSView subclass that accepts first responder
+ * and forwards keyboard/mouse/scroll events to the ghostty surface via
+ * dynamically loaded libghostty function pointers.
+ * =============================================================================
+ */
+
+// ---------- ghostty input types (from ghostty.h) ----------
+
+// ghostty_input_action_e
+enum {
+    GHOSTTY_KEY_RELEASE = 0,
+    GHOSTTY_KEY_PRESS   = 1,
+    GHOSTTY_KEY_REPEAT  = 2,
+};
+
+// ghostty_input_mods_e bitmask
+enum {
+    GHOSTTY_MODS_NONE        = 0,
+    GHOSTTY_MODS_SHIFT       = (1 << 0),
+    GHOSTTY_MODS_CTRL        = (1 << 1),
+    GHOSTTY_MODS_ALT         = (1 << 2),
+    GHOSTTY_MODS_SUPER       = (1 << 3),
+    GHOSTTY_MODS_CAPS        = (1 << 4),
+    GHOSTTY_MODS_NUM         = (1 << 5),
+    GHOSTTY_MODS_SHIFT_RIGHT = (1 << 6),
+    GHOSTTY_MODS_CTRL_RIGHT  = (1 << 7),
+    GHOSTTY_MODS_ALT_RIGHT   = (1 << 8),
+    GHOSTTY_MODS_SUPER_RIGHT = (1 << 9),
+};
+
+// ghostty_input_mouse_button_e / ghostty_input_mouse_state_e
+enum {
+    GHOSTTY_MOUSE_PRESS   = 1,
+    GHOSTTY_MOUSE_RELEASE = 0,
+};
+enum {
+    GHOSTTY_MOUSE_LEFT   = 0,
+    GHOSTTY_MOUSE_MIDDLE = 1,
+    GHOSTTY_MOUSE_RIGHT  = 2,
+};
+
+// ghostty_input_key_s (must match ghostty.h layout exactly)
+#pragma pack(push, 1)
+struct ghostty_input_key_s {
+    int32_t  action;            // ghostty_input_action_e
+    uint32_t mods;              // ghostty_input_mods_e
+    uint32_t consumed_mods;     // ghostty_input_mods_e
+    uint32_t keycode;           // macOS virtual keycode
+    const char *text;           // UTF-8 text or NULL
+    uint32_t unshifted_codepoint;
+    bool     composing;
+};
+#pragma pack(pop)
+
+// ---------- dynamically loaded ghostty function pointers ----------
+
+typedef bool (*ghostty_surface_key_fn)(void *, ghostty_input_key_s *);
+typedef void (*ghostty_surface_text_fn)(void *, const char *, uint64_t);
+typedef bool (*ghostty_surface_mouse_button_fn)(void *, int32_t, int32_t, int32_t);
+typedef void (*ghostty_surface_mouse_pos_fn)(void *, double, double, int32_t);
+typedef void (*ghostty_surface_mouse_scroll_fn)(void *, double, double, int32_t);
+
+static void *g_ghosttyDL = nullptr;
+static ghostty_surface_key_fn          g_surfaceKey = nullptr;
+static ghostty_surface_text_fn         g_surfaceText = nullptr;
+static ghostty_surface_mouse_button_fn g_surfaceMouseButton = nullptr;
+static ghostty_surface_mouse_pos_fn    g_surfaceMousePos = nullptr;
+static ghostty_surface_mouse_scroll_fn g_surfaceMouseScroll = nullptr;
+static bool g_ghosttyDLAttempted = false;
+
+static void ensureGhosttyDL(const char *libPath) {
+    if (g_ghosttyDLAttempted) return;
+    g_ghosttyDLAttempted = true;
+    if (!libPath) return;
+
+    g_ghosttyDL = dlopen(libPath, RTLD_LAZY);
+    if (!g_ghosttyDL) {
+        NSLog(@"[ghostty] dlopen(%s) failed: %s", libPath, dlerror());
+        return;
+    }
+    g_surfaceKey         = (ghostty_surface_key_fn)dlsym(g_ghosttyDL, "ghostty_surface_key");
+    g_surfaceText        = (ghostty_surface_text_fn)dlsym(g_ghosttyDL, "ghostty_surface_text");
+    g_surfaceMouseButton = (ghostty_surface_mouse_button_fn)dlsym(g_ghosttyDL, "ghostty_surface_mouse_button");
+    g_surfaceMousePos    = (ghostty_surface_mouse_pos_fn)dlsym(g_ghosttyDL, "ghostty_surface_mouse_pos");
+    g_surfaceMouseScroll = (ghostty_surface_mouse_scroll_fn)dlsym(g_ghosttyDL, "ghostty_surface_mouse_scroll");
+}
+
+// ---------- modifier conversion ----------
+
+static uint32_t ghosttyModsFromNSEvent(NSEvent *event) {
+    NSEventModifierFlags flags = event.modifierFlags;
+    uint32_t mods = GHOSTTY_MODS_NONE;
+    if (flags & NSEventModifierFlagShift)   mods |= GHOSTTY_MODS_SHIFT;
+    if (flags & NSEventModifierFlagControl) mods |= GHOSTTY_MODS_CTRL;
+    if (flags & NSEventModifierFlagOption)  mods |= GHOSTTY_MODS_ALT;
+    if (flags & NSEventModifierFlagCommand) mods |= GHOSTTY_MODS_SUPER;
+    if (flags & NSEventModifierFlagCapsLock) mods |= GHOSTTY_MODS_CAPS;
+
+    // Side-specific modifiers
+    NSUInteger raw = flags;
+    if (raw & 0x00000004) mods |= GHOSTTY_MODS_SHIFT_RIGHT;  // NX_DEVICERSHIFTKEYMASK
+    if (raw & 0x00002000) mods |= GHOSTTY_MODS_CTRL_RIGHT;   // NX_DEVICERCTLKEYMASK
+    if (raw & 0x00000040) mods |= GHOSTTY_MODS_ALT_RIGHT;    // NX_DEVICERALTKEYMASK
+    if (raw & 0x00000010) mods |= GHOSTTY_MODS_SUPER_RIGHT;  // NX_DEVICERCMDKEYMASK
+    return mods;
+}
+
+// ---------- GhosttyTerminalView ----------
+
+@interface GhosttyTerminalView : NSView <NSTextInputClient>
+@property (nonatomic, assign) void *surfacePtr;
+@end
+
+@implementation GhosttyTerminalView {
+    NSMutableAttributedString *_markedText;
+}
+
+- (instancetype)initWithFrame:(NSRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.wantsLayer = YES;
+        self.autoresizingMask = NSViewNotSizable;
+        self.layer.backgroundColor = [[NSColor blackColor] CGColor];
+        _surfacePtr = nullptr;
+        _markedText = [[NSMutableAttributedString alloc] init];
+    }
+    return self;
+}
+
+- (BOOL)acceptsFirstResponder { return YES; }
+- (BOOL)canBecomeKeyView { return YES; }
+- (BOOL)isFlipped { return NO; }
+
+// ---------- keyboard input ----------
+
+- (void)keyDown:(NSEvent *)event {
+    if (!_surfacePtr || !g_surfaceKey) {
+        [self interpretKeyEvents:@[event]];
+        return;
+    }
+
+    int32_t action = event.isARepeat ? GHOSTTY_KEY_REPEAT : GHOSTTY_KEY_PRESS;
+    uint32_t mods = ghosttyModsFromNSEvent(event);
+
+    // Get unshifted codepoint
+    uint32_t unshiftedCodepoint = 0;
+    NSString *unshiftedChars = [event charactersByApplyingModifiers:0];
+    if (unshiftedChars.length > 0) {
+        unshiftedCodepoint = [unshiftedChars characterAtIndex:0];
+    }
+
+    // Get the text characters
+    NSString *chars = event.characters;
+    const char *textCStr = nullptr;
+    if (chars.length > 0) {
+        unichar first = [chars characterAtIndex:0];
+        if (first >= 0x20) { // Skip control characters
+            textCStr = [chars UTF8String];
+        }
+    }
+
+    // Consumed mods: ctrl and cmd never contribute to text translation
+    uint32_t consumedMods = mods & ~(GHOSTTY_MODS_CTRL | GHOSTTY_MODS_SUPER);
+
+    ghostty_input_key_s key_ev = {};
+    key_ev.action = action;
+    key_ev.mods = mods;
+    key_ev.consumed_mods = consumedMods;
+    key_ev.keycode = event.keyCode;
+    key_ev.text = textCStr;
+    key_ev.unshifted_codepoint = unshiftedCodepoint;
+    key_ev.composing = false;
+
+    g_surfaceKey(_surfacePtr, &key_ev);
+}
+
+- (void)keyUp:(NSEvent *)event {
+    if (!_surfacePtr || !g_surfaceKey) return;
+
+    uint32_t mods = ghosttyModsFromNSEvent(event);
+
+    ghostty_input_key_s key_ev = {};
+    key_ev.action = GHOSTTY_KEY_RELEASE;
+    key_ev.mods = mods;
+    key_ev.consumed_mods = 0;
+    key_ev.keycode = event.keyCode;
+    key_ev.text = nullptr;
+    key_ev.unshifted_codepoint = 0;
+    key_ev.composing = false;
+
+    g_surfaceKey(_surfacePtr, &key_ev);
+}
+
+- (void)flagsChanged:(NSEvent *)event {
+    if (!_surfacePtr || !g_surfaceKey) return;
+
+    uint32_t mod = 0;
+    switch (event.keyCode) {
+        case 0x39: mod = GHOSTTY_MODS_CAPS; break;
+        case 0x38: case 0x3C: mod = GHOSTTY_MODS_SHIFT; break;
+        case 0x3B: case 0x3E: mod = GHOSTTY_MODS_CTRL; break;
+        case 0x3A: case 0x3D: mod = GHOSTTY_MODS_ALT; break;
+        case 0x37: case 0x36: mod = GHOSTTY_MODS_SUPER; break;
+        default: return;
+    }
+
+    uint32_t mods = ghosttyModsFromNSEvent(event);
+    int32_t action = (mods & mod) ? GHOSTTY_KEY_PRESS : GHOSTTY_KEY_RELEASE;
+
+    ghostty_input_key_s key_ev = {};
+    key_ev.action = action;
+    key_ev.mods = mods;
+    key_ev.consumed_mods = 0;
+    key_ev.keycode = event.keyCode;
+    key_ev.text = nullptr;
+    key_ev.unshifted_codepoint = 0;
+    key_ev.composing = false;
+
+    g_surfaceKey(_surfacePtr, &key_ev);
+}
+
+// ---------- NSTextInputClient ----------
+
+- (void)insertText:(id)string replacementRange:(NSRange)range {
+    if (!_surfacePtr || !g_surfaceText) return;
+
+    NSString *str = nil;
+    if ([string isKindOfClass:[NSAttributedString class]]) {
+        str = [(NSAttributedString *)string string];
+    } else {
+        str = (NSString *)string;
+    }
+    if (!str || str.length == 0) return;
+
+    const char *utf8 = [str UTF8String];
+    g_surfaceText(_surfacePtr, utf8, strlen(utf8));
+}
+
+- (void)setMarkedText:(id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange {
+    if ([string isKindOfClass:[NSAttributedString class]]) {
+        _markedText = [(NSAttributedString *)string mutableCopy];
+    } else {
+        _markedText = [[NSMutableAttributedString alloc] initWithString:(NSString *)string];
+    }
+}
+
+- (void)unmarkText {
+    [_markedText setAttributedString:[[NSAttributedString alloc] init]];
+}
+
+- (BOOL)hasMarkedText {
+    return _markedText.length > 0;
+}
+
+- (NSRange)markedRange {
+    if (_markedText.length > 0) return NSMakeRange(0, _markedText.length);
+    return NSMakeRange(NSNotFound, 0);
+}
+
+- (NSRange)selectedRange {
+    return NSMakeRange(NSNotFound, 0);
+}
+
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actual {
+    NSRect frame = [self.window convertRectToScreen:[self convertRect:self.bounds toView:nil]];
+    return NSMakeRect(frame.origin.x, frame.origin.y, 0, 0);
+}
+
+- (NSUInteger)characterIndexForPoint:(NSPoint)point { return NSNotFound; }
+- (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actual { return nil; }
+- (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText { return @[]; }
+
+// ---------- mouse input ----------
+
+- (void)mouseDown:(NSEvent *)event {
+    if (!_surfacePtr || !g_surfaceMouseButton) return;
+    int32_t mods = (int32_t)ghosttyModsFromNSEvent(event);
+    g_surfaceMouseButton(_surfacePtr, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, mods);
+}
+
+- (void)mouseUp:(NSEvent *)event {
+    if (!_surfacePtr || !g_surfaceMouseButton) return;
+    int32_t mods = (int32_t)ghosttyModsFromNSEvent(event);
+    g_surfaceMouseButton(_surfacePtr, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mods);
+}
+
+- (void)rightMouseDown:(NSEvent *)event {
+    if (!_surfacePtr || !g_surfaceMouseButton) {
+        [super rightMouseDown:event];
+        return;
+    }
+    int32_t mods = (int32_t)ghosttyModsFromNSEvent(event);
+    if (!g_surfaceMouseButton(_surfacePtr, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RIGHT, mods)) {
+        [super rightMouseDown:event];
+    }
+}
+
+- (void)rightMouseUp:(NSEvent *)event {
+    if (!_surfacePtr || !g_surfaceMouseButton) {
+        [super rightMouseUp:event];
+        return;
+    }
+    int32_t mods = (int32_t)ghosttyModsFromNSEvent(event);
+    if (!g_surfaceMouseButton(_surfacePtr, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_RIGHT, mods)) {
+        [super rightMouseUp:event];
+    }
+}
+
+- (void)otherMouseDown:(NSEvent *)event {
+    if (event.buttonNumber != 2) return;
+    if (!_surfacePtr || !g_surfaceMouseButton) return;
+    int32_t mods = (int32_t)ghosttyModsFromNSEvent(event);
+    g_surfaceMouseButton(_surfacePtr, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_MIDDLE, mods);
+}
+
+- (void)otherMouseUp:(NSEvent *)event {
+    if (event.buttonNumber != 2) return;
+    if (!_surfacePtr || !g_surfaceMouseButton) return;
+    int32_t mods = (int32_t)ghosttyModsFromNSEvent(event);
+    g_surfaceMouseButton(_surfacePtr, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_MIDDLE, mods);
+}
+
+- (void)mouseMoved:(NSEvent *)event {
+    if (!_surfacePtr || !g_surfaceMousePos) return;
+    NSPoint pos = [self convertPoint:event.locationInWindow fromView:nil];
+    // Flip Y: ghostty expects origin at top-left
+    double y = self.bounds.size.height - pos.y;
+    int32_t mods = (int32_t)ghosttyModsFromNSEvent(event);
+    g_surfaceMousePos(_surfacePtr, pos.x, y, mods);
+}
+
+- (void)mouseDragged:(NSEvent *)event {
+    [self mouseMoved:event];
+}
+
+- (void)rightMouseDragged:(NSEvent *)event {
+    [self mouseMoved:event];
+}
+
+- (void)otherMouseDragged:(NSEvent *)event {
+    [self mouseMoved:event];
+}
+
+// ---------- scroll input ----------
+
+- (void)scrollWheel:(NSEvent *)event {
+    if (!_surfacePtr || !g_surfaceMouseScroll) return;
+
+    double x = event.scrollingDeltaX;
+    double y = event.scrollingDeltaY;
+    bool precision = event.hasPreciseScrollingDeltas;
+
+    if (precision) {
+        x *= 2.0;
+        y *= 2.0;
+    }
+
+    // Build scroll_mods bitmask: bit 0 = precision, bits 1-3 = momentum phase
+    int32_t scrollMods = precision ? 1 : 0;
+
+    int32_t momentum = 0;
+    switch (event.momentumPhase) {
+        case NSEventPhaseBegan:      momentum = 1; break;
+        case NSEventPhaseStationary: momentum = 2; break;
+        case NSEventPhaseChanged:    momentum = 3; break;
+        case NSEventPhaseEnded:      momentum = 4; break;
+        case NSEventPhaseCancelled:  momentum = 5; break;
+        case NSEventPhaseMayBegin:   momentum = 6; break;
+        default: momentum = 0; break;
+    }
+    scrollMods |= (momentum << 1);
+
+    g_surfaceMouseScroll(_surfacePtr, x, y, scrollMods);
+}
+
+// Enable mouse tracking for mouseMoved events
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    for (NSTrackingArea *area in self.trackingAreas) {
+        [self removeTrackingArea:area];
+    }
+    NSTrackingArea *trackingArea = [[NSTrackingArea alloc]
+        initWithRect:self.bounds
+        options:(NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited |
+                 NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect)
+        owner:self
+        userInfo:nil];
+    [self addTrackingArea:trackingArea];
+}
+
+@end
+
+// ---------- Map and ID tracking ----------
+
+static std::map<uint32_t, GhosttyTerminalView*> g_ghosttySurfaces;
+static uint32_t g_nextGhostySurfaceId = 1;
+
+// Create a new GhosttyTerminalView and add it as a subview of the window's ContainerView.
+extern "C" uint32_t ghosttyCreateNativeView(
+    NSWindow *window,
+    double x, double y, double width, double height,
+    void **outViewPtr
+) {
+    __block uint32_t surfaceId = 0;
+    __block GhosttyTerminalView *terminalView = nil;
+
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        if (!window || !window.contentView) return;
+
+        ContainerView *containerView = (ContainerView *)window.contentView;
+        CGFloat containerHeight = containerView.bounds.size.height;
+        CGFloat adjustedY = containerHeight - y - height;
+        NSRect frame = NSMakeRect(x, adjustedY, width, height);
+
+        terminalView = [[GhosttyTerminalView alloc] initWithFrame:frame];
+        [containerView addSubview:terminalView positioned:NSWindowAbove relativeTo:nil];
+
+        surfaceId = g_nextGhostySurfaceId++;
+        g_ghosttySurfaces[surfaceId] = terminalView;
+    });
+
+    if (outViewPtr) {
+        *outViewPtr = (__bridge void *)terminalView;
+    }
+    return surfaceId;
+}
+
+// Set the ghostty surface pointer on the native view so it can forward input.
+// Also lazy-loads libghostty.dylib to resolve the input function pointers.
+extern "C" void ghosttySetSurfacePtr(
+    uint32_t surfaceId,
+    void *surfacePtr,
+    const char *libghosttyPath
+) {
+    ensureGhosttyDL(libghosttyPath);
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        auto it = g_ghosttySurfaces.find(surfaceId);
+        if (it == g_ghosttySurfaces.end()) return;
+        it->second.surfacePtr = surfacePtr;
+    });
+}
+
+// Resize and reposition an existing ghostty surface view.
+extern "C" void ghosttyResizeNativeView(
+    NSWindow *window,
+    uint32_t surfaceId,
+    double x, double y, double width, double height
+) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        auto it = g_ghosttySurfaces.find(surfaceId);
+        if (it == g_ghosttySurfaces.end()) return;
+
+        NSView *view = it->second;
+        if (!window || !window.contentView) return;
+
+        CGFloat containerHeight = window.contentView.bounds.size.height;
+        CGFloat adjustedY = containerHeight - y - height;
+        [view setFrame:NSMakeRect(x, adjustedY, width, height)];
+    });
+}
+
+// Remove and destroy a ghostty surface view.
+extern "C" void ghosttyDestroyNativeView(uint32_t surfaceId) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        auto it = g_ghosttySurfaces.find(surfaceId);
+        if (it == g_ghosttySurfaces.end()) return;
+
+        GhosttyTerminalView *view = it->second;
+        view.surfacePtr = nullptr;
+        [view removeFromSuperview];
+        g_ghosttySurfaces.erase(it);
+    });
+}
+
+// Make the ghostty surface view the first responder (for keyboard input).
+extern "C" void ghosttyFocusNativeView(NSWindow *window, uint32_t surfaceId) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        auto it = g_ghosttySurfaces.find(surfaceId);
+        if (it == g_ghosttySurfaces.end()) return;
+
+        GhosttyTerminalView *view = it->second;
+        if (window && [view acceptsFirstResponder]) {
+            [window makeFirstResponder:view];
+        }
+    });
+}
+
+// Get the backing scale factor for the window's screen (Retina detection).
+extern "C" double ghosttyGetScaleFactor(NSWindow *window) {
+    __block double scale = 0.0;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        if (!window) return;
+        NSScreen *screen = [window screen];
+        if (!screen) screen = [NSScreen mainScreen];
+        if (screen) {
+            scale = [screen backingScaleFactor];
+        }
+    });
+    return scale;
 }

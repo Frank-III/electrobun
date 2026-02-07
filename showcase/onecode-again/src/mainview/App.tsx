@@ -1,6 +1,7 @@
 import { Provider as StateProvider } from "./lib/state/store";
 import { ColorModeProvider, ColorModeScript, useColorMode } from "@kobalte/core";
 import { createEffect, createMemo, createSignal, onCleanup, Switch, Match, untrack } from "solid-js";
+import { dbg } from "./lib/debug-effects";
 import "./lib/electrobun-rpc";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -15,6 +16,7 @@ import { appStore } from "./lib/app-store";
 import { VSCodeThemeProvider } from "./lib/themes/theme-provider";
 import { desktopRpc } from "./lib/desktop-rpc";
 import { TerminalStoreProvider } from "./features/terminal/terminal-store-context";
+import { useQuery } from "@tanstack/solid-query";
 /**
 * Custom Toaster that adapts to theme
 */
@@ -37,6 +39,7 @@ function AppContent() {
 	const { setActiveSubChat, addToOpenSubChats, setChatId } = useAgentSubChatStore();
 	// Apply initial window params (chatId/subChatId) when opening via "Open in new window"
 	createEffect(() => {
+		dbg("App:windowParams");
 		const params = getInitialWindowParams();
 		if (params.chatId) {
 			console.log("[App] Opening chat from window params:", params.chatId, params.subChatId);
@@ -52,6 +55,7 @@ function AppContent() {
 	// Based on PR #29 by @sa4hnd
 	const [cliConfig, setCliConfig] = createSignal<{ hasConfig: boolean; hasApiKey: boolean; baseUrl: string | null } | null>(null);
 	createEffect(() => {
+		dbg("App:cliConfig");
 		let cancelled = false;
 		desktopRpc.claudeCode.hasExistingCliConfig()
 			.then((data) => {
@@ -68,6 +72,7 @@ function AppContent() {
 	// Migration: If user already completed Anthropic onboarding but has no billing method set,
 	// automatically set it to "claude-subscription" (legacy users before billing method was added)
 	createEffect(() => {
+		dbg("App:migration");
 		if (!billingMethod() && anthropicOnboardingCompleted()) {
 			untrack(() => setBillingMethod("claude-subscription"));
 		}
@@ -75,6 +80,7 @@ function AppContent() {
 	// Auto-skip onboarding if user has existing CLI config (API key or proxy)
 	// This allows users with ANTHROPIC_API_KEY to use the app without OAuth
 	createEffect(() => {
+		dbg("App:autoSkip");
 		const cfg = cliConfig();
 		if (cfg?.hasConfig && !billingMethod()) {
 			console.log("[App] Detected existing CLI config, auto-completing onboarding");
@@ -84,34 +90,31 @@ function AppContent() {
 			});
 		}
 	});
-	// Fetch projects to validate selectedProject exists (Electrobun RPC + Solid Query)
-	const [projects, setProjects] = createSignal<Awaited<ReturnType<typeof desktopRpc.projects.list.query>> | null>(null);
-	const [isLoadingProjects, setIsLoadingProjects] = createSignal(false);
+
 	const shouldLoadProjects = createMemo(() => {
 		if (!billingMethod()) return false;
 		if (billingMethod() === "claude-subscription" && !anthropicOnboardingCompleted()) return false;
 		if ((billingMethod() === "api-key" || billingMethod() === "custom-model") && !apiKeyOnboardingCompleted()) return false;
 		return true;
 	});
-	createEffect(() => {
-		if (!shouldLoadProjects()) return;
-		let cancelled = false;
-		setIsLoadingProjects(true);
-		desktopRpc.projects.list.query()
-			.then((data) => {
-				if (!cancelled) setProjects(data);
-			})
-			.catch((err) => {
+
+	// Projects list (shared cache) — keeps App.tsx in sync with SelectRepoPage/NewChatForm
+	// so selecting a folder doesn't cause route thrash / "not responsive" state.
+	const projectsQuery = useQuery(() => ({
+		queryKey: ["projects", "list"] as const,
+		enabled: shouldLoadProjects(),
+		queryFn: async () => {
+			try {
+				return await desktopRpc.projects.list.query();
+			} catch (err) {
 				console.error("[App] Failed to load projects:", err);
-				if (!cancelled) setProjects([]);
-			})
-			.finally(() => {
-				if (!cancelled) setIsLoadingProjects(false);
-			});
-		onCleanup(() => {
-			cancelled = true;
-		});
-	});
+				return [];
+			}
+		},
+	}));
+	const projects = () => projectsQuery.data;
+	const isLoadingProjects = () => projectsQuery.data === undefined;
+
 	// Validated project - only valid if exists in DB
 	const validatedProject = createMemo(() => {
 		if (!selectedProject()) return null;
@@ -131,9 +134,29 @@ function AppContent() {
 	// 3. API key or custom model selected but not completed -> ApiKeyOnboardingPage
 	// 4. No valid project selected -> SelectRepoPage
 	// 5. Otherwise -> AgentsLayout
-	// Note: Using Switch/Match for proper SolidJS reactivity (if/return doesn't re-run on signal changes)
+	// Note: Using Switch/Match for proper SolidJS reactivity.
+	// IMPORTANT: Do not mount AgentsLayout as a fallback. If the app is still resolving
+	// onboarding/project state (auto-skip, migration, projects load), switching between
+	// matches can cause AgentsLayout to mount/unmount rapidly.
+	const isReadyToRoute = createMemo(() => {
+		// Wait until billing method is chosen.
+		if (!billingMethod()) return false;
+		// Wait for onboarding completion flags relevant to the chosen billing method.
+		if (billingMethod() === "claude-subscription" && !anthropicOnboardingCompleted()) return false;
+		if ((billingMethod() === "api-key" || billingMethod() === "custom-model") && !apiKeyOnboardingCompleted()) return false;
+		// If we should load projects, wait until they are loaded.
+		if (shouldLoadProjects() && projectsQuery.data === undefined) return false;
+		return true;
+	});
+
+	const LoadingGate = () => (
+		<div class="h-screen w-screen flex items-center justify-center bg-background text-foreground select-none">
+			<div class="text-sm text-muted-foreground">Loading…</div>
+		</div>
+	);
+
 	return (
-		<Switch fallback={<AgentsLayout />}>
+		<Switch fallback={<LoadingGate />}>
 			<Match when={!billingMethod()}>
 				<BillingMethodPage />
 			</Match>
@@ -143,8 +166,11 @@ function AppContent() {
 			<Match when={(billingMethod() === "api-key" || billingMethod() === "custom-model") && !apiKeyOnboardingCompleted()}>
 				<ApiKeyOnboardingPage />
 			</Match>
-			<Match when={!validatedProject() && !isLoadingProjects()}>
+			<Match when={isReadyToRoute() && !validatedProject()}>
 				<SelectRepoPage />
+			</Match>
+			<Match when={isReadyToRoute() && !!validatedProject()}>
+				<AgentsLayout />
 			</Match>
 		</Switch>
 	);

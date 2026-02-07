@@ -74,18 +74,17 @@ export function IsolatedMessageGroup(props: IsolatedMessageGroupProps) {
 	const extractedText = createMemo(() => extractTextMentions(rawTextContent()));
 	const textMentions = createMemo(() => extractedText().textMentions);
 	const textContent = createMemo(() => extractedText().cleanedText);
-	if (!userMsg()) return null;
 	// Show cloning when sandbox is being set up
-	const shouldShowCloning = props.sandboxSetupStatus === "cloning" && isLastGroup() && assistantIds().length === 0;
+	const shouldShowCloning = createMemo(() => props.sandboxSetupStatus === "cloning" && isLastGroup() && assistantIds().length === 0);
 	// Show setup error if sandbox setup failed
-	const shouldShowSetupError = props.sandboxSetupStatus === "error" && isLastGroup() && assistantIds().length === 0;
+	const shouldShowSetupError = createMemo(() => props.sandboxSetupStatus === "error" && isLastGroup() && assistantIds().length === 0);
 	// Check if this is an image-only message (no text content and no text mentions)
-	const isImageOnlyMessage = imageParts().length > 0 && !textContent().trim() && textMentions().length === 0;
+	const isImageOnlyMessage = createMemo(() => imageParts().length > 0 && !textContent().trim() && textMentions().length === 0);
 	// Check if this is an attachment-only message (no text but has images or text mentions)
-	const isAttachmentOnlyMessage = !textContent().trim() && (imageParts().length > 0 || textMentions().length > 0);
-	return <props.MessageGroupWrapper isLastGroup={isLastGroup()}>
+	const isAttachmentOnlyMessage = createMemo(() => !textContent().trim() && (imageParts().length > 0 || textMentions().length > 0));
+	return <Show when={userMsg()}><props.MessageGroupWrapper isLastGroup={isLastGroup()}>
       {	/* Attachments - NOT sticky (only when there's also text) */}
-      <Show when={imageParts().length > 0 && !isImageOnlyMessage}><div class="mb-2 pointer-events-auto">
+      <Show when={imageParts().length > 0 && !isImageOnlyMessage()}><div class="mb-2 pointer-events-auto">
           <props.UserBubbleComponent messageId={props.userMsgId} textContent="" imageParts={imageParts()} skipTextMentionBlocks />
         </div></Show>
 
@@ -97,9 +96,9 @@ export function IsolatedMessageGroup(props: IsolatedMessageGroupProps) {
       { /* User message text - sticky (or attachment-only summary bubble) */}
       <div data-user-message-id={props.userMsgId} class={`[&>div]:!mb-4 pointer-events-auto sticky z-10 ${props.stickyTopClass}`}>
         { /* Show "Using X" summary when no text but have attachments */}
-        <Show 
-          when={isAttachmentOnlyMessage && !isImageOnlyMessage}
-          fallback={<props.UserBubbleComponent messageId={props.userMsgId} textContent={textContent()} imageParts={isImageOnlyMessage ? imageParts() : []} skipTextMentionBlocks={!isImageOnlyMessage} />}
+        <Show
+          when={isAttachmentOnlyMessage() && !isImageOnlyMessage()}
+          fallback={<props.UserBubbleComponent messageId={props.userMsgId} textContent={textContent()} imageParts={isImageOnlyMessage() ? imageParts() : []} skipTextMentionBlocks={!isImageOnlyMessage()} />}
         >
           <div class="flex justify-start drop-shadow-[0_10px_20px_hsl(var(--background))]" data-user-bubble>
             <div class="space-y-2 w-full">
@@ -125,12 +124,12 @@ export function IsolatedMessageGroup(props: IsolatedMessageGroupProps) {
         </Show>
 
         {	/* Cloning indicator */}
-        <Show when={shouldShowCloning}><div class="mt-4">
+        <Show when={shouldShowCloning()}><div class="mt-4">
             <props.ToolCallComponent icon={props.toolRegistry["tool-cloning"]?.icon} title={props.toolRegistry["tool-cloning"]?.title({}) || "Cloning..."} isPending={true} isError={false} />
           </div></Show>
 
         { /* Setup error with retry */}
-        <Show when={shouldShowSetupError}><div class="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+        <Show when={shouldShowSetupError()}><div class="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
             <div class="flex items-center gap-2 text-destructive text-sm">
               <span>
                 Failed to set up sandbox
@@ -150,5 +149,5 @@ export function IsolatedMessageGroup(props: IsolatedMessageGroupProps) {
       <Show when={isStreaming() && isLastGroup() && assistantIds().length === 0 && props.sandboxSetupStatus === "ready"}><div class="mt-4">
             <props.ToolCallComponent icon={props.toolRegistry["tool-planning"]?.icon} title={props.toolRegistry["tool-planning"]?.title({}) || "Planning..."} isPending={true} isError={false} />
           </div></Show>
-    </props.MessageGroupWrapper>;
+    </props.MessageGroupWrapper></Show>;
 }

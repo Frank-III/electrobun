@@ -1,4 +1,5 @@
-import type { RPCSchema } from "electrobun/bun";
+import type { BrowserView, RPCSchema } from "electrobun/bun";
+import type { Electroview } from "electrobun/view";
 import type { ChangedFile, GitChangesStatus } from "./changes-types";
 import type { TerminalMessages, TerminalRequests } from "./terminal-rpc";
 import type { ChatMessages, ChatRequests } from "./chat-rpc";
@@ -183,6 +184,8 @@ export interface AppRPC {
       windowIsMaximized: { params: {}; response: { isMaximized: boolean } };
       windowToggleFullscreen: { params: {}; response: void };
       windowIsFullscreen: { params: {}; response: { isFullscreen: boolean } };
+      windowSetTrafficLightVisibility: { params: { visible: boolean }; response: void };
+      windowSetTrafficLightPosition: { params: { x: number; y: number }; response: void };
       setWindowTitle: { params: { title: string }; response: void };
       showNotification: { params: { title: string; body: string }; response: void };
       setBadge: { params: { count: number | null }; response: void };
@@ -401,7 +404,7 @@ export interface AppRPC {
       };
       chatsGetPrContext: { params: { chatId: string }; response: { branch: string; baseBranch: string; uncommittedCount: number; hasUpstream: boolean } | null };
       chatsUpdatePrInfo: { params: { chatId: string; prUrl: string; prNumber: number }; response: Chat };
-      chatsGetPrStatus: { params: { chatId: string }; response: unknown };
+      chatsGetPrStatus: { params: { chatId: string }; response: GitHubStatus | null };
       chatsMergePr: { params: { chatId: string; method?: "merge" | "squash" | "rebase" }; response: { success: boolean; error?: string } };
       chatsGetFileStats: {
         params: { openSubChatIds?: string[]; chatIds?: string[] };
@@ -566,24 +569,8 @@ export interface AppRPC {
 /** Schema of bun requests (params/response per key). */
 export type BunRequestsSchema = AppRPC["bun"]["requests"];
 
-/** Typed client: each request key is (params) => Promise<response>. */
-export type BunRequestClient = {
-  [K in keyof BunRequestsSchema]: BunRequestsSchema[K] extends {
-    params?: infer P;
-    response: infer R;
-  }
-    ? undefined extends P
-      ? (params?: P) => Promise<R>
-      : (params: P) => Promise<R>
-    : BunRequestsSchema[K] extends {
-        params: infer P;
-        response: infer R;
-      }
-      ? (params: P) => Promise<R>
-      : never;
-};
+/** Typed client returned by Electroview.defineRPC<AppRPC>().request */
+export type BunRequestClient = ReturnType<typeof Electroview.defineRPC<AppRPC>>["request"];
 
-/** Type for sending messages to webview */
-export type WebviewMessageSender = {
-  [K in keyof AppRPC["webview"]["messages"]]: (payload: AppRPC["webview"]["messages"][K]) => void;
-};
+/** Typed message sender returned by BrowserView.defineRPC<AppRPC>().send */
+export type WebviewMessageSender = ReturnType<typeof BrowserView.defineRPC<AppRPC>>["send"];

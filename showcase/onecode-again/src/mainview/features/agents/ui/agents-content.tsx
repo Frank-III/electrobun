@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { dbg } from "../../../lib/debug-effects";
 import { Portal } from "solid-js/web";
 // import { useSearchParams, useRouter } from "next/navigation" // Desktop doesn't use next/navigation
 // Desktop: mock Next.js navigation hooks
@@ -23,6 +24,7 @@ import { AgentsSidebar } from "../../sidebar/agents-sidebar";
 import { AgentsSubChatsSidebar } from "../../sidebar/agents-subchats-sidebar";
 import { AgentPreview } from "./agent-preview";
 import { AgentDiffView } from "./agent-diff-view";
+import { createLocalChatQueryOptions } from "../lib/local-chat-query";
 import { TerminalSidebar } from "../../terminal/terminal-sidebar";
 import { useTerminalStore } from "../../terminal/terminal-store-context";
 import { useAgentSubChatStore, type SubChatMeta } from "../stores/sub-chat-store";
@@ -122,8 +124,7 @@ function CmdKeymapOverlay(props: {
 export function AgentsContent() {
 	const [selectedChatId, setSelectedChatId] = selectedAgentChatIdAtom;
 	const [, setSelectedChatIsRemote] = selectedChatIsRemoteAtom;
-	const [, setChatSourceMode] = chatSourceModeAtom;
-	const [chatSourceMode] = chatSourceModeAtom;
+	const [chatSourceMode, setChatSourceMode] = chatSourceModeAtom;
 	const [selectedDraftId] = selectedDraftIdAtom;
 	const [showNewChatForm] = showNewChatFormAtom;
 	const [betaKanbanEnabled] = betaKanbanEnabledAtom;
@@ -151,6 +152,7 @@ export function AgentsContent() {
 	const { user } = useUser();
 	const { signOut } = useClerk();
 	const isAdmin = useIsAdmin();
+	const isDevelopment = import.meta.env?.MODE !== "production";
 	// Quick-switch dialog state - Agents (Opt+Ctrl+Tab)
 	const [quickSwitchOpen, setQuickSwitchOpen] = agentsQuickSwitchOpenAtom;
 	const [quickSwitchSelectedIndex, setQuickSwitchSelectedIndex] = agentsQuickSwitchSelectedIndexAtom;
@@ -179,14 +181,15 @@ export function AgentsContent() {
 	});
 	// Get sub-chats from store - SolidJS fine-grained reactivity handles this
 	const subChatStore = useAgentSubChatStore();
-	const allSubChats = subChatStore.allSubChats;
-	const openSubChatIds = subChatStore.openSubChatIds;
-	const activeSubChatId = subChatStore.activeSubChatId;
+	const allSubChats = createMemo(() => subChatStore.allSubChats);
+	const openSubChatIds = createMemo(() => subChatStore.openSubChatIds);
+	const activeSubChatId = createMemo(() => subChatStore.activeSubChatId);
 	const setActiveSubChat = subChatStore.setActiveSubChat;
 	// Update window title when active sub-chat changes
 	const activeSubChatName = createMemo(() => {
-		if (!activeSubChatId) return null;
-		const subChat = allSubChats.find((sc) => sc.id === activeSubChatId);
+		const activeId = activeSubChatId();
+		if (!activeId) return null;
+		const subChat = allSubChats().find((sc) => sc.id === activeId);
 		return subChat?.name ?? null;
 	});
 	createEffect(() => {
@@ -203,14 +206,13 @@ export function AgentsContent() {
 	// Fetch agent chats for keyboard navigation and mobile view
 	const agentChatsQuery = useQuery(() => ({
 		queryKey: ["chats", "list"] as const,
-		queryFn: () => desktopRpc.chats.list.query(),
-		enabled: !!selectedTeamId(),
+		queryFn: async () => (await desktopRpc.chats.list.query()) ?? [],
 	}));
 	const agentChats = () => agentChatsQuery.data ?? [];
 	// Fetch all projects for git info (like sidebar does) — Electrobun RPC + Solid Query
 	const projectsQuery = useQuery(() => ({
 		queryKey: ["projects", "list"] as const,
-		queryFn: () => desktopRpc.projects.list.query(),
+		queryFn: async () => (await desktopRpc.projects.list.query()) ?? [],
 	}));
 	const projects = () => projectsQuery.data;
 	// Create map for quick project lookup by id
@@ -219,13 +221,24 @@ export function AgentsContent() {
 		if (!projs) return new Map();
 		return new Map(projs.map((p) => [p.id, p]));
 	});
-	// Fetch current chat data for preview info
+	// Fetch current chat data for preview info.
 	const chatDataQuery = useQuery(() => ({
-		queryKey: ["chats", "get", selectedChatId()] as const,
-		queryFn: () => desktopRpc.chats.get({ id: selectedChatId()! }),
+		...createLocalChatQueryOptions(selectedChatId() ?? ""),
 		enabled: !!selectedChatId(),
 	}));
 	const chatData = createMemo(() => transformAgentChatFromRpc(chatDataQuery.data));
+	// Recover from stale persisted chat IDs/modes that no longer resolve.
+	createEffect(() => {
+		const chatId = selectedChatId();
+		if (!chatId) return;
+		if (chatSourceMode() !== "local") return;
+		if (chatDataQuery.status !== "success") return;
+		if (chatDataQuery.data !== null) return;
+		console.warn(`[AgentsContent] Chat ${chatId} no longer exists. Clearing selection.`);
+		setSelectedChatId(null);
+		setSelectedChatIsRemote(false);
+		setChatSourceMode("local");
+	});
 	// Track previous chat ID for navigation after archive
 	const [previousChatId, setPreviousChatId] = previousAgentChatIdAtom;
 	const [prevSelectedChatIdRef, setPrevSelectedChatIdRef] = createSignal<string | null>(null);
@@ -301,20 +314,22 @@ export function AgentsContent() {
 	// Get recent chats for quick-switch dialog
 	// Order: current chat first (left), then previous chats by last updated
 	// IMPORTANT: Only recalculate when dialog is closed to prevent flickering
-	const sortedChats = () => (agentChats() ? [...agentChats()].sort((a: any, b: any) => new Date(b.updatedAt ?? b.updated_at).getTime() - new Date(a.updatedAt ?? a.updated_at).getTime()) : []);
-	let recentChats: any[] = [];
-	// Use frozen chats when dialog is open to prevent recalculation
-	if (quickSwitchOpen() && frozenRecentChatsRef() && frozenRecentChatsRef().length > 0) {
-		recentChats = frozenRecentChatsRef() ?? [];
-	} else if (selectedChatId()) {
-		// Put current chat first, then take next 4
-		const sorted = sortedChats();
-		const currentChat = sorted.find((c: any) => c.id === selectedChatId());
-		const otherChats = sorted.filter((c: any) => c.id !== selectedChatId()).slice(0, 4);
-		recentChats = currentChat ? [currentChat, ...otherChats] : otherChats;
-	} else {
-		recentChats = sortedChats().slice(0, 5);
-	}
+	const sortedChats = createMemo(() => agentChats() ? [...agentChats()].sort((a: any, b: any) => new Date(b.updatedAt ?? b.updated_at).getTime() - new Date(a.updatedAt ?? a.updated_at).getTime()) : []);
+	// Reactive memo so recentChats updates when signals change
+	const recentChats = createMemo(() => {
+		// Use frozen chats when dialog is open to prevent recalculation
+		if (quickSwitchOpen() && frozenRecentChatsRef() && frozenRecentChatsRef().length > 0) {
+			return frozenRecentChatsRef() ?? [];
+		}
+		if (selectedChatId()) {
+			// Put current chat first, then take next 4
+			const sorted = sortedChats();
+			const currentChat = sorted.find((c: any) => c.id === selectedChatId());
+			const otherChats = sorted.filter((c: any) => c.id !== selectedChatId()).slice(0, 4);
+			return currentChat ? [currentChat, ...otherChats] : otherChats;
+		}
+		return sortedChats().slice(0, 5);
+	});
 	// Keyboard navigation: Quick switch between workspaces
 	// Shortcut depends on ctrlTabTarget preference:
 	// - "workspaces" (default): Ctrl+Tab switches workspaces
@@ -329,7 +344,7 @@ export function AgentsContent() {
 			if (isWorkspaceSwitchShortcut) {
 				e.preventDefault();
 					setWasShiftPressedRef(e.shiftKey);
-				if (recentChats.length === 0) return;
+				if (recentChats().length === 0) return;
 				// If dialog is open, navigate through chats
 				if (quickSwitchOpen()) {
 					let nextIndex: number;
@@ -350,7 +365,7 @@ export function AgentsContent() {
 				if (!quickSwitchOpen() && !holdTimerRef()) {
 					setModifierKeysHeldRef(true);
 					// Freeze current recentChats snapshot for this dialog session
-					setFrozenRecentChatsRef([...recentChats]);
+					setFrozenRecentChatsRef([...recentChats()]);
 					// Start timer to show dialog after 30ms (almost instant)
 					setHoldTimerRef(setTimeout(() => {
 						// Clear timer ref AFTER it fires - this is critical for close detection
@@ -470,14 +485,17 @@ export function AgentsContent() {
 	// Sorted by position in openSubChatIds, with active first
 	// Limited to 5 items for quick-switch dialog
 	const recentSubChats = createMemo(() => {
-		if (!openSubChatIds || openSubChatIds.length === 0) return [];
+		const openIds = openSubChatIds();
+		if (!openIds || openIds.length === 0) return [];
 		// Get sub-chat metadata for open tabs
-		const openSubChats = openSubChatIds.map((id) => allSubChats.find((c) => c.id === id)).filter((c): c is SubChatMeta => c !== undefined);
+		const all = allSubChats();
+		const openSubChats = openIds.map((id) => all.find((c) => c.id === id)).filter((c): c is SubChatMeta => c !== undefined);
 		if (openSubChats.length === 0) return [];
 		// Put active sub-chat first, keep rest in tab order, limit to 5
-		if (activeSubChatId) {
-			const activeChat = openSubChats.find((c) => c.id === activeSubChatId);
-			const otherChats = openSubChats.filter((c) => c.id !== activeSubChatId).slice(0, 4);
+		const activeId = activeSubChatId();
+		if (activeId) {
+			const activeChat = openSubChats.find((c) => c.id === activeId);
+			const otherChats = openSubChats.filter((c) => c.id !== activeId).slice(0, 4);
 			return activeChat ? [activeChat, ...otherChats] : openSubChats.slice(0, 5);
 		}
 		return openSubChats.slice(0, 5);
@@ -495,17 +513,20 @@ export function AgentsContent() {
 		});
 	});
 	const cmdOverlayTabs = createMemo<CmdOverlayItem[]>(() => {
-		if (!openSubChatIds || openSubChatIds.length === 0) return [];
-		return openSubChatIds
+		const openIds = openSubChatIds();
+		if (!openIds || openIds.length === 0) return [];
+		const all = allSubChats();
+		const activeId = activeSubChatId();
+		return openIds
 			.slice(0, 9)
 			.map((id) => {
-				const subChat = allSubChats.find((entry) => entry.id === id);
+				const subChat = all.find((entry) => entry.id === id);
 				if (!subChat) return null;
 				return {
 					id: subChat.id,
 					label: subChat.name ?? "Tab",
 					subLabel: subChat.mode as string | null,
-					isActive: subChat.id === activeSubChatId,
+					isActive: subChat.id === activeId,
 				} as CmdOverlayItem;
 			})
 			.filter((item): item is CmdOverlayItem => item !== null);
@@ -724,57 +745,70 @@ export function AgentsContent() {
 	// Note: Cmd+E archive hotkey is handled in AgentsSidebar to share undo stack
 	const handleSignOut = async () => {
 		// Electrobun mode: auth removed, just clear local state
-		console.log("[SignOut] Auth removed in Electrobun mode");
 		// Navigate to home or reload
 		window.location.href = "/";
 	};
 	// Check if sub-chats data is loaded (reactive store access; subChatStore from above)
 	const subChatsStoreChatId = createMemo(() => subChatStore.chatId);
 	const subChatsCount = createMemo(() => subChatStore.allSubChats.length);
+	const expectedSubChatsCount = createMemo(() => {
+		const chat = chatData();
+		if (!chat) return null;
+		return Array.isArray(chat.subChats) ? chat.subChats.length : 0;
+	});
 	// Check if sub-chats are still loading (store not yet initialized for this chat)
-	const isLoadingSubChats = createMemo(() => selectedChatId() !== null && (subChatsStoreChatId() !== selectedChatId() || subChatsCount() === 0));
+	const isLoadingSubChats = createMemo(() => {
+		const chatId = selectedChatId();
+		if (chatId === null) return false;
+		if (subChatsStoreChatId() !== chatId) return true;
+		const expectedCount = expectedSubChatsCount();
+		if (expectedCount === null) return subChatsCount() === 0;
+		if (expectedCount === 0) return false;
+		return subChatsCount() === 0;
+	});
 	// Track sub-chats sidebar open state for animation control
 	// Now renders even while loading to show spinner (mobile always uses tabs)
-	const isSubChatsSidebarOpen = selectedChatId() && subChatsSidebarMode() === "sidebar" && !isMobile();
+	const isSubChatsSidebarOpen = createMemo(() => !!selectedChatId() && subChatsSidebarMode() === "sidebar" && !isMobile());
 	createEffect(() => {
 		// When sidebar closes, reset for animation on next open
-		if (!isSubChatsSidebarOpen && wasSubChatsSidebarOpen()) {
+		if (!isSubChatsSidebarOpen() && wasSubChatsSidebarOpen()) {
 			setHasOpenedSubChatsSidebar(false);
 			setShouldAnimateSubChatsSidebar(true);
 		}
-		setWasSubChatsSidebarOpen(!!isSubChatsSidebarOpen);
+		setWasSubChatsSidebarOpen(isSubChatsSidebarOpen());
 		// Mark as opened after animation completes
-		if (isSubChatsSidebarOpen && !hasOpenedSubChatsSidebar()) {
+		if (isSubChatsSidebarOpen() && !hasOpenedSubChatsSidebar()) {
 			const timer = setTimeout(() => {
 				setHasOpenedSubChatsSidebar(true);
 				setShouldAnimateSubChatsSidebar(false);
 			}, 150 + 50);
 			onCleanup(() => clearTimeout(timer));
-		} else if (isSubChatsSidebarOpen && hasOpenedSubChatsSidebar()) {
+		} else if (isSubChatsSidebarOpen() && hasOpenedSubChatsSidebar()) {
 			setShouldAnimateSubChatsSidebar(false);
 		}
 	});
 	// Check if chat has sandbox with port for preview
-	const chatMeta = chatData()?.meta as {
+	const chatMeta = createMemo(() => chatData()?.meta as {
 		sandboxConfig?: {
 			port?: number;
 		};
 		isQuickSetup?: boolean;
 		repository?: string;
-	} | undefined;
-	const isQuickSetup = chatMeta?.isQuickSetup === true;
-	const canShowPreview = !!(chatData()?.sandbox_id && !isQuickSetup && chatMeta?.sandboxConfig?.port);
+	} | undefined);
+	const sandboxId = createMemo(() => chatData()?.sandbox_id ?? null);
+	const isQuickSetup = createMemo(() => chatMeta()?.isQuickSetup === true);
+	const canShowPreview = createMemo(() => !!(sandboxId() && !isQuickSetup() && chatMeta()?.sandboxConfig?.port));
 	// Check if diff can be shown (sandbox exists)
-	const canShowDiff = !!chatData()?.sandbox_id;
+	const canShowDiff = createMemo(() => !!sandboxId());
 	// Check if terminal can be shown (worktree exists - desktop only)
-	const worktreePath = (chatData() as any)?.worktreePath as string | undefined;
-	const canShowTerminal = !!worktreePath;
+	const worktreePath = createMemo(() => (chatData() as Record<string, unknown>)?.worktreePath as string | undefined);
+	const canShowTerminal = createMemo(() => !!worktreePath());
 	// Use Show for proper SolidJS reactivity (if/return doesn't re-run on signal changes)
 	return (
 		<Show when={isMobile()} fallback={<>
       <div class="flex h-full">
         {	/* Sub-chats sidebar - only show in sidebar mode when viewing a chat */}
-		<ResizableSidebar isOpen={!!isSubChatsSidebarOpen} onClose={() => {
+		<ResizableSidebar isOpen={isSubChatsSidebarOpen()} onClose={() => {
  setShouldAnimateSubChatsSidebar(true);
 		setSubChatsSidebarMode("tabs");
 	}} width={agentsSubChatsSidebarWidthAtom[0]} setWidth={agentsSubChatsSidebarWidthAtom[1]} minWidth={160} maxWidth={300} side="left" animationDuration={0} initialWidth={0} exitWidth={0} disableClickToClose={true}>
@@ -825,7 +859,7 @@ export function AgentsContent() {
       </div>
 
       { /* Quick-switch dialog - Agents (Opt+Ctrl+Tab) */}
-	      <AgentsQuickSwitchDialog isOpen={quickSwitchOpen()} chats={quickSwitchOpen() ? frozenRecentChatsRef() ?? [] : recentChats} selectedIndex={quickSwitchSelectedIndex()} projectsMap={projectsMap()} onHover={setQuickSwitchSelectedIndex} />
+	      <AgentsQuickSwitchDialog isOpen={quickSwitchOpen()} chats={quickSwitchOpen() ? frozenRecentChatsRef() ?? [] : recentChats()} selectedIndex={quickSwitchSelectedIndex()} projectsMap={projectsMap()} onHover={setQuickSwitchSelectedIndex} />
 
 	      { /* Quick-switch dialog - Sub-chats (Ctrl+Tab) */}
 	      <SubChatsQuickSwitchDialog isOpen={subChatQuickSwitchOpen()} subChats={subChatQuickSwitchOpen() ? frozenSubChatsRef() ?? [] : recentSubChats()} selectedIndex={subChatQuickSwitchSelectedIndex()} onHover={setSubChatQuickSwitchSelectedIndex} />
@@ -838,10 +872,12 @@ export function AgentsContent() {
 	      />
 
 	      { /* Dev mode / Admin sandbox debugger */}
-	      <Show when={(process.env.NODE_ENV === "development" || isAdmin) && chatData()?.sandbox_id}>
-	        <a href={`https://codesandbox.io/p/devbox/${chatData()!.sandbox_id}`} target="_blank" rel="noopener noreferrer" class="fixed bottom-4 right-4 z-50 bg-zinc-900 text-zinc-300 px-3 py-1.5 rounded-md text-xs font-mono opacity-70 hover:opacity-100 hover:bg-zinc-800 transition-all cursor-pointer">
-	          sandbox: {chatData()!.sandbox_id as string}
-	        </a>
+	      <Show when={(isDevelopment || isAdmin) && sandboxId()} keyed>
+	        {(id) => (
+	          <a href={`https://codesandbox.io/p/devbox/${id}`} target="_blank" rel="noopener noreferrer" class="fixed bottom-4 right-4 z-50 bg-zinc-900 text-zinc-300 px-3 py-1.5 rounded-md text-xs font-mono opacity-70 hover:opacity-100 hover:bg-zinc-800 transition-all cursor-pointer">
+	            sandbox: {id}
+	          </a>
+	        )}
 	      </Show>
     </>}>
 			{/* Mobile layout */}
@@ -850,13 +886,13 @@ export function AgentsContent() {
 					when={mobileViewMode() === "chats"}
 					fallback={(
 						<Show
-							when={mobileViewMode() === "preview" && selectedChatId() && canShowPreview}
+							when={mobileViewMode() === "preview" && selectedChatId() && canShowPreview()}
 							fallback={(
 								<Show
-									when={mobileViewMode() === "diff" && selectedChatId() && canShowDiff}
+									when={mobileViewMode() === "diff" && selectedChatId() && canShowDiff()}
 									fallback={(
 										<Show
-											when={mobileViewMode() === "terminal" && selectedChatId() && canShowTerminal}
+											when={mobileViewMode() === "terminal" && selectedChatId() && canShowTerminal()}
 											fallback={(
 												<div class="h-full w-full flex flex-col overflow-hidden select-text" data-mobile-chat-mode>
 													<Show
@@ -880,9 +916,9 @@ export function AgentsContent() {
 																	setMobileViewMode("chats");
 																	setSelectedChatId(null);
 																}}
-																onOpenPreview={canShowPreview ? () => setMobileViewMode("preview") : undefined}
-																onOpenDiff={canShowDiff ? () => setMobileViewMode("diff") : undefined}
-																onOpenTerminal={canShowTerminal ? () => {
+																onOpenPreview={canShowPreview() ? () => setMobileViewMode("preview") : undefined}
+																onOpenDiff={canShowDiff() ? () => setMobileViewMode("diff") : undefined}
+																onOpenTerminal={canShowTerminal() ? () => {
 																	setTerminalSidebarOpen(true);
 																	setMobileViewMode("terminal");
 																} : undefined}
@@ -892,15 +928,15 @@ export function AgentsContent() {
 												</div>
 											)}
 										>
-											<TerminalSidebar chatId={selectedChatId()!} cwd={worktreePath!} isMobileFullscreen={true} onClose={() => setMobileViewMode("chat")} />
+											<TerminalSidebar chatId={selectedChatId()!} cwd={worktreePath()!} isMobileFullscreen={true} onClose={() => setMobileViewMode("chat")} />
 										</Show>
 									)}
 								>
-									<AgentDiffView chatId={selectedChatId()!} sandboxId={chatData()!.sandbox_id as string} worktreePath={worktreePath} repository={chatMeta?.repository} showFooter={true} isMobile={true} onClose={() => setMobileViewMode("chat")} />
+									<AgentDiffView chatId={selectedChatId()!} sandboxId={sandboxId()!} worktreePath={worktreePath()} repository={chatMeta()?.repository} showFooter={true} isMobile={true} onClose={() => setMobileViewMode("chat")} />
 							</Show>
 						)}
 					>
-						<AgentPreview chatId={selectedChatId()!} sandboxId={chatData()!.sandbox_id as string} port={chatMeta?.sandboxConfig?.port!} isMobile={true} onClose={() => setMobileViewMode("chat")} />
+						<AgentPreview chatId={selectedChatId()!} sandboxId={sandboxId()!} port={chatMeta()?.sandboxConfig?.port!} isMobile={true} onClose={() => setMobileViewMode("chat")} />
 					</Show>
 					)}
 				>

@@ -55,16 +55,8 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
 	// Filter changedFiles to only include files that are still uncommitted
 	const uncommittedFiles = createMemo(() => {
 		const status = gitStatus();
-		console.log(`[StatusCard] Computing uncommittedFiles:`, {
-			changedFilesCount: props.changedFiles.length,
-			changedFiles: props.changedFiles.map((f) => f.displayPath),
-			hasGitStatus: !!status,
-			worktreePath: props.worktreePath,
-			isStreaming: props.isStreaming,
-		});
 		// If no git status yet, no worktreePath, or still streaming - show all files
 		if (!status || !props.worktreePath || props.isStreaming) {
-			console.log(`[StatusCard] Returning all changedFiles (no filter)`);
 			return props.changedFiles;
 		}
 		// Build set of all uncommitted file paths from git status
@@ -84,14 +76,10 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
 				uncommittedPaths.add(file.path);
 			}
 		}
-		console.log(`[StatusCard] Git uncommitted paths:`, Array.from(uncommittedPaths));
 		// Filter changedFiles to only include files that are still uncommitted
 		const filtered = props.changedFiles.filter((file) => {
-			const hasMatch = uncommittedPaths.has(file.displayPath);
-			console.log(`[StatusCard] Checking file "${file.displayPath}" -> hasMatch: ${hasMatch}`);
-			return hasMatch;
+			return uncommittedPaths.has(file.displayPath);
 		});
-		console.log(`[StatusCard] Filtered result:`, filtered.map((f) => f.displayPath));
 		return filtered;
 	});
 	// Calculate totals from uncommitted files only
@@ -111,25 +99,18 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
 	});
 	// Check if there's expandable content (only files now)
 	const hasExpandableContent = createMemo(() => uncommittedFiles().length > 0);
-	// Don't show if no changed files - only show when there are files to review
-	if (uncommittedFiles().length === 0) {
-		console.log(`[StatusCard] Returning null - no uncommitted files`);
-		return null;
-	}
 	const handleReview = () => {
 		// Set filter to only show files from this sub-chat
 		// Use displayPath (relative path) to match git diff paths
 		const filePaths = uncommittedFiles().map((f) => f.displayPath);
-		console.log("[SubChatStatusCard] handleReview:", {
-			subChatId: props.subChatId,
-			filePaths
-		});
 		setFilteredDiffFiles(filePaths.length > 0 ? filePaths : null);
 		// Also set subchat ID filter for ChangesPanel - use the prop, not activeSubChatId from store
 		setFilteredSubChatId(props.subChatId);
 		setDiffSidebarOpen(true);
 	};
-	return <div class={cn(
+	// Don't show if no changed files - use Show for reactive condition
+	return <Show when={uncommittedFiles().length > 0} fallback={null}>
+	<div class={cn(
 		"border border-border bg-muted/30 overflow-hidden flex flex-col border-b-0 pb-6",
 		// If queue card above - no top radius
 		hasQueueCardAbove() ? "rounded-none" : "rounded-t-xl"
@@ -245,5 +226,6 @@ export function SubChatStatusCard(props: SubChatStatusCardProps) {
           </Motion.div>
         </Show>
       </Presence>
-    </div>;
+    </div>
+	</Show>;
 }

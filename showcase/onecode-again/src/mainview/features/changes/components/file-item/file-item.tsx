@@ -200,10 +200,7 @@ export function FileItem(props: FileItemProps) {
 				</div>
 			</Show>
 		</div>;
-	if (!local.worktreePath) {
-		return fileContent;
-	}
-	return <>
+	return <Show when={local.worktreePath} fallback={fileContent}>
 			<ContextMenu>
 				<ContextMenuTrigger asChild>{fileContent}</ContextMenuTrigger>
 				<ContextMenuContent class="w-48">
@@ -273,5 +270,5 @@ export function FileItem(props: FileItemProps) {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</>;
+		</Show>;
 }

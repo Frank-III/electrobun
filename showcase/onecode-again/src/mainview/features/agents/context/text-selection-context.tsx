@@ -87,7 +87,7 @@ function extractDiffLineInfo(element: Element): {
 		lineType
 	};
 }
-export function TextSelectionProvider({ children }: TextSelectionProviderProps) {
+export function TextSelectionProvider(props: TextSelectionProviderProps) {
 	const [state, setState] = createSignal<TextSelectionState>({
 		selectedText: null,
 		source: null,
@@ -228,6 +228,6 @@ export function TextSelectionProvider({ children }: TextSelectionProviderProps) 
 		};
 	});
 	return <TextSelectionContext.Provider value={contextValue()}>
-      {children}
+      {props.children}
     </TextSelectionContext.Provider>;
 }

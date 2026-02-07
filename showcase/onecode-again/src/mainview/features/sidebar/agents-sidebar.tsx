@@ -61,14 +61,12 @@ const GitHubAvatar = function GitHubAvatar(props: {
 	const [hasError, setHasError] = createSignal(false);
 	const handleLoad = () => setIsLoaded(true);
 	const handleError = () => setHasError(true);
-	if (hasError()) {
-		return <GitHubLogo class={cn(cls, "text-muted-foreground flex-shrink-0")} />;
-	}
-	return <div class={cn(cls, "relative flex-shrink-0")}>
-      {	/* Placeholder background while loading */}
-      <Show when={!isLoaded()}><div class="absolute inset-0 rounded-sm bg-muted" /></Show>
-		<img src={`https://github.com/${local.gitOwner}.png?size=64`} alt={local.gitOwner} class={cn(cls, "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
-    </div>;
+	return <Show when={!hasError()} fallback={<GitHubLogo class={cn(cls, "text-muted-foreground flex-shrink-0")} />}>
+		<div class={cn(cls, "relative flex-shrink-0")}>
+			<Show when={!isLoaded()}><div class="absolute inset-0 rounded-sm bg-muted" /></Show>
+			<img src={`https://github.com/${local.gitOwner}.png?size=64`} alt={local.gitOwner} class={cn(cls, "rounded-sm flex-shrink-0", isLoaded() ? "opacity-100" : "opacity-0")} onLoad={handleLoad} onError={handleError} />
+		</div>
+	</Show>;
 }
 // Component to render chat icon with loading status
 const ChatIcon = function ChatIcon(props: {
@@ -199,7 +197,14 @@ const DraftItem = function DraftItem(props: {
 		"onDelete",
 		"formatTime",
 	]);
-	return <div onClick={() => local.onSelect(local.draftId)} class={cn("w-full text-left py-1.5 cursor-pointer group relative", "transition-colors duration-75", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", local.isMultiSelectMode ? "px-3" : "pl-2 pr-2", !local.isMultiSelectMode && "rounded-md", local.isSelected ? "bg-foreground/5 text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}>
+	// Register both native and delegated click handlers; dedupe in handler.
+	const handleDraftClick = (e: MouseEvent) => {
+		const eventWithFlag = e as MouseEvent & { __draftClickHandled?: boolean };
+		if (eventWithFlag.__draftClickHandled) return;
+		eventWithFlag.__draftClickHandled = true;
+		local.onSelect(local.draftId);
+	};
+	return <div on:click={handleDraftClick} onClick={handleDraftClick} class={cn("w-full text-left py-1.5 cursor-pointer group relative", "transition-colors duration-75", "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70", local.isMultiSelectMode ? "px-3" : "pl-2 pr-2", !local.isMultiSelectMode && "rounded-md", local.isSelected ? "bg-foreground/5 text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground")}>
       <div class="flex items-start gap-2.5">
 		<Show when={local.showIcon}><div class="pt-0.5">
             <div class="relative flex-shrink-0 w-4 h-4">
@@ -285,12 +290,17 @@ interface AgentChatItemProps {
 }
 const AgentChatItem = function AgentChatItem(props: AgentChatItemProps) {
 	const archiveWorkspaceHotkey = useResolvedHotkeyDisplay("archive-workspace");
-	return <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <div data-chat-item data-chat-index={props.globalIndex} onClick={(e) => {
+	// Register both native and delegated click handlers; dedupe in handler.
+	const handleClick = (e: MouseEvent) => {
+		const eventWithFlag = e as MouseEvent & { __chatClickHandled?: boolean };
+		if (eventWithFlag.__chatClickHandled) return;
+		eventWithFlag.__chatClickHandled = true;
 		if (props.isMobileFullscreen && !props.isDesktop) return;
 		props.onChatClick(props.chatId, e, props.globalIndex);
-	}} onTouchEnd={(e) => {
+	};
+	return <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div data-chat-item data-chat-index={props.globalIndex} on:click={handleClick} onClick={handleClick} onTouchEnd={(e) => {
 		if (props.isMobileFullscreen && !props.isDesktop) {
 			e.preventDefault();
 			props.onChatClick(props.chatId, undefined, props.globalIndex);
@@ -448,9 +458,7 @@ const AgentChatItem = function AgentChatItem(props: AgentChatItemProps) {
               </ContextMenuSubContent>
             </ContextMenuSub>
             <Show when={props.isDesktop}>
-              <ContextMenuItem onClick={() => {
-                console.log("Open in new window:", props.chatId)
-              }}>
+              <ContextMenuItem disabled>
                 Open in new window
               </ContextMenuItem>
             </Show>
@@ -1023,27 +1031,62 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 	// Keep chatSourceModeAtom for backwards compatibility (used in other places)
 	const [chatSourceMode, setChatSourceMode] = chatSourceModeAtom;
 	const teamId = selectedTeamIdAtom[0];
-	// Sync chatSourceMode with selectedChatIsRemote on startup
-	// This fixes the race condition where atoms load independently from localStorage
-	let hasRunStartupSync = false;
+	// Keep selected chat source flags consistent (selectedChatId, selectedChatIsRemote, chatSourceMode).
+	// Some call paths only set selectedChatId; this self-heals stale persisted source mode/remote flags.
 	createEffect(() => {
-		if (hasRunStartupSync) return;
-		hasRunStartupSync = true;
-		const correctMode = selectedChatIsRemote() ? "sandbox" : "local";
-		if (chatSourceMode() !== correctMode) {
-			setChatSourceMode(correctMode);
+		const currentSelectedId = selectedChatId();
+		const local = localChats() ?? [];
+		const remote = remoteChats();
+
+		if (!currentSelectedId) {
+			if (selectedChatIsRemote()) {
+				setSelectedChatIsRemote(false);
+			}
+			if (chatSourceMode() !== "local") {
+				setChatSourceMode("local");
+			}
+			return;
+		}
+
+		const hasRemotePrefix = currentSelectedId.startsWith("remote_");
+		if (hasRemotePrefix) {
+			const normalizedId = currentSelectedId.replace(/^remote_/, "");
+			if (normalizedId !== currentSelectedId) {
+				setSelectedChatId(normalizedId);
+				return;
+			}
+		}
+
+		const normalizedSelectedId = hasRemotePrefix
+			? currentSelectedId.replace(/^remote_/, "")
+			: currentSelectedId;
+		const localExists = local.some((chat) => chat.id === normalizedSelectedId);
+		const remoteExists = remote.some((chat) => chat.id === normalizedSelectedId);
+
+		let expectedRemote = hasRemotePrefix ? true : selectedChatIsRemote();
+		if (localExists && !remoteExists) expectedRemote = false;
+		if (!localExists && remoteExists) expectedRemote = true;
+
+		if (selectedChatIsRemote() !== expectedRemote) {
+			setSelectedChatIsRemote(expectedRemote);
+		}
+
+		const expectedMode: ChatSourceMode = expectedRemote ? "sandbox" : "local";
+		if (chatSourceMode() !== expectedMode) {
+			setChatSourceMode(expectedMode);
 		}
 	});
 	// Fetch all local chats (no project filter) — Electrobun RPC + Solid Query
 	const localChatsQuery = useQuery(() => ({
 		queryKey: ["chats", "list"] as const,
-		queryFn: () => desktopRpc.chats.list.query(),
+		queryFn: async () => (await desktopRpc.chats.list.query()) ?? [],
 	}));
 	const localChats = () => localChatsQuery.data;
 	// Fetch user's teams (same as web) - always enabled to allow merged list
-	const { data: teams, isLoading: isTeamsLoading, isError: isTeamsError } = useUserTeams(true);
+	useUserTeams(true);
 	// Fetch remote sandbox chats (same as web) - requires teamId
-	const { data: remoteChats } = useRemoteChats();
+	const remoteChatsQuery = useRemoteChats();
+	const remoteChats = () => remoteChatsQuery.data ?? [];
 	// Prefetch individual chat data on hover
 	const prefetchRemoteChat = usePrefetchRemoteChat();
 	// Merge local and remote chats into unified list
@@ -1093,8 +1136,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 			}
 		}
 		// Add remote chats with prefixed IDs to avoid collisions
-		if (remoteChats) {
-			for (const chat of remoteChats) {
+		for (const chat of remoteChats()) {
 				unified.push({
 					id: `remote_${chat.id}`,
 					name: chat.name,
@@ -1112,7 +1154,6 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 					isRemote: true,
 					remoteStats: chat.stats
 				});
-			}
 		}
 		// Sort by updatedAt descending (newest first)
 		unified.sort((a, b) => {
@@ -1162,7 +1203,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 	// File changes stats from DB - only for open sub-chats
 	const fileStatsQuery = useQuery(() => ({
 		queryKey: ["chats", "getFileStats", allOpenSubChatIds()] as const,
-		queryFn: () => desktopRpc.chats.getFileStats({ openSubChatIds: allOpenSubChatIds() }),
+		queryFn: async () => (await desktopRpc.chats.getFileStats({ openSubChatIds: allOpenSubChatIds() })) ?? [],
 		refetchInterval: 5e3,
 		enabled: allOpenSubChatIds().length > 0,
 		placeholderData: (prev) => prev,
@@ -1171,7 +1212,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 	// Pending plan approvals from DB - only for open sub-chats
 	const pendingPlanApprovalsQuery = useQuery(() => ({
 		queryKey: ["chats", "getPendingPlanApprovals", allOpenSubChatIds()] as const,
-		queryFn: () => desktopRpc.chats.getPendingPlanApprovals({ openSubChatIds: allOpenSubChatIds() }),
+		queryFn: async () => (await desktopRpc.chats.getPendingPlanApprovals({ openSubChatIds: allOpenSubChatIds() })) ?? [],
 		refetchInterval: 5e3,
 		enabled: allOpenSubChatIds().length > 0,
 		placeholderData: (prev) => prev,
@@ -1180,7 +1221,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 	// Fetch all projects for git info
 	const projectsQuery = useQuery(() => ({
 		queryKey: ["projects", "list"] as const,
-		queryFn: () => desktopRpc.projects.list.query(),
+		queryFn: async () => (await desktopRpc.projects.list.query()) ?? [],
 	}));
 	const projects = () => projectsQuery.data;
 	// Auto-import hook for "Open Locally" functionality
@@ -1194,7 +1235,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 	// Fetch all archived chats (to get count)
 	const archivedChatsQuery = useQuery(() => ({
 		queryKey: ["chats", "listArchived"] as const,
-		queryFn: () => desktopRpc.chats.listArchived.query(),
+		queryFn: async () => (await desktopRpc.chats.listArchived.query()) ?? [],
 	}));
 	const archivedChats = () => archivedChatsQuery.data;
 	const archivedChatsCount = () => archivedChats()?.length ?? 0;
@@ -1785,6 +1826,35 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 		const isRemote = chatId.startsWith("remote_");
 		// Extract original ID for remote chats
 		const originalId = isRemote ? chatId.replace(/^remote_/, "") : chatId;
+		const isSameSelection =
+			selectedChatId() === originalId &&
+			selectedChatIsRemote() === isRemote;
+
+		// Recovery for stuck local chat hydration:
+		// if user clicks an already-selected chat, force a refetch.
+		if (!isRemote) {
+			const localChatQueryKey = ["chats", "get", originalId] as const;
+			if (isSameSelection) {
+				void queryClient.invalidateQueries({ queryKey: localChatQueryKey, exact: true });
+				void queryClient.refetchQueries({ queryKey: localChatQueryKey, exact: true });
+			} else {
+				// If a previous fetch is stuck in pending, drop the stale query so selection
+				// starts from a clean state for this chat.
+				const queryState = queryClient.getQueryState(localChatQueryKey);
+				if (queryState?.status === "pending" && queryState.fetchStatus === "fetching") {
+					queryClient.removeQueries({ queryKey: localChatQueryKey, exact: true });
+				}
+			}
+		}
+
+		// Same chat in same source mode: keep view state, but still allow forced refetch above.
+		if (isSameSelection) {
+			if (isMobileFullscreen() && onChatSelect) {
+				onChatSelect();
+			}
+			return;
+		}
+
 		setSelectedChatId(originalId);
 		setSelectedChatIsRemote(isRemote);
 		// Sync chatSourceMode for ChatView to load data from correct source
@@ -1893,7 +1963,7 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 	};
 	// Handle open locally for sandbox chats
 	const handleOpenLocally = (chatId: string) => {
-		const remoteChat = remoteChats?.find((c) => c.id === chatId);
+		const remoteChat = remoteChats().find((c) => c.id === chatId);
 		if (!remoteChat) return;
 		const matchingProjects = getMatchingProjects((projects() ?? []) as Parameters<typeof getMatchingProjects>[0], remoteChat);
 		if (matchingProjects.length === 1) {
@@ -1912,8 +1982,8 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 	};
 	// Get the remote chat for import dialog
 	const importingRemoteChat = createMemo(() => {
-		if (!importingChatId() || !remoteChats) return null;
-		return remoteChats.find((chat) => chat.id === importingChatId()) ?? null;
+		if (!importingChatId()) return null;
+		return remoteChats().find((chat) => chat.id === importingChatId()) ?? null;
 	});
 	// Get matching projects for import dialog (only computed when dialog is open)
 	const importMatchingProjects = createMemo(() => {
@@ -1991,10 +2061,8 @@ export function AgentsSidebar(props: AgentsSidebarProps) {
 		if (closeBtn) {
 			closeBtn.style.opacity = hovered ? "1" : "0";
 		}
-		// Update native traffic light visibility
-		if (typeof window !== "undefined" && window.desktopApi?.setTrafficLightVisibility) {
-			window.desktopApi.setTrafficLightVisibility(hovered);
-		}
+		// Update native traffic light visibility (macOS-only; no-op if not supported)
+		desktopRpc.window.setTrafficLightVisibility.mutate({ visible: hovered });
 	};
 	const handleSidebarMouseEnter = () => {
 		updateSidebarHoverUI(true);

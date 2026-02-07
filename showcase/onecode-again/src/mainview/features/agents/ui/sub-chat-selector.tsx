@@ -101,11 +101,11 @@ interface SubChatSelectorProps {
 export function SubChatSelector(props: SubChatSelectorProps) {
 	// SolidJS fine-grained reactivity handles this - no useShallow needed
 	const subChatStore = useAgentSubChatStore();
-	const activeSubChatId = subChatStore.activeSubChatId;
-	const openSubChatIds = subChatStore.openSubChatIds;
-	const pinnedSubChatIds = subChatStore.pinnedSubChatIds;
-	const allSubChats = subChatStore.allSubChats;
-	const parentChatId = subChatStore.chatId;
+	const activeSubChatId = createMemo(() => subChatStore.activeSubChatId);
+	const openSubChatIds = createMemo(() => subChatStore.openSubChatIds);
+	const pinnedSubChatIds = createMemo(() => subChatStore.pinnedSubChatIds);
+	const allSubChats = createMemo(() => subChatStore.allSubChats);
+	const parentChatId = createMemo(() => subChatStore.chatId);
 	const togglePinSubChat = subChatStore.togglePinSubChat;
 	const [loadingSubChats] = loadingSubChatsAtom;
 	const [subChatUnseenChanges] = agentsSubChatUnseenChangesAtom;
@@ -134,10 +134,10 @@ export function SubChatSelector(props: SubChatSelectorProps) {
 	const newAgentHotkey = useResolvedHotkeyDisplay("new-agent");
 	// Pending plan approvals from DB - only for open sub-chats
 	const pendingPlanQuery = useQuery(() => ({
-		queryKey: ["chats", "getPendingPlanApprovals", openSubChatIds] as const,
-		queryFn: () => desktopRpc.chats.getPendingPlanApprovals({ openSubChatIds }),
+		queryKey: ["chats", "getPendingPlanApprovals", openSubChatIds()] as const,
+		queryFn: async () => (await desktopRpc.chats.getPendingPlanApprovals({ openSubChatIds: openSubChatIds() })) ?? [],
 		refetchInterval: 5e3,
-		enabled: openSubChatIds.length > 0,
+		enabled: openSubChatIds().length > 0,
 		placeholderData: (prev) => prev ?? [],
 	}));
 	const pendingPlanApprovalsData = () => pendingPlanQuery.data;
@@ -162,11 +162,14 @@ export function SubChatSelector(props: SubChatSelectorProps) {
 	const openSubChats = createMemo(() => {
 		const pinnedChats: SubChatMeta[] = [];
 		const unpinnedChats: SubChatMeta[] = [];
+		const openIds = openSubChatIds();
+		const subChats = allSubChats();
+		const pinnedIds = pinnedSubChatIds();
 		// Separate pinned and unpinned while preserving order
-		openSubChatIds.forEach((id) => {
-			const chat = allSubChats.find((sc) => sc.id === id);
+		openIds.forEach((id) => {
+			const chat = subChats.find((sc) => sc.id === id);
 			if (!chat) return;
-			if (pinnedSubChatIds.includes(id)) {
+			if (pinnedIds.includes(id)) {
 				pinnedChats.push(chat);
 			} else {
 				unpinnedChats.push(chat);
@@ -296,9 +299,10 @@ export function SubChatSelector(props: SubChatSelectorProps) {
 	// Keyboard shortcut: Cmd+Shift+T / Ctrl+Shift+T for new sub-chat
 	// Scroll to active tab when it changes
 	createEffect(() => {
-		if (!activeSubChatId || !tabsContainerRef) return;
+		const activeId = activeSubChatId();
+		if (!activeId || !tabsContainerRef) return;
 		const container = tabsContainerRef;
-		const activeTabElement = tabRefs.get(activeSubChatId);
+		const activeTabElement = tabRefs.get(activeId);
 		if (activeTabElement) {
 			setTimeout(() => {
 				const containerRect = container.getBoundingClientRect();
@@ -342,7 +346,7 @@ export function SubChatSelector(props: SubChatSelectorProps) {
 		onCleanup(() => resizeObserver.disconnect());
 	});
 	// Sort sub-chats by most recent first for history
-	const sortedSubChats = createMemo(() => [...allSubChats].sort((a, b) => {
+	const sortedSubChats = createMemo(() => [...allSubChats()].sort((a, b) => {
 		const aT = new Date(a.updated_at || a.created_at || "0").getTime();
 		const bT = new Date(b.updated_at || b.created_at || "0").getTime();
 		return bT - aT;
@@ -378,7 +382,7 @@ export function SubChatSelector(props: SubChatSelectorProps) {
 		onCleanup(() => window.removeEventListener("resize", handleResize));
 	});
 	createEffect(() => {
-		const openIds = new Set(openSubChatIds);
+		const openIds = new Set(openSubChatIds());
 		tabRefs.forEach((_, id) => {
 			if (!openIds.has(id)) {
 				tabRefs.delete(id);
@@ -415,10 +419,10 @@ export function SubChatSelector(props: SubChatSelectorProps) {
 		hasSingleChat() && "hidden"
 	)}>
 		  {hasNoChats() ? null : openSubChats().map((subChat, index) => {
-		const isActive = activeSubChatId === subChat.id;
+		const isActive = activeSubChatId() === subChat.id;
 		const isLoading = loadingSubChats().has(subChat.id);
 		const hasTabsToRight = index < openSubChats().length - 1;
-		const isPinned = pinnedSubChatIds.includes(subChat.id);
+		const isPinned = pinnedSubChatIds().includes(subChat.id);
 		const mode = subChat.mode || "agent";
 		const hasPendingQuestion = pendingQuestionsMap().has(subChat.id);
 		const hasPendingPlan = pendingPlanApprovals().has(subChat.id);
@@ -507,7 +511,7 @@ export function SubChatSelector(props: SubChatSelectorProps) {
                             </div></Show>
                       </button>
                     </ContextMenuTrigger>
-					<SubChatContextMenu subChat={subChat} isPinned={isPinned} onTogglePin={togglePinSubChat} onRename={handleRenameClick} onArchive={onCloseTab} onArchiveOthers={onCloseOtherTabs} isOnlyChat={openSubChats().length === 1} showCloseTabOptions={true} onCloseTab={onCloseTab} onCloseOtherTabs={onCloseOtherTabs} onCloseTabsToRight={onCloseTabsToRight} visualIndex={index} hasTabsToRight={hasTabsToRight} canCloseOtherTabs={openSubChats().length > 2} chatId={parentChatId} />
+					<SubChatContextMenu subChat={subChat} isPinned={isPinned} onTogglePin={togglePinSubChat} onRename={handleRenameClick} onArchive={onCloseTab} onArchiveOthers={onCloseOtherTabs} isOnlyChat={openSubChats().length === 1} showCloseTabOptions={true} onCloseTab={onCloseTab} onCloseOtherTabs={onCloseOtherTabs} onCloseTabsToRight={onCloseTabsToRight} visualIndex={index} hasTabsToRight={hasTabsToRight} canCloseOtherTabs={openSubChats().length > 2} chatId={parentChatId()} />
                   </ContextMenu>;
 	})}
         </div>
@@ -534,7 +538,7 @@ export function SubChatSelector(props: SubChatSelectorProps) {
 
       { /* Action buttons - always visible on mobile, on desktop only in tabs mode */}
 	<Show when={isMobile || (!isMobile && subChatsSidebarMode() === "tabs")}><div class="flex items-center gap-1" style={{ "-webkit-app-region": "no-drag" } as JSX.CSSProperties}>
-          <SearchHistoryPopover ref={(r) => searchHistoryPopoverRef = r} sortedSubChats={sortedSubChats()} loadingSubChats={loadingSubChats()} subChatUnseenChanges={subChatUnseenChanges()} pendingQuestionsMap={pendingQuestionsMap()} pendingPlanApprovals={pendingPlanApprovals()} allSubChatsLength={allSubChats.length} onSelect={handleSelectFromHistory} />
+          <SearchHistoryPopover ref={(r) => searchHistoryPopoverRef = r} sortedSubChats={sortedSubChats()} loadingSubChats={loadingSubChats()} subChatUnseenChanges={subChatUnseenChanges()} pendingQuestionsMap={pendingQuestionsMap()} pendingPlanApprovals={pendingPlanApprovals()} allSubChatsLength={allSubChats().length} onSelect={handleSelectFromHistory} />
         </div></Show>
 
       { /* Diff button - visible on desktop when unified sidebar is disabled OR diff widget is hidden */}
