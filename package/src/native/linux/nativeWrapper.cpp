@@ -1,4 +1,6 @@
 #include <gtk/gtk.h>
+#include <signal.h>
+#include <fcntl.h>
 #include <webkit2/webkit2.h>
 #include <jsc/jsc.h>
 #ifndef NO_APPINDICATOR
@@ -66,6 +68,16 @@ static std::mutex g_asarReadMutex; // Mutex to protect ASAR read operations
 // Note: shared/shutdown_guard.h provides ShutdownManager singleton for new code
 // This local atomic is kept for direct access patterns used throughout this file
 static std::atomic<bool> g_shuttingDown{false};
+
+// Quit/shutdown coordination
+static QuitRequestedHandler g_quitRequestedHandler = nullptr;
+static std::atomic<bool> g_shutdownComplete{false};
+static std::atomic<bool> g_eventLoopStopping{false};
+
+// Self-pipe for async-signal-safe signal handling.
+// Signal handler writes to pipe, GLib IO watch reads and dispatches.
+static int g_signal_pipe[2] = {-1, -1};
+static int g_sigint_count = 0;
 
 // Additional race condition protection
 static std::atomic<int> g_activeOperations{0};
@@ -791,11 +803,13 @@ class ElectrobunClient : public CefClient,
                         public CefRenderHandler {
 private:
     uint32_t webview_id_;
+    HandlePostMessage event_bridge_handler_;
     HandlePostMessage bun_bridge_handler_;
     HandlePostMessage webview_tag_handler_;
     WebviewEventHandler webview_event_handler_;
     DecideNavigationCallback navigation_callback_;
-    
+    bool is_sandboxed_;
+
     std::string electrobun_script_;
     std::string custom_script_;
     CefRefPtr<CefBrowser> browser_;
@@ -816,16 +830,20 @@ private:
 
 public:
     ElectrobunClient(uint32_t webviewId,
+                     HandlePostMessage eventBridgeHandler,
                      HandlePostMessage bunBridgeHandler,
                      HandlePostMessage internalBridgeHandler,
                      WebviewEventHandler webviewEventHandler,
                      DecideNavigationCallback navigationCallback,
-                     GtkWidget* gtkWidget)
+                     GtkWidget* gtkWidget,
+                     bool sandbox)
         : webview_id_(webviewId)
+        , event_bridge_handler_(eventBridgeHandler)
         , bun_bridge_handler_(bunBridgeHandler)
         , webview_tag_handler_(internalBridgeHandler)
         , webview_event_handler_(webviewEventHandler)
         , navigation_callback_(navigationCallback)
+        , is_sandboxed_(sandbox)
         , gtk_widget_(gtkWidget)
         , x11_window_(0)
         , display_(nullptr)
@@ -1408,15 +1426,23 @@ public:
         
         char* contentCopy = strdup(messageContent.c_str());
         bool result = false;
-        
-        if (messageName == "BunBridgeMessage") {
-            // printf("CEF: Forwarding BunBridgeMessage to handler\n");
-            bun_bridge_handler_(webview_id_, contentCopy);
+
+        // eventBridge - event-only bridge (always process for all webviews, including sandboxed)
+        if (messageName == "EventBridgeMessage") {
+            event_bridge_handler_(webview_id_, contentCopy);
             result = true;
-        } else if (messageName == "internalMessage") {
-            // printf("CEF: Forwarding internalMessage to handler\n");
-            webview_tag_handler_(webview_id_, contentCopy);
-            result = true;
+        }
+        // bunBridge and internalBridge - RPC bridges (only for non-sandboxed webviews)
+        else if (!is_sandboxed_) {
+            if (messageName == "BunBridgeMessage") {
+                // printf("CEF: Forwarding BunBridgeMessage to handler\n");
+                bun_bridge_handler_(webview_id_, contentCopy);
+                result = true;
+            } else if (messageName == "internalMessage") {
+                // printf("CEF: Forwarding internalMessage to handler\n");
+                webview_tag_handler_(webview_id_, contentCopy);
+                result = true;
+            }
         }
 
         // Free the copied string after a delay to ensure the callback has time to process it
@@ -2126,8 +2152,10 @@ public:
     WebKitUserContentManager* manager;
     DecideNavigationCallback navigationCallback;
     WebviewEventHandler eventHandler;
+    HandlePostMessage eventBridgeHandler;
     HandlePostMessage bunBridgeHandler;
     HandlePostMessage internalBridgeHandler;
+    bool isSandboxed;
     std::string electrobunPreloadScript;
     std::string customPreloadScript;
     std::string partition;
@@ -2135,7 +2163,7 @@ public:
     // Navigation state tracking
     bool lastNavigationWasBlocked = false;
     
-    WebKitWebViewImpl(uint32_t webviewId, 
+    WebKitWebViewImpl(uint32_t webviewId,
                       GtkWidget* window,
                       const char* url,
                       double x, double y,
@@ -2144,13 +2172,16 @@ public:
                       const char* partitionIdentifier,
                       DecideNavigationCallback navigationCallback,
                       WebviewEventHandler webviewEventHandler,
+                      HandlePostMessage eventBridgeHandler,
                       HandlePostMessage bunBridgeHandler,
                       HandlePostMessage internalBridgeHandler,
                       const char* electrobunPreloadScript,
-                      const char* customPreloadScript) 
-        : AbstractView(webviewId), navigationCallback(navigationCallback), 
-          eventHandler(webviewEventHandler), bunBridgeHandler(bunBridgeHandler),
-          internalBridgeHandler(internalBridgeHandler),
+                      const char* customPreloadScript,
+                      bool sandbox)
+        : AbstractView(webviewId), navigationCallback(navigationCallback),
+          eventHandler(webviewEventHandler), eventBridgeHandler(eventBridgeHandler),
+          bunBridgeHandler(bunBridgeHandler),
+          internalBridgeHandler(internalBridgeHandler), isSandboxed(sandbox),
           electrobunPreloadScript(electrobunPreloadScript ? electrobunPreloadScript : ""),
           customPreloadScript(customPreloadScript ? customPreloadScript : ""),
           partition(partitionIdentifier ? partitionIdentifier : "")
@@ -2223,16 +2254,27 @@ public:
         }
         
         // Set up message handlers
-        if (bunBridgeHandler) {
-            g_signal_connect(manager, "script-message-received::bunBridge", 
-                           G_CALLBACK(onBunBridgeMessage), this);
-            webkit_user_content_manager_register_script_message_handler(manager, "bunBridge");
+
+        // eventBridge - event-only bridge (always set up for all webviews, including sandboxed)
+        if (eventBridgeHandler) {
+            g_signal_connect(manager, "script-message-received::eventBridge",
+                           G_CALLBACK(onEventBridgeMessage), this);
+            webkit_user_content_manager_register_script_message_handler(manager, "eventBridge");
         }
-        
-        if (internalBridgeHandler) {
-            g_signal_connect(manager, "script-message-received::internalBridge", 
-                           G_CALLBACK(onInternalBridgeMessage), this);
-            webkit_user_content_manager_register_script_message_handler(manager, "internalBridge");
+
+        // bunBridge and internalBridge - RPC bridges (only for non-sandboxed webviews)
+        if (!isSandboxed) {
+            if (bunBridgeHandler) {
+                g_signal_connect(manager, "script-message-received::bunBridge",
+                               G_CALLBACK(onBunBridgeMessage), this);
+                webkit_user_content_manager_register_script_message_handler(manager, "bunBridge");
+            }
+
+            if (internalBridgeHandler) {
+                g_signal_connect(manager, "script-message-received::internalBridge",
+                               G_CALLBACK(onInternalBridgeMessage), this);
+                webkit_user_content_manager_register_script_message_handler(manager, "internalBridge");
+            }
         }
         
         // Connect navigation decision handler for both navigation callbacks AND navigation rules
@@ -2485,6 +2527,37 @@ public:
     }
     
     // Static callback functions
+
+    // eventBridge handler - event-only bridge for all webviews (including sandboxed)
+    static void onEventBridgeMessage(WebKitUserContentManager* manager, WebKitJavascriptResult* js_result, gpointer user_data) {
+        WebKitWebViewImpl* impl = static_cast<WebKitWebViewImpl*>(user_data);
+        if (impl->eventBridgeHandler && js_result) {
+            // Use the newer JSC API recommended by WebKit2GTK
+            JSCValue* value = webkit_javascript_result_get_js_value(js_result);
+            if (value && JSC_IS_VALUE(value) && jsc_value_is_string(value)) {
+                gchar* str_value = jsc_value_to_string(value);
+                if (str_value) {
+                    // Create a copy for the callback to avoid memory issues
+                    size_t len = strlen(str_value);
+                    char* message_copy = new char[len + 1];
+                    strcpy(message_copy, str_value);
+
+                    // Call the callback
+                    impl->eventBridgeHandler(impl->webviewId, message_copy);
+
+                    // Schedule cleanup after a delay to avoid premature deallocation
+                    std::thread([message_copy, str_value]() {
+                        std::this_thread::sleep_for(std::chrono::seconds(1));
+                        delete[] message_copy;
+                        g_free(str_value);
+                    }).detach();
+                } else {
+                    g_free(str_value);
+                }
+            }
+        }
+    }
+
     static void onBunBridgeMessage(WebKitUserContentManager* manager, WebKitJavascriptResult* js_result, gpointer user_data) {
         WebKitWebViewImpl* impl = static_cast<WebKitWebViewImpl*>(user_data);
         if (impl->bunBridgeHandler && js_result) {
@@ -3107,8 +3180,10 @@ public:
     CefRefPtr<ElectrobunClient> client;
     DecideNavigationCallback navigationCallback;
     WebviewEventHandler eventHandler;
+    HandlePostMessage eventBridgeHandler;
     HandlePostMessage bunBridgeHandler;
     HandlePostMessage internalBridgeHandler;
+    bool isSandboxed;
     std::string electrobunPreloadScript;
     std::string customPreloadScript;
     std::string partition;
@@ -3145,13 +3220,16 @@ public:
                    const char* partitionIdentifier,
                    DecideNavigationCallback navigationCallback,
                    WebviewEventHandler webviewEventHandler,
+                   HandlePostMessage eventBridgeHandler,
                    HandlePostMessage bunBridgeHandler,
                    HandlePostMessage internalBridgeHandler,
                    const char* electrobunPreloadScript,
-                   const char* customPreloadScript)
+                   const char* customPreloadScript,
+                   bool sandbox)
         : AbstractView(webviewId), navigationCallback(navigationCallback),
-          eventHandler(webviewEventHandler), bunBridgeHandler(bunBridgeHandler),
-          internalBridgeHandler(internalBridgeHandler),
+          eventHandler(webviewEventHandler), eventBridgeHandler(eventBridgeHandler),
+          bunBridgeHandler(bunBridgeHandler),
+          internalBridgeHandler(internalBridgeHandler), isSandboxed(sandbox),
           electrobunPreloadScript(electrobunPreloadScript ? electrobunPreloadScript : ""),
           customPreloadScript(customPreloadScript ? customPreloadScript : ""),
           partition(partitionIdentifier ? partitionIdentifier : "")
@@ -3237,11 +3315,13 @@ public:
         // Create client
         client = new ElectrobunClient(
             webviewId,
+            eventBridgeHandler,
             bunBridgeHandler,
             internalBridgeHandler,
             eventHandler,
             navigationCallback,
-            nullptr  // No GTK window needed
+            nullptr,  // No GTK window needed
+            isSandboxed
         );
         
         // Set parent window handle for proper CEF window parenting
@@ -3314,7 +3394,12 @@ public:
         // Create the browser with partition-specific request context
         std::string loadUrl = deferredUrl.empty() ? "https://www.wikipedia.org" : deferredUrl;
         CefRefPtr<CefRequestContext> requestContext = CreateRequestContextForPartition(partition.c_str(), webviewId);
-        bool create_result = CefBrowserHost::CreateBrowser(window_info, client, loadUrl, browser_settings, nullptr, requestContext);
+
+        // Pass sandbox flag to renderer process via extra_info
+        CefRefPtr<CefDictionaryValue> extra_info = CefDictionaryValue::Create();
+        extra_info->SetBool("sandbox", isSandboxed);
+
+        bool create_result = CefBrowserHost::CreateBrowser(window_info, client, loadUrl, browser_settings, extra_info, requestContext);
         
         if (!create_result) {
             creationFailed = true;
@@ -3589,18 +3674,37 @@ public:
             // CEF webviews don't have GTK widgets (widget = nullptr)
             // They manage their own X11 windows, so we only need to sync CEF positioning
             
+            // Transform viewport-relative coordinates to window-relative coordinates
+            GdkRectangle adjustedFrame = frame;
+            
+            // Handle negative coordinates (when element is scrolled partially out of view)
+            // Clamp to 0 and adjust size accordingly
+            if (adjustedFrame.x < 0) {
+                adjustedFrame.width += adjustedFrame.x;
+                adjustedFrame.x = 0;
+            }
+            if (adjustedFrame.y < 0) {
+                adjustedFrame.height += adjustedFrame.y;
+                adjustedFrame.y = 0;
+            }
+            
+            // Ensure positive dimensions
+            if (adjustedFrame.width < 0) adjustedFrame.width = 0;
+            if (adjustedFrame.height < 0) adjustedFrame.height = 0;
+            
             // Notify CEF that the browser was resized
             browser->GetHost()->WasResized();
             
-            // Sync CEF browser window position using frame coordinates
-            syncCEFPositionWithFrame(frame);
+            // Sync CEF browser window position using adjusted frame coordinates
+            syncCEFPositionWithFrame(adjustedFrame);
             
-            visualBounds = frame;
+            visualBounds = adjustedFrame;
         }
         maskJSON = masksJson ? masksJson : "";
         
         // Apply visual mask if maskJSON is provided
-        if (masksJson && strlen(masksJson) > 0) {
+        // Check if masksJson is nullptr, empty, or just "[]" (empty array)
+        if (masksJson && strlen(masksJson) > 0 && strcmp(masksJson, "[]") != 0) {
             applyVisualMask();
         } else {
             // If no masks, remove any existing masks
@@ -3936,6 +4040,7 @@ public:
                 view->resize(frame, "");
             }
             // OOPIFs (fullSize=false) keep their positioning and don't auto-resize
+            // The JavaScript ResizeObserver will handle repositioning them
         }
         
         // Ensure the overlay spans the entire window for proper layering
@@ -4922,35 +5027,49 @@ void resizeAutoSizingWebviewsInWindow(uint32_t windowId, int width, int height) 
         x11WindowHandle = windowIt->second->window;
     }
     
-    // Find all webviews that belong to this window and have fullSize=true
-    std::vector<std::pair<uint32_t, std::shared_ptr<AbstractView>>> webviews_copy;
+    // Find all webviews that belong to this window
+    std::vector<std::pair<uint32_t, std::shared_ptr<AbstractView>>> fullSizeWebviews;
+    std::vector<std::pair<uint32_t, std::shared_ptr<AbstractView>>> oopifWebviews;
     {
         std::lock_guard<std::mutex> lock(g_webviewMapMutex);
-        // Create a copy of webviews to iterate safely
+        // Create separate copies for fullSize and non-fullSize webviews
         for (auto& [webviewId, webview] : g_webviewMap) {
-            if (webview && webview->fullSize) {
-                webviews_copy.push_back({webviewId, webview});
+            if (webview) {
+                CEFWebViewImpl* cefView = dynamic_cast<CEFWebViewImpl*>(webview.get());
+                if (cefView && cefView->parentXWindow == x11WindowHandle) {
+                    if (webview->fullSize) {
+                        fullSizeWebviews.push_back({webviewId, webview});
+                    } else {
+                        oopifWebviews.push_back({webviewId, webview});
+                    }
+                }
             }
         }
     }
     
-    // Process webviews outside the lock to avoid deadlock
-    for (auto& [webviewId, webview] : webviews_copy) {
+    // Process fullSize webviews - resize them to fill the window
+    for (auto& [webviewId, webview] : fullSizeWebviews) {
         if (webview && webview->fullSize) {
-            // Check if this webview belongs to the specified window
-            // For CEF webviews, we need to check their parent window
+            // Check if the webview is already the right size to avoid infinite resize loops
+            GdkRectangle currentBounds = webview->visualBounds;
+            if (currentBounds.width == width && currentBounds.height == height) {
+                continue;
+            }
+            
+            // For auto-resize, typically want to fill the entire window starting from (0,0)
+            GdkRectangle frame = { 0, 0, width, height };
+            webview->resize(frame, "");
+        }
+    }
+    
+    // Process OOPIF webviews - trigger position sync to maintain visibility
+    for (auto& [webviewId, webview] : oopifWebviews) {
+        if (webview && !webview->fullSize) {
             CEFWebViewImpl* cefView = dynamic_cast<CEFWebViewImpl*>(webview.get());
-            if (cefView && cefView->parentXWindow == x11WindowHandle) {
-                // Check if the webview is already the right size to avoid infinite resize loops
-                GdkRectangle currentBounds = webview->visualBounds;
-                if (currentBounds.width == width && currentBounds.height == height) {
-                    continue;
-                }
-                
-                
-                // For auto-resize, typically want to fill the entire window starting from (0,0)
-                GdkRectangle frame = { 0, 0, width, height };
-                webview->resize(frame, "");
+            if (cefView && cefView->browser) {
+                // Trigger position sync with current bounds to maintain visibility
+                // The JavaScript ResizeObserver will send updated positions shortly
+                cefView->syncCEFPositionWithFrame(cefView->visualBounds);
             }
         }
     }
@@ -5110,16 +5229,18 @@ void runCEFEventLoop() {
     if (g_cefInitialized) {
         CefShutdown();
     }
+    g_shutdownComplete.store(true);
 }
 
 void runGTKEventLoop() {
     // Initialize GTK on the main thread (this MUST be done here)
     initializeGTK();
     printf("=== ELECTROBUN NATIVE WRAPPER VERSION 1.0.2 === GTK EVENT LOOP STARTED ===\n");
-    
+
     // Note: GDK_BACKEND=x11 forced for Wayland compatibility
-    
+
     gtk_main();
+    g_shutdownComplete.store(true);
 }
 
 void runEventLoop() {    
@@ -5525,10 +5646,12 @@ AbstractView* initCEFWebview(uint32_t webviewId,
                          const char* partitionIdentifier,
                          DecideNavigationCallback navigationCallback,
                          WebviewEventHandler webviewEventHandler,
+                         HandlePostMessage eventBridgeHandler,
                          HandlePostMessage bunBridgeHandler,
                          HandlePostMessage internalBridgeHandler,
                          const char* electrobunPreloadScript,
-                         const char* customPreloadScript) {
+                         const char* customPreloadScript,
+                         bool sandbox) {
     
     AbstractView* result = dispatch_sync_main([&]() -> AbstractView* {
         try {
@@ -5538,8 +5661,8 @@ AbstractView* initCEFWebview(uint32_t webviewId,
                 webviewId, (GtkWidget*)window,  // window is now X11Window* cast to void*
                 url, x, y, width, height, autoResize,
                 partitionIdentifier, navigationCallback, webviewEventHandler,
-                bunBridgeHandler, internalBridgeHandler,
-                electrobunPreloadScript, customPreloadScript
+                eventBridgeHandler, bunBridgeHandler, internalBridgeHandler,
+                electrobunPreloadScript, customPreloadScript, sandbox
             );
             
             if (webview->creationFailed) {
@@ -5605,10 +5728,12 @@ AbstractView* initGTKWebkitWebview(uint32_t webviewId,
                          const char* partitionIdentifier,
                          DecideNavigationCallback navigationCallback,
                          WebviewEventHandler webviewEventHandler,
+                         HandlePostMessage eventBridgeHandler,
                          HandlePostMessage bunBridgeHandler,
                          HandlePostMessage internalBridgeHandler,
                          const char* electrobunPreloadScript,
-                         const char* customPreloadScript) {
+                         const char* customPreloadScript,
+                         bool sandbox) {
     
     
     AbstractView* result = dispatch_sync_main([&]() -> AbstractView* {
@@ -5618,8 +5743,8 @@ AbstractView* initGTKWebkitWebview(uint32_t webviewId,
                 webviewId, GTK_WIDGET(window),
                 url, x, y, width, height, autoResize,
                 partitionIdentifier, navigationCallback, webviewEventHandler,
-                bunBridgeHandler, internalBridgeHandler,
-                electrobunPreloadScript, customPreloadScript
+                eventBridgeHandler, bunBridgeHandler, internalBridgeHandler,
+                electrobunPreloadScript, customPreloadScript, sandbox
             );
             
             // Set fullSize flag for auto-resize functionality
@@ -5662,11 +5787,13 @@ ELECTROBUN_EXPORT AbstractView* initWebview(uint32_t webviewId,
                          const char* partitionIdentifier,
                          DecideNavigationCallback navigationCallback,
                          WebviewEventHandler webviewEventHandler,
+                         HandlePostMessage eventBridgeHandler,
                          HandlePostMessage bunBridgeHandler,
                          HandlePostMessage internalBridgeHandler,
                          const char* electrobunPreloadScript,
                          const char* customPreloadScript,
-                         bool transparent) {
+                         bool transparent,
+                         bool sandbox) {
     // TODO: Implement transparent handling for Linux
     
     // Null pointer checks
@@ -5681,13 +5808,13 @@ ELECTROBUN_EXPORT AbstractView* initWebview(uint32_t webviewId,
     if (isCEFAvailable()) {
         return initCEFWebview(webviewId, window, renderer, url, x, y, width, height, autoResize,
                               partitionIdentifier, navigationCallback, webviewEventHandler,
-                              bunBridgeHandler, internalBridgeHandler,
-                              electrobunPreloadScript, customPreloadScript);
+                              eventBridgeHandler, bunBridgeHandler, internalBridgeHandler,
+                              electrobunPreloadScript, customPreloadScript, sandbox);
     } else {
         return initGTKWebkitWebview(webviewId, window, renderer, url, x, y, width, height, autoResize,
                                     partitionIdentifier, navigationCallback, webviewEventHandler,
-                                    bunBridgeHandler, internalBridgeHandler,
-                                    electrobunPreloadScript, customPreloadScript);
+                                    eventBridgeHandler, bunBridgeHandler, internalBridgeHandler,
+                                    electrobunPreloadScript, customPreloadScript, sandbox);
     }
        
 }
@@ -6910,6 +7037,9 @@ const char* getWebviewHTMLContent(uint32_t webviewId) {
     }
 }
 
+// Forward declaration - stopEventLoop is defined after startEventLoop
+ELECTROBUN_EXPORT void stopEventLoop();
+
 // Note: `name` parameter is accepted for API consistency with Windows but not used on Linux
 ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, const char* channel) {
     (void)name; // Unused on Linux - kept for API consistency with Windows
@@ -6926,26 +7056,107 @@ ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, 
     runEventLoop();
 }
 
-ELECTROBUN_EXPORT void killApp() {
-    // Set shutdown flag to prevent race conditions
+ELECTROBUN_EXPORT void stopEventLoop() {
+    if (g_eventLoopStopping.exchange(true)) {
+        return;
+    }
     g_shuttingDown.store(true);
-    printf("DEBUG: killApp called - immediate shutdown\n");
-    
-    // Properly shutdown GTK and then exit
-    gtk_main_quit();
-    exit(0);
+    printf("[stopEventLoop] Initiating clean event loop exit\n");
+
+    // gtk_main_quit should be called from the GTK thread
+    g_idle_add([](gpointer) -> gboolean {
+        gtk_main_quit();
+        return G_SOURCE_REMOVE;
+    }, nullptr);
+}
+
+ELECTROBUN_EXPORT void killApp() {
+    // Deprecated - delegates to stopEventLoop for backward compatibility
+    stopEventLoop();
+}
+
+ELECTROBUN_EXPORT void waitForShutdownComplete(int timeoutMs) {
+    int waited = 0;
+    while (!g_shutdownComplete.load() && waited < timeoutMs) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        waited += 10;
+    }
+}
+
+ELECTROBUN_EXPORT void forceExit(int code) {
+    _exit(code);
+}
+
+// C signal handler for SIGINT/SIGTERM - writes to self-pipe (async-signal-safe)
+static void linux_signal_writer(int sig) {
+    int saved_errno = errno;
+    write(g_signal_pipe[1], &sig, sizeof(sig));
+    errno = saved_errno;
+}
+
+// GLib IO watch callback - reads from self-pipe and dispatches quit logic
+static gboolean linux_signal_pipe_read(GIOChannel* source, GIOCondition condition, gpointer data) {
+    int sig;
+    if (read(g_signal_pipe[0], &sig, sizeof(sig)) != sizeof(sig)) {
+        return G_SOURCE_CONTINUE;
+    }
+
+    if (sig == SIGINT) {
+        g_sigint_count++;
+        if (g_sigint_count == 1) {
+            if (g_quitRequestedHandler && !g_eventLoopStopping.load()) {
+                g_quitRequestedHandler();
+            } else {
+                stopEventLoop();
+            }
+        } else {
+            // Second Ctrl+C: force kill entire process group
+            kill(0, SIGKILL);
+        }
+    } else if (sig == SIGTERM) {
+        if (g_quitRequestedHandler && !g_eventLoopStopping.load()) {
+            g_quitRequestedHandler();
+        } else {
+            stopEventLoop();
+        }
+    }
+
+    return G_SOURCE_CONTINUE;
+}
+
+ELECTROBUN_EXPORT void setQuitRequestedHandler(QuitRequestedHandler handler) {
+    g_quitRequestedHandler = handler;
+
+    // Set up signal handling via self-pipe + GLib IO watch.
+    // This MUST be done here (not in startEventLoop) because bun's Worker sets up
+    // its own SIGINT handler via process.on("SIGINT") before calling this function.
+    // By installing our sigaction handler here, we override bun's handler.
+    // bun's handler can't forward signals to the Worker when the main thread is
+    // blocked in gtk_main(), so we handle signals ourselves.
+    if (g_signal_pipe[0] == -1) {
+        if (pipe(g_signal_pipe) == 0) {
+            fcntl(g_signal_pipe[0], F_SETFL, O_NONBLOCK);
+            fcntl(g_signal_pipe[1], F_SETFL, O_NONBLOCK);
+
+            GIOChannel* channel = g_io_channel_unix_new(g_signal_pipe[0]);
+            g_io_add_watch(channel, G_IO_IN, linux_signal_pipe_read, nullptr);
+            g_io_channel_unref(channel);
+        }
+    }
+
+    // Install our signal handlers, overriding bun's
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = linux_signal_writer;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGINT, &sa, nullptr);
+    sigaction(SIGTERM, &sa, nullptr);
 }
 
 ELECTROBUN_EXPORT void shutdownApplication() {
-    // Set shutdown flag to prevent race conditions
-    g_shuttingDown.store(true);
-    printf("DEBUG: Application shutdown initiated\n");
-    
-    // Brief delay to allow ongoing operations to complete
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
-    // Graceful shutdown
-    gtk_main_quit();
+    // Deprecated - use stopEventLoop() instead
+    stopEventLoop();
 }
 
 void* createNSRectWrapper(double x, double y, double width, double height) {

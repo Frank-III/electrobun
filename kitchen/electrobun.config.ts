@@ -4,7 +4,7 @@ export default {
 	app: {
 		name: "Electrobun Kitchen Sink",
 		identifier: "sh.blackboard.electrobun-kitchen",
-		version: "1.11.5-beta.5",
+		version: "1.12.2-beta.0",
 		urlSchemes: ["electrobun-playground"],
 	},
 	runtime: {
@@ -64,11 +64,18 @@ export default {
 			"playgrounds/transparent-window": {
 				entrypoint: "src/playgrounds/transparent-window/index.ts",
 			},
+			"playgrounds/multiwindow-cef": {
+				entrypoint: "src/playgrounds/multiwindow-cef/index.ts",
+			},
+			"playgrounds/quit-test": {
+				entrypoint: "src/playgrounds/quit-test/index.ts",
+			},
 		},
 		copy: {
 			"src/test-runner/index.html": "views/test-runner/index.html",
 			"src/test-runner/index.css": "views/test-runner/index.css",
 			"src/test-harness/index.html": "views/test-harness/index.html",
+			"src/test-oopif/index.html": "views/test-oopif/index.html",
 			"src/playgrounds/file-dialog/index.html":
 				"views/playgrounds/file-dialog/index.html",
 			"src/playgrounds/file-dialog/index.css":
@@ -113,6 +120,12 @@ export default {
 				"views/playgrounds/custom-titlebar/index.html",
 			"src/playgrounds/transparent-window/index.html":
 				"views/playgrounds/transparent-window/index.html",
+			"src/playgrounds/multiwindow-cef/index.html":
+				"views/playgrounds/multiwindow-cef/index.html",
+			"src/playgrounds/quit-test/index.html":
+				"views/playgrounds/quit-test/index.html",
+			"src/playgrounds/quit-test/index.css":
+				"views/playgrounds/quit-test/index.css",
 		},
 		mac: {
 			codesign: true,
@@ -149,6 +162,6 @@ export default {
 	},
 	release: {
 		baseUrl: "https://electrobun-kitchen.blackboard.sh/",
-		generatePatch: false,
+		generatePatch: true,
 	},
 } satisfies ElectrobunConfig;

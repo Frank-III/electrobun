@@ -480,6 +480,10 @@ async function build() {
 	console.log("Generating template embeddings...");
 	await generateTemplateEmbeddings();
 
+	// Build preload script (compiles TypeScript to JS for webview injection)
+	console.log("Building preload script...");
+	await buildPreload();
+
 	await Promise.all([
 		buildSelfExtractor(),
 		buildLauncher(),
@@ -494,6 +498,11 @@ async function buildForNpm() {
 
 	console.log("Building main.js...");
 	await buildMainJs();
+
+	// Build preload script (compiles TypeScript to JS for webview injection)
+	// Must run before copyApiFiles so the generated file is included
+	console.log("Building preload script...");
+	await buildPreload();
 
 	console.log("Copying API files...");
 	await copyApiFiles();
@@ -1882,6 +1891,70 @@ async function buildCli() {
 
 	// Use vendored Bun for building CLI to ensure consistency with CI and proper code signing
 	await $`BUN_INSTALL_CACHE_DIR=/tmp/bun-cache ${PATH.bun.RUNTIME} build src/cli/index.ts --compile ${compileTarget} --outfile src/cli/build/electrobun`;
+}
+
+async function buildPreload() {
+	// The preload scripts (drag regions, internal RPC, encryption, webview tags) are written
+	// in TypeScript for maintainability. We pre-compile them here because:
+	// 1. At runtime, the app runs from an ASAR bundle where source .ts files don't exist
+	// 2. Only the bundled JS is shipped, so Bun.build() can't compile at runtime
+	// The compiled outputs are imported by native.ts and injected into webviews.
+	//
+	// Two variants are compiled:
+	// - preloadScript: Full preload for trusted webviews (RPC, encryption, webview tags)
+	// - preloadScriptSandboxed: Minimal preload for sandboxed/untrusted webviews (events only)
+	const preloadDir = join(process.cwd(), "src", "bun", "preload");
+	const outputDir = join(preloadDir, ".generated");
+	const outputPath = join(outputDir, "compiled.ts");
+
+	// Ensure output directory exists
+	mkdirSync(outputDir, { recursive: true });
+
+	const bunModule = await import("bun");
+
+	// Build full preload (trusted webviews)
+	const fullPreloadEntry = join(preloadDir, "index.ts");
+	const fullResult = await bunModule.build({
+		entrypoints: [fullPreloadEntry],
+		target: "browser",
+		format: "iife", // IIFE format for script injection (no export statements)
+		minify: false,
+	});
+
+	if (!fullResult.success) {
+		console.error("Full preload build failed:", fullResult.logs);
+		throw new Error("Failed to build full preload script");
+	}
+
+	// Build sandboxed preload (untrusted webviews)
+	const sandboxedPreloadEntry = join(preloadDir, "index-sandboxed.ts");
+	const sandboxedResult = await bunModule.build({
+		entrypoints: [sandboxedPreloadEntry],
+		target: "browser",
+		format: "iife",
+		minify: false,
+	});
+
+	if (!sandboxedResult.success) {
+		console.error("Sandboxed preload build failed:", sandboxedResult.logs);
+		throw new Error("Failed to build sandboxed preload script");
+	}
+
+	const fullPreloadJs = await fullResult.outputs[0].text();
+	const sandboxedPreloadJs = await sandboxedResult.outputs[0].text();
+
+	const outputContent = `// Auto-generated file. Do not edit directly.
+// Run "bun build.ts" or "bun build:dev" from the package folder to regenerate.
+
+// Full preload for trusted webviews (RPC, encryption, drag regions, webview tags)
+export const preloadScript = ${JSON.stringify(fullPreloadJs)};
+
+// Minimal preload for sandboxed/untrusted webviews (lifecycle events only, no RPC)
+export const preloadScriptSandboxed = ${JSON.stringify(sandboxedPreloadJs)};
+`;
+
+	writeFileSync(outputPath, outputContent);
+	console.log("Preload scripts compiled successfully (full + sandboxed)");
 }
 
 async function generateTemplateEmbeddings() {

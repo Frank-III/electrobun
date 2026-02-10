@@ -14,6 +14,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <signal.h>
 
 // CEF includes
 #include "include/base/cef_ref_counted.h"
@@ -40,6 +41,7 @@
 #include <chrono>
 #include <map>
 #include <mutex>
+#include <atomic>
 
 // Shared cross-platform utilities
 #include "../shared/glob_match.h"
@@ -487,6 +489,9 @@ typedef struct {
 typedef SnapshotCallback zigSnapshotCallback;
 typedef StatusItemHandler ZigStatusItemHandler;
 static URLOpenHandler g_urlOpenHandler = nullptr;
+static QuitRequestedHandler g_quitRequestedHandler = nullptr;
+static std::atomic<bool> g_shutdownComplete{false};
+static std::atomic<bool> g_eventLoopStopping{false};
 
 typedef struct {
 } MenuItemConfig;
@@ -678,8 +683,10 @@ void releaseObjCObject(id objcObject) {
     @property (nonatomic, assign) BOOL fullSize;
     @property (nonatomic, assign) BOOL isRemoved;
     @property (nonatomic, assign) BOOL isInFullscreen;
+    @property (nonatomic, assign) BOOL isSandboxed;  // When true, only eventBridge is active (no RPC)
     @property (nonatomic, strong) CALayer *storedLayerMask;
     @property (nonatomic, strong) NSArray<NSString *> *navigationRules;
+    @property (atomic, assign) uint32_t resizeGeneration;
 
     - (void)loadURL:(const char *)urlString;
     - (void)loadHTML:(const char *)htmlString;
@@ -705,6 +712,7 @@ void releaseObjCObject(id objcObject) {
     - (void)updateCustomPreloadScript:(const char*)jsString;
 
     - (void)resize:(NSRect)frame withMasksJSON:(const char *)masksJson;
+    - (void)resizeWithFrame:(NSRect)frame parsedMasks:(NSArray *)parsedMasks;
 
     - (void)setNavigationRulesFromJSON:(const char*)rulesJson;
     - (BOOL)shouldAllowNavigationToURL:(NSString *)url;
@@ -778,7 +786,7 @@ static NSMutableDictionary<NSNumber *, AbstractView *> *globalAbstractViews = ni
 
 // ----------------------- Webview Implementations -----------------------
 @interface WKWebViewImpl : AbstractView
-    @property (nonatomic, strong) WKWebView *webView;    
+    @property (nonatomic, strong) WKWebView *webView;
 
     - (instancetype)initWithWebviewId:(uint32_t)webviewId
                             window:(NSWindow *)window
@@ -788,11 +796,13 @@ static NSMutableDictionary<NSNumber *, AbstractView *> *globalAbstractViews = ni
                 partitionIdentifier:(const char *)partitionIdentifier
                 navigationCallback:(DecideNavigationCallback)navigationCallback
                 webviewEventHandler:(WebviewEventHandler)webviewEventHandler
+                eventBridgeHandler:(HandlePostMessage)eventBridgeHandler
                 bunBridgeHandler:(HandlePostMessage)bunBridgeHandler
                 internalBridgeHandler:(HandlePostMessage)internalBridgeHandler
                 electrobunPreloadScript:(const char *)electrobunPreloadScript
                 customPreloadScript:(const char *)customPreloadScript
-                transparent:(bool)transparent;
+                transparent:(bool)transparent
+                sandbox:(bool)sandbox;
 @end
 
 
@@ -1092,71 +1102,78 @@ NSArray<NSValue *> *addOverlapRects(NSArray<NSDictionary *> *rectsArray, CGFloat
     }
 
 
-    - (void)toggleMirrorMode:(BOOL)enable {        
-        NSView *subview = self.nsView;                
-        
-        if (self.mirrorModeEnabled == enable) {            
+    - (void)toggleMirrorMode:(BOOL)enable {
+        NSView *subview = self.nsView;
+
+        if (self.mirrorModeEnabled == enable) {
             return;
         }
         BOOL isLeftMouseButtonDown = ([NSEvent pressedMouseButtons] & (1 << 0)) != 0;
-        if (isLeftMouseButtonDown) {            
+        if (isLeftMouseButtonDown) {
             return;
         }
         self.mirrorModeEnabled = enable;
-        
-        if (enable) {        
+
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        if (enable) {
             CGFloat positionX = subview.frame.origin.x;
-            CGFloat positionY = subview.frame.origin.y;                        
+            CGFloat positionY = subview.frame.origin.y;
             subview.frame = CGRectOffset(subview.frame, OFFSCREEN_OFFSET, OFFSCREEN_OFFSET);
-            subview.layer.position = CGPointMake(positionX, positionY);            
-        } else {            
+            subview.layer.position = CGPointMake(positionX, positionY);
+        } else {
             subview.frame = CGRectMake(subview.layer.position.x,
                                     subview.layer.position.y,
                                     subview.frame.size.width,
-                                    subview.frame.size.height);            
+                                    subview.frame.size.height);
         }
+        [CATransaction commit];
     }
 
 
-    - (void)resize:(NSRect)frame withMasksJSON:(const char *)masksJson {            
+    // Internal callers (e.g. fullSize resize on window resize) use this entry point
+    - (void)resize:(NSRect)frame withMasksJSON:(const char *)masksJson {
+        NSArray *parsedMasks = nil;
+        if (masksJson && strlen(masksJson) > 0) {
+            NSString *jsonString = [NSString stringWithUTF8String:masksJson ?: ""];
+            NSData *jsonData = [jsonString dataUsingEncoding:NSUTF8StringEncoding];
+            if (jsonData) {
+                NSError *error = nil;
+                parsedMasks = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
+                if (error) parsedMasks = nil;
+            }
+        }
+        [self resizeWithFrame:frame parsedMasks:parsedMasks];
+    }
+
+    // Optimized resize — accepts pre-parsed masks (JSON parsing done off main thread)
+    - (void)resizeWithFrame:(NSRect)frame parsedMasks:(NSArray *)parsedMasks {
         NSView *subview = self.nsView;
         if (!subview) {
-            return;    
-        }                        
-        
+            return;
+        }
+
         CGFloat adjustedX = floor(frame.origin.x);
         CGFloat adjustedWidth = ceilf(frame.size.width);
         CGFloat adjustedHeight = ceilf(frame.size.height);
         CGFloat adjustedY = floor(subview.superview.bounds.size.height - ceilf(frame.origin.y) - adjustedHeight);
-        CGFloat adjustedYZ = floor(frame.origin.y);   
 
-        // TODO: move mirrorModeEnabled to abstractView
-        if (self.mirrorModeEnabled) {               
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+
+        if (self.mirrorModeEnabled) {
             subview.frame = NSMakeRect(OFFSCREEN_OFFSET, OFFSCREEN_OFFSET, adjustedWidth, adjustedHeight);
-            subview.layer.position = CGPointMake(adjustedX, adjustedY);                       
-        } else {            
+            subview.layer.position = CGPointMake(adjustedX, adjustedY);
+        } else {
             subview.frame = NSMakeRect(adjustedX, adjustedY, adjustedWidth, adjustedHeight);
         }
 
-        CAShapeLayer* (^createMaskLayer)(void) = ^CAShapeLayer* {
-            if (!masksJson || strlen(masksJson) == 0) {
-                return nil;
-            }
-            NSString *jsonString = [NSString stringWithUTF8String:masksJson ?: ""];
-            NSData *jsonData = [jsonString dataUsingEncoding:NSUTF8StringEncoding];
-            if (!jsonData) {
-                return nil;
-            }
-            NSError *error = nil;
-            NSArray *rectsArray = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
-            if (!rectsArray || error) {
-                return nil;
-            }
+        CAShapeLayer *maskLayer = nil;
+        if (parsedMasks && parsedMasks.count > 0) {
             CGFloat heightToAdjust = self.nsView.layer.geometryFlipped ? 0 : adjustedHeight;
-            
-            NSArray<NSValue *> *processedRects = addOverlapRects(rectsArray, heightToAdjust);
+            NSArray<NSValue *> *processedRects = addOverlapRects(parsedMasks, heightToAdjust);
 
-            CAShapeLayer *maskLayer = [CAShapeLayer layer];
+            maskLayer = [CAShapeLayer layer];
             maskLayer.frame = self.nsView.layer.bounds;
             CGMutablePathRef path = CGPathCreateMutable();
             CGPathAddRect(path, NULL, maskLayer.bounds);
@@ -1167,10 +1184,11 @@ NSArray<NSValue *> *addOverlapRects(NSArray<NSDictionary *> *rectsArray, CGFloat
             maskLayer.fillRule = kCAFillRuleEvenOdd;
             maskLayer.path = path;
             CGPathRelease(path);
-            return maskLayer;
-        };
+        }
+        self.nsView.layer.mask = maskLayer;
 
-        self.nsView.layer.mask = createMaskLayer();
+        [CATransaction commit];
+
         NSPoint currentMousePosition = [self.nsView.window mouseLocationOutsideOfEventStream];
         ContainerView *containerView = (ContainerView *)self.nsView.superview;
         [containerView updateActiveWebviewForMousePosition:currentMousePosition];
@@ -2248,16 +2266,19 @@ runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters
                 partitionIdentifier:(const char *)partitionIdentifier
                 navigationCallback:(DecideNavigationCallback)navigationCallback
                 webviewEventHandler:(WebviewEventHandler)webviewEventHandler
+                eventBridgeHandler:(HandlePostMessage)eventBridgeHandler
                 bunBridgeHandler:(HandlePostMessage)bunBridgeHandler
                 internalBridgeHandler:(HandlePostMessage)internalBridgeHandler
                 electrobunPreloadScript:(const char *)electrobunPreloadScript
                 customPreloadScript:(const char *)customPreloadScript
                 transparent:(bool)transparent
+                sandbox:(bool)sandbox
     {
         self = [super init];
         if (self) {
             self.webviewId = webviewId;
-            
+            self.isSandboxed = sandbox;
+
             // TODO: rewrite this so we can return a reference to the AbstractRenderer and then call
             // init from zig after the handle is added to the webviewMap then we don't need this async stuff
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -2277,13 +2298,17 @@ runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters
                 assetSchemeHandler.webviewId = webviewId;
                 [configuration setURLSchemeHandler:assetSchemeHandler forURLScheme:@"views"];
                 
-                // create WKWebView 
+                // create WKWebView
                 self.webView = [[WKWebView alloc] initWithFrame:frame configuration:configuration];
-                
-                [self.webView setValue:@NO forKey:@"drawsBackground"];
-                self.webView.layer.backgroundColor = [[NSColor clearColor] CGColor];
-                self.webView.layer.opaque = NO;
-                
+
+                // Only set transparent background for main window webviews (autoResize/fullscreen)
+                // Child webviews (OOPIFs) need a visible background to render properly
+                if (autoResize) {
+                    [self.webView setValue:@NO forKey:@"drawsBackground"];
+                    self.webView.layer.backgroundColor = [[NSColor clearColor] CGColor];
+                    self.webView.layer.opaque = NO;
+                }
+
                 self.webView.autoresizingMask = NSViewNotSizable;
                 
                 [self.webView addObserver:self forKeyPath:@"fullscreenState" options:NSKeyValueObservingOptionNew | NSKeyValueObservingOptionOld context:nil];
@@ -2310,29 +2335,51 @@ runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters
                 self.webView.UIDelegate = uiDelegate;
                 objc_setAssociatedObject(self.webView, "UIDelegate", uiDelegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);                                    
 
-                // postmessage
-                // bunBridge
-                MyScriptMessageHandler *bunHandler = [[MyScriptMessageHandler alloc] init];
-                bunHandler.zigCallback = bunBridgeHandler;
-                bunHandler.webviewId = webviewId;
-                [self.webView.configuration.userContentController addScriptMessageHandler:bunHandler
-                                                                                name:[NSString stringWithUTF8String:"bunBridge"]];
+                // postmessage handlers
 
-                objc_setAssociatedObject(self.webView, "bunBridgeHandler", bunHandler, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                // eventBridge - event-only bridge (always set up for all webviews, including sandboxed)
+                MyScriptMessageHandler *eventHandler = [[MyScriptMessageHandler alloc] init];
+                eventHandler.zigCallback = eventBridgeHandler;
+                eventHandler.webviewId = webviewId;
+                [self.webView.configuration.userContentController addScriptMessageHandler:eventHandler
+                                                                                name:[NSString stringWithUTF8String:"eventBridge"]];
+                objc_setAssociatedObject(self.webView, "eventBridgeHandler", eventHandler, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
-                // internalBridge
-                MyScriptMessageHandler *webviewTagHandler = [[MyScriptMessageHandler alloc] init];
-                webviewTagHandler.zigCallback = internalBridgeHandler;
-                webviewTagHandler.webviewId = webviewId;
-                [self.webView.configuration.userContentController addScriptMessageHandler:webviewTagHandler
-                                                                                name:[NSString stringWithUTF8String:"internalBridge"]];
+                // bunBridge and internalBridge - RPC bridges (only for non-sandboxed webviews)
+                if (!sandbox) {
+                    // bunBridge - user RPC bridge
+                    MyScriptMessageHandler *bunHandler = [[MyScriptMessageHandler alloc] init];
+                    bunHandler.zigCallback = bunBridgeHandler;
+                    bunHandler.webviewId = webviewId;
+                    [self.webView.configuration.userContentController addScriptMessageHandler:bunHandler
+                                                                                    name:[NSString stringWithUTF8String:"bunBridge"]];
+                    objc_setAssociatedObject(self.webView, "bunBridgeHandler", bunHandler, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
-                objc_setAssociatedObject(self.webView, "webviewTagHandler", webviewTagHandler, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                    // internalBridge - internal RPC bridge (for webview tags, drag regions, etc.)
+                    MyScriptMessageHandler *webviewTagHandler = [[MyScriptMessageHandler alloc] init];
+                    webviewTagHandler.zigCallback = internalBridgeHandler;
+                    webviewTagHandler.webviewId = webviewId;
+                    [self.webView.configuration.userContentController addScriptMessageHandler:webviewTagHandler
+                                                                                    name:[NSString stringWithUTF8String:"internalBridge"]];
+                    objc_setAssociatedObject(self.webView, "webviewTagHandler", webviewTagHandler, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                }
 
                 // add subview
                 [window.contentView addSubview:self.webView positioned:NSWindowAbove relativeTo:nil];
                 CGFloat adjustedY = window.contentView.bounds.size.height - frame.origin.y - frame.size.height;
                 self.webView.frame = NSMakeRect(frame.origin.x, adjustedY, frame.size.width, frame.size.height);
+
+                // Ensure the webview is properly layer-backed and visible
+                self.webView.wantsLayer = YES;
+                self.webView.hidden = NO;
+
+                // For child webviews (non-autoResize), ensure they appear on top
+                if (!autoResize) {
+                    // Bring child webview to front of the view hierarchy
+                    [self.webView removeFromSuperview];
+                    [window.contentView addSubview:self.webView positioned:NSWindowAbove relativeTo:nil];
+                    self.webView.layer.zPosition = 1000;
+                }
 
                 ContainerView *containerView = (ContainerView *)window.contentView;
                 [containerView addAbstractView:self];
@@ -3023,10 +3070,12 @@ class ElectrobunClient : public CefClient,
                         public CefDownloadHandler  {
 private:
     uint32_t webview_id_;
+    HandlePostMessage event_bridge_handler_;
     HandlePostMessage bun_bridge_handler_;
     HandlePostMessage webview_tag_handler_;
     WebviewEventHandler webview_event_handler_;
     DecideNavigationCallback navigation_callback_;
+    bool is_sandboxed_;
 
     // OSR (Off-Screen Rendering) support
     CEFOSRView* osr_view_ = nullptr;
@@ -3287,15 +3336,19 @@ public:
     }
 
     ElectrobunClient(uint32_t webviewId,
+                     HandlePostMessage eventBridgeHandler,
                      HandlePostMessage bunBridgeHandler,
                      HandlePostMessage internalBridgeHandler,
                      WebviewEventHandler webviewEventHandler,
-                     DecideNavigationCallback navigationCallback)
+                     DecideNavigationCallback navigationCallback,
+                     bool sandbox)
         : webview_id_(webviewId)
+        , event_bridge_handler_(eventBridgeHandler)
         , bun_bridge_handler_(bunBridgeHandler)
-        , webview_tag_handler_(internalBridgeHandler) 
+        , webview_tag_handler_(internalBridgeHandler)
         , webview_event_handler_(webviewEventHandler)
-        , navigation_callback_(navigationCallback) {}    
+        , navigation_callback_(navigationCallback)
+        , is_sandboxed_(sandbox) {}    
 
     void AddPreloadScript(const std::string& script, bool mainFrameOnly = false) {
         electrobun_script_ = {script, false};
@@ -3637,13 +3690,21 @@ public:
     
     char* contentCopy = strdup(messageContent.c_str());
     bool result = false;
-    
-    if (messageName == "BunBridgeMessage") {
-        bun_bridge_handler_(webview_id_, contentCopy);
+
+    // eventBridge - event-only bridge (always process for all webviews, including sandboxed)
+    if (messageName == "EventBridgeMessage") {
+        event_bridge_handler_(webview_id_, contentCopy);
         result = true;
-    } else if (messageName == "internalMessage") {
-        webview_tag_handler_(webview_id_, contentCopy);
-        result = true;
+    }
+    // bunBridge and internalBridge - RPC bridges (only for non-sandboxed webviews)
+    else if (!is_sandboxed_) {
+        if (messageName == "BunBridgeMessage") {
+            bun_bridge_handler_(webview_id_, contentCopy);
+            result = true;
+        } else if (messageName == "internalMessage") {
+            webview_tag_handler_(webview_id_, contentCopy);
+            result = true;
+        }
     }
 
     // Note: threadsafe JSCallbacks are invoked on the js worker thread, When called frequently they
@@ -4147,11 +4208,13 @@ void RemoteDevToolsClosed(void* ctx, int target_id) {
                 partitionIdentifier:(const char *)partitionIdentifier
                 navigationCallback:(DecideNavigationCallback)navigationCallback
                 webviewEventHandler:(WebviewEventHandler)webviewEventHandler
+                eventBridgeHandler:(HandlePostMessage)eventBridgeHandler
                 bunBridgeHandler:(HandlePostMessage)bunBridgeHandler
                 internalBridgeHandler:(HandlePostMessage)internalBridgeHandler
                 electrobunPreloadScript:(const char *)electrobunPreloadScript
                 customPreloadScript:(const char *)customPreloadScript
-                transparent:(bool)transparent;
+                transparent:(bool)transparent
+                sandbox:(bool)sandbox;
 
 @end
 
@@ -4520,15 +4583,18 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
                 partitionIdentifier:(const char *)partitionIdentifier
                 navigationCallback:(DecideNavigationCallback)navigationCallback
                 webviewEventHandler:(WebviewEventHandler)webviewEventHandler
+                eventBridgeHandler:(HandlePostMessage)eventBridgeHandler
                 bunBridgeHandler:(HandlePostMessage)bunBridgeHandler
             internalBridgeHandler:(HandlePostMessage)internalBridgeHandler
             electrobunPreloadScript:(const char *)electrobunPreloadScript
             customPreloadScript:(const char *)customPreloadScript
             transparent:(bool)transparent
+            sandbox:(bool)sandbox
     {
         self = [super init];
         if (self) {
             self.webviewId = webviewId;
+            self.isSandboxed = sandbox;
 
             if (autoResize) {
                 self.fullSize = YES;
@@ -4584,10 +4650,12 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
 
                 self.client = new ElectrobunClient(
                     webviewId,
+                    eventBridgeHandler,
                     bunBridgeHandler,
                     internalBridgeHandler,
                     webviewEventHandler,
-                    navigationCallback
+                    navigationCallback,
+                    sandbox
                 );
 
                 // Configure OSR if enabled
@@ -4617,11 +4685,17 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
                 // Otherwise we get a race condition where OOPIF events hit bun then get passed to the parent
                 // webview which is still in the middle of a CreateBrowserSync and fails to call
                 // self.browser->GetMainFrame()->ExecuteJavascript.
-                NSLog(@"DEBUG CEF: Creating browser, OSR mode: %@, view size: %dx%d",
+                NSLog(@"DEBUG CEF: Creating browser, OSR mode: %@, view size: %dx%d, sandbox: %@",
                       self.isOSRMode ? @"YES" : @"NO",
-                      (int)frame.size.width, (int)frame.size.height);
+                      (int)frame.size.width, (int)frame.size.height,
+                      sandbox ? @"YES" : @"NO");
+
+                // Pass sandbox flag to renderer process via extra_info
+                CefRefPtr<CefDictionaryValue> extra_info = CefDictionaryValue::Create();
+                extra_info->SetBool("sandbox", sandbox);
+
                 self.browser = CefBrowserHost::CreateBrowserSync(
-                    window_info, self.client, CefString("about:blank"), browserSettings, nullptr, requestContext);
+                    window_info, self.client, CefString("about:blank"), browserSettings, extra_info, requestContext);
                 NSLog(@"DEBUG CEF: Browser created successfully");
 
                 if (self.browser) {
@@ -4656,8 +4730,10 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
                 }                                                                                             
             };
             
-            // TODO: revisit bug with 3 windows where 2nd windows' oopifs don't get created
-            // until moving the mouse and where createCEFBrowser() after async causes a crash
+            // TODO: revisit bug with 3+ CEF windows created in rapid succession - the 3rd window's
+            // OOPIF fails to initialize/render. Windows 1 & 2 work fine. Separately opened windows
+            // also work. Likely a race condition in concurrent browser creation.
+            // Test: kitchen sink "Multi-window CEF OOPIF test" in interactive tests.
             NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
             NSArray *notificationNames = @[ NSWindowDidUpdateNotification ];
             __block BOOL hasCreatedBrowser = NO;
@@ -4921,6 +4997,18 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
 
 @implementation AppDelegate
     - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
+        // If we're already in shutdown sequence (stopEventLoop was called), allow termination
+        if (g_eventLoopStopping.load()) {
+            return NSTerminateNow;
+        }
+
+        // If a quit handler is registered, ask bun to run its quit sequence
+        if (g_quitRequestedHandler) {
+            g_quitRequestedHandler();
+            return NSTerminateCancel;
+        }
+
+        // No handler registered, allow immediate termination (fallback)
         return NSTerminateNow;
     }
 
@@ -4993,6 +5081,9 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
 
 // Note: This is executed from the main bun thread
 // Note: `name` parameter is accepted for API consistency with Windows but not used on macOS
+// Forward declaration - stopEventLoop is defined after startEventLoop
+extern "C" void stopEventLoop();
+
 extern "C" void startEventLoop(const char* identifier, const char* name, const char* channel) {
     (void)name; // Unused on macOS - kept for API consistency with Windows/Linux
 
@@ -5019,9 +5110,48 @@ extern "C" void startEventLoop(const char* identifier, const char* name, const c
         NSLog(@"Initialized webview HTML content storage");
     }
     
+    // Set up dispatch sources for SIGINT and SIGTERM so they work regardless of
+    // which event loop is running (CefRunMessageLoop or [NSApp run]).
+    // bun's process.on("SIGINT") depends on bun's event loop to forward signals
+    // to the Worker, which doesn't work when the main thread is in [NSApp run].
+    // Dispatch sources deliver signal events on the main queue, which both
+    // [NSApp run] and CefRunMessageLoop process.
+    signal(SIGINT, SIG_IGN);
+    signal(SIGTERM, SIG_IGN);
+
+    static int sigint_count = 0;
+
+    dispatch_source_t sigintSource = dispatch_source_create(
+        DISPATCH_SOURCE_TYPE_SIGNAL, SIGINT, 0, dispatch_get_main_queue());
+    dispatch_source_set_event_handler(sigintSource, ^{
+        sigint_count++;
+        if (sigint_count == 1) {
+            if (g_quitRequestedHandler && !g_eventLoopStopping.load()) {
+                g_quitRequestedHandler();
+            } else {
+                stopEventLoop();
+            }
+        } else {
+            // Second Ctrl+C: force kill entire process group
+            kill(0, SIGKILL);
+        }
+    });
+    dispatch_resume(sigintSource);
+
+    dispatch_source_t sigtermSource = dispatch_source_create(
+        DISPATCH_SOURCE_TYPE_SIGNAL, SIGTERM, 0, dispatch_get_main_queue());
+    dispatch_source_set_event_handler(sigtermSource, ^{
+        if (g_quitRequestedHandler && !g_eventLoopStopping.load()) {
+            g_quitRequestedHandler();
+        } else {
+            stopEventLoop();
+        }
+    });
+    dispatch_resume(sigtermSource);
+
     if (useCEF) {
         @autoreleasepool {
-            if (!initializeCEF()) {                
+            if (!initializeCEF()) {
                 return;
             }
             NSApplication *app = [NSApplication sharedApplication];
@@ -5030,50 +5160,83 @@ extern "C" void startEventLoop(const char* identifier, const char* name, const c
             retainObjCObject(delegate);
             [NSApp finishLaunching];
             CefRunMessageLoop();
-            CefShutdown();            
+            CefShutdown();
+            g_shutdownComplete.store(true);
         }
-    } else {      
+    } else {
         NSApplication *app = [NSApplication sharedApplication];
         AppDelegate *delegate = [[AppDelegate alloc] init];
         [app setDelegate:delegate];
-        retainObjCObject(delegate);  
+        retainObjCObject(delegate);
         [app run];
+        g_shutdownComplete.store(true);
+    }
+}
+
+extern "C" void stopEventLoop() {
+    if (g_eventLoopStopping.exchange(true)) {
+        NSLog(@"[stopEventLoop] Already stopping, ignoring duplicate call");
+        return;
+    }
+
+    // Intentionally no log here - output after shell prompt return is confusing in dev mode
+
+    if (useCEF) {
+        // CefQuitMessageLoop must be called on the main thread on macOS because
+        // CEF's message loop is integrated with the Cocoa run loop.
+        // dispatch_async to the main queue is processed by CefRunMessageLoop().
+        dispatch_async(dispatch_get_main_queue(), ^{
+            CefQuitMessageLoop();
+        });
+    } else {
+        // [NSApp stop:nil] is thread-safe per Apple docs
+        // Post a dummy event to ensure the run loop wakes up and processes the stop
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[NSApplication sharedApplication] stop:nil];
+            NSEvent *event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
+                                               location:NSMakePoint(0, 0)
+                                          modifierFlags:0
+                                              timestamp:0
+                                           windowNumber:0
+                                                context:nil
+                                                subtype:0
+                                                  data1:0
+                                                  data2:0];
+            [[NSApplication sharedApplication] postEvent:event atStart:YES];
+        });
     }
 }
 
 extern "C" void killApp() {
-    // Execute on main thread for graceful shutdown
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSLog(@"[killApp] Initiating graceful shutdown");
-        
-        // Set a flag to prevent double cleanup
-        static BOOL isShuttingDown = NO;
-        if (isShuttingDown) {
-            NSLog(@"[killApp] Already shutting down, ignoring duplicate call");
-            return;
-        }
-        isShuttingDown = YES;
-        
-        // Terminate any child processes by sending SIGTERM to process group
-        kill(0, SIGTERM);
-        
-        // Let NSApplication handle the cleanup naturally
-        NSApplication *app = [NSApplication sharedApplication];
-        if (app) {
-            NSLog(@"[killApp] Terminating application gracefully");
-            [app terminate:nil];
-        } else {
-            // Fallback to direct exit if NSApplication isn't available
-            NSLog(@"[killApp] NSApplication not available, forcing exit");
-            exit(0);
-        }
-    });
+    // Deprecated - delegates to stopEventLoop for backward compatibility
+    stopEventLoop();
+}
+
+extern "C" void waitForShutdownComplete(int timeoutMs) {
+    int waited = 0;
+    while (!g_shutdownComplete.load() && waited < timeoutMs) {
+        usleep(10000); // 10ms
+        waited += 10;
+    }
+    if (!g_shutdownComplete.load()) {
+        NSLog(@"[waitForShutdownComplete] Timed out after %dms", timeoutMs);
+    }
+}
+
+extern "C" void forceExit(int code) {
+    // Last-resort exit that skips atexit handlers.
+    // Used when waitForShutdownComplete times out and calling exit() would
+    // deadlock on atexit handlers trying to join still-running CEF threads.
+    _exit(code);
+}
+
+extern "C" void setQuitRequestedHandler(QuitRequestedHandler handler) {
+    g_quitRequestedHandler = handler;
 }
 
 extern "C" void shutdownApplication() {
-    dispatch_async(dispatch_get_main_queue(), ^{   
-        CefShutdown();
-    });
+    // Deprecated - CefShutdown now runs inline in startEventLoop after event loop returns
+    stopEventLoop();
 }
 
 
@@ -5088,11 +5251,13 @@ extern "C" AbstractView* initWebview(uint32_t webviewId,
                         const char *partitionIdentifier,
                         DecideNavigationCallback navigationCallback,
                         WebviewEventHandler webviewEventHandler,
+                        HandlePostMessage eventBridgeHandler,
                         HandlePostMessage bunBridgeHandler,
                         HandlePostMessage internalBridgeHandler,
                         const char *electrobunPreloadScript,
                         const char *customPreloadScript,
-                        bool transparent ) {
+                        bool transparent,
+                        bool sandbox ) {
 
     // Validate frame values - use defaults if NaN or invalid
     if (isnan(x) || isinf(x)) {
@@ -5127,11 +5292,13 @@ extern "C" AbstractView* initWebview(uint32_t webviewId,
                                         partitionIdentifier:strdup(partitionIdentifier)
                                         navigationCallback:navigationCallback
                                         webviewEventHandler:webviewEventHandler
+                                        eventBridgeHandler:eventBridgeHandler
                                         bunBridgeHandler:bunBridgeHandler
                                         internalBridgeHandler:internalBridgeHandler
                                         electrobunPreloadScript:strdup(electrobunPreloadScript)
                                         customPreloadScript:strdup(customPreloadScript)
-                                        transparent:transparent];
+                                        transparent:transparent
+                                        sandbox:sandbox];
 
     });
 
@@ -5714,8 +5881,26 @@ extern "C" void resizeWebview(AbstractView *abstractView, double x, double y, do
     if (isnan(height) || isinf(height) || height <= 0) height = 100;
 
     NSRect frame = NSMakeRect(x, y, width, height);
+
+    // Pre-parse masks JSON off the main thread (NSJSONSerialization is thread-safe)
+    NSArray *parsedMasks = nil;
+    if (masksJson && strlen(masksJson) > 0) {
+        NSString *jsonString = [NSString stringWithUTF8String:masksJson];
+        NSData *jsonData = [jsonString dataUsingEncoding:NSUTF8StringEncoding];
+        if (jsonData) {
+            NSError *error = nil;
+            parsedMasks = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
+            if (error) parsedMasks = nil;
+        }
+    }
+
+    // Coalesce rapid resize calls — only the latest one matters
+    uint32_t generation = ++abstractView.resizeGeneration;
+
     dispatch_async(dispatch_get_main_queue(), ^{
-        [abstractView resize:frame withMasksJSON:masksJson];
+        // Skip if a newer resize was already queued
+        if (generation != abstractView.resizeGeneration) return;
+        [abstractView resizeWithFrame:frame parsedMasks:parsedMasks];
     });
 }
 

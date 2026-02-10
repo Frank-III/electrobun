@@ -25,6 +25,7 @@
 #include <shellapi.h>
 #include <commctrl.h>
 #include <mutex>
+#include <atomic>
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/base.h>
 #include <shobjidl.h>  // For IFileOpenDialog
@@ -514,6 +515,12 @@ static bool g_cef_initialized = false;
 static CefRefPtr<CefApp> g_cef_app;
 static std::vector<electrobun::ChromiumFlag> g_userChromiumFlags;
 static HANDLE g_job_object = nullptr;  // Job object to track all child processes
+
+// Quit/shutdown coordination
+static QuitRequestedHandler g_quitRequestedHandler = nullptr;
+static std::atomic<bool> g_shutdownComplete{false};
+static std::atomic<bool> g_eventLoopStopping{false};
+static DWORD g_mainThreadId = 0;
 
 // Simple CEF App class for minimal implementation
 class ElectrobunCefApp : public CefApp, public CefBrowserProcessHandler {
@@ -1681,11 +1688,15 @@ public:
     WebviewEventHandler webview_event_handler_ = nullptr;
 
     ElectrobunCefClient(uint32_t webviewId,
+                       HandlePostMessage eventBridgeHandler,
                        HandlePostMessage bunBridgeHandler,
-                       HandlePostMessage internalBridgeHandler)
+                       HandlePostMessage internalBridgeHandler,
+                       bool sandbox)
         : webview_id_(webviewId),
+          event_bridge_handler_(eventBridgeHandler),
           bun_bridge_handler_(bunBridgeHandler),
           webview_tag_handler_(internalBridgeHandler),
+          is_sandboxed_(sandbox),
           osr_enabled_(false) {
         m_loadHandler = new ElectrobunLoadHandler();
         m_loadHandler->SetClient(this); // Set client reference for load handler
@@ -1790,19 +1801,29 @@ public:
         std::string messageContent = message->GetArgumentList()->GetString(0).ToString();
         
         char* contentCopy = strdup(messageContent.c_str());
-        
-        if (messageName == "BunBridgeMessage") {
-            if (bun_bridge_handler_) {
-                bun_bridge_handler_(webview_id_, contentCopy);
-            }
-            return true;
-        } else if (messageName == "internalMessage") {
-            if (webview_tag_handler_) {
-                webview_tag_handler_(webview_id_, contentCopy);
+
+        // eventBridge - event-only bridge (always process for all webviews, including sandboxed)
+        if (messageName == "EventBridgeMessage") {
+            if (event_bridge_handler_) {
+                event_bridge_handler_(webview_id_, contentCopy);
             }
             return true;
         }
-        
+        // bunBridge and internalBridge - RPC bridges (only for non-sandboxed webviews)
+        else if (!is_sandboxed_) {
+            if (messageName == "BunBridgeMessage") {
+                if (bun_bridge_handler_) {
+                    bun_bridge_handler_(webview_id_, contentCopy);
+                }
+                return true;
+            } else if (messageName == "internalMessage") {
+                if (webview_tag_handler_) {
+                    webview_tag_handler_(webview_id_, contentCopy);
+                }
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -2080,8 +2101,10 @@ public:
 
 private:
     uint32_t webview_id_;
+    HandlePostMessage event_bridge_handler_;
     HandlePostMessage bun_bridge_handler_;
     HandlePostMessage webview_tag_handler_;
+    bool is_sandboxed_;
     std::string electrobun_script_;
     std::string custom_script_;
     CefRefPtr<CefBrowser> browser_;
@@ -2660,6 +2683,7 @@ public:
     std::vector<std::string> navigationRules;
 
     // Bridge handlers
+    ComPtr<BridgeHandler> eventBridgeHandler;  // Event-only bridge (always available)
     ComPtr<BridgeHandler> bunBridgeHandler;
     ComPtr<BridgeHandler> internalBridgeHandler;
     ComPtr<BunBridgeDispatch> bunBridgeDispatch;
@@ -2837,8 +2861,10 @@ private:
     ComPtr<ICoreWebView2Controller> controller;
     ComPtr<ICoreWebView2CompositionController> compositionController;
     ComPtr<ICoreWebView2> webview;
+    HandlePostMessage eventBridgeCallbackHandler;
     HandlePostMessage bunBridgeCallbackHandler;
     HandlePostMessage internalBridgeCallbackHandler;
+    bool isSandboxed;
     HWND containerHwnd = nullptr;  // Container window for masking
 
 public:
@@ -2851,8 +2877,8 @@ public:
     // Static debounce timestamp for ctrl+click handling
     static double lastCtrlClickTime;
 
-    WebView2View(uint32_t webviewId, HandlePostMessage bunBridgeHandler, HandlePostMessage internalBridgeHandler)
-        : bunBridgeCallbackHandler(bunBridgeHandler), internalBridgeCallbackHandler(internalBridgeHandler) {
+    WebView2View(uint32_t webviewId, HandlePostMessage eventBridgeHandler, HandlePostMessage bunBridgeHandler, HandlePostMessage internalBridgeHandler, bool sandbox)
+        : eventBridgeCallbackHandler(eventBridgeHandler), bunBridgeCallbackHandler(bunBridgeHandler), internalBridgeCallbackHandler(internalBridgeHandler), isSandboxed(sandbox) {
         this->webviewId = webviewId;
     }
     
@@ -2888,30 +2914,41 @@ public:
     // Set up the JavaScript bridge objects in the WebView2 context using hostObjects
     void setupJavaScriptBridges() {
         if (!webview) return;
-        
-        // Create COM objects for the bridge handlers
-        bunBridgeHandler = ComPtr<BridgeHandler>(new BridgeHandler("bunBridge", bunBridgeCallbackHandler, webviewId));
-        internalBridgeHandler = ComPtr<BridgeHandler>(new BridgeHandler("internalBridge", internalBridgeCallbackHandler, webviewId));
-        
-        // Convert COM objects to VARIANT for AddHostObjectToScript
-        VARIANT bunBridgeVariant = {};
-        VariantInit(&bunBridgeVariant);
-        bunBridgeVariant.vt = VT_DISPATCH;
-        bunBridgeVariant.pdispVal = static_cast<IDispatch*>(bunBridgeHandler.Get());
-        
-        VARIANT internalBridgeVariant = {};
-        VariantInit(&internalBridgeVariant);
-        internalBridgeVariant.vt = VT_DISPATCH;
-        internalBridgeVariant.pdispVal = static_cast<IDispatch*>(internalBridgeHandler.Get());
-        
-        // Add the bridge objects to hostObjects
-        webview->AddHostObjectToScript(L"bunBridge", &bunBridgeVariant);
-        webview->AddHostObjectToScript(L"internalBridge", &internalBridgeVariant);
-        
-        // Clean up VARIANTs
-        VariantClear(&bunBridgeVariant);
-        VariantClear(&internalBridgeVariant);
-        
+
+        // eventBridge - event-only bridge (always set up for all webviews, including sandboxed)
+        eventBridgeHandler = ComPtr<BridgeHandler>(new BridgeHandler("eventBridge", eventBridgeCallbackHandler, webviewId));
+        VARIANT eventBridgeVariant = {};
+        VariantInit(&eventBridgeVariant);
+        eventBridgeVariant.vt = VT_DISPATCH;
+        eventBridgeVariant.pdispVal = static_cast<IDispatch*>(eventBridgeHandler.Get());
+        webview->AddHostObjectToScript(L"eventBridge", &eventBridgeVariant);
+        VariantClear(&eventBridgeVariant);
+
+        // bunBridge and internalBridge - RPC bridges (only for non-sandboxed webviews)
+        if (!isSandboxed) {
+            // Create COM objects for the bridge handlers
+            bunBridgeHandler = ComPtr<BridgeHandler>(new BridgeHandler("bunBridge", bunBridgeCallbackHandler, webviewId));
+            internalBridgeHandler = ComPtr<BridgeHandler>(new BridgeHandler("internalBridge", internalBridgeCallbackHandler, webviewId));
+
+            // Convert COM objects to VARIANT for AddHostObjectToScript
+            VARIANT bunBridgeVariant = {};
+            VariantInit(&bunBridgeVariant);
+            bunBridgeVariant.vt = VT_DISPATCH;
+            bunBridgeVariant.pdispVal = static_cast<IDispatch*>(bunBridgeHandler.Get());
+
+            VARIANT internalBridgeVariant = {};
+            VariantInit(&internalBridgeVariant);
+            internalBridgeVariant.vt = VT_DISPATCH;
+            internalBridgeVariant.pdispVal = static_cast<IDispatch*>(internalBridgeHandler.Get());
+
+            // Add the bridge objects to hostObjects
+            webview->AddHostObjectToScript(L"bunBridge", &bunBridgeVariant);
+            webview->AddHostObjectToScript(L"internalBridge", &internalBridgeVariant);
+
+            // Clean up VARIANTs
+            VariantClear(&bunBridgeVariant);
+            VariantClear(&internalBridgeVariant);
+        }
     }
     
     void loadURL(const char* urlString) override {
@@ -3087,7 +3124,8 @@ public:
             
             visualBounds = frame;
             bool maskChanged = false;
-            if (masksJson) {
+            // Check if masksJson is nullptr, empty, or just "[]" (empty array)
+            if (masksJson && strlen(masksJson) > 0 && strcmp(masksJson, "[]") != 0) {
                 std::string newMaskJSON = masksJson;
                 if (newMaskJSON != maskJSON) {
                     maskJSON = newMaskJSON;
@@ -3097,7 +3135,7 @@ public:
                 maskJSON = "";
                 maskChanged = true;
             }
-            
+
             // Only apply visual mask if mask data changed
             if (maskChanged) {
                 applyVisualMask();
@@ -3106,7 +3144,7 @@ public:
             ::log("[WebView2] ERROR: Controller is NULL, cannot resize");
         }
     }
-    
+
     ComPtr<ICoreWebView2Controller> getController() {
         return controller;
     }
@@ -3383,9 +3421,10 @@ public:
             // Notify CEF that the browser was resized
             browser->GetHost()->WasResized();
             visualBounds = frame;
-            
+
             bool maskChanged = false;
-            if (masksJson) {
+            // Check if masksJson is nullptr, empty, or just "[]" (empty array)
+            if (masksJson && strlen(masksJson) > 0 && strcmp(masksJson, "[]") != 0) {
                 std::string newMaskJSON = masksJson;
                 if (newMaskJSON != maskJSON) {
                     maskJSON = newMaskJSON;
@@ -3395,14 +3434,14 @@ public:
                 maskJSON = "";
                 maskChanged = true;
             }
-            
+
             // Only apply visual mask if mask data changed
             if (maskChanged) {
                 applyVisualMask();
             }
         }
     }
-    
+
     // CEF-specific implementation of mask functionality
     void applyVisualMask() override {
         if (!browser) {
@@ -4138,7 +4177,11 @@ void handleApplicationMenuSelection(UINT menuId) {
         
         if (g_appMenuTarget && g_appMenuTarget->zigHandler) {
             if (action == "__quit__") {
-                PostQuitMessage(0);
+                if (g_quitRequestedHandler && !g_eventLoopStopping.load()) {
+                    g_quitRequestedHandler();
+                } else {
+                    PostQuitMessage(0);
+                }
             } else if (action == "__undo__") {
                 HWND focusedWindow = GetFocus();
                 if (focusedWindow) {
@@ -4898,8 +4941,11 @@ void handleMenuItemSelection(UINT menuId, NSStatusItem* statusItem) {
 
         if (statusItem && statusItem->handler) {
             if (action == "__quit__") {
-                // Handle quit specially
-                PostQuitMessage(0);
+                if (g_quitRequestedHandler && !g_eventLoopStopping.load()) {
+                    g_quitRequestedHandler();
+                } else {
+                    PostQuitMessage(0);
+                }
             } else {
                 statusItem->handler(statusItem->trayId, action.c_str());
             }
@@ -5337,17 +5383,19 @@ static std::shared_ptr<WebView2View> createWebView2View(uint32_t webviewId,
                                                  const char *partitionIdentifier,
                                                  DecideNavigationCallback navigationCallback,
                                                  WebviewEventHandler webviewEventHandler,
+                                                 HandlePostMessage eventBridgeHandler,
                                                  HandlePostMessage bunBridgeHandler,
                                                  HandlePostMessage internalBridgeHandler,
                                                  const char *electrobunPreloadScript,
                                                  const char *customPreloadScript,
-                                                 bool transparent) {
+                                                 bool transparent,
+                                                 bool sandbox) {
     // Check if WebView2 runtime is available
     LPWSTR versionInfo = nullptr;
     HRESULT result = GetAvailableCoreWebView2BrowserVersionString(nullptr, &versionInfo);
     if (FAILED(result)) {
         ::log("ERROR: WebView2 runtime is not available. Please install Microsoft Edge WebView2 Runtime");
-        auto view = std::make_shared<WebView2View>(webviewId, bunBridgeHandler, internalBridgeHandler);
+        auto view = std::make_shared<WebView2View>(webviewId, eventBridgeHandler, bunBridgeHandler, internalBridgeHandler, sandbox);
         view->setCreationFailed(true);
         return view;
     }
@@ -5362,7 +5410,7 @@ static std::shared_ptr<WebView2View> createWebView2View(uint32_t webviewId,
     std::string customScript = customPreloadScript ? std::string(customPreloadScript) : "";
     std::string partitionStr = partitionIdentifier ? std::string(partitionIdentifier) : "";
 
-    auto view = std::make_shared<WebView2View>(webviewId, bunBridgeHandler, internalBridgeHandler);
+    auto view = std::make_shared<WebView2View>(webviewId, eventBridgeHandler, bunBridgeHandler, internalBridgeHandler, sandbox);
     view->hwnd = hwnd;
     view->fullSize = autoResize;
     view->webviewEventHandler = webviewEventHandler;
@@ -6144,11 +6192,13 @@ static std::shared_ptr<CEFView> createCEFView(uint32_t webviewId,
                                        const char *partitionIdentifier,
                                        DecideNavigationCallback navigationCallback,
                                        WebviewEventHandler webviewEventHandler,
+                                       HandlePostMessage eventBridgeHandler,
                                        HandlePostMessage bunBridgeHandler,
                                        HandlePostMessage internalBridgeHandler,
                                        const char *electrobunPreloadScript,
                                        const char *customPreloadScript,
-                                       bool transparent) {
+                                       bool transparent,
+                                       bool sandbox) {
     
     auto view = std::make_shared<CEFView>(webviewId);
     view->hwnd = hwnd;
@@ -6187,7 +6237,7 @@ static std::shared_ptr<CEFView> createCEFView(uint32_t webviewId,
         }
 
         // Create CEF client with bridge handlers
-        auto client = new ElectrobunCefClient(webviewId, bunBridgeHandler, internalBridgeHandler);
+        auto client = new ElectrobunCefClient(webviewId, eventBridgeHandler, bunBridgeHandler, internalBridgeHandler, sandbox);
 
         // Configure OSR mode for transparent windows
         if (transparent) {
@@ -6232,8 +6282,13 @@ static std::shared_ptr<CEFView> createCEFView(uint32_t webviewId,
         // Create browser synchronously (like Mac implementation)
         // Note: OnLoadStart will fire during this call, but the load handler has a direct
         // reference to the client, so preload scripts are available immediately without race condition
+
+        // Pass sandbox flag to renderer process via extra_info
+        CefRefPtr<CefDictionaryValue> extra_info = CefDictionaryValue::Create();
+        extra_info->SetBool("sandbox", sandbox);
+
         CefRefPtr<CefBrowser> browser = CefBrowserHost::CreateBrowserSync(
-            windowInfo, client, url ? url : "about:blank", browserSettings, nullptr, requestContext);
+            windowInfo, client, url ? url : "about:blank", browserSettings, extra_info, requestContext);
 
         if (browser) {
             // Store preload script by browser ID for compatibility with other code paths
@@ -6291,48 +6346,23 @@ BOOL WINAPI ConsoleControlHandler(DWORD dwCtrlType) {
         case CTRL_CLOSE_EVENT:
         case CTRL_LOGOFF_EVENT:
         case CTRL_SHUTDOWN_EVENT:
-            std::cout << "[CEF] Received shutdown signal, closing browsers..." << std::endl;
-            
-            if (g_cef_initialized) {
-                // Close all CEF browsers first - this will trigger OnBeforeClose handlers
-                // which will call CefQuitMessageLoop() when the last browser closes
-                std::cout << "[CEF] Closing " << g_browser_count << " browsers..." << std::endl;
-                
-                // Create a copy of the map to avoid iterator invalidation
-                auto browsers_copy = g_cefBrowsers;
-                for (auto& pair : browsers_copy) {
-                    if (pair.second) {
-                        std::cout << "[CEF] Closing browser ID " << pair.first << std::endl;
-                        pair.second->GetHost()->CloseBrowser(true); // Force close
-                    }
+            std::cout << "[shutdown] Received console shutdown signal" << std::endl;
+
+            if (g_quitRequestedHandler && !g_eventLoopStopping.load()) {
+                // Route through bun's quit sequence for proper beforeQuit handling
+                g_quitRequestedHandler();
+                // Wait for orderly shutdown (Windows gives ~5s for CTRL_CLOSE_EVENT)
+                int waited = 0;
+                while (!g_shutdownComplete.load() && waited < 4000) {
+                    Sleep(10);
+                    waited += 10;
                 }
-                
-                // Give browsers time to close gracefully
-                // OnBeforeClose will call CefQuitMessageLoop() when last browser closes
-                Sleep(1000);  // Reduced from 3000ms for faster response
-                
-                // If browsers didn't close properly, force quit
-                if (g_browser_count > 0) {
-                    std::cout << "[CEF] Browsers didn't close, forcing CEF shutdown" << std::endl;
+            } else {
+                // Fallback: direct shutdown
+                if (g_cef_initialized) {
                     CefQuitMessageLoop();
-                    Sleep(500);  // Brief wait
                 }
-                
-                // Explicitly terminate any remaining CEF helper processes
-                std::cout << "[CEF] Terminating any remaining helper processes..." << std::endl;
-                TerminateCEFHelperProcesses();
             }
-            
-            // Close the job object to terminate any remaining child processes
-            if (g_job_object) {
-                std::cout << "[CEF] Closing job object to terminate all child processes" << std::endl;
-                CloseHandle(g_job_object);
-                g_job_object = nullptr;
-            }
-            
-            // Force termination if still running
-            std::cout << "[CEF] Forcing application exit" << std::endl;
-            ExitProcess(0);
             return TRUE;
         default:
             return FALSE;
@@ -6342,6 +6372,8 @@ BOOL WINAPI ConsoleControlHandler(DWORD dwCtrlType) {
 extern "C" {
 
 ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, const char* channel) {
+    g_mainThreadId = GetCurrentThreadId();
+
     // Store identifier, name, and channel globally for use in CEF initialization
     if (identifier && identifier[0]) {
         g_electrobunIdentifier = std::string(identifier);
@@ -6394,6 +6426,7 @@ ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, 
             }
             
             CefShutdown();
+            g_shutdownComplete.store(true);
         } else {
             // Fall back to Windows message loop if CEF init fails
             MSG msg;
@@ -6405,6 +6438,7 @@ ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, 
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
             }
+            g_shutdownComplete.store(true);
         }
     } else {
         // Use Windows message loop if CEF is not available
@@ -6417,55 +6451,56 @@ ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, 
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
+        g_shutdownComplete.store(true);
     }
 }
 
 
-ELECTROBUN_EXPORT void killApp() {
-    if (isCEFAvailable() && g_cef_initialized) {
-        std::cout << "[CEF] Initiating graceful shutdown via CefQuitMessageLoop()" << std::endl;
-        
-        // Close all browsers first
-        auto browsers_copy = g_cefBrowsers;
-        for (auto& pair : browsers_copy) {
-            if (pair.second) {
-                pair.second->GetHost()->CloseBrowser(true);
-            }
-        }
-        
-        // Brief wait for browsers to close
-        Sleep(500);
-        
-        // Quit CEF message loop
-        CefQuitMessageLoop();
-        
-        // Terminate any remaining helper processes
-        TerminateCEFHelperProcesses();
-        
-        // Close job object to ensure all child processes are terminated
-        if (g_job_object) {
-            CloseHandle(g_job_object);
-            g_job_object = nullptr;
-        }
-        
-        ::log("CEF shutdown initiated");
-    } else {
-        // If CEF is not running, still check for helper processes
-        TerminateCEFHelperProcesses();
-        
-        // Close job object if it exists
-        if (g_job_object) {
-            CloseHandle(g_job_object);
-            g_job_object = nullptr;
-        }
-        
-        // Exit directly
-        ExitProcess(1);
+ELECTROBUN_EXPORT void stopEventLoop() {
+    if (g_eventLoopStopping.exchange(true)) {
+        return;
     }
+
+    std::cout << "[stopEventLoop] Initiating clean event loop exit" << std::endl;
+
+    if (isCEFAvailable() && g_cef_initialized) {
+        // CefQuitMessageLoop must be called on the main thread.
+        // Dispatch via the hidden message window that CefRunMessageLoop processes.
+        MainThreadDispatcher::dispatch_async([]() {
+            CefQuitMessageLoop();
+        });
+    } else {
+        // Post WM_QUIT to the main thread's message queue
+        if (g_mainThreadId != 0) {
+            PostThreadMessage(g_mainThreadId, WM_QUIT, 0, 0);
+        }
+    }
+}
+
+ELECTROBUN_EXPORT void killApp() {
+    // Deprecated - delegates to stopEventLoop for backward compatibility
+    stopEventLoop();
+}
+
+ELECTROBUN_EXPORT void waitForShutdownComplete(int timeoutMs) {
+    int waited = 0;
+    while (!g_shutdownComplete.load() && waited < timeoutMs) {
+        Sleep(10);
+        waited += 10;
+    }
+}
+
+ELECTROBUN_EXPORT void forceExit(int code) {
+    _exit(code);
+}
+
+ELECTROBUN_EXPORT void setQuitRequestedHandler(QuitRequestedHandler handler) {
+    g_quitRequestedHandler = handler;
 }
 
 ELECTROBUN_EXPORT void shutdownApplication() {
-    // Stub implementation
+    // Deprecated - use stopEventLoop() instead
+    stopEventLoop();
 }
 
 // Clean, elegant initWebview function - Windows version matching Mac pattern
@@ -6479,11 +6514,13 @@ ELECTROBUN_EXPORT AbstractView* initWebview(uint32_t webviewId,
                          const char *partitionIdentifier,
                          DecideNavigationCallback navigationCallback,
                          WebviewEventHandler webviewEventHandler,
+                         HandlePostMessage eventBridgeHandler,
                          HandlePostMessage bunBridgeHandler,
                          HandlePostMessage internalBridgeHandler,
                          const char *electrobunPreloadScript,
                          const char *customPreloadScript,
-                         bool transparent) {
+                         bool transparent,
+                         bool sandbox) {
 
     // Serialize webview creation to avoid CEF/WebView2 conflicts
     std::lock_guard<std::mutex> lock(g_webviewCreationMutex);
@@ -6497,14 +6534,14 @@ ELECTROBUN_EXPORT AbstractView* initWebview(uint32_t webviewId,
     if (renderer && strcmp(renderer, "cef") == 0 && isCEFAvailable()) {
         auto cefView = createCEFView(webviewId, hwnd, url, x, y, width, height, autoResize,
                                     partitionIdentifier, navigationCallback, webviewEventHandler,
-                                    bunBridgeHandler, internalBridgeHandler,
-                                    electrobunPreloadScript, customPreloadScript, transparent);
+                                    eventBridgeHandler, bunBridgeHandler, internalBridgeHandler,
+                                    electrobunPreloadScript, customPreloadScript, transparent, sandbox);
         view = cefView.get();
     } else {
         auto webview2View = createWebView2View(webviewId, hwnd, url, x, y, width, height, autoResize,
                                               partitionIdentifier, navigationCallback, webviewEventHandler,
-                                              bunBridgeHandler, internalBridgeHandler,
-                                              electrobunPreloadScript, customPreloadScript, transparent);
+                                              eventBridgeHandler, bunBridgeHandler, internalBridgeHandler,
+                                              electrobunPreloadScript, customPreloadScript, transparent, sandbox);
         view = webview2View.get();
     }
     

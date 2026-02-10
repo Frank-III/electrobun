@@ -3,6 +3,10 @@ import electrobunEventEmitter from "../events/eventEmitter";
 import ElectrobunEvent from "../events/event";
 import { BrowserView } from "../core/BrowserView";
 import { Tray } from "../core/Tray";
+import {
+	preloadScript,
+	preloadScriptSandboxed,
+} from "../preload/.generated/compiled";
 
 // Menu data reference system to avoid serialization overhead
 const menuDataRegistry = new Map<string, any>();
@@ -182,11 +186,13 @@ export const native = (() => {
 					FFIType.cstring, // partition
 					FFIType.function, // decideNavigation: *const fn (u32, [*:0]const u8) callconv(.C) bool,
 					FFIType.function, // webviewEventHandler: *const fn (u32, [*:0]const u8, [*:0]const u8) callconv(.C) void,
-					FFIType.function, //  bunBridgePostmessageHandler: *const fn (u32, [*:0]const u8) callconv(.C) void,
-					FFIType.function, //  internalBridgeHandler: *const fn (u32, [*:0]const u8) callconv(.C) void,
+					FFIType.function, // eventBridgeHandler: *const fn (u32, [*:0]const u8) callconv(.C) void (events only, always active)
+					FFIType.function, // bunBridgePostmessageHandler: *const fn (u32, [*:0]const u8) callconv(.C) void (user RPC, disabled in sandbox)
+					FFIType.function, // internalBridgeHandler: *const fn (u32, [*:0]const u8) callconv(.C) void (internal RPC, disabled in sandbox)
 					FFIType.cstring, // electrobunPreloadScript
 					FFIType.cstring, // customPreloadScript
 					FFIType.bool, // transparent
+					FFIType.bool, // sandbox - when true, bunBridge and internalBridge are not set up
 				],
 				returns: FFIType.ptr,
 			},
@@ -512,6 +518,22 @@ export const native = (() => {
 			},
 			killApp: {
 				args: [],
+				returns: FFIType.void,
+			},
+			stopEventLoop: {
+				args: [],
+				returns: FFIType.void,
+			},
+			waitForShutdownComplete: {
+				args: [FFIType.i32],
+				returns: FFIType.void,
+			},
+			forceExit: {
+				args: [FFIType.i32],
+				returns: FFIType.void,
+			},
+			setQuitRequestedHandler: {
+				args: [FFIType.function],
 				returns: FFIType.void,
 			},
 			testFFI2: {
@@ -880,6 +902,7 @@ export const ffi = {
 			};
 			autoResize: boolean;
 			navigationRules: string | null;
+			sandbox: boolean;
 		}): FFIType.ptr => {
 			const {
 				id,
@@ -895,6 +918,7 @@ export const ffi = {
 				preload,
 				frame: { x, y, width, height },
 				autoResize,
+				sandbox,
 			} = params;
 
 			const parentWindow = BrowserWindow.getById(windowId);
@@ -906,206 +930,45 @@ export const ffi = {
 				throw `Can't add webview to window. window no longer exists`;
 			}
 
-			const electrobunPreload =
-				`
-         window.__electrobunWebviewId = ${id};
-         window.__electrobunWindowId = ${windowId};
-         window.__electrobunRpcSocketPort = ${rpcPort};
-         window.__electrobunInternalBridge = window.webkit?.messageHandlers?.internalBridge || window.internalBridge || window.chrome?.webview?.hostObjects?.internalBridge;
-         window.__electrobunBunBridge = window.webkit?.messageHandlers?.bunBridge || window.bunBridge || window.chrome?.webview?.hostObjects?.bunBridge;
-        (async () => {
-        
-         function base64ToUint8Array(base64) {
-           return new Uint8Array(atob(base64).split('').map(char => char.charCodeAt(0)));
-         }
-        
-        function uint8ArrayToBase64(uint8Array) {
-         let binary = '';
-         for (let i = 0; i < uint8Array.length; i++) {
-           binary += String.fromCharCode(uint8Array[i]);
-         }
-         return btoa(binary);
-        }
-         const generateKeyFromText = async (rawKey) => {        
-           return await window.crypto.subtle.importKey(
-             'raw',                  // Key format
-             rawKey,                 // Key data
-             { name: 'AES-GCM' },    // Algorithm details
-             true,                   // Extractable (set to false for better security)
-             ['encrypt', 'decrypt']  // Key usages
-           );
-         };        
-         const secretKey = await generateKeyFromText(new Uint8Array([${secretKey}]));
-        
-         const encryptString = async (plaintext) => {
-           const encoder = new TextEncoder();
-           const encodedText = encoder.encode(plaintext);
-           const iv = window.crypto.getRandomValues(new Uint8Array(12)); // Initialization vector (12 bytes)
-           const encryptedBuffer = await window.crypto.subtle.encrypt(
-            {
-             name: "AES-GCM",
-             iv: iv,
-            },
-            secretKey,
-            encodedText
-           );
-                
-                
-           // Split the tag (last 16 bytes) from the ciphertext
-           const encryptedData = new Uint8Array(encryptedBuffer.slice(0, -16));
-           const tag = new Uint8Array(encryptedBuffer.slice(-16));
-        
-           return { encryptedData: uint8ArrayToBase64(encryptedData), iv: uint8ArrayToBase64(iv), tag: uint8ArrayToBase64(tag) };
-         };
-         
-         // All args passed in as base64 strings
-         const decryptString = async (encryptedData, iv, tag) => {
-          encryptedData = base64ToUint8Array(encryptedData);
-          iv = base64ToUint8Array(iv);
-          tag = base64ToUint8Array(tag);
-          // Combine encrypted data and tag to match the format expected by SubtleCrypto
-          const combinedData = new Uint8Array(encryptedData.length + tag.length);
-          combinedData.set(encryptedData);
-          combinedData.set(tag, encryptedData.length);
-          const decryptedBuffer = await window.crypto.subtle.decrypt(
-            {
-              name: "AES-GCM",
-              iv: iv,
-            },
-            secretKey,
-            combinedData // Pass the combined data (ciphertext + tag)
-          );
-          const decoder = new TextDecoder();
-          return decoder.decode(decryptedBuffer);
-         };
-        
-         window.__electrobun_encrypt = encryptString;
-         window.__electrobun_decrypt = decryptString;
-        })();
-        ` +
-				`
-         function emitWebviewEvent (eventName, detail) {
-           // Note: There appears to be some race bug with Bun FFI where sites can
-           // init (like views://myview/index.html) so fast while the Bun FFI to load a url is still executing
-           // or something where the JSCallback that this postMessage fires is not available or busy or
-           // its memory is allocated to something else or something and the handler receives garbage data in Bun.
-           setTimeout(() => {
-              window.__electrobunInternalBridge?.postMessage(JSON.stringify({id: 'webviewEvent', type: 'message', payload: {id: window.__electrobunWebviewId, eventName, detail}}));
-          });
-         };
+			// Dynamic setup per-webview (variables that change for each webview)
+			// EventBridge is available for ALL webviews (including sandboxed) for event emission
+			// InternalBridge and BunBridge are only available for trusted (non-sandboxed) webviews
+			let dynamicPreload: string;
+			let selectedPreloadScript: string;
 
-         // Allow preload scripts to send custom messages to the host webview
-         // Usage: window.__electrobunSendToHost({ type: 'myEvent', data: {...} })
-         window.__electrobunSendToHost = function(message) {
-           emitWebviewEvent('host-message', JSON.stringify(message));
-         };                 
-        
-         window.addEventListener('load', function(event) {
-           // Check if the current window is the top-level window        
-           if (window === window.top) {        
-            emitWebviewEvent('dom-ready', document.location.href);
-           }
-         });
-        
-         window.addEventListener('popstate', function(event) {
-          emitWebviewEvent('did-navigate-in-page', window.location.href);
-         });
+			if (sandbox) {
+				// Sandboxed webview: minimal preload with only event emission capability
+				// Note: We set up internalBridge for event emission fallback (until native code
+				// adds dedicated eventBridge handler). The security is enforced because:
+				// 1. Sandboxed preload has NO RPC code - it can only emit events
+				// 2. No bunBridge is set up - no user RPC communication
+				// 3. No secretKey/rpcPort - no encrypted socket RPC
+				// 4. No webview tag support - can't create OOPIFs
+				// Note: Check existing value first to preserve bridges already set by CEF's OnContextCreated
+				dynamicPreload = `
+window.__electrobunWebviewId = ${id};
+window.__electrobunWindowId = ${windowId};
+window.__electrobunEventBridge = window.__electrobunEventBridge || window.webkit?.messageHandlers?.eventBridge || window.eventBridge || window.chrome?.webview?.hostObjects?.eventBridge;
+window.__electrobunInternalBridge = window.__electrobunInternalBridge || window.webkit?.messageHandlers?.internalBridge || window.internalBridge || window.chrome?.webview?.hostObjects?.internalBridge;
+`;
+				selectedPreloadScript = preloadScriptSandboxed;
+			} else {
+				// Trusted webview: all bridges, full preload
+				// Note: Check existing value first to preserve bridges already set by CEF's OnContextCreated
+				dynamicPreload = `
+window.__electrobunWebviewId = ${id};
+window.__electrobunWindowId = ${windowId};
+window.__electrobunRpcSocketPort = ${rpcPort};
+window.__electrobunSecretKeyBytes = [${secretKey}];
+window.__electrobunEventBridge = window.__electrobunEventBridge || window.webkit?.messageHandlers?.eventBridge || window.eventBridge || window.chrome?.webview?.hostObjects?.eventBridge;
+window.__electrobunInternalBridge = window.__electrobunInternalBridge || window.webkit?.messageHandlers?.internalBridge || window.internalBridge || window.chrome?.webview?.hostObjects?.internalBridge;
+window.__electrobunBunBridge = window.__electrobunBunBridge || window.webkit?.messageHandlers?.bunBridge || window.bunBridge || window.chrome?.webview?.hostObjects?.bunBridge;
+`;
+				selectedPreloadScript = preloadScript;
+			}
 
-         window.addEventListener('hashchange', function(event) {
-          emitWebviewEvent('did-navigate-in-page', window.location.href);
-         });
+			const electrobunPreload = dynamicPreload + selectedPreloadScript;
 
-         // Track cmd key state for SPA navigation detection
-         let __electrobunCmdKeyHeld = false;
-         let __electrobunCmdKeyTimestamp = 0;
-         const CMD_KEY_THRESHOLD_MS = 500; // How long after cmd release to still consider it a cmd+click
-
-         window.addEventListener('keydown', function(event) {
-           if (event.key === 'Meta' || event.metaKey) {
-             __electrobunCmdKeyHeld = true;
-             __electrobunCmdKeyTimestamp = Date.now();
-           }
-         }, true);
-
-         window.addEventListener('keyup', function(event) {
-           if (event.key === 'Meta') {
-             __electrobunCmdKeyHeld = false;
-             __electrobunCmdKeyTimestamp = Date.now();
-           }
-         }, true);
-
-         // Also track on blur in case key release happens outside window
-         window.addEventListener('blur', function() {
-           __electrobunCmdKeyHeld = false;
-         });
-
-         function __electrobunIsCmdHeld() {
-           if (__electrobunCmdKeyHeld) return true;
-           // Also return true if cmd was released very recently (for race conditions)
-           return (Date.now() - __electrobunCmdKeyTimestamp) < CMD_KEY_THRESHOLD_MS && __electrobunCmdKeyTimestamp > 0;
-         }
-
-         // Intercept cmd+clicks on anchors before SPA frameworks (like Turbo) can handle them
-         // Uses capture phase on window - this fires before document capture listeners
-         window.addEventListener('click', function(event) {
-           if (event.metaKey || event.ctrlKey) {
-             // Find the closest anchor element (handles clicks on nested elements inside <a>)
-             const anchor = event.target.closest('a');
-             if (anchor && anchor.href) {
-               event.preventDefault();
-               event.stopPropagation();
-               event.stopImmediatePropagation();
-               emitWebviewEvent('new-window-open', JSON.stringify({
-                 url: anchor.href,
-                 isCmdClick: true,
-                 isSPANavigation: false
-               }));
-             }
-           }
-         }, true);
-
-         // Intercept history.pushState and replaceState for SPA navigation
-         // This catches cases where cmd is held but the SPA still manages to call pushState
-         const originalPushState = history.pushState;
-         const originalReplaceState = history.replaceState;
-
-         history.pushState = function(state, title, url) {
-           if (__electrobunIsCmdHeld() && url) {
-             // Resolve relative URLs
-             const resolvedUrl = new URL(url, window.location.href).href;
-             emitWebviewEvent('new-window-open', JSON.stringify({
-               url: resolvedUrl,
-               isCmdClick: true,
-               isSPANavigation: true
-             }));
-             // Don't call original - block the navigation
-             return;
-           }
-           return originalPushState.apply(this, arguments);
-         };
-
-         history.replaceState = function(state, title, url) {
-           if (__electrobunIsCmdHeld() && url) {
-             const resolvedUrl = new URL(url, window.location.href).href;
-             emitWebviewEvent('new-window-open', JSON.stringify({
-               url: resolvedUrl,
-               isCmdClick: true,
-               isSPANavigation: true
-             }));
-             return;
-           }
-           return originalReplaceState.apply(this, arguments);
-         };
-        
-         // prevent overscroll
-         document.addEventListener('DOMContentLoaded', () => {        
-          var style = document.createElement('style');
-          style.type = 'text/css';
-          style.appendChild(document.createTextNode('html, body { overscroll-behavior: none; }'));
-          document.head.appendChild(style);
-         });
-                
-        `;
 			const customPreload = preload;
 
 			const webviewPtr = native.symbols.initWebview(
@@ -1121,11 +984,13 @@ export const ffi = {
 				toCString(partition || "persist:default"),
 				webviewDecideNavigation,
 				webviewEventJSCallback,
-				bunBridgePostmessageHandler,
-				internalBridgeHandler,
+				eventBridgeHandler, // Event-only bridge (always active, for dom-ready, navigation, etc.)
+				bunBridgePostmessageHandler, // User RPC bridge (disabled in sandbox mode)
+				internalBridgeHandler, // Internal RPC bridge (disabled in sandbox mode)
 				toCString(electrobunPreload),
 				toCString(customPreload || ""),
 				transparent,
+				sandbox, // When true, bunBridge and internalBridge are not set up in native code
 			);
 
 			if (!webviewPtr) {
@@ -1386,9 +1251,10 @@ export const ffi = {
 // Worker management. Move to a different file
 process.on("uncaughtException", (err) => {
 	console.error("Uncaught exception in worker:", err);
-	// Since the main js event loop is blocked by the native event loop
-	// we use FFI to dispatch a kill command to main
-	native.symbols.killApp();
+	// Fast path for crashes - skip beforeQuit, just stop the event loop
+	native.symbols.stopEventLoop();
+	native.symbols.waitForShutdownComplete(5000);
+	native.symbols.forceExit(1);
 });
 
 process.on("unhandledRejection", (reason, _promise) => {
@@ -1396,17 +1262,15 @@ process.on("unhandledRejection", (reason, _promise) => {
 });
 
 process.on("SIGINT", () => {
-	console.log(
-		"[electrobun] Received SIGINT, calling killApp() for graceful shutdown...",
-	);
-	native.symbols.killApp();
+	console.log("[electrobun] Received SIGINT, running quit sequence...");
+	const { quit } = require("../core/Utils");
+	quit();
 });
 
 process.on("SIGTERM", () => {
-	console.log(
-		"[electrobun] Received SIGTERM, calling killApp() for graceful shutdown...",
-	);
-	native.symbols.killApp();
+	console.log("[electrobun] Received SIGTERM, running quit sequence...");
+	const { quit } = require("../core/Utils");
+	quit();
 });
 
 // const testCallback = new JSCallback(
@@ -1554,6 +1418,24 @@ const urlOpenCallback = new JSCallback(
 if (process.platform === "darwin") {
 	native.symbols.setURLOpenHandler(urlOpenCallback);
 }
+
+// Quit requested callback - invoked by native code when system quit is requested
+// (dock icon quit, menu quit, console close, etc.)
+const quitRequestedCallback = new JSCallback(
+	() => {
+		// Dynamic require to avoid circular dependency (Utils.ts imports from native.ts)
+		const { quit } = require("../core/Utils");
+		quit();
+	},
+	{
+		args: [],
+		returns: "void",
+		threadsafe: true,
+	},
+);
+
+// Register the quit handler with native code (all platforms)
+native.symbols.setQuitRequestedHandler(quitRequestedCallback);
 
 // Global shortcut storage and callback
 const globalShortcutHandlers = new Map<string, () => void>();
@@ -2025,6 +1907,34 @@ const bunBridgePostmessageHandler = new JSCallback(
 // BrowserView.rpc (user defined bun <-> browser rpc unique to each webview)
 // nativeRPC (internal bun <-> native rpc)
 
+// eventBridgeHandler: handles ONLY webview events (dom-ready, navigation, etc.)
+// This is available on ALL webviews including sandboxed ones.
+// It cannot process RPC requests - only event emission.
+const eventBridgeHandler = new JSCallback(
+	(_id: number, msg: number) => {
+		try {
+			const message = new CString(msg as unknown as Pointer);
+			const jsonMessage = JSON.parse(message.toString());
+
+			// Only handle webviewEvent messages - no RPC
+			if (jsonMessage.id === "webviewEvent") {
+				const { payload } = jsonMessage;
+				webviewEventHandler(payload.id, payload.eventName, payload.detail);
+			}
+			// Silently ignore any other message types - sandboxed webviews shouldn't send them
+		} catch (err) {
+			console.error("error in eventBridgeHandler: ", err);
+		}
+	},
+	{
+		args: [FFIType.u32, FFIType.cstring],
+		returns: FFIType.void,
+		threadsafe: true,
+	},
+);
+
+// internalBridgeHandler: handles internal RPC (webview tags, drag regions, etc.)
+// This is only available on trusted (non-sandboxed) webviews.
 const internalBridgeHandler = new JSCallback(
 	(_id: number, msg: number) => {
 		try {
@@ -2192,6 +2102,7 @@ type WebviewTagInitParams = {
 	hostWebviewId: number;
 	windowId: number;
 	navigationRules: string | null;
+	sandbox: boolean;
 };
 
 export const internalRpcHandlers = {
@@ -2207,6 +2118,7 @@ export const internalRpcHandlers = {
 				partition,
 				frame,
 				navigationRules,
+				sandbox,
 			} = params;
 
 			const url = !params.url && !html ? "https://electrobun.dev" : params.url;
@@ -2222,6 +2134,7 @@ export const internalRpcHandlers = {
 				windowId,
 				renderer, //: "cef",
 				navigationRules,
+				sandbox,
 			});
 
 			return webviewForTag.id;

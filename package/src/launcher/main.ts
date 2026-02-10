@@ -88,6 +88,10 @@ function main() {
 				args: ["cstring", "cstring", "cstring"],
 				returns: "void",
 			},
+			forceExit: {
+				args: ["i32"],
+				returns: "void",
+			},
 		});
 	} catch (error) {
 		console.error(
@@ -99,6 +103,10 @@ function main() {
 			lib = dlopen(absoluteLibPath, {
 				startEventLoop: {
 					args: ["cstring", "cstring", "cstring"],
+					returns: "void",
+				},
+				forceExit: {
+					args: ["i32"],
 					returns: "void",
 				},
 			});
@@ -224,8 +232,12 @@ ${fileData.toString("utf8")}
 		appEntrypointPath = join(appFolderPath, "bun", "index.js");
 	}
 
-	// NOTE: No point adding any event listeners here because this is the main
-	// ui thread which is about to be blocked by the native event loop below.
+	// Register signal handlers on the main thread to prevent default termination.
+	// The worker thread's SIGINT handler will call quit() for graceful shutdown.
+	// Without these, SIGINT kills the process before the worker can run beforeQuit.
+	process.on("SIGINT", () => {});
+	process.on("SIGTERM", () => {});
+
 	new Worker(appEntrypointPath, {
 		// consider adding a preload with error handling
 		// preload: [''];
@@ -238,6 +250,14 @@ ${fileData.toString("utf8")}
 		ptr(new Uint8Array(Buffer.from(name + "\0", "utf8"))),
 		ptr(new Uint8Array(Buffer.from(channel + "\0", "utf8"))),
 	);
+
+	// Safety net: if startEventLoop returns (event loop stopped),
+	// ensure the process exits even if the worker is still running.
+	// Must use _exit() (via forceExit) instead of process.exit() because
+	// CefShutdown() may leave threads still tearing down. Regular exit()
+	// runs atexit handlers that try to pthread_join those threads, causing
+	// a crash (SIGTRAP in CEF's CFThreadLoop TSD cleanup).
+	lib.symbols.forceExit(0);
 }
 
 // Call the main function

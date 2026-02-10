@@ -12,6 +12,7 @@ import { sessionTests } from "./session.test";
 import { eventsTests } from "./events.test";
 import { preloadTests } from "./preload.test";
 import { updaterTests } from "./updater.test";
+import { sandboxTests } from "./sandbox.test";
 
 // Interactive tests
 import { dialogTests } from "./interactive/dialogs.test";
@@ -22,6 +23,8 @@ import { clipboardInteractiveTests } from "./interactive/clipboard.test";
 import { menuTests } from "./interactive/menus.test";
 import { windowEventTests } from "./interactive/window-events.test";
 import { chromelessTests } from "./interactive/chromeless.test";
+import { multiwindowCefTests } from "./interactive/multiwindow-cef.test";
+import { quitTests } from "./interactive/quit-test.test";
 
 // Collect all tests
 export const allTests: TestDefinition[] = [
@@ -35,6 +38,7 @@ export const allTests: TestDefinition[] = [
   ...eventsTests,
   ...preloadTests,
   ...updaterTests,
+  ...sandboxTests,
 
   // Interactive tests (run sequentially, require user)
   ...dialogTests,
@@ -45,6 +49,8 @@ export const allTests: TestDefinition[] = [
   ...menuTests,
   ...windowEventTests,
   ...chromelessTests,
+  ...multiwindowCefTests,
+  ...quitTests,
 ];
 
 // Export by category for selective running
@@ -62,6 +68,7 @@ export {
   eventsTests,
   preloadTests,
   updaterTests,
+  sandboxTests,
   dialogTests,
   trayTests,
   shortcutTests,
@@ -70,4 +77,6 @@ export {
   menuTests,
   windowEventTests,
   chromelessTests,
+  multiwindowCefTests,
+  quitTests,
 };
